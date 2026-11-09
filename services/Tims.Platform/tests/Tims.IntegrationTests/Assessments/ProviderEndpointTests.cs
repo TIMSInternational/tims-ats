@@ -108,6 +108,7 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
         instruments = new[] { new { instrument = "lia" } },
         timeMultiplier = multiplier,
         aids = new[] { "extended_breaks" },
+        ageBand = "18_plus",
     };
 
     private Task<object?> AttemptCount(Guid candidate) =>

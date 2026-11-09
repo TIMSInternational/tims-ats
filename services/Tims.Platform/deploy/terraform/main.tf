@@ -105,7 +105,7 @@ locals {
     # AS-5: the TIMS Assessments provider connector (nine routes, plus the #312 sweep and the D17 poller, both
     # registered only with this flag on). Inert, not open, until the out-of-band AssessmentProviders__* client
     # credentials and webhook secret are set AND the three provider migrations (20261107232524, 20261108224533,
-    # 20261109001134) are applied: an unconfigured client answers provider_unconfigured and an unsigned webhook is
+    # 20261109010328) are applied: an unconfigured client answers provider_unconfigured and an unsigned webhook is
     # refused. Those secrets are deliberately NOT in base_secrets here (see the README's placeholder-secret note); the
     # options class treats REPLACE_ME_OUT_OF_BAND as unset. AssessmentProviders__PortalBaseUrl (optional, an https
     # origin registered at the provider) is the candidate portal the hosted player returns to (D16).

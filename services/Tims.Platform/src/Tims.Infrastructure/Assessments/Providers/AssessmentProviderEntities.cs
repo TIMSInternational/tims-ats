@@ -107,6 +107,9 @@ public sealed class ProviderAttemptEntity
     /// <summary>When the poller last finished with this attempt (database clock); null when never polled.</summary>
     public DateTime? LastPolledAt { get; set; }
 
+    /// <summary>The age band HR attested at assignment (<c>18_plus</c> or <c>16_17</c>), sent as <c>age_attestation</c>.</summary>
+    public string? AgeBand { get; set; }
+
     public Guid AssignedById { get; set; }
 
     public DateTime CreatedAt { get; set; }

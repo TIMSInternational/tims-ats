@@ -72,6 +72,11 @@ Here every instrument is a **remote** provider, and provider attempts live only 
   - The ATS stores only the typed result (percentile / CEFR / level, versions, validity) and the provider's `scores`
     object for HR.
   - The parser refuses `scores` on a summary projection.
+- **Age attestation.** The amended contract requires `age_attestation` on every create, and the provider never
+  defaults it. HR attests the band on the assign request (`ageBand`: `18_plus` or `16_17`, required; never an age or a
+  date of birth); it is stored on the attempt (part of its terms: another band is a terms conflict) and sent with every
+  create. A pending attempt without one is refused locally (`age_attestation_required`) before anything is sent; 422
+  `age_band_not_supported` is a definitive refusal.
 - **Accommodations.**
   - Stored and sent: a `time_multiplier` from 1 to 3, and allowed `aids` codes.
   - Never stored or sent: a reason or a diagnosis.
@@ -204,12 +209,15 @@ connector on) re-reads stale attempts so nothing depends on a webhook arriving:
 
 - **Claimable:** mapped, not in a #312 cascade, no erasure requested, no orphan cleanup pending; a sitting state
   (`created`, `launched`, `in_progress`, `completed`) untouched for 15 minutes (`created`/`launched` only until a week
-  after the start deadline), or `result_ready` re-read every 6 hours for 30 days after completion (a later void is a new
-  result revision, D12).
-- **Lease:** one conditional `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)` claims up to 25 per
-  organization for this process's owner id, lease free or expired (5 minutes, database clock). Two App Runner instances
-  never poll the same attempt, and neither waits on the other. The release is conditional on the owner and stamps
-  `last_polled_at`; an instance that dies frees its leases when they expire.
+  after the start deadline), or an attempt that HOLDS a stored result (`result_ready`, or `voided`/`expired` by a
+  revision) re-read every 6 hours for 30 days after completion: a later void, or a review overturning one, is a new
+  result revision (D12).
+- **Lease:** one conditional `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)` claims ONE attempt for this
+  process's owner id, lease free or expired (10 minutes, database clock); the poll of that attempt is cancelled after 4
+  minutes, then the lease is released, and the next is claimed (at most 25 per organization per run). The lease
+  therefore always outlives the work done under it: two App Runner instances never poll the same attempt, and neither
+  waits on the other. The release is conditional on the owner and stamps `last_polled_at`; an instance that dies frees
+  its lease when it expires.
 - **Per attempt:** `GET /v1/assignments/{id}` (checked: tenant, subject, instrument, external ref), the missing consents
   recorded, the status applied through the same forward-only locked write a lifecycle webhook uses, and `result_id`
   fetched through `ProviderResultIntake`, the same guarded, revision-ordered path as `result.ready`. A 404 (confirmed or
@@ -248,9 +256,10 @@ from `dotnet ef migrations script --idempotent --context AssessmentProviderDbCon
 
 Two later migrations alter `assessment_provider_attempts` only (no grant or RLS change; the table's grants and policy
 cover new columns): `20261108224533_assessment_provider_consent_capture` (the consent-capture fence) and
-`20261109001134_assessment_provider_attempt_poll` (`missing_consents` with a CHECK against the four purposes,
-`poll_lease_owner`, `poll_lease_until` with a CHECK that both are set or both null, `last_polled_at`, and the partial
-index `ix_assessment_provider_attempts_poll`). Each has its own idempotent script in `db/manual`, applied in order.
+`20261109010328_assessment_provider_attempt_poll` (`missing_consents` with a CHECK against the four purposes,
+`poll_lease_owner`, `poll_lease_until` with a CHECK that both are set or both null, `last_polled_at`, the partial index
+`ix_assessment_provider_attempts_poll`, and `age_band` with a CHECK against `18_plus`/`16_17`). Each has its own
+idempotent script in `db/manual`, applied in order.
 
 ## Configuration
 
@@ -341,17 +350,13 @@ it too. A present non-boolean value is off contract and the result is refused.
   subject key, so a subject created by a failed or crashed assignment is covered too. If the candidate never had a
   subject, that call creates an empty one (no names or email).
 - The provider-held export must fit the client's 256 KiB response cap; a larger one fails the export closed (503).
-- **The amended contract requires `age_attestation` on every create** (tims-interop 1f2a12c). The ATS does not send
-  it yet: it needs a product decision on where a candidate's age band comes from. A suite that follows the amended
-  contract refuses every ATS create with 400 `invalid_request`, which the ATS reads as a definitive refusal (the attempt
-  is cancelled, nothing is orphaned).
 - D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
 
 ## Owner steps, in order
 
 1. Review the SQL. Apply the three files, in this order, with psql on the direct connection (`:5432`):
    `20261107232524_assessment_providers.sql`, `20261108224533_assessment_provider_consent_capture.sql`, then
-   `20261109001134_assessment_provider_attempt_poll.sql`.
+   `20261109010328_assessment_provider_attempt_poll.sql`.
 2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be these
    four tables, their policies, grants and indexes). Then run `/gate` checks 14, 16 and 17.
    - Check 18 (`pre-flip-scan --flip-diff`) will list the four tables as "newly efcore-owned". They are new tables,

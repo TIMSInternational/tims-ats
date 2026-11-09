@@ -280,6 +280,7 @@ public sealed class TimsAssessmentsClient(
                 ["aids"] = aids,
             },
             ["external_ref"] = request.ExternalRef,
+            ["age_attestation"] = new JsonObject { ["age_band"] = request.AgeBand },
         };
         if (request.ExpiresAt is { } expiresAt)
         {

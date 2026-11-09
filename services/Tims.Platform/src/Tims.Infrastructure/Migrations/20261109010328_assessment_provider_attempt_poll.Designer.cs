@@ -12,7 +12,7 @@ using Tims.Infrastructure.Assessments.Providers;
 namespace Tims.Infrastructure.Migrations
 {
     [DbContext(typeof(AssessmentProviderDbContext))]
-    [Migration("20261109001134_assessment_provider_attempt_poll")]
+    [Migration("20261109010328_assessment_provider_attempt_poll")]
     partial class assessment_provider_attempt_poll
     {
         /// <inheritdoc />
@@ -62,6 +62,10 @@ namespace Tims.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AgeBand")
+                        .HasColumnType("text")
+                        .HasColumnName("age_band");
 
                     b.PrimitiveCollection<string[]>("Aids")
                         .IsRequired()
@@ -236,7 +240,7 @@ namespace Tims.Infrastructure.Migrations
 
                     b.HasIndex("OrganizationId", "LastPolledAt")
                         .HasDatabaseName("ix_assessment_provider_attempts_poll")
-                        .HasFilter("provider_assignment_id IS NOT NULL AND withdrawal_state IS NULL AND provider_erasure_requested_at IS NULL AND state IN ('created', 'launched', 'in_progress', 'completed', 'result_ready')");
+                        .HasFilter("provider_assignment_id IS NOT NULL AND withdrawal_state IS NULL AND provider_erasure_requested_at IS NULL AND state IN ('created', 'launched', 'in_progress', 'completed', 'result_ready', 'voided', 'expired')");
 
                     b.HasIndex("OrganizationId", "ProviderAssignmentId")
                         .IsUnique()
@@ -255,6 +259,8 @@ namespace Tims.Infrastructure.Migrations
 
                     b.ToTable("assessment_provider_attempts", null, t =>
                         {
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_age_band", "age_band IS NULL OR age_band IN ('18_plus', '16_17')");
+
                             t.HasCheckConstraint("ck_assessment_provider_attempts_aids", "aids <@ ARRAY['extended_breaks', 'screen_reader', 'screen_magnification', 'high_contrast', 'assistive_input', 'captions_or_transcript', 'reader_assistance', 'separate_setting']::text[]");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_consent_capture", "consent_capture_generation >= 0 AND consent_captures_in_flight >= 0");

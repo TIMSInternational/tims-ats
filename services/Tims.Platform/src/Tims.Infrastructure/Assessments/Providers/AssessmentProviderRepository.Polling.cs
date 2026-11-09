@@ -13,13 +13,12 @@ public sealed partial class AssessmentProviderRepository
     // The claimable predicate (the same text in the org listing and in the claim; every value a bound parameter).
     // Mapped attempts only, never one in a #312 cascade, an ATS-requested erasure or an orphan cleanup (those have their
     // own retries); the lease free or expired; and stale: a sitting state untouched (no write, no poll) for StaleAfter,
-    // a created/launched one only until a week after its expiry (the provider then reports it expired), and a
-    // result_ready one re-read for revisions every ResultRevisionStaleAfter during ResultRevisionWindow after completion.
-    private static readonly string[] SittingStates =
-    [
-        ProviderAttemptStates.Created, ProviderAttemptStates.Launched, ProviderAttemptStates.InProgress,
-        ProviderAttemptStates.Completed,
-    ];
+    // a created/launched one only until a week after its expiry (the provider then reports it expired), and an attempt
+    // holding a stored result (result_ready, or voided/expired by a revision) re-read for revisions every
+    // ResultRevisionStaleAfter during ResultRevisionWindow after completion.
+    private static readonly string[] SittingStates = [.. ProviderAttemptPolling.SittingStates];
+
+    private static readonly string[] RevisionStates = [.. ProviderAttemptPolling.RevisionStates];
 
     private static readonly string[] NotStartedStates = [ProviderAttemptStates.Created, ProviderAttemptStates.Launched];
 
@@ -41,7 +40,7 @@ public sealed partial class AssessmentProviderRepository
                               < clock_timestamp() - make_interval(secs => {stale})
                           AND (p.state <> ALL({NotStartedStates}) OR p.expires_at IS NULL
                                OR p.expires_at > clock_timestamp() - interval '7 days'))
-                      OR (p.state = {ProviderAttemptStates.ResultReady}
+                      OR (p.state = ANY({RevisionStates}) AND p.latest_result_id IS NOT NULL
                           AND COALESCE(p.completed_at, p.updated_at) > clock_timestamp() - make_interval(secs => {window})
                           AND GREATEST(p.updated_at, COALESCE(p.last_polled_at, '-infinity'))
                               < clock_timestamp() - make_interval(secs => {revisionStale})))
@@ -78,7 +77,7 @@ public sealed partial class AssessmentProviderRepository
                                      < clock_timestamp() - make_interval(secs => {stale})
                                  AND (p.state <> ALL({NotStartedStates}) OR p.expires_at IS NULL
                                       OR p.expires_at > clock_timestamp() - interval '7 days'))
-                             OR (p.state = {ProviderAttemptStates.ResultReady}
+                             OR (p.state = ANY({RevisionStates}) AND p.latest_result_id IS NOT NULL
                                  AND COALESCE(p.completed_at, p.updated_at)
                                      > clock_timestamp() - make_interval(secs => {window})
                                  AND GREATEST(p.updated_at, COALESCE(p.last_polled_at, '-infinity'))

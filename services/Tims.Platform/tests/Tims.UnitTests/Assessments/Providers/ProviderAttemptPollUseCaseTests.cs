@@ -15,7 +15,8 @@ public sealed class ProviderAttemptPollUseCaseTests
     private readonly FakeRepository _repository = new();
     private readonly FakeProvider _provider = new();
 
-    private Task<AttemptPoll> Run() => new ProviderAttemptPollUseCase(_repository, _provider).RunAsync(Owner, Now, CancellationToken.None);
+    private Task<AttemptPoll> Run(TimeSpan? maxPollDuration = null) =>
+        new ProviderAttemptPollUseCase(_repository, _provider, maxPollDuration).RunAsync(Owner, Now, CancellationToken.None);
 
     private ProviderCall<ProviderAssignment> AssignmentOf(
         AttemptRow attempt, string status, Guid? resultId = null, IReadOnlyList<string>? missing = null, Guid? tenant = null,
@@ -164,6 +165,68 @@ public sealed class ProviderAttemptPollUseCaseTests
         Assert.Equal((2, 1, 1), (outcome.Polled, outcome.Changed, outcome.Failed));
         Assert.Equal(2, _repository.Released.Count);
         Assert.Empty(_repository.Leases);
+    }
+
+    // Codex release round A1 [P2]: leasing a batch up front let later leases run out while earlier attempts were still
+    // being polled, so another instance could claim them. One claim at a time, each released before the next claim.
+    [Fact]
+    public async Task Attempts_are_claimed_one_at_a_time_and_each_is_released_before_the_next_claim()
+    {
+        _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Launched);
+        _repository.AddCreatedAttempt("english", ProviderAttemptStates.Launched);
+        _repository.AddCreatedAttempt("mi", ProviderAttemptStates.Launched);
+        _provider.OnGetAssignment = id => AssignmentOf(_repository.Attempts.Single(a => a.ProviderAssignmentId == id), "in_progress");
+
+        var outcome = await Run();
+
+        Assert.Equal(3, outcome.Polled);
+        var leaseLog = _repository.Writes.Where(w => w.StartsWith("claim", StringComparison.Ordinal) || w == "released").ToList();
+        Assert.Equal(
+            ["claim:max=1", "claimed:1", "released", "claim:max=1", "claimed:1", "released", "claim:max=1", "claimed:1", "released",
+             "claim:max=1", "claimed:0"],
+            leaseLog);
+    }
+
+    // The work under one lease is capped well inside the lease, so the lease never runs out while its owner still works.
+    [Fact]
+    public async Task A_poll_past_its_time_cap_is_cancelled_counted_failed_and_released()
+    {
+        var slow = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Launched);
+        var quick = _repository.AddCreatedAttempt("english", ProviderAttemptStates.Launched);
+        _provider.OnGetAssignmentAsync = async (id, ct) =>
+        {
+            if (id == slow.ProviderAssignmentId)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            }
+
+            return AssignmentOf(id == slow.ProviderAssignmentId ? slow : quick, "in_progress");
+        };
+
+        var outcome = await Run(TimeSpan.FromMilliseconds(100));
+
+        Assert.Equal((2, 1, 1), (outcome.Polled, outcome.Changed, outcome.Failed));
+        Assert.Equal([slow.Id, quick.Id], _repository.Released.Select(r => r.AttemptId));
+        Assert.True(ProviderAttemptPolling.MaxPollDuration * 2 <= ProviderAttemptPolling.LeaseDuration);
+    }
+
+    // Codex release round A1 [P2]: a voided revision moves the attempt to voided; a later corrected revision (staff
+    // overturned the void) must still be found without its webhook.
+    [Fact]
+    public async Task A_voided_attempt_holding_a_result_is_re_read_and_a_corrected_revision_is_stored()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Voided);
+        _repository.WithStoredResult.Add(attempt.Id);
+        _repository.AddCreatedAttempt("english", ProviderAttemptStates.Voided); // voided before any result: nothing to re-read
+        var resultId = Guid.NewGuid();
+        _provider.OnGetAssignment = id => AssignmentOf(_repository.Attempts.Single(a => a.ProviderAssignmentId == id), "completed", resultId);
+        _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(ResultFor(attempt, id, revision: 3));
+
+        var outcome = await Run();
+
+        Assert.Equal(1, outcome.Polled);
+        var stored = Assert.Single(_repository.StoredResults);
+        Assert.Equal((3, "valid"), (stored.ResultRevision, stored.ValidityStatus));
     }
 
     [Fact]

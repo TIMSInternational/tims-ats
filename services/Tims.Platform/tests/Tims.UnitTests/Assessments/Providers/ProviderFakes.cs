@@ -218,9 +218,17 @@ internal sealed class FakeProvider : IAssessmentProvider
             Guid.NewGuid(), request.TenantId, request.SubjectId, request.Instrument, "1.0", "content-2026.11.1", "created",
             ["assessment"], ["assessment"], new DateTimeOffset(2026, 11, 23, 14, 0, 0, TimeSpan.Zero), request.ExternalRef));
 
+    /// <summary>An asynchronous answer that sees the call's cancellation (a slow provider).</summary>
+    public Func<Guid, CancellationToken, Task<ProviderCall<ProviderAssignment>>>? OnGetAssignmentAsync { get; set; }
+
     public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
     {
         Calls.Add("get_assignment");
+        if (OnGetAssignmentAsync is { } slow)
+        {
+            return slow(assignmentId, cancellationToken);
+        }
+
         return Task.FromResult(OnGetAssignment?.Invoke(assignmentId)
             ?? ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])));
     }
@@ -355,7 +363,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
             var row = new AttemptRow(Guid.NewGuid(), organizationId, candidateId, vacancyId, attempt.Instrument,
                 ProviderAttemptStates.PendingCreate, attempt.Reason, attempt.Locale, attempt.TimeMultiplier, attempt.Aids,
-                attempt.ExpiresAt, null, null, null, null, [], null, null, true);
+                attempt.ExpiresAt, null, null, null, null, [], null, null, true, AgeBand: attempt.AgeBand);
             Attempts.Add(row);
             rows.Add(row);
         }
@@ -810,9 +818,15 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     /// <summary>An organization whose claim throws (a failing org in a poll).</summary>
     public Guid? FailingClaimOrganization { get; set; }
 
+    /// <summary>Attempts the fake treats as holding a stored result (what latest_result_id records).</summary>
+    public HashSet<Guid> WithStoredResult { get; } = [];
+
     private bool IsPollable(AttemptRow a) =>
         a.ProviderAssignmentId is not null && a.WithdrawalState is null && a.ErasureRequestedAt is null
-        && ProviderAttemptPolling.PollableStates.Contains(a.State) && !Leases.ContainsKey(a.Id);
+        && !Leases.ContainsKey(a.Id) && !Released.Any(r => r.AttemptId == a.Id)
+        && (ProviderAttemptPolling.SittingStates.Contains(a.State)
+            || (ProviderAttemptPolling.RevisionStates.Contains(a.State)
+                && (a.State == ProviderAttemptStates.ResultReady || WithStoredResult.Contains(a.Id))));
 
     public Task<IReadOnlyList<Guid>> ListOrganizationsWithPollableAttemptsAsync(int max, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Guid>>(Attempts.Where(IsPollable).Select(a => a.OrganizationId).Distinct().Take(max).ToList());
@@ -831,6 +845,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             Leases[attempt.Id] = owner;
         }
 
+        Writes.Add("claim:max=" + max);
         Writes.Add("claimed:" + claimed.Count);
         return Task.FromResult<IReadOnlyList<PolledAttempt>>(
             claimed.Select(a => new PolledAttempt(a, Binding?.ProviderTenantId ?? Guid.Empty)).ToList());
@@ -842,6 +857,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         {
             Leases.Remove(attemptId);
             Released.Add((attemptId, owner));
+            Writes.Add("released");
         }
 
         return Task.CompletedTask;

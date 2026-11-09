@@ -59,7 +59,7 @@ public sealed class TimsAssessmentsClientTests
 
     private static ProviderAssignmentRequest AssignmentRequest() => new(
         Guid.Parse("3f1d2c4b-8a6e-4f2a-9c1d-5b7e8a9f0c12"), Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d"), "lia", "es",
-        "a0000000-0000-4000-8000-000000000001", "Análisis de datos", 1.5m, ["extended_breaks"], null, "attempt-1");
+        "a0000000-0000-4000-8000-000000000001", "Análisis de datos", 1.5m, ["extended_breaks"], null, "attempt-1", "18_plus");
 
     [Fact]
     public async Task One_token_serves_several_calls_and_is_requested_with_basic_client_auth()
@@ -141,6 +141,8 @@ public sealed class TimsAssessmentsClientTests
         Assert.Equal("Análisis de datos", body["vacancy"]!["job_relatedness_reason"]!.GetValue<string>());
         Assert.Equal(1.5m, body["accommodations"]!["time_multiplier"]!.GetValue<decimal>());
         Assert.Null(body["expires_at"]); // omitted, not null
+        // The amended contract requires the attested age band on every create: the band only, never an age.
+        Assert.Equal("""{"age_band":"18_plus"}""", body["age_attestation"]!.ToJsonString());
     }
 
     [Fact]

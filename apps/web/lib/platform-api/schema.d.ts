@@ -4959,6 +4959,7 @@ export interface components {
             aids?: null | string[];
             /** Format: date-time */
             expiresAt?: null | string;
+            ageBand?: string;
         };
         ProviderAssignInstrumentBody: {
             instrument?: string;

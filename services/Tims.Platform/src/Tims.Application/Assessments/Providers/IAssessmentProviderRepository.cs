@@ -396,18 +396,19 @@ public sealed record AssignmentContext(
 
 public sealed record NewAttempt(
     string Instrument, string Reason, string Locale, decimal TimeMultiplier, IReadOnlyList<string> Aids,
-    DateTimeOffset? ExpiresAt)
+    DateTimeOffset? ExpiresAt, string? AgeBand = null)
 {
     /// <summary>
     /// True when an open attempt already carries exactly these terms: the accommodation (time multiplier and aids, as
-    /// a set), the locale and the job-relatedness reason. The expiry is not compared: a re-send may legitimately
-    /// recompute a relative expiry, and the response echoes the one in force.
+    /// a set), the locale, the job-relatedness reason and the attested age band. The expiry is not compared: a re-send
+    /// may legitimately recompute a relative expiry, and the response echoes the one in force.
     /// </summary>
     public bool SameTermsAs(AttemptRow open)
     {
         ArgumentNullException.ThrowIfNull(open);
         return open.TimeMultiplier == TimeMultiplier
             && string.Equals(open.Locale, Locale, StringComparison.Ordinal)
+            && string.Equals(open.AgeBand, AgeBand, StringComparison.Ordinal)
             && string.Equals(open.Reason, Reason, StringComparison.Ordinal)
             && open.Aids.Order(StringComparer.Ordinal).SequenceEqual(Aids.Order(StringComparer.Ordinal), StringComparer.Ordinal);
     }
@@ -435,7 +436,8 @@ public sealed record AttemptRow(
     bool IsNew,
     string? WithdrawalState = null,
     DateTimeOffset? ErasureRequestedAt = null,
-    IReadOnlyList<string>? MissingConsents = null)
+    IReadOnlyList<string>? MissingConsents = null,
+    string? AgeBand = null)
 {
     /// <summary>
     /// True once the candidate's #312 withdrawal reached this attempt (D15) or an erasure of its provider subject was

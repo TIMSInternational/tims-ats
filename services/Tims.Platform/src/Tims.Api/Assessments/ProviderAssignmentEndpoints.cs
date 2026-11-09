@@ -19,9 +19,11 @@ namespace Tims.Api.Assessments;
 /// <list type="bullet">
 ///   <item><description><c>POST /assessments/provider-assignments</c> — <c>assessment:create</c> (TS
 ///   <c>assessment.assign</c> parity) + the vacancy IDOR probe. Assigns 1..6 provider instruments to a candidate for a
-///   vacancy, each with its job-relatedness reason, optional accommodations (time multiplier 1..3, aids) and expiry.
-///   Idempotent while an attempt is open with the same terms; an open attempt with other terms (accommodation, locale,
-///   reason) is a 409 <c>open_attempt_terms_differ</c> naming it. Every item echoes the terms in force.
+///   vacancy, each with its job-relatedness reason, optional accommodations (time multiplier 1..3, aids) and expiry, and
+///   the REQUIRED attested age band (<c>ageBand</c>: <c>18_plus</c> or <c>16_17</c>, sent as the contract's
+///   <c>age_attestation</c>; never an age). Idempotent while an attempt is open with the same terms; an open attempt with
+///   other terms (accommodation, locale, reason, age band) is a 409 <c>open_attempt_terms_differ</c> naming it. Every
+///   item echoes the terms in force.
 ///   200 / 400 / 401 / 403 / 404 / 409 / 422 / 502 (some provider creates still pending — re-send the same request) /
 ///   503.</description></item>
 ///   <item><description><c>POST /assessments/provider-assignments/{attemptId}/cancel</c> — <c>assessment:update</c> (TS
@@ -275,6 +277,9 @@ public sealed class ProviderAssignBody
     public IReadOnlyList<string>? Aids { get; init; }
 
     public DateTimeOffset? ExpiresAt { get; init; }
+
+    /// <summary>Required: the candidate's age band as HR attests it, <c>18_plus</c> or <c>16_17</c> (never an age).</summary>
+    public string AgeBand { get; init; } = string.Empty;
 }
 
 public sealed class ProviderAssignInstrumentBody

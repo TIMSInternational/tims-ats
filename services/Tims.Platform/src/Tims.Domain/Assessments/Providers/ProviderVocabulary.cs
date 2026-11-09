@@ -61,6 +61,22 @@ public static class ConsentPurposes
 }
 
 /// <summary>
+/// The age band a host attests when it assigns an instrument (<c>common.v1 $defs/AgeBand</c>; the amended contract makes
+/// <c>age_attestation</c> required on every create). Some instruments are worded and normed per band, and the provider
+/// never defaults it, so neither does the ATS: HR attests it on the assign request. Only the band ever crosses the
+/// boundary, never an age or a date of birth.
+/// </summary>
+public static class ProviderAgeBands
+{
+    public const string Adult = "18_plus";
+    public const string SixteenToSeventeen = "16_17";
+
+    public static readonly IReadOnlyList<string> All = [Adult, SixteenToSeventeen];
+
+    public static bool IsKnown(string? band) => band is not null && All.Contains(band, StringComparer.Ordinal);
+}
+
+/// <summary>
 /// Allowed aids (<c>common.v1 $defs/AidCode</c>). Only the adjustment is ever stored or sent, never its reason.
 /// </summary>
 public static class AccommodationAids
@@ -203,16 +219,24 @@ public static class ProviderAttemptStates
 /// </summary>
 public static class ProviderAttemptPolling
 {
-    /// <summary>
-    /// States whose sitting or result can still change at the provider. <c>result_ready</c> stays pollable for
-    /// <see cref="ResultRevisionWindow"/> after completion, because a later void or a staff review publishes a new
-    /// result revision.
-    /// </summary>
-    public static readonly IReadOnlyList<string> PollableStates =
+    /// <summary>States whose sitting can still change at the provider.</summary>
+    public static readonly IReadOnlyList<string> SittingStates =
     [
         ProviderAttemptStates.Created, ProviderAttemptStates.Launched, ProviderAttemptStates.InProgress,
-        ProviderAttemptStates.Completed, ProviderAttemptStates.ResultReady,
+        ProviderAttemptStates.Completed,
     ];
+
+    /// <summary>
+    /// States of an attempt that HOLDS a stored result, re-read for <see cref="ResultRevisionWindow"/> after completion: a
+    /// later void, or a staff review overturning one, publishes a new result revision, and a revision moves the attempt
+    /// between <c>result_ready</c> and <c>voided</c> (or restores an <c>expired</c> one). Only with a stored result: a
+    /// sitting voided or expired before any result has nothing left to change.
+    /// </summary>
+    public static readonly IReadOnlyList<string> RevisionStates =
+        [ProviderAttemptStates.ResultReady, ProviderAttemptStates.Voided, ProviderAttemptStates.Expired];
+
+    /// <summary>Every state the poller may claim (<see cref="SittingStates"/> and <see cref="RevisionStates"/>).</summary>
+    public static readonly IReadOnlyList<string> PollableStates = [.. SittingStates, .. RevisionStates];
 
     /// <summary>A sitting-state attempt untouched (no write, no poll) for this long is polled.</summary>
     public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(15);
@@ -224,11 +248,17 @@ public static class ProviderAttemptPolling
     public static readonly TimeSpan ResultRevisionWindow = TimeSpan.FromDays(30);
 
     /// <summary>
-    /// How long a claim holds an attempt. Longer than one attempt's worst case (two provider GETs, each bounded by the
-    /// client's per-call timeout of at most 30 s, plus token requests); an instance that dies mid-poll frees its claims
-    /// when they expire.
+    /// How long a claim holds an attempt. The poller claims ONE attempt at a time and abandons it after
+    /// <see cref="MaxPollDuration"/>, so a lease always outlives the work done under it and no other poller can claim
+    /// the attempt meanwhile. An instance that dies mid-poll frees its claim when it expires.
     /// </summary>
-    public static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// The most one attempt's poll may take (two provider reads, each bounded by the client's per-call timeout, plus the
+    /// guarded writes); past it the poll is cancelled. Well inside <see cref="LeaseDuration"/>.
+    /// </summary>
+    public static readonly TimeSpan MaxPollDuration = TimeSpan.FromMinutes(4);
 
     /// <summary>
     /// The ATS state a provider <c>AssignmentStatus</c> moves an attempt to, or null when it moves nothing:

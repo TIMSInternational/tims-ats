@@ -120,6 +120,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                     $"missing_consents <@ {TextArray(ConsentPurposes.All)}");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_poll_lease",
                     "(poll_lease_owner IS NULL) = (poll_lease_until IS NULL)");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_age_band",
+                    $"age_band IS NULL OR age_band IN ({InList(ProviderAgeBands.All)})");
                 // Past pending_create every attempt must carry the provider's ids (a cancelled one may never have had them).
                 t.HasCheckConstraint("ck_assessment_provider_attempts_external_ids",
                     "state IN ('pending_create', 'cancelled') OR (provider_assignment_id IS NOT NULL AND provider_subject_id IS NOT NULL)");
@@ -158,6 +160,7 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(a => a.PollLeaseOwner).HasColumnName("poll_lease_owner");
             entity.Property(a => a.PollLeaseUntil).HasColumnName("poll_lease_until");
             entity.Property(a => a.LastPolledAt).HasColumnName("last_polled_at");
+            entity.Property(a => a.AgeBand).HasColumnName("age_band");
             entity.Property(a => a.AssignedById).HasColumnName("assigned_by_id");
             entity.Property(a => a.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(a => a.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");

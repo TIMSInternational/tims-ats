@@ -130,10 +130,17 @@ public sealed class AssessmentProviderPollLeaseTests(AssessmentProviderSchemaFix
     {
         var org = await OrgAsync();
         var stale = await AttemptAsync(org, "launched", "20 minutes");
-        var revision = await AttemptAsync(org, "result_ready", "7 hours", ", completed_at", ", now() - interval '1 day'");
+        var revision = await AttemptAsync(org, "result_ready", "7 hours", ", completed_at, latest_result_id",
+            ", now() - interval '1 day', gen_random_uuid()");
+        // A revision voided the result (D12); a later corrected revision must still be found (Codex release round A1).
+        var voidedRevision = await AttemptAsync(org, "voided", "7 hours", ", completed_at, latest_result_id",
+            ", now() - interval '1 day', gen_random_uuid()");
+        await AttemptAsync(org, "voided", "7 hours", ", completed_at", ", now() - interval '1 day'"); // voided before any result
         await AttemptAsync(org, "in_progress", "1 minute");                                                      // fresh
-        await AttemptAsync(org, "result_ready", "1 hour", ", completed_at", ", now() - interval '1 day'");      // revision read too recent
-        await AttemptAsync(org, "result_ready", "40 days", ", completed_at", ", now() - interval '40 days'");   // outside the window
+        await AttemptAsync(org, "result_ready", "1 hour", ", completed_at, latest_result_id",
+            ", now() - interval '1 day', gen_random_uuid()");                                                    // revision read too recent
+        await AttemptAsync(org, "result_ready", "40 days", ", completed_at, latest_result_id",
+            ", now() - interval '40 days', gen_random_uuid()");                                                  // outside the window
         await AttemptAsync(org, "voided");                                                                       // terminal
         await AttemptAsync(org, "in_progress", "1 hour", ", withdrawal_state", ", 'pending'");                 // the #312 cascade owns it
         await AttemptAsync(org, "in_progress", "1 hour", ", provider_erasure_requested_at", ", now()");        // erasure requested
@@ -147,7 +154,7 @@ public sealed class AssessmentProviderPollLeaseTests(AssessmentProviderSchemaFix
             Assert.Contains(org, await new AssessmentProviderRepository(db).ListOrganizationsWithPollableAttemptsAsync(1000, CancellationToken.None));
         }
 
-        Assert.Equal(new[] { stale, revision }.Order(), (await ClaimAsync(org, Guid.NewGuid())).Order());
+        Assert.Equal(new[] { stale, revision, voidedRevision }.Order(), (await ClaimAsync(org, Guid.NewGuid())).Order());
 
         await using (var db = fixture.NewContext())
         {

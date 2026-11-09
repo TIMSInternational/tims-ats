@@ -171,6 +171,12 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     /// </summary>
     public const string SubjectDataRequired = "subject_data_required";
 
+    /// <summary>
+    /// Local: an attempt carries no attested age band, which the contract requires on every create
+    /// (<c>age_attestation</c>). Raised before anything is sent, so it proves nothing was created.
+    /// </summary>
+    public const string AgeAttestationRequired = "age_attestation_required";
+
     // Contract codes (tims-assessments.v1.yaml, Errors) that refuse a create OUTRIGHT: the provider validated the
     // request and created nothing. Deliberately absent: idempotency_key_in_use (a 409 contract code since the amended
     // contract: another request with this key is still creating it), idempotency_key_reused (an earlier body under this
@@ -180,7 +186,7 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     [
         "invalid_request", "insufficient_scope", "forbidden", "not_found", "vacancy_version_mismatch", "subject_erased",
         "validation_failed", "locale_not_supported", "instrument_version_not_available",
-        "instrument_not_offered_for_selection", "accommodation_not_supported", SubjectDataRequired,
+        "instrument_not_offered_for_selection", "accommodation_not_supported", SubjectDataRequired, "age_band_not_supported",
     ];
 
     /// <summary>
@@ -193,7 +199,7 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     public bool IsDefinitiveRefusal =>
         HttpStatus is >= 400 and < 500
             ? RefusalCodes.Contains(Code, StringComparer.Ordinal)
-            : HttpStatus is null && Code == SubjectDataRequired;
+            : HttpStatus is null && Code is SubjectDataRequired or AgeAttestationRequired;
 
     public static ProviderFailure Local(string code, bool transient) => new(null, code, transient, []);
 }
@@ -245,7 +251,8 @@ public sealed record ProviderSubject(Guid SubjectId, string Status, bool HasName
 
 /// <summary>
 /// One assignment, always purpose <c>selection</c> with the vacancy and the job-relatedness reason. Accommodations
-/// carry the adjustment only (multiplier + aids), never its reason.
+/// carry the adjustment only (multiplier + aids), never its reason. <see cref="AgeBand"/> is the attested band sent as
+/// <c>age_attestation</c> (required by the amended contract), never an age or a date of birth.
 /// </summary>
 public sealed record ProviderAssignmentRequest(
     Guid TenantId,
@@ -257,7 +264,8 @@ public sealed record ProviderAssignmentRequest(
     decimal TimeMultiplier,
     IReadOnlyList<string> Aids,
     DateTimeOffset? ExpiresAt,
-    string ExternalRef);
+    string ExternalRef,
+    string AgeBand);
 
 /// <summary>
 /// An assignment as the provider holds it. <see cref="ResultId"/> and the sitting timestamps are what the D17 poller

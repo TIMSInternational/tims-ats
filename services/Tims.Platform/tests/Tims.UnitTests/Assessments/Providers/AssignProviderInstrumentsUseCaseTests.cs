@@ -17,7 +17,7 @@ public sealed class AssignProviderInstrumentsUseCaseTests
 
     private static AssignProviderInstrumentsInput Input(params (string Instrument, string? Reason)[] items) =>
         new(FakeRepository.Candidate, FakeRepository.Vacancy, items.Select(i => new AssignInstrumentItem(i.Instrument, i.Reason)).ToList(),
-            null, 1.5m, ["extended_breaks"], null);
+            null, 1.5m, ["extended_breaks"], null, ProviderAgeBands.Adult);
 
     private Task<ProviderAssignResult> Assign(AssignProviderInstrumentsInput input) =>
         UseCase.AssignAsync(FakeRepository.Org, Actor, input, Now, CancellationToken.None);
@@ -532,17 +532,71 @@ public sealed class AssignProviderInstrumentsUseCaseTests
     }
 
     [Theory]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}]}""", true)]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia","reason":"ok reason"}],"locale":"es-CR","timeMultiplier":1.25,"aids":["screen_reader"],"expiresAt":"2026-11-20T00:00:00Z"}""", true)]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[]}""", false)]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"},{"instrument":"lia"}]}""", false)]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"astrology"}]}""", false)]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"timeMultiplier":3.5}""", false)]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"aids":["diagnosis:adhd"]}""", false)]
-    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"organizationId":"11111111-1111-1111-1111-111111111111"}""", false)]
-    [InlineData("""{"candidateId":"not-a-guid","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}]}""", false)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}]}""", true)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia","reason":"ok reason"}],"locale":"es-CR","timeMultiplier":1.25,"aids":["screen_reader"],"expiresAt":"2026-11-20T00:00:00Z"}""", true)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[]}""", false)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"},{"instrument":"lia"}]}""", false)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"astrology"}]}""", false)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"timeMultiplier":3.5}""", false)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"aids":["diagnosis:adhd"]}""", false)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"organizationId":"11111111-1111-1111-1111-111111111111"}""", false)]
+    [InlineData("""{"ageBand":"18_plus","candidateId":"not-a-guid","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}]}""", false)]
     public void The_body_is_parsed_strictly(string json, bool ok)
     {
         Assert.Equal(ok, AssignProviderInstrumentsUseCase.TryParseBody(JsonNode.Parse(json), out _));
     }
+
+    // The amended contract makes age_attestation required on every create: HR attests the band at assignment, it is
+    // stored on the attempt and sent with the create (and with a re-send of a pending one).
+    [Fact]
+    public async Task The_attested_age_band_is_stored_and_sent_with_every_create()
+    {
+        var result = await Assign(Input(("lia", null)) with { AgeBand = ProviderAgeBands.SixteenToSeventeen });
+
+        Assert.Equal(ProviderAssignOutcome.Ok, result.Outcome);
+        Assert.Equal(ProviderAgeBands.SixteenToSeventeen, Assert.Single(_provider.Assignments).Request.AgeBand);
+        Assert.Equal(ProviderAgeBands.SixteenToSeventeen, Assert.Single(_repository.Attempts).AgeBand);
+    }
+
+    [Fact]
+    public async Task A_different_age_band_for_an_open_attempt_is_a_terms_conflict_not_a_silent_keep()
+    {
+        await Assign(Input(("lia", null)));
+
+        var corrected = await Assign(Input(("lia", null)) with { AgeBand = ProviderAgeBands.SixteenToSeventeen });
+
+        Assert.Equal(ProviderAssignOutcome.OpenAttemptTermsDiffer, corrected.Outcome);
+        Assert.Single(_provider.Assignments);
+    }
+
+    // A pending attempt reserved without a band (none can be through the route, which requires one) is refused before
+    // anything is sent: a create without age_attestation is off contract.
+    [Fact]
+    public async Task A_pending_attempt_without_an_attested_age_band_is_refused_before_any_create()
+    {
+        var reserved = await _repository.ReserveAttemptsAsync(FakeRepository.Org, Actor, _repository.Binding!, FakeRepository.Candidate,
+            FakeRepository.Vacancy, [new NewAttempt("lia", "Análisis de datos bajo presión de tiempo", "es", 1.5m, ["extended_breaks"], null)], Now,
+            CancellationToken.None);
+        _repository.Attempts[0] = reserved.Attempts[0] with { IsNew = false };
+        _provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(null));
+
+        var result = await Assign(Input(("lia", null)) with { AgeBand = null! });
+
+        Assert.Equal(ProviderAssignOutcome.Incomplete, result.Outcome);
+        Assert.Equal(ProviderFailure.AgeAttestationRequired, Assert.Single(result.Response!.Items).Error);
+        Assert.Empty(_provider.Assignments);
+        Assert.Equal(ProviderAttemptStates.Cancelled, _repository.Attempts[0].State);
+    }
+
+    [Theory]
+    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"ageBand":"18_plus"}""", true)]
+    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"ageBand":"16_17"}""", true)]
+    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}]}""", false)]
+    [InlineData("""{"candidateId":"c0000000-0000-4000-8000-000000000001","vacancyId":"a0000000-0000-4000-8000-000000000001","instruments":[{"instrument":"lia"}],"ageBand":"21"}""", false)]
+    public void The_assign_body_requires_a_known_age_band(string json, bool valid) =>
+        Assert.Equal(valid, AssignProviderInstrumentsUseCase.TryParseBody(System.Text.Json.Nodes.JsonNode.Parse(json), out _));
+
+    [Fact]
+    public void An_unsupported_age_band_is_a_definitive_refusal() =>
+        Assert.True(new ProviderFailure(422, "age_band_not_supported", false, []).IsDefinitiveRefusal);
 }

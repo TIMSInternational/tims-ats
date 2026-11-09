@@ -137,6 +137,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 TimeMultiplier = attempt.TimeMultiplier,
                 Aids = [.. attempt.Aids],
                 RequestedExpiresAt = attempt.ExpiresAt?.UtcDateTime,
+                AgeBand = attempt.AgeBand,
                 RequiredConsents = [],
                 AssignedById = actorId,
                 CreatedAt = timestamp,
@@ -157,6 +158,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 ["attemptIds"] = created,
                 ["timeMultiplier"] = attempts[0].TimeMultiplier,
                 ["aidsCount"] = attempts[0].Aids.Count,
+                ["ageBand"] = attempts[0].AgeBand,
             });
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -560,7 +562,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         new(a.Id, a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument, a.State, a.JobRelatednessReason, a.Locale,
             a.TimeMultiplier, a.Aids, ToOffset(a.RequestedExpiresAt), a.ProviderSubjectId, a.ProviderAssignmentId,
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
-            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents);
+            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

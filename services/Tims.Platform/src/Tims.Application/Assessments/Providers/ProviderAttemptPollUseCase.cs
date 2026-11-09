@@ -17,9 +17,11 @@ public interface IProviderAttemptPoll
 /// attempts, so no attempt depends on a webhook arriving. Each run:
 /// <list type="number">
 /// <item>lists, pre-tenant, the organizations holding claimable attempts;</item>
-/// <item>per organization, under its tenant scope, CLAIMS up to <see cref="MaxAttemptsPerOrganization"/> stale attempts
-/// with a lease (one conditional UPDATE with <c>FOR UPDATE SKIP LOCKED</c>): two App Runner instances never poll the same
-/// attempt at once;</item>
+/// <item>per organization, under its tenant scope, CLAIMS one stale attempt at a time with a lease (one conditional UPDATE
+/// with <c>FOR UPDATE SKIP LOCKED</c>), polls it within <see cref="ProviderAttemptPolling.MaxPollDuration"/> (then the poll
+/// is cancelled) and releases it, up to <see cref="MaxAttemptsPerOrganization"/> per run. One at a time, with the work
+/// capped well inside <see cref="ProviderAttemptPolling.LeaseDuration"/>, so a lease never runs out while its owner still
+/// works on the attempt: two App Runner instances never poll the same attempt at once;</item>
 /// <item>per attempt: <c>GET /v1/assignments/{id}</c>, checked against the attempt (tenant, subject, instrument,
 /// external ref); the consent purposes it still lacks are recorded; its status advances the attempt through the same
 /// forward-only, locked write a lifecycle webhook uses; a <c>result_id</c> is fetched and stored through the same
@@ -30,7 +32,9 @@ public interface IProviderAttemptPoll
 /// cascade and its sweep own it from then on). A failed attempt never stops the others; it is polled again once stale.
 /// Nothing here treats a 404 as a state: an unconfirmed or confirmed 404 on the assignment changes nothing.
 /// </summary>
-public sealed class ProviderAttemptPollUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
+/// <param name="maxPollDurationForTests">TEST-ONLY: replaces <see cref="ProviderAttemptPolling.MaxPollDuration"/>.</param>
+public sealed class ProviderAttemptPollUseCase(
+    IAssessmentProviderRepository repository, IAssessmentProvider provider, TimeSpan? maxPollDurationForTests = null)
     : IProviderAttemptPoll
 {
     public const int MaxOrganizations = 200;
@@ -38,6 +42,7 @@ public sealed class ProviderAttemptPollUseCase(IAssessmentProviderRepository rep
 
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
+    private readonly TimeSpan _maxPollDuration = maxPollDurationForTests ?? ProviderAttemptPolling.MaxPollDuration;
 
     public async Task<AttemptPoll> RunAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -52,41 +57,52 @@ public sealed class ProviderAttemptPollUseCase(IAssessmentProviderRepository rep
         int polled = 0, changed = 0, failed = 0, failedOrganizations = 0;
         foreach (var organizationId in organizations)
         {
-            IReadOnlyList<PolledAttempt> claimed;
-            try
+            for (var claims = 0; claims < MaxAttemptsPerOrganization; claims++)
             {
-                claimed = await _repository.ClaimPollableAttemptsAsync(
-                    organizationId, owner, MaxAttemptsPerOrganization, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-            {
-                failedOrganizations++;
-                continue;
-            }
-
-            foreach (var polledAttempt in claimed)
-            {
-                polled++;
+                IReadOnlyList<PolledAttempt> claimed;
                 try
                 {
-                    if (await PollOneAsync(organizationId, polledAttempt, now, cancellationToken).ConfigureAwait(false))
-                    {
-                        changed++;
-                    }
+                    claimed = await _repository.ClaimPollableAttemptsAsync(organizationId, owner, 1, cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
-                    failed++;
+                    failedOrganizations++;
+                    break;
                 }
-                finally
+
+                if (claimed.Count == 0)
                 {
-                    // On shutdown the lease is left to expire (LeaseDuration); the next poller then claims it.
-                    if (!cancellationToken.IsCancellationRequested)
+                    break;
+                }
+
+                var polledAttempt = claimed[0];
+                polled++;
+                using (var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+                {
+                    limit.CancelAfter(_maxPollDuration);
+                    try
                     {
-                        await _repository.ReleasePollLeaseAsync(organizationId, polledAttempt.Attempt.Id, owner, cancellationToken)
-                            .ConfigureAwait(false);
+                        if (await PollOneAsync(organizationId, polledAttempt, now, limit.Token).ConfigureAwait(false))
+                        {
+                            changed++;
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                    {
+                        // A failure, or a poll past MaxPollDuration (cancelled well before its lease could run out).
+                        failed++;
                     }
                 }
+
+                // On shutdown the lease is left to expire (LeaseDuration); the next poller then claims it.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                await _repository.ReleasePollLeaseAsync(organizationId, polledAttempt.Attempt.Id, owner, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
