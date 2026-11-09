@@ -48,9 +48,10 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog, public
 AS $$
 BEGIN
-  IF jsonb_typeof(OLD.breakdown) = 'object'
-     AND OLD.breakdown -> 'fitVersion' = '2'::jsonb
-     AND NOT (jsonb_typeof(NEW.breakdown) = 'object' AND NEW.breakdown -> 'fitVersion' = '2'::jsonb)
+  -- Every comparison is coalesced: `breakdown -> 'fitVersion'` is NULL on a v1 row (and on a non-object), and a NULL
+  -- inside NOT (...) would make the whole condition NULL, i.e. silently skip the guard.
+  IF coalesce(OLD.breakdown -> 'fitVersion' = '2'::jsonb, false)
+     AND NOT coalesce(NEW.breakdown -> 'fitVersion' = '2'::jsonb, false)
      AND coalesce(current_setting('tims.fit_writer', true), '') <> 'fit_v2_aware'
   THEN
     NEW.overall_score := OLD.overall_score;
@@ -58,7 +59,7 @@ BEGIN
     NEW.is_partial := OLD.is_partial;
     NEW.calculated_at := OLD.calculated_at;
     NEW.breakdown := CASE
-      WHEN jsonb_typeof(NEW.breakdown) = 'object' AND jsonb_typeof(NEW.breakdown -> 'llmJudgment') = 'object'
+      WHEN coalesce(jsonb_typeof(NEW.breakdown -> 'llmJudgment') = 'object', false)
         THEN jsonb_set(OLD.breakdown, '{llmJudgment}', NEW.breakdown -> 'llmJudgment', true)
       ELSE OLD.breakdown
     END;

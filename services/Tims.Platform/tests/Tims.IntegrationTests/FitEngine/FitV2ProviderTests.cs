@@ -43,9 +43,24 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
     private readonly FitV2ProviderFixture _fixture = fixture;
 
     [Fact]
+    public async Task ConnectorOn_ByDefault_LiaIsAThresholdGate_OnlyItciaFeedsTheNumber()
+    {
+        // Owner default D20: the LIA norms are unconfirmed, so the configured scored LIA is a gate on its minimum.
+        await ComputeAsync(providers: true);
+
+        var scored = await ReadBreakdownAsync(FitV2ProviderFixture.CandScored);
+        Assert.Equal(40, scored.Breakdown["assessment"]!.GetValue<double>()); // ITC-IA alone; LIA ranks nobody
+        var lia = Entry(scored.Breakdown, "lia");
+        Assert.Equal("gate", lia["use"]!.GetValue<string>());
+        Assert.Equal("not_met", lia["gate"]!.GetValue<string>()); // percentile 30 < 40: flagged, never rejected
+        Assert.Null(lia["score"]);
+        Assert.Equal(FitV2ProviderFixture.ResultLia.ToString(), lia["resultId"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task ConnectorOn_ProviderResultsFeedFitV2_PerInstrument()
     {
-        await ComputeAsync(providers: true);
+        await ComputeAsync(providers: true, liaScored: true); // norms confirmed: the scored LIA curve
 
         var scored = await ReadBreakdownAsync(FitV2ProviderFixture.CandScored);
         Assert.Equal(2, scored.Breakdown["fitVersion"]!.GetValue<int>());
@@ -103,6 +118,43 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Equal("unknown", Entry(scored.Breakdown, "english")["gate"]!.GetValue<string>());
     }
 
+    // FIT v2 recompute (migration 20261109011531_fit_v2_provider_recompute): a provider attempt's state change and a
+    // stored provider result enqueue a recompute in the SAME transaction (rolled back here, so the shared seed is
+    // untouched), and a write that changes nothing the FIT reads enqueues nothing.
+    [Fact]
+    public async Task A_provider_attempt_state_change_or_result_change_enqueues_a_recompute_in_its_transaction()
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(_fixture.Fit.ConnectionString);
+        await connection.OpenAsync();
+
+        async Task<long?> SeqAfterAsync(string change)
+        {
+            await using var tx = await connection.BeginTransactionAsync();
+            foreach (var statement in new[] { "DELETE FROM fit_recompute_requests", change })
+            {
+                await using var command = new Npgsql.NpgsqlCommand(statement, connection, tx);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            await using var read = new Npgsql.NpgsqlCommand(
+                "SELECT request_seq FROM fit_recompute_requests WHERE candidate_id = @c AND vacancy_id = @v", connection, tx);
+            read.Parameters.AddWithValue("c", FitV2ProviderFixture.CandScored);
+            read.Parameters.AddWithValue("v", FitV2ProviderFixture.VacProvider);
+            var seq = await read.ExecuteScalarAsync() as long?;
+            await tx.RollbackAsync();
+            return seq;
+        }
+
+
+        Assert.Null(await SeqAfterAsync("SELECT 1"));
+        Assert.Equal(1, await SeqAfterAsync(
+            "UPDATE assessment_provider_attempts SET state = 'voided' WHERE id = 'e0000000-0000-4000-8000-0000000000a1'"));
+        Assert.Equal(1, await SeqAfterAsync(
+            "UPDATE assessment_provider_results SET requires_human_review = true WHERE attempt_id = 'e0000000-0000-4000-8000-0000000000a1'"));
+        Assert.Null(await SeqAfterAsync(
+            "UPDATE assessment_provider_attempts SET state = state WHERE id = 'e0000000-0000-4000-8000-0000000000a1'"));
+    }
+
     // The #312 cascade's scheduled retry is registered with the connector and only with it (its tables exist only then).
     [Theory]
     [InlineData(true)]
@@ -126,9 +178,9 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         return (JsonNode.Parse(row.Breakdown)!, row.IsPartial);
     }
 
-    private async Task ComputeAsync(bool providers)
+    private async Task ComputeAsync(bool providers, bool liaScored = false)
     {
-        await using var factory = Factory(providers);
+        await using var factory = Factory(providers, liaScored);
         using var client = factory.CreateClient();
         var request = new HttpRequestMessage(
             HttpMethod.Post, $"/fit-engine/vacancies/{FitV2ProviderFixture.VacProvider}/compute");
@@ -140,9 +192,10 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Equal("{\"computed\":2}", await response.Content.ReadAsStringAsync());
     }
 
-    private WebApplicationFactory<Program> Factory(bool providers) =>
+    private WebApplicationFactory<Program> Factory(bool providers, bool liaScored = false) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
+            builder.UseSetting("Platform:FitEngineLiaScoredEnabled", liaScored ? "true" : "false");
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.Fit.ConnectionString);
             builder.UseSetting("Platform:FitEngineWriteEnabled", "true");
             builder.UseSetting("Platform:FitEngineV2Enabled", "true");

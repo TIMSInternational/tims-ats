@@ -53,6 +53,12 @@
       <Link>access-review-fixtures\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- FIT v2 integrity: the SHIPPED Prisma migration (triggers, queue, review_status) is applied verbatim by
+         FitEngineFixture, so the triggers under test are exactly the ones applied to prod. -->
+    <Content Include="..\..\..\..\packages\db\prisma\migrations\20261109100000_fit_v2_integrity\migration.sql">
+      <Link>prisma-migrations\20261109100000_fit_v2_integrity.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- The shared DynamoDB rate-limit contract the TS suite also asserts (tests/ratelimit/dynamodb-contract.test.ts). -->
     <Content Include="..\..\..\..\contracts\ratelimit-fixtures\dynamodb.json">
       <Link>ratelimit-fixtures\%(Filename)%(Extension)</Link>

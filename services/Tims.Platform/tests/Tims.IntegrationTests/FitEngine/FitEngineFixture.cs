@@ -159,12 +159,35 @@ public sealed class FitEngineFixture : IAsyncLifetime
             await role.ExecuteNonQueryAsync();
         }
 
-        foreach (var sql in new[] { SchemaSql, RlsSql, IdentitySeedSql, FitEngineSeedSql, FitV2SeedSql })
+        foreach (var sql in new[] { SchemaSql, RlsSql, IdentitySeedSql, FitEngineSeedSql, FitV2SeedSql, FitV2IntegrityMigrationSql })
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
             await command.ExecuteNonQueryAsync();
         }
+    }
+
+    /// <summary>
+    /// The shipped Prisma migration 20261109100000_fit_v2_integrity, verbatim (review_status, the fit_scores v2 guard,
+    /// the recompute queue and its triggers). Applied after the seeds, as in prod (the rows already exist).
+    /// </summary>
+    public static string FitV2IntegrityMigrationSql =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "prisma-migrations", "20261109100000_fit_v2_integrity.sql"));
+
+    /// <summary>The recompute request for a (candidate, vacancy) via superuser: its sequence and attempts, or null.</summary>
+    public async Task<(long Seq, int Attempts, string? LastError)?> GetRecomputeRequestAsync(Guid candidateId, Guid vacancyId)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT request_seq, attempts, last_error FROM fit_recompute_requests WHERE candidate_id = @c AND vacancy_id = @v";
+        command.Parameters.AddWithValue("c", candidateId);
+        command.Parameters.AddWithValue("v", vacancyId);
+        await using var reader = await command.ExecuteReaderAsync();
+        return await reader.ReadAsync()
+            ? (reader.GetInt64(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetString(2))
+            : null;
     }
 
     public async Task DisposeAsync() => await _container.DisposeAsync();
@@ -328,12 +351,17 @@ public sealed class FitEngineFixture : IAsyncLifetime
             disc_targets jsonb NOT NULL DEFAULT '{}', competencies jsonb NOT NULL DEFAULT '{}',
             fit_requirements jsonb NULL,
             created_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        -- assessment_type_id: the quiz (FIT v2 judges each quiz's latest result; grading norms rank within a quiz).
         CREATE TABLE assessment_assignments (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, candidate_id uuid NOT NULL, vacancy_id uuid NOT NULL,
-            status text NOT NULL DEFAULT 'assigned', completed_at timestamp(3) NULL);
+            status text NOT NULL DEFAULT 'assigned', completed_at timestamp(3) NULL,
+            assessment_type_id uuid NOT NULL DEFAULT '0e000000-0000-0000-0000-000000000001');
+        CREATE TYPE "ScoreBand" AS ENUM ('below_average', 'average', 'above_average', 'excellent');
         CREATE TABLE assessment_results (
             id uuid PRIMARY KEY, organization_id uuid NOT NULL, assignment_id uuid NOT NULL UNIQUE,
             normalized_score double precision NULL,
+            -- The local norm (Slice 5) grading writes once the last essay is graded.
+            percentile double precision NULL, band "ScoreBand" NULL, norm_sample_size int NULL,
             -- FIT v2: the native-quiz adapter reads breakdown.pendingManual (manual grading pending).
             breakdown jsonb NULL,
             -- D5 essay grading writes these (Prisma columns).
