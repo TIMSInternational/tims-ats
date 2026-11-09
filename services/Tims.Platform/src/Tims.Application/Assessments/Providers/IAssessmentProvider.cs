@@ -253,6 +253,8 @@ public sealed record ProviderSubject(Guid SubjectId, string Status, bool HasName
 /// One assignment, always purpose <c>selection</c> with the vacancy and the job-relatedness reason. Accommodations
 /// carry the adjustment only (multiplier + aids), never its reason. <see cref="AgeBand"/> is the attested band sent as
 /// <c>age_attestation</c> (required by the amended contract), never an age or a date of birth.
+/// <see cref="InstrumentVersion"/> is the version the vacancy is already pinned to (design §6.3: every candidate of a
+/// vacancy sits the same version), sent as <c>instrument_version</c>; null for the vacancy's first assignment.
 /// </summary>
 public sealed record ProviderAssignmentRequest(
     Guid TenantId,
@@ -265,7 +267,8 @@ public sealed record ProviderAssignmentRequest(
     IReadOnlyList<string> Aids,
     DateTimeOffset? ExpiresAt,
     string ExternalRef,
-    string AgeBand);
+    string AgeBand,
+    string? InstrumentVersion = null);
 
 /// <summary>
 /// An assignment as the provider holds it. <see cref="ResultId"/> and the sitting timestamps are what the D17 poller

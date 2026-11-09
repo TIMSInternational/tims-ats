@@ -596,6 +596,38 @@ public sealed class AssignProviderInstrumentsUseCaseTests
     public void The_assign_body_requires_a_known_age_band(string json, bool valid) =>
         Assert.Equal(valid, AssignProviderInstrumentsUseCase.TryParseBody(System.Text.Json.Nodes.JsonNode.Parse(json), out _));
 
+    // Design §6.3: every candidate of a vacancy sits the SAME instrument version. A vacancy already pinned to a version
+    // (an earlier attempt carries it) sends it on every new create; the first assignment of a vacancy sends none, and
+    // the provider pins its current GA.
+    [Fact]
+    public async Task A_vacancy_already_pinned_to_a_version_sends_that_version_on_the_create()
+    {
+        _repository.PinnedVersions["lia"] = "1.0";
+
+        await Assign(Input(("lia", null), ("english", "Atención a clientes en inglés")));
+
+        Assert.Equal("1.0", _provider.Assignments.Single(a => a.Request.Instrument == "lia").Request.InstrumentVersion);
+        Assert.Null(_provider.Assignments.Single(a => a.Request.Instrument == "english").Request.InstrumentVersion);
+    }
+
+    [Fact]
+    public async Task A_re_send_of_a_pinned_attempt_carries_the_version_stored_on_the_attempt_not_a_fresh_lookup()
+    {
+        _repository.PinnedVersions["lia"] = "1.0";
+        _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        await Assign(Input(("lia", null)));
+
+        // Another vacancy attempt pinned a different version meanwhile: the stored attempt's body must not change, or
+        // the replayed Idempotency-Key would carry a second body.
+        _repository.PinnedVersions["lia"] = "2.0";
+        _provider.OnCreateAssignment = null;
+        _provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(null));
+        await Assign(Input(("lia", null)));
+
+        Assert.Equal(2, _provider.Assignments.Count);
+        Assert.All(_provider.Assignments, a => Assert.Equal("1.0", a.Request.InstrumentVersion));
+    }
+
     [Fact]
     public void An_unsupported_age_band_is_a_definitive_refusal() =>
         Assert.True(new ProviderFailure(422, "age_band_not_supported", false, []).IsDefinitiveRefusal);

@@ -98,10 +98,7 @@ public static class ProviderFitMapping
                 continue;
             }
 
-            var valid = row.ValidityStatus == ProviderValidity.Valid
-                && !row.RequiresHumanReview
-                && row.AttemptState == ProviderAttemptStates.ResultReady
-                && row.AppliedTimeMultiplier == row.RequestedTimeMultiplier;
+            var valid = IsValid(row);
 
             results.Add(new ProviderInstrumentResult(
                 row.Instrument,
@@ -119,5 +116,21 @@ public static class ProviderFitMapping
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Whether one attempt's stored result may count toward FIT: a <c>valid</c> <c>selection</c> result, not flagged for
+    /// human review, on an attempt that is still <c>result_ready</c>, sat at exactly the time multiplier it was assigned
+    /// with. False without a result. The staff results view uses the same rule, so its "needs review" is FIT's.
+    /// </summary>
+    public static bool IsValid(ProviderFitRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return row.ProviderResultId is not null
+            && row.Purpose == "selection"
+            && row.ValidityStatus == ProviderValidity.Valid
+            && !row.RequiresHumanReview
+            && row.AttemptState == ProviderAttemptStates.ResultReady
+            && row.AppliedTimeMultiplier == row.RequestedTimeMultiplier;
     }
 }

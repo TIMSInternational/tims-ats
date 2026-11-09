@@ -287,6 +287,13 @@ public sealed class TimsAssessmentsClient(
             body["expires_at"] = FormatTimestamp(expiresAt);
         }
 
+        // Design §6.3: the version the vacancy's earlier assignments were pinned to, so every candidate sits the same
+        // one. Omitted for the vacancy's first assignment: the provider then pins its current GA version.
+        if (request.InstrumentVersion is { } version)
+        {
+            body["instrument_version"] = version;
+        }
+
         return SendAsync(HttpMethod.Post, "v1/assignments", body, idempotencyKey, "create_assignment",
             ProviderResponses.Assignment, cancellationToken);
     }

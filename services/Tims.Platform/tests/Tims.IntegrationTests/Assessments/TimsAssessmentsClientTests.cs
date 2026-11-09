@@ -143,6 +143,20 @@ public sealed class TimsAssessmentsClientTests
         Assert.Null(body["expires_at"]); // omitted, not null
         // The amended contract requires the attested age band on every create: the band only, never an age.
         Assert.Equal("""{"age_band":"18_plus"}""", body["age_attestation"]!.ToJsonString());
+        // The vacancy's first assignment carries no version: the provider pins its current GA.
+        Assert.False(body.AsObject().ContainsKey("instrument_version"));
+    }
+
+    // Design §6.3: a vacancy already pinned to a version sends it, so every candidate sits the same one.
+    [Fact]
+    public async Task Create_assignment_sends_the_vacancy_pinned_instrument_version()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.Created, AssignmentJson(Guid.NewGuid())));
+
+        await Client().CreateAssignmentAsync(AssignmentRequest() with { InstrumentVersion = "1.0" }, "k", CancellationToken.None);
+
+        var sent = _handler.Requests.Single(r => r.Uri == "https://assessments.test/v1/assignments");
+        Assert.Equal("1.0", JsonNode.Parse(sent.Body)!["instrument_version"]!.GetValue<string>());
     }
 
     [Fact]

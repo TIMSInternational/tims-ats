@@ -122,6 +122,11 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 continue;
             }
 
+            // Design §6.3: every candidate of a vacancy is assessed with the SAME instrument version. A new attempt takes
+            // the version an earlier attempt of this vacancy was pinned to (null for the first one: the provider pins its
+            // current GA), stored on the row so every re-send of its create carries the same body.
+            var pinnedVersion = await PinnedVersionAsync(organizationId, vacancyId, attempt.Instrument, cancellationToken)
+                .ConfigureAwait(false);
             var entity = new ProviderAttemptEntity
             {
                 Id = Guid.NewGuid(),
@@ -138,6 +143,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 Aids = [.. attempt.Aids],
                 RequestedExpiresAt = attempt.ExpiresAt?.UtcDateTime,
                 AgeBand = attempt.AgeBand,
+                InstrumentVersion = pinnedVersion,
                 RequiredConsents = [],
                 AssignedById = actorId,
                 CreatedAt = timestamp,

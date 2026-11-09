@@ -38,6 +38,9 @@ public static class AssessmentProviderServiceCollectionExtensions
 
         services.AddDbContext<AssessmentProviderDbContext>(options => options.UseNpgsql(databaseConnectionString));
         services.AddScoped<IAssessmentProviderRepository, AssessmentProviderRepository>();
+        // AS-7 / AS-14 staff reads (catalog, attempts with results): the same repository class, over the same scoped context.
+        services.AddScoped<IProviderStaffReadRepository, AssessmentProviderRepository>();
+        services.AddScoped<ProviderStaffReadUseCase>();
         services.AddScoped<AssignProviderInstrumentsUseCase>();
         services.AddScoped<CancelProviderAttemptUseCase>();
         services.AddScoped<LaunchProviderAttemptUseCase>();

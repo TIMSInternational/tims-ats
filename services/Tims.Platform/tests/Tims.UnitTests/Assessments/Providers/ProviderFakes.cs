@@ -308,6 +308,9 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     /// <summary>When set, the withdrawal committed between the pre-check and the reserve lock.</summary>
     public bool WithdrawnUnderLock { get; set; }
 
+    /// <summary>Instrument → the version the vacancy is already pinned to (the real repository reads the earliest attempt).</summary>
+    public Dictionary<string, string> PinnedVersions { get; } = new(StringComparer.Ordinal);
+
     public List<AttemptRow> Attempts { get; } = [];
 
     public List<string> Writes { get; } = [];
@@ -361,9 +364,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
                 continue;
             }
 
+            // Mirrors the real repository: a new attempt takes the vacancy's pinned version at reserve.
             var row = new AttemptRow(Guid.NewGuid(), organizationId, candidateId, vacancyId, attempt.Instrument,
                 ProviderAttemptStates.PendingCreate, attempt.Reason, attempt.Locale, attempt.TimeMultiplier, attempt.Aids,
-                attempt.ExpiresAt, null, null, null, null, [], null, null, true, AgeBand: attempt.AgeBand);
+                attempt.ExpiresAt, null, null, PinnedVersions.GetValueOrDefault(attempt.Instrument), null, [], null, null, true,
+                AgeBand: attempt.AgeBand);
             Attempts.Add(row);
             rows.Add(row);
         }

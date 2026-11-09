@@ -288,7 +288,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             attempt.Aids,
             attempt.RequestedExpiresAt,
             attempt.Id.ToString(),
-            attempt.AgeBand!);
+            attempt.AgeBand!,
+            attempt.InstrumentVersion);
         var created = await _provider.CreateAssignmentAsync(request, IdempotencyKeys.Assignment(attempt.Id), cancellationToken)
             .ConfigureAwait(false);
         if (!created.Ok)

@@ -27,7 +27,7 @@ namespace Tims.IntegrationTests.Assessments;
 /// fail-closed) and the webhook's raw-body cap.
 /// </summary>
 [Collection("AssessmentProviderEndpoints")]
-public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
+public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixture)
 {
     private const string Issuer = "https://test-project.supabase.co/auth/v1";
     private const string Audience = "authenticated";
@@ -647,6 +647,9 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
 
         public ConcurrentQueue<Guid> Created { get; } = new();
 
+        /// <summary>The <c>instrument_version</c> each create carried (null: the provider pins its current GA).</summary>
+        public ConcurrentQueue<string?> CreatedVersions { get; } = new();
+
         public ConcurrentQueue<Guid> CancelledAssignments { get; } = new();
 
         public bool IsConfigured => true;
@@ -731,6 +734,7 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
             ProviderAssignmentRequest request, string idempotencyKey, CancellationToken cancellationToken)
         {
             Calls.Enqueue("assignment");
+            CreatedVersions.Enqueue(request.InstrumentVersion);
             var id = Guid.NewGuid();
             Created.Enqueue(id);
             return Task.FromResult(ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
