@@ -392,7 +392,7 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
     // ── Launch (the candidate, by confirmed email) ──────────────────────────────────────
 
     [Fact]
-    public async Task Launch_ConfirmedEmailOfTheAttemptsCandidate_GetsTheTokenInANoStoreBody()
+    public async Task Launch_ConfirmedEmailOfTheAttemptsCandidate_GetsTheHostedPlayerUrlInANoStoreBody()
     {
         const string sub = "candidate-luz";
         var identities = new FakeIdentities();
@@ -405,7 +405,10 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
-        Assert.Equal(FakeProvider.CandidateToken, (await ReadJson(response)).GetProperty("candidateToken").GetString());
+        var json = await ReadJson(response);
+        Assert.Equal(FakeProvider.PlayerUrl, json.GetProperty("hostedUrl").GetString());
+        Assert.Equal("https://ats.test", json.GetProperty("frameAncestors")[0].GetString());
+        Assert.False(json.TryGetProperty("candidateToken", out _)); // D16: no candidate token exists on this path
     }
 
     [Fact]
@@ -504,7 +507,7 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
     /// <summary>The remote TIMS Assessments API, faked: canned success answers and a record of every call.</summary>
     private sealed class FakeProvider : IAssessmentProvider
     {
-        public const string CandidateToken = "test-candidate-token-xxxxxxxxxxxxxxxxxxxxxxxx";
+        public const string PlayerUrl = "https://player.test/launch/single-use-code";
 
         public ConcurrentQueue<string> Calls { get; } = new();
 
@@ -607,11 +610,11 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
             return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active")));
         }
 
-        public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken)
+        public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken)
         {
             Calls.Enqueue("launch");
             return Task.FromResult(ProviderCall<ProviderLaunch>.Success(new ProviderLaunch(
-                "native", CandidateToken, DateTimeOffset.UtcNow.AddHours(2), "https://assessments.test", null)));
+                "native", DateTimeOffset.UtcNow.AddMinutes(5), PlayerUrl, ["https://ats.test"])));
         }
 
         public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken)

@@ -186,7 +186,7 @@ public sealed class TimsAssessmentsClientTests
                 """{"type":"https://contracts.timsinternational.com/problems/consent_required","title":"Consent required","status":409,"code":"consent_required","request_id":"r1","missing_consents":["ai_scoring","not_a_purpose"]}""",
                 "application/problem+json"));
 
-        var result = await Client().LaunchAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await Client().LaunchAsync(Guid.NewGuid(), null, CancellationToken.None);
 
         Assert.Equal("consent_required", result.Failure!.Code);
         Assert.Equal(["ai_scoring"], result.Failure.MissingConsents);
@@ -305,21 +305,118 @@ public sealed class TimsAssessmentsClientTests
         Assert.True(result.Failure.Transient);
     }
 
+    private static string HostedLaunchJson(Guid id, string delivery = "native", string? token = null, string? frameAncestors = null,
+        string mode = "hosted", string? hostedUrl = "https://player.test/launch/code-1") =>
+        "{\"assignment_id\":\"" + id + "\",\"delivery\":\"" + delivery + "\",\"mode\":\"" + mode + "\","
+        + "\"candidate_token\":" + (token is null ? "null" : "\"" + token + "\"") + ","
+        + "\"token_type\":" + (token is null ? "null" : "\"Bearer\"") + ","
+        + "\"expires_at\":\"2026-11-09T12:05:00Z\",\"api_base_url\":\"https://suite.test/api\","
+        + "\"hosted_url\":" + (hostedUrl is null ? "null" : "\"" + hostedUrl + "\"") + ","
+        + "\"frame_ancestors\":" + (frameAncestors ?? (delivery == "native" ? "[\"https://ats.test\"]" : "null")) + "}";
+
+    // D16: every launch is mode hosted; the single-use player URL and the frame ancestors come back, never a token, and
+    // the launch code in the URL never prints into a log line.
     [Fact]
-    public async Task A_launch_must_name_the_requested_assignment_and_its_token_never_prints()
+    public async Task A_hosted_launch_returns_the_player_url_and_its_frame_ancestors_and_the_url_never_prints()
     {
         var id = Guid.NewGuid();
-        var launchJson = $$"""{"assignment_id":"{{id}}","delivery":"native","candidate_token":"{{FakeCandidateToken}}","token_type":"Bearer","expires_at":"2026-11-09T16:00:00Z","api_base_url":"https://assessments.test","hosted_url":null}""";
-        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, launchJson));
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, HostedLaunchJson(id)));
         var client = Client();
 
-        var launched = await client.LaunchAsync(id, CancellationToken.None);
-        var mismatched = await client.LaunchAsync(Guid.NewGuid(), CancellationToken.None);
+        var launched = await client.LaunchAsync(id, null, CancellationToken.None);
+        var mismatched = await client.LaunchAsync(Guid.NewGuid(), null, CancellationToken.None);
 
-        Assert.Equal(FakeCandidateToken, launched.Value!.CandidateToken);
-        Assert.DoesNotContain(FakeCandidateToken, launched.Value.ToString(), StringComparison.Ordinal);
+        Assert.Equal("https://player.test/launch/code-1", launched.Value!.HostedUrl);
+        Assert.Equal(["https://ats.test"], launched.Value.FrameAncestors);
+        Assert.DoesNotContain("code-1", launched.Value.ToString(), StringComparison.Ordinal);
         Assert.Equal(ProviderFailure.ContractViolation, mismatched.Failure!.Code);
-        Assert.Equal("""{"mode":"headless"}""", _handler.Requests.Last(r => r.Uri != TokenUrl).Body);
+        Assert.Equal("""{"mode":"hosted"}""", _handler.Requests.Last(r => r.Uri != TokenUrl).Body);
+    }
+
+    [Fact]
+    public async Task A_link_out_launch_has_no_frame_ancestors()
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : Json(HttpStatusCode.OK, HostedLaunchJson(id, "link_out", hostedUrl: "https://pca.test/sit/1")));
+
+        var launched = await Client().LaunchAsync(id, null, CancellationToken.None);
+
+        Assert.Equal(("link_out", "https://pca.test/sit/1"), (launched.Value!.Delivery, launched.Value.HostedUrl));
+        Assert.Empty(launched.Value.FrameAncestors);
+    }
+
+    // A hosted launch must never hand the host a credential for the sitting; anything else off contract is refused too.
+    [Theory]
+    [InlineData("token")]
+    [InlineData("headless")]
+    [InlineData("no_url")]
+    [InlineData("http_url")]
+    [InlineData("wildcard_origin")]
+    [InlineData("origin_with_path")]
+    [InlineData("missing_ancestors")]
+    public async Task An_off_contract_hosted_launch_is_refused(string defect)
+    {
+        var id = Guid.NewGuid();
+        var json = defect switch
+        {
+            "token" => HostedLaunchJson(id, token: FakeCandidateToken),
+            "headless" => HostedLaunchJson(id, mode: "headless"),
+            "no_url" => HostedLaunchJson(id, hostedUrl: null),
+            "http_url" => HostedLaunchJson(id, hostedUrl: "http://player.test/launch/code-1"),
+            "wildcard_origin" => HostedLaunchJson(id, frameAncestors: "[\"https://*.ats.test\"]"),
+            "origin_with_path" => HostedLaunchJson(id, frameAncestors: "[\"https://ats.test/portal\"]"),
+            _ => HostedLaunchJson(id, frameAncestors: "null"),
+        };
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var result = await Client().LaunchAsync(id, null, CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, result.Failure!.Code);
+    }
+
+    // The return_url is the configured portal origin plus a plain absolute path; anything else sends none.
+    [Theory]
+    [InlineData("https://ats.test", "/careers/invu/dashboard", "https://ats.test/careers/invu/dashboard")]
+    [InlineData("https://ats.test/", "/careers/invu/dashboard", "https://ats.test/careers/invu/dashboard")]
+    [InlineData(null, "/careers/invu/dashboard", null)]
+    [InlineData("https://ats.test", null, null)]
+    [InlineData("https://ats.test", "//evil.test/x", null)]
+    [InlineData("https://ats.test", "/careers/invu/dashboard?next=https://evil.test", null)]
+    [InlineData("https://ats.test", "https://evil.test/x", null)]
+    public async Task A_hosted_launch_sends_a_return_url_only_on_the_portal_origin(string? portal, string? path, string? expected)
+    {
+        var id = Guid.NewGuid();
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, HostedLaunchJson(id)));
+        var options = Configured();
+        var client = Client(new AssessmentProviderOptions
+        {
+            BaseUrl = options.BaseUrl,
+            TokenUrl = options.TokenUrl,
+            ClientId = options.ClientId,
+            ClientSecret = options.ClientSecret,
+            WebhookSigningSecret = options.WebhookSigningSecret,
+            PortalBaseUrl = portal,
+        });
+
+        await client.LaunchAsync(id, path, CancellationToken.None);
+
+        var body = JsonNode.Parse(_handler.Requests.Last(r => r.Uri != TokenUrl).Body)!.AsObject();
+        Assert.Equal("hosted", body["mode"]!.GetValue<string>());
+        Assert.Equal(expected, body["return_url"]?.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("https://ats.test", true)]
+    [InlineData("https://ats.test:8443/", true)]
+    [InlineData("https://ats.test/portal", false)]
+    [InlineData("http://ats.test", false)]
+    [InlineData("https://ats.test?x=1", false)]
+    public void The_portal_base_url_must_be_an_https_origin(string portal, bool valid)
+    {
+        var options = new AssessmentProviderOptions { PortalBaseUrl = portal };
+
+        Assert.Equal(valid, options.IsValid());
     }
 
     [Fact]

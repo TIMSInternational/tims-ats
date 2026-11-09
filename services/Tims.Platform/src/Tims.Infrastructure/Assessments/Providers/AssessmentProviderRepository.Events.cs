@@ -363,6 +363,12 @@ public sealed partial class AssessmentProviderRepository
         return ToRow(binding);
     }
 
+    public async Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        await _db.Organizations.AsNoTracking()
+            .Where(o => o.Id == organizationId && o.IsActive && o.DeletedAt == null)
+            .Select(o => o.Slug)
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
     public async Task<string?> GetActiveOrganizationNameAsync(Guid organizationId, CancellationToken cancellationToken) =>
         await _db.Organizations.AsNoTracking()
             .Where(o => o.Id == organizationId && o.IsActive && o.DeletedAt == null)

@@ -225,12 +225,16 @@ internal sealed class FakeProvider : IAssessmentProvider
         return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(record));
     }
 
-    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken)
+    public const string PlayerUrl = "https://player.example.com/launch/single-use-code";
+
+    public List<string?> LaunchReturnPaths { get; } = [];
+
+    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken)
     {
         Calls.Add("launch");
+        LaunchReturnPaths.Add(returnPath);
         return Task.FromResult(OnLaunch?.Invoke(assignmentId) ?? ProviderCall<ProviderLaunch>.Success(new ProviderLaunch(
-            "native", "test-candidate-token-" + new string('x', 24), new DateTimeOffset(2026, 11, 9, 16, 0, 0, TimeSpan.Zero),
-            "https://assessments.example.com", null)));
+            "native", new DateTimeOffset(2026, 11, 9, 14, 5, 0, TimeSpan.Zero), PlayerUrl, ["https://ats.example.com"])));
     }
 
     public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken)
@@ -444,13 +448,59 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.CompletedTask;
     }
 
-    public Task MarkLaunchedAsync(
-        Guid organizationId, Guid attemptId, Guid candidateId, string delivery, DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>Runs once, after the locks are taken and before the fresh checks (a withdrawal committed just before them).</summary>
+    public Action? BeforeLockedLaunchChecks { get; set; }
+
+    /// <summary>Runs once, after the provider call and before the conditional record (a sibling's withdrawal staging it).</summary>
+    public Action? DuringLockedLaunchCall { get; set; }
+
+    public string? OrganizationSlug { get; set; } = "invu";
+
+    // Mirrors the real repository: fresh checks under the locks, the call, then a write conditional on no withdrawal.
+    public async Task<LockedLaunch> LaunchUnderCandidateLockAsync(
+        Guid organizationId, Guid attemptId, Func<AttemptRow, CancellationToken, Task<ProviderCall<ProviderLaunch>>> launch,
+        DateTimeOffset now, CancellationToken cancellationToken)
     {
+        var before = BeforeLockedLaunchChecks;
+        BeforeLockedLaunchChecks = null;
+        before?.Invoke();
+        Writes.Add("launch_locked");
+        if (Attempts.FirstOrDefault(a => a.Id == attemptId && a.OrganizationId == organizationId) is not { } attempt)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotFound, null, null);
+        }
+
+        if (attempt.WithdrawalState is not null || LaunchWithdrawn || WithdrawnCandidates.Contains(attempt.CandidateId))
+        {
+            return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, null, attempt.State);
+        }
+
+        if (!ProviderAttemptStates.IsLaunchable(attempt.State))
+        {
+            return new LockedLaunch(LockedLaunchOutcome.NotLaunchable, null, attempt.State);
+        }
+
+        var call = await launch(attempt, cancellationToken);
+        var during = DuringLockedLaunchCall;
+        DuringLockedLaunchCall = null;
+        during?.Invoke();
+        if (!call.Ok)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.Called, call, attempt.State);
+        }
+
+        if (Attempts.First(a => a.Id == attemptId).WithdrawalState is not null)
+        {
+            return new LockedLaunch(LockedLaunchOutcome.ConsentWithdrawn, call, attempt.State);
+        }
+
         Writes.Add("launched");
         Replace(attemptId, a => a with { State = a.State == ProviderAttemptStates.Created ? ProviderAttemptStates.Launched : a.State });
-        return Task.CompletedTask;
+        return new LockedLaunch(LockedLaunchOutcome.Called, call, Attempts.First(a => a.Id == attemptId).State);
     }
+
+    public Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        Task.FromResult(OrganizationSlug);
 
     public Task MarkExpiredAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
     {

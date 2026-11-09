@@ -4999,12 +4999,10 @@ export interface components {
         };
         ProviderLaunchResponse: {
             delivery: string;
-            candidateToken: null | string;
-            tokenType: null | string;
             /** Format: date-time */
             expiresAt: string;
-            apiBaseUrl: string;
-            hostedUrl: null | string;
+            hostedUrl: string;
+            frameAncestors: string[];
         };
         ProviderSubjectExport: {
             attempts: components["schemas"]["ProviderExportAttempt"][];

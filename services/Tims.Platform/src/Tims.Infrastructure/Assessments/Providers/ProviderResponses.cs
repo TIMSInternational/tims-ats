@@ -151,32 +151,54 @@ internal static partial class ProviderResponses
                 : null;
     }
 
+    /// <summary>
+    /// A <c>mode: hosted</c> launch (D16). Refused as off contract: another assignment, a mode other than <c>hosted</c>,
+    /// ANY candidate token or token type (a hosted launch never hands the host a credential for the sitting, and the ATS
+    /// must never relay one), a missing or non-https <c>hosted_url</c>, and a native launch whose <c>frame_ancestors</c>
+    /// is not a list of at most 20 registered origins (<c>https://host[:port]</c>, lowercase, no path). A link-out has no
+    /// frame ancestors: it is never framed.
+    /// </summary>
     public static ProviderLaunch? Launch(JsonElement root, Guid expectedAssignmentId)
     {
-        if (GuidOf(root, "assignment_id") != expectedAssignmentId
-            || Str(root, "delivery") is not { } delivery
+        if (root.ValueKind != JsonValueKind.Object
+            || GuidOf(root, "assignment_id") != expectedAssignmentId
+            || Str(root, "delivery") is not ({ } delivery and ("native" or "link_out"))
+            || Str(root, "mode") != "hosted"
             || Timestamp(root, "expires_at") is not { } expiresAt
-            || Str(root, "api_base_url") is not { } apiBaseUrl || !IsHttps(apiBaseUrl))
+            || Str(root, "hosted_url", maxLength: 2048) is not { } hostedUrl || !IsHttps(hostedUrl)
+            || !IsNullOrAbsent(root, "candidate_token") || !IsNullOrAbsent(root, "token_type"))
         {
             return null;
         }
 
-        var token = Str(root, "candidate_token", maxLength: 4096);
-        var hostedUrl = Str(root, "hosted_url", maxLength: 2048);
-        if (hostedUrl is not null && !IsHttps(hostedUrl))
+        if (delivery == "link_out")
+        {
+            return new ProviderLaunch(delivery, expiresAt, hostedUrl, []);
+        }
+
+        if (!root.TryGetProperty("frame_ancestors", out var ancestors) || ancestors.ValueKind != JsonValueKind.Array
+            || ancestors.GetArrayLength() > 20)
         {
             return null;
         }
 
-        return delivery switch
+        var origins = new List<string>();
+        foreach (var origin in ancestors.EnumerateArray())
         {
-            "native" when token is { Length: >= 32 } && Str(root, "token_type") == "Bearer" =>
-                new ProviderLaunch(delivery, token, expiresAt, apiBaseUrl, hostedUrl),
-            "link_out" when token is null && hostedUrl is not null =>
-                new ProviderLaunch(delivery, null, expiresAt, apiBaseUrl, hostedUrl),
-            _ => null,
-        };
+            if (origin.ValueKind != JsonValueKind.String || origin.GetString() is not { Length: <= 262 } value
+                || !RegisteredOriginRegex().IsMatch(value) || origins.Contains(value, StringComparer.Ordinal))
+            {
+                return null;
+            }
+
+            origins.Add(value);
+        }
+
+        return new ProviderLaunch(delivery, expiresAt, hostedUrl, origins);
     }
+
+    private static bool IsNullOrAbsent(JsonElement obj, string name) =>
+        !obj.TryGetProperty(name, out var node) || node.ValueKind == JsonValueKind.Null;
 
     /// <summary>
     /// An RFC 9457 problem → a failure with the stable code. 429, 5xx and 409 <c>idempotency_key_in_use</c> (an earlier
@@ -307,4 +329,10 @@ internal static partial class ProviderResponses
 
     [GeneratedRegex("^[a-z][a-z0-9_]{0,63}$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
     private static partial Regex ProblemCodeRegex();
+
+    // RegisteredOrigin (partner.v1 $defs): https, a lowercase host, an optional port; no path, no wildcard.
+    [GeneratedRegex(
+        "^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:[0-9]{1,5})?$",
+        RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 100)]
+    private static partial Regex RegisteredOriginRegex();
 }

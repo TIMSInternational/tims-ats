@@ -13,8 +13,10 @@ namespace Tims.Api.Assessments;
 ///   attempts. Identity is the Supabase session's email, CONFIRMED with the auth service (the self-service withdrawal's
 ///   rule: with <c>mailer_autoconfirm</c> on, "confirmed" proves nothing, so the route fails closed with 503). The
 ///   attempt must belong to a candidate with that email (else 404). Body: optional per-purpose consents the candidate
-///   just gave. Returns the provider's short-lived candidate token in the body only (<c>Cache-Control: no-store</c>),
-///   never in a URL, never logged. Rate-limited on the strict <c>auth</c> tier.</description></item>
+///   just gave. Returns the hosted launch (D16): the TIMS hosted player's single-use URL (native) or the provider's URL
+///   (link-out), its expiry and the registered origins allowed to frame the player, in the body only
+///   (<c>Cache-Control: no-store</c>, <c>Referrer-Policy: no-referrer</c>), never logged. No candidate token exists on
+///   this path. Rate-limited on the strict <c>auth</c> tier.</description></item>
 ///   <item><description><c>POST /webhooks/tims-assessments</c> — anonymous; authenticated by the <c>TIMS-Signature</c>
 ///   HMAC over the raw body with a 300 s replay window, de-duplicated on the signed body's <c>event_id</c> (a
 ///   <c>TIMS-Event-Id</c> or <c>TIMS-Event-Type</c> header that differs from the body is a 400). 200 / 400 / 503.
@@ -100,9 +102,7 @@ public static class ProviderCandidateEndpoints
                 return result.Outcome switch
                 {
                     LaunchOutcome.Launched => Results.Ok(new ProviderLaunchResponse(
-                        result.Launch!.Delivery, result.Launch.CandidateToken,
-                        result.Launch.CandidateToken is null ? null : "Bearer",
-                        result.Launch.ExpiresAt, result.Launch.ApiBaseUrl, result.Launch.HostedUrl)),
+                        result.Launch!.Delivery, result.Launch.ExpiresAt, result.Launch.HostedUrl, result.Launch.FrameAncestors)),
                     LaunchOutcome.NotFound => Results.NotFound(),
                     LaunchOutcome.ConsentWithdrawn => Results.Conflict(new { error = "consent_withdrawn" }),
                     LaunchOutcome.NotLaunchable => Results.Conflict(new { error = "attempt_not_launchable" }),
@@ -213,23 +213,21 @@ public sealed class ProviderLaunchConsentBody
 }
 
 /// <summary>
-/// The launch handed to the candidate's own browser. <c>native</c>: a short-lived token for <c>/v1/sessions*</c> at
-/// <c>ApiBaseUrl</c>. <c>link_out</c> (PCA): no token, the provider's <c>HostedUrl</c>. Redacting ToString: never logged.
+/// The hosted launch (D16) handed to the candidate's own browser. <c>HostedUrl</c>: the TIMS hosted player's URL with a
+/// single-use launch code (<c>native</c>; open it at once, it expires at <c>ExpiresAt</c>), or the provider's URL
+/// (<c>link_out</c>). <c>FrameAncestors</c>: the registered origins that may frame the player; the portal frames it only
+/// when its own origin is listed, and otherwise opens it top-level. Redacting ToString: never logged.
 /// </summary>
 public sealed class ProviderLaunchResponse(
-    string delivery, string? candidateToken, string? tokenType, DateTimeOffset expiresAt, string apiBaseUrl, string? hostedUrl)
+    string delivery, DateTimeOffset expiresAt, string hostedUrl, IReadOnlyList<string> frameAncestors)
 {
     public string Delivery { get; } = delivery;
 
-    public string? CandidateToken { get; } = candidateToken;
-
-    public string? TokenType { get; } = tokenType;
-
     public DateTimeOffset ExpiresAt { get; } = expiresAt;
 
-    public string ApiBaseUrl { get; } = apiBaseUrl;
+    public string HostedUrl { get; } = hostedUrl;
 
-    public string? HostedUrl { get; } = hostedUrl;
+    public IReadOnlyList<string> FrameAncestors { get; } = frameAncestors;
 
-    public override string ToString() => $"ProviderLaunchResponse {{ Delivery = {Delivery}, CandidateToken = [redacted] }}";
+    public override string ToString() => $"ProviderLaunchResponse {{ Delivery = {Delivery}, HostedUrl = [redacted] }}";
 }

@@ -78,9 +78,24 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid auditId, Guid candidateId, Guid attemptId, string purpose, string textVersion,
         string locale, bool recordedAtProvider, CancellationToken cancellationToken);
 
-    Task MarkLaunchedAsync(
-        Guid organizationId, Guid attemptId, Guid candidateId, string delivery, DateTimeOffset now,
-        CancellationToken cancellationToken);
+    /// <summary>
+    /// The launch's #312 check INSIDE the candidate lock. ONE transaction takes the attempt lock and then the per-candidate
+    /// lock a #312 withdrawal takes (the order result storage uses: subject, attempt, candidate), re-reads the attempt and
+    /// the withdrawn-consent predicate, and only then runs <paramref name="launch"/> (the provider call), recording a
+    /// successful launch (<c>created</c> to <c>launched</c>, <c>last_launched_at</c>, audit) before it commits. So a
+    /// withdrawal committed before this transaction is always seen and nothing is launched, and one that starts during it
+    /// waits for the launch to commit and then stages the attempt (launched) for the cascade, which cancels it at the
+    /// provider. The provider call runs with both locks held, bounded by the client's per-call timeout. The record is a
+    /// conditional write (<c>withdrawal_state IS NULL</c>): a same-email SIBLING's withdrawal, which takes only its own
+    /// candidate lock, may stage this attempt during the call; then nothing is recorded and the outcome is
+    /// <see cref="LockedLaunchOutcome.ConsentWithdrawn"/> although the provider was called.
+    /// </summary>
+    Task<LockedLaunch> LaunchUnderCandidateLockAsync(
+        Guid organizationId, Guid attemptId, Func<AttemptRow, CancellationToken, Task<ProviderCall<ProviderLaunch>>> launch,
+        DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>Privileged read of an active organization's public slug (its portal path), or null.</summary>
+    Task<string?> GetActiveOrganizationSlugAsync(Guid organizationId, CancellationToken cancellationToken);
 
     Task MarkExpiredAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
 
@@ -240,6 +255,28 @@ public interface IAssessmentProviderRepository
     Task SetMissingConsentsAsync(
         Guid organizationId, Guid attemptId, IReadOnlyList<string> missingConsents, CancellationToken cancellationToken);
 }
+
+public enum LockedLaunchOutcome
+{
+    /// <summary>The checks passed under the locks and the provider was called (<see cref="LockedLaunch.Call"/>).</summary>
+    Called,
+
+    /// <summary>The attempt no longer exists for this organization.</summary>
+    NotFound,
+
+    /// <summary>
+    /// The candidate's recruitment consent is withdrawn, or the attempt is in the #312 cascade: nothing called; or a
+    /// sibling's withdrawal staged the attempt during the call (<see cref="LockedLaunch.Call"/> is then set, and its URL
+    /// must not reach the candidate).
+    /// </summary>
+    ConsentWithdrawn,
+
+    /// <summary>The attempt left the launchable states before the locks were taken: nothing called.</summary>
+    NotLaunchable,
+}
+
+/// <summary>What <see cref="IAssessmentProviderRepository.LaunchUnderCandidateLockAsync"/> did, and the fresh state.</summary>
+public sealed record LockedLaunch(LockedLaunchOutcome Outcome, ProviderCall<ProviderLaunch>? Call, string? State);
 
 /// <summary>An attempt the D17 poller claimed, with the provider tenant its binding maps to.</summary>
 public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);

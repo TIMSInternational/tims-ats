@@ -16087,41 +16087,27 @@
       "ProviderLaunchResponse": {
         "required": [
           "delivery",
-          "candidateToken",
-          "tokenType",
           "expiresAt",
-          "apiBaseUrl",
-          "hostedUrl"
+          "hostedUrl",
+          "frameAncestors"
         ],
         "type": "object",
         "properties": {
           "delivery": {
             "type": "string"
           },
-          "candidateToken": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "tokenType": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
           "expiresAt": {
             "type": "string",
             "format": "date-time"
           },
-          "apiBaseUrl": {
+          "hostedUrl": {
             "type": "string"
           },
-          "hostedUrl": {
-            "type": [
-              "null",
-              "string"
-            ]
+          "frameAncestors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

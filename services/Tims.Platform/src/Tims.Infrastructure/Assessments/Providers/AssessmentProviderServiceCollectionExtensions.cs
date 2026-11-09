@@ -19,7 +19,7 @@ public static class AssessmentProviderServiceCollectionExtensions
             .Bind(configuration.GetSection(AssessmentProviderOptions.SectionName))
             .Validate(o => o.IsValid(),
                 "AssessmentProviders: BaseUrl must be an https origin or base path, TokenUrl an https URL (no credentials, query or " +
-                "fragment), RequestTimeoutSeconds 1..30")
+                "fragment), PortalBaseUrl (when set) an https origin with no path, RequestTimeoutSeconds 1..30")
             .ValidateOnStart();
 
         services.AddHttpClient(ClientCredentialsTokenCache.HttpClientName, client =>

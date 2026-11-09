@@ -322,9 +322,30 @@ public sealed class TimsAssessmentsClient(
             ProviderResponses.Consent, cancellationToken);
     }
 
-    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken) =>
-        SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/launch", new JsonObject { ["mode"] = "headless" },
-            null, "launch", root => ProviderResponses.Launch(root, assignmentId), cancellationToken);
+    /// <summary>
+    /// <c>POST /v1/assignments/{id}/launch</c> with <c>mode: hosted</c> (D16). <c>return_url</c> = the configured portal
+    /// origin + <paramref name="returnPath"/>, only when both are present and the path is a plain absolute path (no
+    /// scheme, host, query or fragment can be smuggled in). The response is validated by <see cref="ProviderResponses.Launch"/>.
+    /// </summary>
+    public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken)
+    {
+        var body = new JsonObject { ["mode"] = "hosted" };
+        if (ReturnUrl(returnPath) is { } returnUrl)
+        {
+            body["return_url"] = returnUrl;
+        }
+
+        return SendAsync(HttpMethod.Post, $"v1/assignments/{assignmentId:D}/launch", body, null, "launch",
+            root => ProviderResponses.Launch(root, assignmentId), cancellationToken);
+    }
+
+    internal string? ReturnUrl(string? returnPath) =>
+        _options.ResolvedPortalOrigin is { } origin && returnPath is { Length: > 1 and <= 512 }
+        && System.Text.RegularExpressions.Regex.IsMatch(returnPath, "^/[A-Za-z0-9/_-]+$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100))
+        && !returnPath.Contains("//", StringComparison.Ordinal)
+            ? origin + returnPath
+            : null;
 
     public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken) =>
         SendAsync(HttpMethod.Get, $"v1/results/{resultId:D}?audience=tenant_hr", null, null, "get_result",

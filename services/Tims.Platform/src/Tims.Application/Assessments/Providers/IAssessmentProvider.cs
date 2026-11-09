@@ -78,8 +78,15 @@ public interface IAssessmentProvider
     Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
         Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken);
 
-    /// <summary><c>POST /v1/assignments/{id}/launch</c> with <c>mode: headless</c>.</summary>
-    Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, CancellationToken cancellationToken);
+    /// <summary>
+    /// <c>POST /v1/assignments/{id}/launch</c> with <c>mode: hosted</c> (owner default D16: release 1 runs every native
+    /// instrument in the TIMS hosted player, and the ATS links to its <c>hosted_url</c>; link-out instruments return the
+    /// provider's URL whatever the mode). No candidate token is ever requested or accepted. <paramref name="returnPath"/>
+    /// (a portal path such as <c>/careers/{slug}/dashboard</c>) becomes the launch's <c>return_url</c> on the configured
+    /// portal origin, which must be one of the partner client's registered origins; null, or no portal origin
+    /// configured, sends none.
+    /// </summary>
+    Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken);
 
     /// <summary><c>GET /v1/results/{id}?audience=tenant_hr</c>, parsed and validated.</summary>
     Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken);
@@ -265,21 +272,22 @@ public sealed class ProviderAssignmentLookup(ProviderAssignment? assignment)
 }
 
 /// <summary>
-/// A launch. Deliberately a class with a redacting <see cref="ToString"/>: a record would print the candidate token
-/// into any log line that formats it. The token goes only into the candidate's own response body.
+/// A hosted launch (D16). <see cref="HostedUrl"/> is the TIMS hosted player's URL (native) or the provider's
+/// questionnaire URL (link-out). A native player URL carries a single-use launch code, which is a bearer credential until
+/// it is spent or expires (<see cref="ExpiresAt"/>, at most 300 s): it goes only into the candidate's own response body,
+/// is never stored or logged, so this is a class with a redacting <see cref="ToString"/>. <see cref="FrameAncestors"/>
+/// lists the registered origins allowed to frame a native player; it is empty for a link-out (never framed).
 /// </summary>
 public sealed class ProviderLaunch(
-    string delivery, string? candidateToken, DateTimeOffset expiresAt, string apiBaseUrl, string? hostedUrl)
+    string delivery, DateTimeOffset expiresAt, string hostedUrl, IReadOnlyList<string> frameAncestors)
 {
     public string Delivery { get; } = delivery;
 
-    public string? CandidateToken { get; } = candidateToken;
-
     public DateTimeOffset ExpiresAt { get; } = expiresAt;
 
-    public string ApiBaseUrl { get; } = apiBaseUrl;
+    public string HostedUrl { get; } = hostedUrl;
 
-    public string? HostedUrl { get; } = hostedUrl;
+    public IReadOnlyList<string> FrameAncestors { get; } = frameAncestors;
 
-    public override string ToString() => $"ProviderLaunch {{ Delivery = {Delivery}, CandidateToken = [redacted] }}";
+    public override string ToString() => $"ProviderLaunch {{ Delivery = {Delivery}, HostedUrl = [redacted] }}";
 }
