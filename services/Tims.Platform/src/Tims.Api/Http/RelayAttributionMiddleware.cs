@@ -65,14 +65,10 @@ public sealed partial class RelayAttributionMiddleware(
         var (metadata, reason, skew) = values.Count == 1
             ? Verify(envelope, context, options.Value.ImpersonationSecret, anonymousInvitationSetup)
             : (null, RejectReason.MultipleHeaders, null);
-        if (metadata is null)
+        if (metadata is null || !await nonces.TryUseAsync(metadata.Nonce))
         {
+            if (metadata is not null) (reason, skew) = (RejectReason.NonceRejected, null);
             Reject(context, reason, skew is { } seconds ? $"skew {seconds}s" : "none");
-            return;
-        }
-        if (!await nonces.TryUseAsync(metadata.Nonce))
-        {
-            Reject(context, RejectReason.NonceRejected, "none");
             return;
         }
         // #329 item 2 — fail closed. An anonymous relayed request has NO principal to key the limiter on, so its
