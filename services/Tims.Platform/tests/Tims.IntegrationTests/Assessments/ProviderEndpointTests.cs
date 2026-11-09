@@ -507,6 +507,43 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
     }
 
+    // The portal's shared platform client reads `code`: a withdrawn candidate's launch says so with a stable code, and
+    // nothing reaches the provider.
+    [Fact]
+    public async Task Launch_AWithdrawnCandidate_Is409WithAStableCode()
+    {
+        var candidate = Guid.NewGuid();
+        var attempt = Guid.NewGuid();
+        var email = $"{candidate:N}@a.example";
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO candidates (id, organization_id, first_name, last_name, email)
+             VALUES ('{candidate}', '{ProviderEndpointFixture.OrgA}', 'Wil', 'Drawn', '{email}');
+             INSERT INTO data_consents (id, organization_id, subject_user_id, consent_type, withdrawn_at)
+             VALUES (gen_random_uuid(), '{ProviderEndpointFixture.OrgA}', '{candidate}', 'recruitment_data_processing', now());
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 instrument_version, content_version, required_consents, expires_at, assigned_by_id)
+             VALUES ('{attempt}', '{ProviderEndpointFixture.OrgA}', 'aaaa0000-0000-4000-8000-0000000000b0', '{candidate}',
+                 '{ProviderEndpointFixture.VacancyA}', 'english', 'created', 'selection', 'Análisis de datos', 'es', 1,
+                 gen_random_uuid(), gen_random_uuid(), '1.0', 'content-1', ARRAY['assessment'], now() + interval '14 days',
+                 '{ProviderEndpointFixture.AdminId}');
+             """);
+        const string sub = "candidate-withdrawn";
+        var identities = new FakeIdentities();
+        var token = Mint(sub);
+        identities.Confirmed[token] = new SetupIdentity(sub, email);
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider, identities: identities);
+        using var client = factory.CreateClient();
+
+        var response = await Send(client, Launch(attempt), """{"embedded":true}""", token);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("consent_withdrawn", (await ReadJson(response)).GetProperty("code").GetString());
+        Assert.DoesNotContain("launch", provider.Calls);
+    }
+
     [Fact]
     public async Task Launch_AnIdentityForAnotherSubject_Is403()
     {

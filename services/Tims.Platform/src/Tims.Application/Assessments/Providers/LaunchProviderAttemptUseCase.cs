@@ -55,9 +55,14 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
 
+    /// <param name="embedded">
+    /// The portal will FRAME the hosted player (its origin is among the player's registered frame ancestors): no
+    /// <c>return_url</c> is sent, so the player ends on its own screen inside the frame instead of navigating the frame to
+    /// the portal (which refuses to be framed). Top-level (the default): the player returns the candidate to the portal.
+    /// </param>
     public async Task<LaunchResult> LaunchAsync(
         Guid attemptId, string verifiedEmail, IReadOnlyList<CapturedConsent> consents, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool embedded = false)
     {
         ArgumentNullException.ThrowIfNull(consents);
         if (string.IsNullOrWhiteSpace(verifiedEmail))
@@ -198,7 +203,7 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         }
 
         var slug = await _repository.GetActiveOrganizationSlugAsync(found.OrganizationId, cancellationToken).ConfigureAwait(false);
-        var returnPath = slug is { Length: > 0 } ? $"/careers/{slug}/dashboard" : null;
+        var returnPath = !embedded && slug is { Length: > 0 } ? $"/careers/{slug}/dashboard" : null;
         var locked = await _repository.LaunchUnderCandidateLockAsync(
             found.OrganizationId, attempt.Id,
             (fresh, ct) => LaunchAtProviderAsync(fresh, context, returnPath, ct), now, cancellationToken).ConfigureAwait(false);
@@ -270,19 +275,34 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         && string.Equals(stored.Trim(), verified.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Strict body: <c>{ "consents"?: [{ "purpose", "textVersion", "locale" }] }</c>, at most one entry per purpose.
+    /// Strict body: <c>{ "consents"?: [{ "purpose", "textVersion", "locale" }], "embedded"?: boolean }</c>, at most one
+    /// consent entry per purpose.
     /// </summary>
-    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents)
+    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents) =>
+        TryParseBody(node, out consents, out _);
+
+    public static bool TryParseBody(JsonNode? node, out IReadOnlyList<CapturedConsent> consents, out bool embedded)
     {
         consents = [];
+        embedded = false;
         if (node is null)
         {
             return true;
         }
 
-        if (node is not JsonObject body || body.Any(p => p.Key != "consents"))
+        if (node is not JsonObject body || body.Any(p => p.Key is not ("consents" or "embedded")))
         {
             return false;
+        }
+
+        if (body["embedded"] is { } flag)
+        {
+            if (flag is not JsonValue value || !value.TryGetValue(out bool isEmbedded))
+            {
+                return false;
+            }
+
+            embedded = isEmbedded;
         }
 
         if (body["consents"] is null)

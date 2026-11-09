@@ -34,6 +34,33 @@ public sealed class LaunchProviderAttemptUseCaseTests
         Assert.Contains("launched", _repository.Writes);
     }
 
+    // A portal that frames the player asks for no return URL: the player ends on its own screen in the frame, instead of
+    // navigating the frame to the portal (which refuses to be framed).
+    [Fact]
+    public async Task An_embedded_launch_asks_for_no_return_path()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider)
+            .LaunchAsync(attempt.Id, "ana@example.com", [], Now, CancellationToken.None, embedded: true);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        Assert.Equal([null], _provider.LaunchReturnPaths);
+    }
+
+    [Theory]
+    [InlineData("""{"embedded":true}""", true, true)]
+    [InlineData("""{"embedded":false,"consents":[]}""", true, false)]
+    [InlineData("""{"embedded":"yes"}""", false, false)]
+    [InlineData("""{"embedded":true,"other":1}""", false, false)]
+    public void The_launch_body_accepts_an_optional_boolean_embedded_flag(string json, bool valid, bool embedded)
+    {
+        var ok = LaunchProviderAttemptUseCase.TryParseBody(JsonNode.Parse(json), out _, out var parsed);
+
+        Assert.Equal(valid, ok);
+        Assert.Equal(embedded, parsed);
+    }
+
     [Fact]
     public async Task An_organization_without_a_slug_launches_without_a_return_path()
     {

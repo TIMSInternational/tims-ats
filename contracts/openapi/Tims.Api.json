@@ -16347,6 +16347,12 @@
             "items": {
               "$ref": "#/components/schemas/ProviderLaunchConsentBody"
             }
+          },
+          "embedded": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },

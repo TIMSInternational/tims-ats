@@ -5063,6 +5063,7 @@ export interface components {
         };
         ProviderLaunchBody: {
             consents?: null | components["schemas"]["ProviderLaunchConsentBody"][];
+            embedded?: null | boolean;
         };
         ProviderLaunchConsentBody: {
             purpose?: string;

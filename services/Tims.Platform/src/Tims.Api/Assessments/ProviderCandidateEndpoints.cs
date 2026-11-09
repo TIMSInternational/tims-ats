@@ -68,13 +68,13 @@ public static class ProviderCandidateEndpoints
                 }
 
                 var node = await ProviderEndpointJson.TryReadAsync(httpContext, cancellationToken);
-                if (!node.Ok || !LaunchProviderAttemptUseCase.TryParseBody(node.Node, out var consents))
+                if (!node.Ok || !LaunchProviderAttemptUseCase.TryParseBody(node.Node, out var consents, out var embedded))
                 {
                     return Results.BadRequest(new { error = "invalid_input" });
                 }
 
                 var result = await useCase.LaunchAsync(
-                    attemptId, email!, consents, timeProvider.GetUtcNow(), cancellationToken);
+                    attemptId, email!, consents, timeProvider.GetUtcNow(), cancellationToken, embedded);
                 // Outcome only: never the token, the email or the attempt's candidate.
                 loggers.CreateLogger("Tims.Api.Assessments").LogInformation(
                     "Assessment provider launch outcome {Outcome}", result.Outcome);
@@ -82,12 +82,15 @@ public static class ProviderCandidateEndpoints
                 {
                     LaunchOutcome.Launched => Results.Ok(new ProviderLaunchResponse(
                         result.Launch!.Delivery, result.Launch.ExpiresAt, result.Launch.HostedUrl, result.Launch.FrameAncestors)),
+                    // `code` repeats `error` so the portal's shared platform client (which reads `code`) can tell the 409s apart.
                     LaunchOutcome.NotFound => Results.NotFound(),
-                    LaunchOutcome.ConsentWithdrawn => Results.Conflict(new { error = "consent_withdrawn" }),
-                    LaunchOutcome.NotLaunchable => Results.Conflict(new { error = "attempt_not_launchable" }),
-                    LaunchOutcome.NotReady => Results.Conflict(new { error = "attempt_not_ready" }),
-                    LaunchOutcome.Expired => Results.Json(new { error = "attempt_expired" }, statusCode: StatusCodes.Status410Gone),
-                    LaunchOutcome.ConsentRequired => Results.Conflict(new { error = "consent_required", missingConsents = result.Missing }),
+                    LaunchOutcome.ConsentWithdrawn => Results.Conflict(new { error = "consent_withdrawn", code = "consent_withdrawn" }),
+                    LaunchOutcome.NotLaunchable => Results.Conflict(new { error = "attempt_not_launchable", code = "attempt_not_launchable" }),
+                    LaunchOutcome.NotReady => Results.Conflict(new { error = "attempt_not_ready", code = "attempt_not_ready" }),
+                    LaunchOutcome.Expired => Results.Json(
+                        new { error = "attempt_expired", code = "attempt_expired" }, statusCode: StatusCodes.Status410Gone),
+                    LaunchOutcome.ConsentRequired => Results.Conflict(
+                        new { error = "consent_required", code = "consent_required", missingConsents = result.Missing }),
                     LaunchOutcome.ConsentRejected => Results.UnprocessableEntity(new { error = "consent_rejected", code = result.Detail }),
                     LaunchOutcome.ProviderRefused => Results.Json(
                         new { error = "provider_refused", code = result.Detail }, statusCode: StatusCodes.Status502BadGateway),
@@ -172,6 +175,9 @@ public static class ProviderCandidateEndpoints
 public sealed class ProviderLaunchBody
 {
     public IReadOnlyList<ProviderLaunchConsentBody>? Consents { get; init; }
+
+    /// <summary>True when the portal will frame the hosted player: no return URL is requested.</summary>
+    public bool? Embedded { get; init; }
 }
 
 public sealed class ProviderLaunchConsentBody
