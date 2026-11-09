@@ -204,6 +204,19 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         // instrument (PCA, the provider's own questionnaire site needs them). A subject is created once per (tenant,
         // candidate) and a repeated create returns it unchanged, so a subject first created without names (before the
         // org enabled PCA) is enriched below with PATCH /v1/subjects/{id} when a PCA needs them.
+        // The create fence, committed BEFORE anything reaches the provider (the subject, its enrichment, the lookup, the
+        // create): refused once the attempt is in a #312 withdrawal or no longer pending, so no subject PII and no
+        // assignment is sent after a withdrawal was staged. A withdrawal staged after it keeps the attempt pending while
+        // this exchange may still land: a pass that finds no assignment by external_ref cannot complete until the fence
+        // is answered or stale, so an assignment created after that lookup (and never recorded, if this process dies)
+        // can never escape the cascade. It is left in place on every exit that does not record an answer; it then goes
+        // stale (ProviderCreateFence.StaleAfter), which only delays a concurrent withdrawal's completion.
+        if (!await _repository.BeginCreateAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false))
+        {
+            return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, ProviderAttemptStates.Cancelled, null, [],
+                null, AttemptCancelledCode, attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
+        }
+
         var needsPii = binding.EnabledInstruments.Any(ProviderInstruments.IsLinkOut);
         var subjectRequest = new ProviderSubjectRequest(
             binding.ProviderTenantId,
@@ -219,6 +232,12 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         {
             return await FailAsync(organizationId, attempt, subject.Failure!, now, cancellationToken).ConfigureAwait(false);
         }
+
+        // The subject is recorded on the attempt at once, before an assignment exists: a #312 cascade that staged the
+        // attempt meanwhile then reaches this subject (its consents are listed and withdrawn) even if the create below
+        // never happens or is never answered.
+        await _repository.RecordSubjectAsync(organizationId, attempt.Id, subject.Value!.SubjectId, cancellationToken)
+            .ConfigureAwait(false);
 
         if (ProviderInstruments.IsLinkOut(attempt.Instrument) && !subject.Value!.HasNamesAndEmail)
         {
@@ -291,15 +310,6 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             attempt.AgeBand!,
             attempt.InstrumentVersion);
 
-        // The create fence, committed BEFORE the create leaves: a #312 withdrawal pass that looks this attempt up by
-        // external_ref and finds nothing keeps it pending while this create may still land, so an assignment created
-        // after the lookup (and never recorded, if this process dies) can never escape the cascade. Refused once the
-        // attempt is in a withdrawal or no longer pending: nothing is sent then.
-        if (!await _repository.BeginCreateAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false))
-        {
-            return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, ProviderAttemptStates.Cancelled, null, [],
-                null, AttemptCancelledCode, attempt.Locale, attempt.TimeMultiplier, attempt.Aids);
-        }
 
         var created = await _provider.CreateAssignmentAsync(request, IdempotencyKeys.Assignment(attempt.Id), cancellationToken)
             .ConfigureAwait(false);

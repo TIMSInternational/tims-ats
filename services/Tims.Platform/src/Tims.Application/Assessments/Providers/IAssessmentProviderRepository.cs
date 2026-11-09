@@ -210,13 +210,20 @@ public interface IAssessmentProviderRepository
         Guid organizationId, IReadOnlyList<Guid> attemptIds, Guid owner, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The create fence: announces, durably and BEFORE <c>POST /v1/assignments</c> is sent, that a create of this
+    /// The create fence: announces, durably and BEFORE anything of the create is sent (the subject, its enrichment, the
+    /// lookup and <c>POST /v1/assignments</c>), that a create of this
     /// <c>pending_create</c> attempt is in flight (<c>create_started_at</c>, database clock). Refused (false, nothing
     /// written) for an attempt already in a #312 withdrawal, erased-requested, or no longer pending: row locking orders it
     /// against the withdrawal's staging write. Cleared when the create's answer is recorded (created, or a definitive
     /// refusal); left in place when there was no answer, until it is stale.
     /// </summary>
     Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records the provider subject a create resolved on an attempt that has none yet (conditional, no other change), so
+    /// a #312 cascade reaches that subject's consents even when no assignment is ever recorded.
+    /// </summary>
+    Task RecordSubjectAsync(Guid organizationId, Guid attemptId, Guid providerSubjectId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Reads each attempt's consent-capture fence (<see cref="WithdrawalFence"/>). A withdrawal pass reads it BEFORE it

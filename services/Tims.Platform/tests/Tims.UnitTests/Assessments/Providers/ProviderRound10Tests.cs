@@ -292,6 +292,78 @@ public sealed class ProviderRound10Tests
     }
 
     [Fact]
+    public async Task A_withdrawal_staged_before_the_first_provider_call_sends_no_subject_and_no_create()
+    {
+        // Codex r10 run 1 [P1]: the reservation commits, the candidate withdraws, then the request resumes. Nothing,
+        // not even the subject with its names and email, may reach the provider.
+        _repository.Binding = _repository.Binding! with { EnabledInstruments = [ProviderInstruments.Lia, ProviderInstruments.Pca] };
+        _repository.AfterReserve = () =>
+        {
+            _repository.WithdrawnCandidates.Add(FakeRepository.Candidate);
+            _repository.StageConsentWithdrawalAsync(FakeRepository.Org, FakeRepository.Candidate, Now, CancellationToken.None)
+                .GetAwaiter().GetResult();
+        };
+
+        await new AssignProviderInstrumentsUseCase(_repository, _provider).AssignAsync(FakeRepository.Org, Guid.NewGuid(),
+            new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
+                [new AssignInstrumentItem("lia", null)], null, 1m, [], null, ProviderAgeBands.Adult), Now, CancellationToken.None);
+
+        Assert.Empty(_provider.Subjects);
+        Assert.Empty(_provider.Assignments);
+        Assert.Contains("create_refused", _repository.Writes);
+    }
+
+    [Fact]
+    public async Task A_subject_resolved_by_an_unanswered_create_is_recorded_so_the_cascade_reaches_its_consents()
+    {
+        _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+
+        await new AssignProviderInstrumentsUseCase(_repository, _provider).AssignAsync(FakeRepository.Org, Guid.NewGuid(),
+            new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
+                [new AssignInstrumentItem("lia", null)], null, 1m, [], null, ProviderAgeBands.Adult), Now, CancellationToken.None);
+
+        var row = _repository.Attempts.Single();
+        Assert.Null(row.ProviderAssignmentId);
+        Assert.Equal(_provider.SubjectId, row.ProviderSubjectId);
+    }
+
+    [Fact]
+    public async Task Declining_an_optional_purpose_withdraws_an_active_provider_consent_for_it_before_the_launch()
+    {
+        // Codex r10 run 1 [P1]: an earlier attempt of this subject granted voice; the candidate now declines it.
+        var attempt = _repository.AddCreatedAttempt("english");
+        var granted = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        _provider.SubjectConsents[attempt.ProviderSubjectId!.Value] =
+        [
+            new ProviderConsentRecord(granted, ConsentPurposes.Voice, "active"),
+            new ProviderConsentRecord(other, ConsentPurposes.Assessment, "active"),
+        ];
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        Assert.Equal([(attempt.ProviderSubjectId.Value, granted)], _provider.WithdrawnConsents);
+        Assert.Equal([ConsentPurposes.Voice], Assert.Single(_repository.OptionalDecisions).Declined);
+    }
+
+    [Fact]
+    public async Task A_decline_the_provider_cannot_confirm_records_nothing_and_launches_nothing()
+    {
+        var attempt = _repository.AddCreatedAttempt("english");
+        _provider.SubjectConsents[attempt.ProviderSubjectId!.Value] = [new ProviderConsentRecord(Guid.NewGuid(), ConsentPurposes.Voice, "active")];
+        _provider.OnWithdrawConsent = _ => ProviderCall<ProviderConsentRecord>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+
+        Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
+        Assert.Empty(_repository.OptionalDecisions);
+        Assert.DoesNotContain(_provider.Calls, c => c == "launch");
+    }
+
+    [Fact]
     public async Task A_stale_create_announcement_no_longer_blocks_the_cascade()
     {
         var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Cancelled) with

@@ -209,6 +209,14 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         var offered = OptionalConsents.For(attempt.Instrument);
         var grantedOptional = captured.Where(offered.Contains).ToList();
         var declinedNow = declinedOptional.Where(offered.Contains).ToList();
+        if (declinedNow.Count > 0
+            && !await WithdrawDeclinedAsync(attempt.ProviderSubjectId.Value, declinedNow, now, cancellationToken).ConfigureAwait(false))
+        {
+            // A decline the provider does not reflect yet would let it administer what the candidate refused while HR
+            // reads "not assessed": nothing is recorded or launched; the candidate retries.
+            return LaunchResult.Fail(LaunchOutcome.ProviderUnavailable, "optional_consent_withdrawal_failed");
+        }
+
         if (grantedOptional.Count > 0 || declinedNow.Count > 0)
         {
             await _repository.RecordOptionalConsentDecisionsAsync(
@@ -265,6 +273,31 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         }
 
         return new LaunchResult(LaunchOutcome.Launched, launched.Value, [], null);
+    }
+
+    // A declined optional purpose must not stay active at the provider (an earlier attempt of this subject may have
+    // granted it): every ACTIVE consent of the subject for a declined purpose is withdrawn before the launch. A 404/410
+    // means there is nothing to withdraw. False when the provider could not confirm it.
+    private async Task<bool> WithdrawDeclinedAsync(
+        Guid subjectId, IReadOnlyList<string> declined, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var consents = await _provider.ListConsentsAsync(subjectId, cancellationToken).ConfigureAwait(false);
+        if (!consents.Ok)
+        {
+            return consents.Failure!.HttpStatus is 404 or 410;
+        }
+
+        foreach (var consent in consents.Value!.Where(c => c.Status == "active" && declined.Contains(c.Purpose)))
+        {
+            var withdrawn = await _provider.WithdrawConsentAsync(subjectId, consent.ConsentId, now, cancellationToken)
+                .ConfigureAwait(false);
+            if (!withdrawn.Ok && withdrawn.Failure!.HttpStatus is not (404 or 410))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // Runs inside the candidate lock: the hosted launch, plus the contract's recovery for a link-out sitting that needs the

@@ -216,13 +216,14 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
     [Fact]
     public async Task A_subject_created_by_a_failed_assignment_is_still_found_and_erased()
     {
-        // The provider created the subject (with names and email: the org enables PCA), then the create failed: no
-        // attempt records the subject.
+        // The provider created the subject (with names and email: the org enables PCA), then the create failed. Since
+        // round 10 the subject is recorded on the attempt as soon as it is resolved; a process that died before that
+        // record is still covered by the erasure's own resolution of (tenant, candidate id).
         _provider.OnCreateAssignment = _ => ProviderCall<ProviderAssignment>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
         await new AssignProviderInstrumentsUseCase(_repository, _provider).AssignAsync(FakeRepository.Org, Guid.NewGuid(),
             new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
                 [new AssignInstrumentItem("lia", null)], null, 1m, [], null, ProviderAgeBands.Adult), Now, CancellationToken.None);
-        Assert.Null(_repository.Attempts.Single().ProviderSubjectId);
+        Assert.Equal(_provider.SubjectId, _repository.Attempts.Single().ProviderSubjectId);
 
         var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 

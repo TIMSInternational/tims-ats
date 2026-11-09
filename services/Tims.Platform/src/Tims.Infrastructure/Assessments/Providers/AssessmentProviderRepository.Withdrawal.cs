@@ -111,6 +111,19 @@ public sealed partial class AssessmentProviderRepository
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task RecordSubjectAsync(
+        Guid organizationId, Guid attemptId, Guid providerSubjectId, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts SET provider_subject_id = {providerSubjectId}
+              WHERE organization_id = {organizationId} AND id = {attemptId} AND provider_subject_id IS NULL
+                AND provider_assignment_id IS NULL
+             """, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);

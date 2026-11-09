@@ -373,6 +373,9 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             rows.Add(row);
         }
 
+        var afterReserve = AfterReserve;
+        AfterReserve = null;
+        afterReserve?.Invoke();
         return Task.FromResult(new ReserveOutcome(false, rows));
     }
 
@@ -811,6 +814,17 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     /// <summary>Runs once, right after a create is announced (a withdrawal interleaving with the create).</summary>
     public Action? AfterBeginCreate { get; set; }
+
+    public Task RecordSubjectAsync(Guid organizationId, Guid attemptId, Guid providerSubjectId, CancellationToken cancellationToken)
+    {
+        Replace(attemptId, a => a.ProviderSubjectId is null && a.ProviderAssignmentId is null
+            ? a with { ProviderSubjectId = providerSubjectId }
+            : a);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Runs once, right after a reserve (a withdrawal landing before the first provider call).</summary>
+    public Action? AfterReserve { get; set; }
 
     public Task<bool> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
     {
