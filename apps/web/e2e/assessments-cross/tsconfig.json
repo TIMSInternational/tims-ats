@@ -2,21 +2,12 @@
   "extends": "../../../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@playwright/test": [
-        "../../../../e2e/node_modules/@playwright/test"
-      ]
+      "@playwright/test": ["../../../../e2e/node_modules/@playwright/test"]
     }
   },
-  "include": [
-    "*.ts"
-  ],
-  "exclude": [
-    "test-results",
-    ".state"
-  ]
+  "include": ["*.ts"],
+  "exclude": ["test-results", ".state"]
 }
