@@ -64,12 +64,8 @@ public sealed class FitAssessmentRequirementsRepository(FitEngineWriteDbContext 
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         var (connection, transaction) = Connection();
 
-        // This writer replaces `assessments` on purpose: the job_profiles_keep_assessments trigger keeps the array
-        // against any writer that does not set this transaction-local marker.
-        await using (var mark = new NpgsqlCommand(FitEngineWriteRepository.FitV2AwareWriterSql, connection, transaction))
-        {
-            await mark.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
+        // Every write here SETS the `assessments` key (an empty array included), so the job_profiles_keep_assessments
+        // trigger, which acts only on an update that drops the key, never interferes: no writer marker is needed.
 
         Guid? rowId = null;
         string? currentVersion = null;

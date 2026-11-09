@@ -25,8 +25,8 @@ public interface IFitAssessmentRequirementsRepository
     /// In ONE transaction under the tenant scope: locks the vacancy's profile row (<c>FOR UPDATE</c>), and replaces only
     /// its <c>assessments</c> key with <paramref name="assessmentsJson"/> when the stored version still equals
     /// <paramref name="expectedVersion"/>; a missing row is inserted only when the editor read "absent", and a concurrent
-    /// insert loses (<c>ON CONFLICT DO NOTHING</c>). Marks the transaction as a FIT v2-aware writer, which the
-    /// <c>job_profiles_keep_assessments</c> trigger requires.
+    /// insert loses (<c>ON CONFLICT DO NOTHING</c>). The key is always set (never dropped), so the
+    /// <c>job_profiles_keep_assessments</c> trigger, which guards only against dropping it, has nothing to do.
     /// </summary>
     Task<AssessmentRequirementsWriteResult> ReplaceAsync(
         Guid organizationId, Guid vacancyId, string assessmentsJson, string expectedVersion, DateTimeOffset now,
