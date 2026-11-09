@@ -192,10 +192,13 @@ rule: `@tims/ai` `fit-visibility.ts` is the TS twin of `FitV2Visibility` + the o
 golden file (`contracts/fit-v2-fixtures/visibility.json`) by both stacks, and minimal call-site guards in
 `packages/api` apply it to `fitEngine.getRankingForVacancy` (re-sorted), `simulateWeights`, `explainFit` (the
 explainer is told `belowMinimum` and never to guess a level) and `candidate.getById`'s `fitScores`; the stored weights
-are read for the recompute and never returned. **Still exposed to a narrow reader:** the stored OVERALL score on the
-TS list surfaces (`candidate.list`, the pipeline cards, the talent pool, `candidate.getRisks`), which with the
-redacted dimensions and the weight profiles can be inverted to the hidden assessment dimension; and the native
-quiz's own `normalizedScore`/percentile on the candidate page's assessment panel (pre-existing, `candidate:read`).
+are read for the recompute and never returned. The list surfaces read no breakdown, and their stored overall inverts
+too (with the visible dimensions and the weight profile), so the C# v2 compute also stores the overall a narrow reader
+may see, `fit_scores.restricted_overall_score` (the D6-redacted breakdown's overall; NULL when the row hides nothing
+and on every v1 row; kept by the v2 guard). For such a reader `candidate.list` (and its fit-range filter, so it cannot
+probe the hidden overall), `pipeline.getBoard` and `candidate.getRisks` use it (Codex release round 2). **Still
+exposed to a narrow reader:** the native quiz's own `normalizedScore`/percentile on the candidate page's assessment
+panel (pre-existing, `candidate:read`), and a v2 row computed before this column existed (recompute it).
 
 ## Result sources (`IAssessmentResultSource`)
 

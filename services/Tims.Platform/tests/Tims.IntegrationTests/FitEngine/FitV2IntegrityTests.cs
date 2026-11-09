@@ -536,12 +536,14 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
             ("id", Guid.NewGuid()), ("o", Org), ("c", candidate), ("v", vacancy), ("s", overall), ("b", breakdown),
             ("w", Weights), ("p", partial));
 
-    // What Prisma's upsert sends for the TS computeFitScore: no fit_v2_aware marker.
+    // What a full-row writer that does not know FIT v2 sends (the TS computeFitScore's Prisma upsert, plus clearing the
+    // D6 overall it has never heard of): no fit_v2_aware marker.
     private async Task TsUpsertAsync(Guid candidate, Guid vacancy, double overall, string breakdown) =>
         await SqlAsync(
             "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, weights, is_partial, calculated_at, created_at, updated_at) "
             + "VALUES (@id, @o, @c, @v, @s, @b::jsonb, '{\"assessment\":1}'::jsonb, false, now(), now(), now()) "
             + "ON CONFLICT (candidate_id, vacancy_id) DO UPDATE SET overall_score = EXCLUDED.overall_score, breakdown = EXCLUDED.breakdown, "
+            + "restricted_overall_score = NULL, "
             + "weights = EXCLUDED.weights, is_partial = EXCLUDED.is_partial, calculated_at = EXCLUDED.calculated_at, updated_at = EXCLUDED.updated_at",
             ("id", Guid.NewGuid()), ("o", Org), ("c", candidate), ("v", vacancy), ("s", overall), ("b", breakdown));
 
