@@ -705,6 +705,76 @@ public sealed class TimsAssessmentsClientTests
         Assert.Equal(ProviderFailure.NotFoundUnconfirmed, result.Failure.Code);
     }
 
+    // D15 DSAR access: the provider's export asks for a token with subjects:export ALONE (never added to the default
+    // scopes every other call carries), and its body is checked to be this subject's SubjectExport.
+    [Fact]
+    public async Task The_subject_export_uses_its_own_subjects_export_token_and_returns_the_providers_document()
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        var export = $$"""{"subject":{"subject_id":"{{subject}}","status":"active"},"generated_at":"2026-11-09T12:00:00Z","consents":[],"assignments":[],"sessions":[],"results":[],"media":[],"access_log":[],"future_field":1}""";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl
+            ? Token(r.Content!.ReadAsStringAsync().Result.Contains("scope=subjects%3Aexport", StringComparison.Ordinal) ? "export-token" : "default-token")
+            : r.RequestUri!.AbsolutePath.EndsWith("/export", StringComparison.Ordinal) ? Json(HttpStatusCode.OK, export)
+            : Json(HttpStatusCode.OK, """{"data":[]}"""));
+        var client = Client();
+
+        await client.ListInstrumentsAsync(CancellationToken.None);
+        var exported = await client.ExportSubjectAsync(subject, CancellationToken.None);
+        var exportedAgain = await client.ExportSubjectAsync(subject, CancellationToken.None);
+        await client.ListInstrumentsAsync(CancellationToken.None);
+
+        Assert.True(exported.Ok);
+        Assert.True(exportedAgain.Ok);
+        Assert.Contains("\"future_field\":1", exported.Value!.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("generated_at", exported.Value.ToString(), StringComparison.Ordinal);
+        var tokenBodies = _handler.Requests.Where(r => r.Uri == TokenUrl).Select(r => r.Body).ToList();
+        Assert.Equal(2, tokenBodies.Count); // one per scope set, each cached
+        Assert.Contains(tokenBodies, b => b.EndsWith("scope=subjects%3Aexport", StringComparison.Ordinal));
+        Assert.DoesNotContain(tokenBodies, b => b.Contains("subjects%3Aexport", StringComparison.Ordinal) && b.Contains("results%3Aread", StringComparison.Ordinal));
+        var calls = _handler.Requests.Where(r => r.Uri != TokenUrl).ToList();
+        Assert.Equal($"https://assessments.test/v1/subjects/{subject}/export", calls[1].Uri);
+        Assert.Equal("Bearer export-token", calls[1].Authorization);
+        Assert.Equal("Bearer default-token", calls[3].Authorization);
+    }
+
+    [Theory]
+    [InlineData("other_subject")]
+    [InlineData("missing_media")]
+    public async Task An_off_contract_subject_export_is_refused(string defect)
+    {
+        var subject = Guid.NewGuid();
+        var named = defect == "other_subject" ? Guid.NewGuid() : subject;
+        var media = defect == "missing_media" ? string.Empty : "\"media\":[],";
+        var json = "{\"subject\":{\"subject_id\":\"" + named + "\"},\"generated_at\":\"2026-11-09T12:00:00Z\",\"consents\":[],"
+            + "\"assignments\":[],\"sessions\":[],\"results\":[]," + media + "\"access_log\":[]}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var result = await Client().ExportSubjectAsync(subject, CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, result.Failure!.Code);
+    }
+
+    // A route the provider does not serve answers the same 404 as "no such subject": an export never reports "nothing
+    // held" unless the subject lookup confirms it.
+    [Theory]
+    [InlineData(HttpStatusCode.OK, null, ProviderFailure.NotFoundUnconfirmed)]
+    [InlineData(HttpStatusCode.NotFound, 404, "not_found")]
+    [InlineData(HttpStatusCode.Gone, 410, "provider_error")]
+    public async Task A_subject_export_404_is_confirmed_by_the_subject_lookup(HttpStatusCode lookup, int? status, string code)
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : r.RequestUri!.AbsolutePath.EndsWith("/export", StringComparison.Ordinal) ? NotFound()
+            : lookup == HttpStatusCode.OK
+                ? Json(HttpStatusCode.OK, $$"""{"subject_id":"{{subject}}","tenant_id":"{{Tenant}}","external_ref":"c-1","status":"active","created_at":"2026-11-09T12:00:00Z"}""")
+                : Json(lookup, "{}", "application/problem+json"));
+
+        var result = await Client().ExportSubjectAsync(subject, CancellationToken.None);
+
+        Assert.Equal(status, result.Failure!.HttpStatus);
+        Assert.Equal(code, result.Failure.Code);
+    }
+
     // The amended contract (Idempotency): a request that arrives while an earlier one with the same Idempotency-Key and
     // body is still being processed is refused with 409 idempotency_key_in_use and Retry-After, and nothing is done for
     // it; a retry with the same key and body after the delay gets the original response.

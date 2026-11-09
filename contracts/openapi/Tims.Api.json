@@ -5019,6 +5019,9 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
           }
         }
       }
@@ -14204,6 +14207,7 @@
           }
         }
       },
+      "JsonElement": { },
       "JsonNode": { },
       "JsonObject": {
         "type": "object"
@@ -16056,6 +16060,33 @@
           }
         }
       },
+      "ProviderHeldSubjectExport": {
+        "required": [
+          "subjectId",
+          "status",
+          "export"
+        ],
+        "type": "object",
+        "properties": {
+          "subjectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "export": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          }
+        }
+      },
       "ProviderLaunchBody": {
         "type": "object",
         "properties": {
@@ -16128,6 +16159,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProviderExportResult"
+            }
+          },
+          "providerExports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderHeldSubjectExport"
             }
           }
         }

@@ -42,6 +42,14 @@ public interface IAssessmentProvider
     /// </summary>
     Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <c>GET /v1/subjects/{subject_id}/export</c> (DSAR access): everything the PROVIDER holds about the subject (consents,
+    /// assignments, sessions, results rendered for <c>tenant_hr</c>, media as short-lived links, its access log). Called
+    /// with a token for <c>subjects:export</c> ALONE. A 404 is returned as such only when <c>GET /v1/subjects/{id}</c>
+    /// confirms it (else <see cref="ProviderFailure.NotFoundUnconfirmed"/>); 410 means the subject is erased.
+    /// </summary>
+    Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken);
+
     /// <summary><c>GET /v1/subjects/{subject_id}/consents</c>: the subject's consent records.</summary>
     Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(Guid subjectId, CancellationToken cancellationToken);
 
@@ -261,6 +269,19 @@ public sealed record ProviderConsentRecord(Guid ConsentId, string Purpose, strin
 
 /// <summary>The names and email a link-out instrument needs, set on an existing subject (merge semantics).</summary>
 public sealed record ProviderSubjectUpdate(string GivenName, string FamilyName, string Email);
+
+/// <summary>
+/// The provider's DSAR export of one subject (<c>SubjectExport</c>), checked for shape and kept as the provider's own JSON.
+/// It holds personal data and short-lived media links meant for the data subject only, so <see cref="ToString"/> redacts.
+/// </summary>
+public sealed class ProviderHeldExport(Guid subjectId, string json)
+{
+    public Guid SubjectId { get; } = subjectId;
+
+    public string Json { get; } = json;
+
+    public override string ToString() => $"ProviderHeldExport {{ SubjectId = {SubjectId}, Json = [redacted] }}";
+}
 
 /// <summary>The provider's receipt for an erasure request (<c>accepted</c>, <c>in_progress</c> or <c>completed</c>).</summary>
 public sealed record ProviderErasureReceipt(Guid SubjectId, string Status);

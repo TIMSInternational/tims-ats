@@ -104,6 +104,21 @@ internal sealed class FakeProvider : IAssessmentProvider
             ?? ProviderCall<ProviderErasureReceipt>.Success(new ProviderErasureReceipt(subjectId, "accepted")));
     }
 
+    public List<Guid> ExportedSubjects { get; } = [];
+
+    public Func<Guid, ProviderCall<ProviderHeldExport>>? OnExportSubject { get; set; }
+
+    public static string ExportJson(Guid subjectId) =>
+        $$"""{"subject":{"subject_id":"{{subjectId}}","status":"active"},"generated_at":"2026-11-09T14:00:00Z","consents":[],"assignments":[],"sessions":[],"results":[],"media":[{"media_id":"{{Guid.Empty}}","kind":"speaking_audio"}],"access_log":[]}""";
+
+    public Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        Calls.Add("export_subject");
+        ExportedSubjects.Add(subjectId);
+        return Task.FromResult(OnExportSubject?.Invoke(subjectId)
+            ?? ProviderCall<ProviderHeldExport>.Success(new ProviderHeldExport(subjectId, ExportJson(subjectId))));
+    }
+
     /// <summary>The consents each subject holds at the provider; a withdrawal marks one withdrawn.</summary>
     public Dictionary<Guid, List<ProviderConsentRecord>> SubjectConsents { get; } = [];
 
@@ -722,9 +737,20 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.CompletedTask;
     }
 
+    public List<int> ExportAudits { get; } = [];
+
     public Task<ProviderSubjectExport?> ExportCandidateAsync(
-        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken) =>
-        Task.FromResult<ProviderSubjectExport?>(new ProviderSubjectExport([], []));
+        Guid organizationId, Guid candidateId, Guid actorId, int providerExports, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (candidateId != Candidate)
+        {
+            return Task.FromResult<ProviderSubjectExport?>(null);
+        }
+
+        ExportAudits.Add(providerExports);
+        return Task.FromResult<ProviderSubjectExport?>(new ProviderSubjectExport([], []));
+    }
 
     public Task<ProviderCandidateSubjects?> ListProviderSubjectsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
         Task.FromResult(candidateId != Candidate

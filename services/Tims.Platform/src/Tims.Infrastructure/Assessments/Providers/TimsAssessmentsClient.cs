@@ -125,6 +125,26 @@ public sealed class TimsAssessmentsClient(
     }
 
     /// <summary>
+    /// <c>GET /v1/subjects/{id}/export</c> with a token for <c>subjects:export</c> alone. A 404 is returned as such only when
+    /// <see cref="ConfirmSubjectGoneAsync"/> confirms it: a provider that does not serve the route answers the same 404, and
+    /// a DSAR export must never report "nothing held" for a subject the provider still serves.
+    /// </summary>
+    public async Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        var exported = await SendAsync(HttpMethod.Get, $"v1/subjects/{subjectId:D}/export", null, null, "export_subject",
+                root => ProviderResponses.SubjectExport(root, subjectId), cancellationToken,
+                scopes: AssessmentProviderOptions.ExportScope)
+            .ConfigureAwait(false);
+        if (exported.Ok || exported.Failure!.HttpStatus != 404)
+        {
+            return exported;
+        }
+
+        return ProviderCall<ProviderHeldExport>.Fail(
+            await ConfirmSubjectGoneAsync(subjectId, "export_subject", cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
     /// <c>GET /v1/subjects/{id}/consents</c>. The #312 cascade reads a 404 as "the subject holds no consent", so a 404 is
     /// returned as such only when <see cref="ConfirmSubjectGoneAsync"/> confirms it; otherwise it is
     /// <see cref="ProviderFailure.NotFoundUnconfirmed"/>.
@@ -356,7 +376,7 @@ public sealed class TimsAssessmentsClient(
 
     private async Task<ProviderCall<T>> SendAsync<T>(
         HttpMethod method, string pathAndQuery, JsonObject? body, string? idempotencyKey, string operation,
-        Func<JsonElement, T?> parse, CancellationToken cancellationToken)
+        Func<JsonElement, T?> parse, CancellationToken cancellationToken, string? scopes = null)
         where T : class
     {
         if (!IsConfigured)
@@ -370,7 +390,7 @@ public sealed class TimsAssessmentsClient(
         var inUseRetried = false;
         while (true)
         {
-            var token = await tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            var token = await tokens.GetTokenAsync(scopes, cancellationToken).ConfigureAwait(false);
             if (token is null)
             {
                 return ProviderCall<T>.Fail(ProviderFailure.Local(ProviderFailure.TokenUnavailable, transient: true));
@@ -420,7 +440,7 @@ public sealed class TimsAssessmentsClient(
                 }
 
                 unauthorizedRetried = true;
-                tokens.Invalidate();
+                tokens.Invalidate(scopes);
                 continue;
             }
 

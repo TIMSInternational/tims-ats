@@ -13,12 +13,28 @@ public enum ProviderErasureOutcome
 
 public sealed record ProviderErasureResult(ProviderErasureOutcome Outcome, int Subjects, int Requested);
 
+public enum ProviderExportOutcome
+{
+    /// <summary>The ATS's tables and every provider subject's own export (or its confirmed absence).</summary>
+    Exported,
+    CandidateNotFound,
+    ProviderUnconfigured,
+
+    /// <summary>A provider subject's export could not be read; nothing is returned or audited. Retrying is safe.</summary>
+    Incomplete,
+}
+
+public sealed record ProviderSubjectExportResult(ProviderExportOutcome Outcome, ProviderSubjectExport? Export);
+
 /// <summary>
 /// Data-subject rights over the provider connector (owner default D15, 2026-11-08), on the C# path (the survival rule):
 /// <list type="bullet">
-/// <item><b>Access.</b> The ATS's own provider tables for one candidate (attempts and stored results), returned with a
-/// fail-closed audit row. What the PROVIDER holds (media, its access log) is its own <c>GET /v1/subjects/{id}/export</c>,
-/// which needs the <c>subjects:export</c> scope and is not called here.</item>
+/// <item><b>Access.</b> The ATS's own provider tables for one candidate (attempts and stored results) AND what the
+/// PROVIDER holds for each of the candidate's provider subjects: its <c>GET /v1/subjects/{id}/export</c> (consents,
+/// assignments, sessions, results rendered for <c>tenant_hr</c>, media links, its access log), called with the
+/// <c>subjects:export</c> scope alone. Fail closed: if any subject's export cannot be read, nothing is returned or
+/// audited (retry later); a subject the provider confirms it no longer holds is listed as <c>erased</c> or
+/// <c>not_found</c>. The audit row is committed with the export.</item>
 /// <item><b>Erasure.</b> ATS-initiated: <c>DELETE /v1/subjects/{id}</c> for every provider subject of the candidate. The
 /// provider erases asynchronously and then emits <c>subject.erased</c>, whose existing handler deletes the ATS's stored
 /// results. A subject the provider confirms it no longer holds (410, or a 404 its lookup confirms) emits no such event, so
@@ -31,23 +47,73 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
 
-    public Task<ProviderSubjectExport?> ExportAsync(
-        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken) =>
-        _repository.ExportCandidateAsync(organizationId, candidateId, actorId, now, cancellationToken);
-
-    public async Task<ProviderErasureResult> EraseAsync(
+    public async Task<ProviderSubjectExportResult> ExportAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var subjects = await ResolveSubjectsAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false);
+        if (subjects.Outcome is not null)
+        {
+            return new ProviderSubjectExportResult(subjects.Outcome.Value switch
+            {
+                ProviderErasureOutcome.CandidateNotFound => ProviderExportOutcome.CandidateNotFound,
+                ProviderErasureOutcome.ProviderUnconfigured => ProviderExportOutcome.ProviderUnconfigured,
+                _ => ProviderExportOutcome.Incomplete,
+            }, null);
+        }
+
+        var held = new List<ProviderHeldSubjectExport>();
+        foreach (var subject in subjects.Subjects)
+        {
+            var exported = await _provider.ExportSubjectAsync(subject, cancellationToken).ConfigureAwait(false);
+            if (exported.Ok)
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(exported.Value!.Json);
+                held.Add(new ProviderHeldSubjectExport(subject, "exported", document.RootElement.Clone()));
+                continue;
+            }
+
+            // Only a CONFIRMED absence is an answer (the client confirms a 404 with the subject lookup); anything else
+            // means the provider may still hold data the export would omit.
+            var status = exported.Failure!.HttpStatus switch
+            {
+                410 => "erased",
+                404 => "not_found",
+                _ => null,
+            };
+            if (status is null)
+            {
+                return new ProviderSubjectExportResult(ProviderExportOutcome.Incomplete, null);
+            }
+
+            held.Add(new ProviderHeldSubjectExport(subject, status, null));
+        }
+
+        var export = await _repository.ExportCandidateAsync(
+            organizationId, candidateId, actorId, held.Count(h => h.Status == "exported"), now, cancellationToken)
+            .ConfigureAwait(false);
+        return export is null
+            ? new ProviderSubjectExportResult(ProviderExportOutcome.CandidateNotFound, null)
+            : new ProviderSubjectExportResult(ProviderExportOutcome.Exported, export with { ProviderExports = held });
+    }
+
+    /// <summary>
+    /// The candidate's provider subjects: those recorded on its attempts, plus the one the provider resolves for
+    /// (tenant, candidate id) whenever the candidate has attempts (a failed or crashed create can leave a subject no
+    /// attempt names). <see cref="ResolvedSubjects.Outcome"/> is set when they cannot be resolved.
+    /// </summary>
+    private async Task<ResolvedSubjects> ResolveSubjectsAsync(
+        Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
     {
         var known = await _repository.ListProviderSubjectsAsync(organizationId, candidateId, cancellationToken)
             .ConfigureAwait(false);
         if (known is null)
         {
-            return new ProviderErasureResult(ProviderErasureOutcome.CandidateNotFound, 0, 0);
+            return new ResolvedSubjects([], ProviderErasureOutcome.CandidateNotFound);
         }
 
         if (known.HasAttempts && !_provider.IsConfigured)
         {
-            return new ProviderErasureResult(ProviderErasureOutcome.ProviderUnconfigured, known.Subjects.Count, 0);
+            return new ResolvedSubjects(known.Subjects, ProviderErasureOutcome.ProviderUnconfigured);
         }
 
         var subjects = known.Subjects.ToList();
@@ -59,7 +125,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             var binding = await _repository.GetActiveBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
             if (binding is null)
             {
-                return new ProviderErasureResult(ProviderErasureOutcome.Incomplete, subjects.Count, 0);
+                return new ResolvedSubjects(subjects, ProviderErasureOutcome.Incomplete);
             }
 
             var request = new ProviderSubjectRequest(binding.ProviderTenantId, candidateId.ToString(), null, null, null, null);
@@ -67,7 +133,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
                 request, IdempotencyKeys.Subject(organizationId, request), cancellationToken).ConfigureAwait(false);
             if (!resolved.Ok)
             {
-                return new ProviderErasureResult(ProviderErasureOutcome.Incomplete, subjects.Count, 0);
+                return new ResolvedSubjects(subjects, ProviderErasureOutcome.Incomplete);
             }
 
             if (!subjects.Contains(resolved.Value!.SubjectId))
@@ -76,6 +142,21 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             }
         }
 
+        return new ResolvedSubjects(subjects, null);
+    }
+
+    private sealed record ResolvedSubjects(IReadOnlyList<Guid> Subjects, ProviderErasureOutcome? Outcome);
+
+    public async Task<ProviderErasureResult> EraseAsync(
+        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSubjectsAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false);
+        if (resolved.Outcome is { } failed)
+        {
+            return new ProviderErasureResult(failed, resolved.Subjects.Count, 0);
+        }
+
+        var subjects = resolved.Subjects;
         var requested = 0;
         foreach (var subject in subjects)
         {

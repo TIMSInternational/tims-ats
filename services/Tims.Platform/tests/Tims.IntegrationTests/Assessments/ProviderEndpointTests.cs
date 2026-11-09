@@ -379,7 +379,14 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, export.StatusCode);
         Assert.Equal("no-store", export.Headers.CacheControl?.ToString());
-        Assert.Equal("lia", (await ReadJson(export)).GetProperty("attempts")[0].GetProperty("instrument").GetString());
+        var exported = await ReadJson(export);
+        Assert.Equal("lia", exported.GetProperty("attempts")[0].GetProperty("instrument").GetString());
+        // D15 access includes what the provider holds: its own export for the recorded subject and the resolved one.
+        var held = exported.GetProperty("providerExports");
+        Assert.Equal(2, held.GetArrayLength());
+        Assert.Contains(held.EnumerateArray(), h => h.GetProperty("subjectId").GetGuid() == subject
+            && h.GetProperty("status").GetString() == "exported"
+            && h.GetProperty("export").GetProperty("subject").GetProperty("subject_id").GetGuid() == subject);
         Assert.Equal(HttpStatusCode.Accepted, erasure.StatusCode);
         // The recorded subject, plus the one the provider resolves for (tenant, candidate id) (this fake mints a new id).
         Assert.Equal(2, provider.ErasedSubjects.Count);
@@ -547,6 +554,14 @@ public sealed class ProviderEndpointTests(ProviderEndpointFixture fixture)
         {
             Calls.Enqueue("update_subject");
             return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(subjectId, "active", true)));
+        }
+
+        public Task<ProviderCall<ProviderHeldExport>> ExportSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("export_subject");
+            return Task.FromResult(ProviderCall<ProviderHeldExport>.Success(new ProviderHeldExport(subjectId,
+                "{\"subject\":{\"subject_id\":\"" + subjectId + "\"},\"generated_at\":\"2026-11-09T14:00:00Z\",\"consents\":[],"
+                + "\"assignments\":[],\"sessions\":[],\"results\":[],\"media\":[],\"access_log\":[]}")));
         }
 
         public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken)

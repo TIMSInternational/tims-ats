@@ -191,7 +191,8 @@ public sealed partial class AssessmentProviderRepository
     }
 
     public async Task<ProviderSubjectExport?> ExportCandidateAsync(
-        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, Guid candidateId, Guid actorId, int providerExports, DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         var exists = await _db.Candidates.AsNoTracking()
@@ -217,6 +218,7 @@ public sealed partial class AssessmentProviderRepository
         {
             ["attempts"] = attempts.Count,
             ["results"] = results.Count,
+            ["providerExports"] = providerExports,
         });
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);

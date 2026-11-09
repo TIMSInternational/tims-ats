@@ -4543,6 +4543,7 @@ export interface components {
         JoinBody: {
             token: string;
         };
+        JsonElement: unknown;
         JsonNode: unknown;
         JsonObject: Record<string, never>;
         KpiView: {
@@ -4989,6 +4990,12 @@ export interface components {
             /** Format: date-time */
             scoredAt: string;
         };
+        ProviderHeldSubjectExport: {
+            /** Format: uuid */
+            subjectId: string;
+            status: string;
+            export: null | components["schemas"]["JsonElement"];
+        };
         ProviderLaunchBody: {
             consents?: null | components["schemas"]["ProviderLaunchConsentBody"][];
         };
@@ -5007,6 +5014,7 @@ export interface components {
         ProviderSubjectExport: {
             attempts: components["schemas"]["ProviderExportAttempt"][];
             results: components["schemas"]["ProviderExportResult"][];
+            providerExports?: components["schemas"]["ProviderHeldSubjectExport"][];
         };
         PutTeamMemberBody: {
             role?: null | string;
@@ -11505,6 +11513,13 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

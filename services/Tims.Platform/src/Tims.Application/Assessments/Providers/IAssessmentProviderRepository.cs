@@ -200,10 +200,12 @@ public interface IAssessmentProviderRepository
 
     /// <summary>
     /// DSAR access (C# path): every provider attempt and stored result of one candidate, with a fail-closed audit row in
-    /// the same transaction. Null when the candidate is not in the org.
+    /// the same transaction (it also counts the <paramref name="providerExports"/> the provider returned for the
+    /// candidate's subjects, included by the caller). Null when the candidate is not in the org.
     /// </summary>
     Task<ProviderSubjectExport?> ExportCandidateAsync(
-        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken);
+        Guid organizationId, Guid candidateId, Guid actorId, int providerExports, DateTimeOffset now,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// The distinct provider subject ids recorded on one candidate's attempts, and whether any attempt exists at all
@@ -283,8 +285,22 @@ public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 
 public sealed record ProviderCandidateSubjects(IReadOnlyList<Guid> Subjects, bool HasAttempts);
 
+/// <summary>
+/// The DSAR access export: the ATS's own provider tables (<see cref="Attempts"/>, <see cref="Results"/>) and what the
+/// provider itself holds for each of the candidate's provider subjects (<see cref="ProviderExports"/>).
+/// </summary>
 public sealed record ProviderSubjectExport(
-    IReadOnlyList<ProviderExportAttempt> Attempts, IReadOnlyList<ProviderExportResult> Results);
+    IReadOnlyList<ProviderExportAttempt> Attempts, IReadOnlyList<ProviderExportResult> Results)
+{
+    public IReadOnlyList<ProviderHeldSubjectExport> ProviderExports { get; init; } = [];
+}
+
+/// <summary>
+/// One provider subject in a DSAR export. <see cref="Status"/>: <c>exported</c> (the provider's own <c>SubjectExport</c>
+/// document is <see cref="Export"/>), <c>erased</c> (410: the provider holds nothing any more) or <c>not_found</c> (a 404
+/// the provider's subject lookup confirmed).
+/// </summary>
+public sealed record ProviderHeldSubjectExport(Guid SubjectId, string Status, System.Text.Json.JsonElement? Export);
 
 public sealed record ProviderExportAttempt(
     Guid AttemptId,

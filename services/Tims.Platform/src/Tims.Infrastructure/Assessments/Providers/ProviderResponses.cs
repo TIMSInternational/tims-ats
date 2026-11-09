@@ -122,6 +122,30 @@ internal static partial class ProviderResponses
         return records;
     }
 
+    /// <summary>
+    /// <c>SubjectExport</c>: the subject named is the one asked for, <c>generated_at</c> is a timestamp, and the six
+    /// sections are arrays. Kept verbatim (the provider's own document); unknown extra fields are kept too.
+    /// </summary>
+    public static ProviderHeldExport? SubjectExport(JsonElement root, Guid subjectId)
+    {
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("subject", out var subject) || GuidOf(subject, "subject_id") != subjectId
+            || Timestamp(root, "generated_at") is null)
+        {
+            return null;
+        }
+
+        foreach (var section in new[] { "consents", "assignments", "sessions", "results", "media", "access_log" })
+        {
+            if (!root.TryGetProperty(section, out var items) || items.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+        }
+
+        return new ProviderHeldExport(subjectId, root.GetRawText());
+    }
+
     public static ProviderErasureReceipt? ErasureReceipt(JsonElement root) =>
         GuidOf(root, "subject_id") is { } subject && Str(root, "status") is { } status
         && status is "accepted" or "in_progress" or "completed"

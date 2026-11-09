@@ -16,6 +16,12 @@ public sealed class AssessmentProviderOptions
     public const string DefaultScopes = "catalog:read assignments:write subjects:write results:read";
 
     /// <summary>
+    /// The DSAR export's own scope, requested ALONE for that one call (the contract keeps it apart from
+    /// <c>results:read</c>: the export carries the subject's media links). The partner client must be allowed it.
+    /// </summary>
+    public const string ExportScope = "subjects:export";
+
+    /// <summary>
     /// The API base URL: an https origin or an https base path, e.g. <c>https://www.timssuite.com/api</c> (owner default
     /// D18: <c>/v1</c> stays mounted at <c>/api/v1</c>). Every call path (<c>v1/…</c>) is joined RELATIVE to it, so a
     /// base path is kept; a trailing slash is optional. Credentials, a query or a fragment make it invalid.
