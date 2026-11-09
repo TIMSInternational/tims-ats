@@ -154,16 +154,25 @@ public sealed class ProviderAttemptPollUseCase(
             changed = true;
         }
 
-        if (ProviderAttemptPolling.StateFor(assignment.Status) is { } toState
-            && ProviderAttemptStates.CanTransition(attempt.State, toState))
+        var toState = ProviderAttemptPolling.StateFor(assignment.Status) is { } mapped
+            && ProviderAttemptStates.CanTransition(attempt.State, mapped)
+                ? mapped
+                : null;
+        var at = toState switch
         {
-            var at = toState switch
-            {
-                ProviderAttemptStates.InProgress => assignment.StartedAt,
-                ProviderAttemptStates.Completed => assignment.CompletedAt,
-                ProviderAttemptStates.Voided => assignment.VoidedAt,
-                _ => null,
-            };
+            ProviderAttemptStates.InProgress => assignment.StartedAt,
+            ProviderAttemptStates.Completed => assignment.CompletedAt,
+            ProviderAttemptStates.Voided => assignment.VoidedAt,
+            _ => null,
+        };
+
+        // Round 11 (Codex r11 run 2): a voided assignment that advertises a result is voided only AFTER that result's
+        // fetch settles. Voiding first and then failing the fetch transiently would leave a voided attempt with no stored
+        // result, which no later poll selects, so the result (and any corrected revision) would never arrive without its
+        // webhook. While the fetch keeps failing transiently the attempt keeps its state and is polled again.
+        var deferVoid = toState == ProviderAttemptStates.Voided && assignment.ResultId is not null;
+        if (toState is not null && !deferVoid)
+        {
             changed |= await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, toState, at, now, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -174,6 +183,14 @@ public sealed class ProviderAttemptPollUseCase(
                 _repository, _provider, organizationId, polled.ProviderTenantId, attempt, resultId, now, cancellationToken)
                 .ConfigureAwait(false);
             changed |= intake.Status == InboxStatuses.Processed;
+            // A stored result decides validity through its revisions, and the repository refuses a lifecycle void on an
+            // attempt that holds one, so this void lands only when no result could be stored.
+            if (deferVoid && !intake.Retry)
+            {
+                changed |= await _repository.AdvanceAttemptAsync(
+                        organizationId, attempt.Id, ProviderAttemptStates.Voided, at, now, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         return changed;

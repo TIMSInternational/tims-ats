@@ -229,6 +229,43 @@ public sealed class ProviderAttemptPollUseCaseTests
         Assert.Equal((3, "valid"), (stored.ResultRevision, stored.ValidityStatus));
     }
 
+    // Round 11 (Codex r11 run 2, P2): a voided assignment advertising a result whose first fetch fails transiently is
+    // not voided yet (a voided attempt with no stored result is never polled again), and the next pass stores it.
+    [Fact]
+    public async Task A_void_waits_for_the_advertised_result_so_a_failed_first_fetch_is_retried_by_the_next_poll()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        var resultId = Guid.NewGuid();
+        _provider.OnGetAssignment = _ => AssignmentOf(attempt, "voided", resultId);
+        // First pass: the fake's default GetResult is an outage.
+
+        await Run();
+
+        Assert.Empty(_repository.StoredResults);
+        Assert.DoesNotContain("advance:voided", _repository.Writes);
+
+        // The poll interval passes: the attempt, still completed, is due again (a voided one with no result would not be).
+        Assert.Contains(ProviderAttemptStates.Completed, ProviderAttemptPolling.SittingStates);
+        _repository.Released.Clear();
+        _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(ResultFor(attempt, id, validity: "voided"));
+        await Run();
+
+        var stored = Assert.Single(_repository.StoredResults);
+        Assert.Equal((resultId, "voided"), (stored.ResultId, stored.ValidityStatus));
+    }
+
+    [Fact]
+    public async Task A_void_with_a_result_that_is_gone_still_lands()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        _provider.OnGetAssignment = _ => AssignmentOf(attempt, "voided", Guid.NewGuid());
+        _provider.OnGetResult = _ => ProviderCall<ParsedProviderResult>.Fail(new ProviderFailure(404, "not_found", false, []));
+
+        await Run();
+
+        Assert.Contains("advance:voided", _repository.Writes);
+    }
+
     [Fact]
     public async Task A_failing_organization_never_stops_the_others()
     {
