@@ -295,7 +295,17 @@ public sealed record ProviderConsentRequest(
     string Purpose, string TextVersion, string Locale, DateTimeOffset GrantedAt, string HostRecordRef,
     string ExternalVacancyRef);
 
-public sealed record ProviderConsentRecord(Guid ConsentId, string Purpose, string Status);
+/// <param name="ExternalVacancyRef">
+/// The consent's <c>scope.external_vacancy_ref</c>: the one vacancy it covers, or null for an unscoped consent (which covers
+/// every vacancy). The provider counts a consent toward an assignment only when it is unscoped or scoped to that
+/// assignment's vacancy.
+/// </param>
+public sealed record ProviderConsentRecord(Guid ConsentId, string Purpose, string Status, string? ExternalVacancyRef = null)
+{
+    /// <summary>Whether the provider counts this consent toward an assignment of <paramref name="externalVacancyRef"/>.</summary>
+    public bool Covers(string externalVacancyRef) =>
+        ExternalVacancyRef is null || string.Equals(ExternalVacancyRef, externalVacancyRef, StringComparison.Ordinal);
+}
 
 /// <summary>The names and email a link-out instrument needs, set on an existing subject (merge semantics).</summary>
 public sealed record ProviderSubjectUpdate(string GivenName, string FamilyName, string Email);

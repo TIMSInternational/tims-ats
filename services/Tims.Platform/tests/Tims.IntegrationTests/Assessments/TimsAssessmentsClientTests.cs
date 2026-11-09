@@ -639,6 +639,34 @@ public sealed class TimsAssessmentsClientTests
     private static string ConsentJson(Guid consent, string status) =>
         $$"""{"consent_id":"{{consent}}","subject_id":"7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d","tenant_id":"{{Tenant}}","purpose":"assessment","text_version":"v1","locale":"es","status":"{{status}}","granted_at":"2026-11-09T12:00:00Z","recorded_at":"2026-11-09T12:00:00Z","withdrawn_at":null,"capture_method":"host_ui"}""";
 
+    // Codex ats-final run 1 [P1]: the consent's scope decides which vacancy it covers, so the list must carry it (a decline
+    // for one vacancy withdraws only the consents that cover that vacancy), and a scope it cannot read fails the list.
+    [Theory]
+    [InlineData(",\"scope\":{\"external_vacancy_ref\":\"vac-a\"}", true, "vac-a")]
+    [InlineData(",\"scope\":{\"external_vacancy_ref\":null}", true, null)]
+    [InlineData(",\"scope\":null", true, null)]
+    [InlineData("", true, null)]
+    [InlineData(",\"scope\":\"vac-a\"", false, null)]
+    [InlineData(",\"scope\":{\"external_vacancy_ref\":42}", false, null)]
+    public async Task A_listed_consent_carries_its_vacancy_scope(string scopeJson, bool ok, string? vacancyRef)
+    {
+        var subject = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
+        var consent = Guid.NewGuid();
+        var json = ConsentJson(consent, "active");
+        var page = "{\"data\":[" + json[..^1] + scopeJson + "}],\"next_cursor\":null}";
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, page));
+
+        var result = await Client().ListConsentsAsync(subject, CancellationToken.None);
+
+        Assert.Equal(ok, result.Ok);
+        if (ok)
+        {
+            var listed = Assert.Single(result.Value!);
+            Assert.Equal(consent, listed.ConsentId);
+            Assert.Equal(vacancyRef, listed.ExternalVacancyRef);
+        }
+    }
+
     // Codex release review, round 1 [P1]: the #312 cascade read a consent-list 404 as "no consent" and a withdrawal
     // 404 as "nothing left", so a provider without those routes left active consents while the attempt was marked done.
     [Theory]

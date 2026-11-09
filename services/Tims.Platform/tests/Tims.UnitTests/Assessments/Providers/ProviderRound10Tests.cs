@@ -348,6 +348,32 @@ public sealed class ProviderRound10Tests
         Assert.Equal([ConsentPurposes.Voice], Assert.Single(_repository.OptionalDecisions).Declined);
     }
 
+    // Codex ats-final run 1 [P1]: the subject is shared across vacancies and the provider counts a consent only toward
+    // its own vacancy (or every vacancy when unscoped). Declining voice for vacancy B withdrew vacancy A's voice consent
+    // too, which voids A's sitting or result. Only the consents that cover THIS attempt's vacancy are withdrawn.
+    [Fact]
+    public async Task Declining_for_one_vacancy_leaves_another_vacancys_consent_alone()
+    {
+        var attempt = _repository.AddCreatedAttempt("english");
+        var thisVacancy = attempt.VacancyId.ToString();
+        var otherVacancy = Guid.NewGuid().ToString();
+        Guid scopedHere = Guid.NewGuid(), unscoped = Guid.NewGuid(), scopedElsewhere = Guid.NewGuid();
+        _provider.SubjectConsents[attempt.ProviderSubjectId!.Value] =
+        [
+            new ProviderConsentRecord(scopedElsewhere, ConsentPurposes.Voice, "active", otherVacancy),
+            new ProviderConsentRecord(scopedHere, ConsentPurposes.Voice, "active", thisVacancy),
+            new ProviderConsentRecord(unscoped, ConsentPurposes.Voice, "active"),
+        ];
+
+        var result = await new LaunchProviderAttemptUseCase(_repository, _provider).LaunchAsync(
+            attempt.Id, "ana@example.com", [], Now, CancellationToken.None, declinedOptional: [ConsentPurposes.Voice]);
+
+        Assert.Equal(LaunchOutcome.Launched, result.Outcome);
+        var subject = attempt.ProviderSubjectId.Value;
+        Assert.Equal([(subject, scopedHere), (subject, unscoped)], _provider.WithdrawnConsents);
+        Assert.DoesNotContain((subject, scopedElsewhere), _provider.WithdrawnConsents);
+    }
+
     [Fact]
     public async Task A_decline_the_provider_cannot_confirm_records_nothing_and_launches_nothing()
     {

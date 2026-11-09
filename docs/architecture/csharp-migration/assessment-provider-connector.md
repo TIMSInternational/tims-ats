@@ -219,6 +219,9 @@ a single-use launch code: it goes to the candidate's own response body only, and
 - **Erasure.** An attempt whose provider subject has an accepted erasure is never launched again: refused before any
   consent capture (the capture announcement is conditional on it too), under the locks, and by the same conditional
   record if the erasure is accepted during the provider call (it marks the attempt under the subject lock only).
+  The ATS's own stored results for the subject are erased as soon as the provider accepts the request (or confirms
+  the subject gone), never waiting on `subject.erased`: that event may never arrive, and the poller skips attempts
+  under an erasure request. Its handler repeats the local erasure idempotently when it lands.
 - **Portal status (D9).** A finished attempt that holds a result shows as completed even when a later revision voided
   it; "needs review" is only a sitting voided before any result (D4).
 

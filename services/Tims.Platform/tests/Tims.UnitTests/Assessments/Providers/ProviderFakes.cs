@@ -256,7 +256,7 @@ internal sealed class FakeProvider : IAssessmentProvider
             return Task.FromResult(hook());
         }
 
-        var record = new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active");
+        var record = new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active", request.ExternalVacancyRef);
         if (!SubjectConsents.TryGetValue(subjectId, out var list))
         {
             SubjectConsents[subjectId] = list = [];

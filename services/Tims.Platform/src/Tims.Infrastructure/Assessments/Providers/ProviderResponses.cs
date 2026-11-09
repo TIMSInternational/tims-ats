@@ -161,9 +161,33 @@ internal static partial class ProviderResponses
 
     public static ProviderConsentRecord? Consent(JsonElement root) =>
         GuidOf(root, "consent_id") is { } id && Str(root, "purpose") is { } purpose && ConsentPurposes.IsKnown(purpose)
-        && Str(root, "status") is { } status
-            ? new ProviderConsentRecord(id, purpose, status)
+        && Str(root, "status") is { } status && ConsentScope(root, out var vacancyRef)
+            ? new ProviderConsentRecord(id, purpose, status, vacancyRef)
             : null;
+
+    // scope absent or null, or scope.external_vacancy_ref absent or null: unscoped (true, null). A scope that is present
+    // but malformed fails the record: which vacancy a consent covers decides what a decline withdraws.
+    private static bool ConsentScope(JsonElement root, out string? vacancyRef)
+    {
+        vacancyRef = null;
+        if (!root.TryGetProperty("scope", out var scope) || scope.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        if (scope.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!scope.TryGetProperty("external_vacancy_ref", out var node) || node.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        vacancyRef = Str(scope, "external_vacancy_ref", 128);
+        return vacancyRef is not null;
+    }
 
     public static IReadOnlyList<ProviderConsentRecord>? ConsentList(JsonElement root)
     {

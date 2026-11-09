@@ -273,14 +273,31 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         Assert.Equal(_provider.ErasedSubjects, _repository.LocallyErasedSubjects); // every subject the provider confirmed gone
     }
 
+    // Codex ats-final run 1 [P1]: an ACCEPTED erasure used to wait for subject.erased to delete the ATS's stored results.
+    // That event can be lost (its delivery exhausts its retries) and the poller skips attempts under an erasure request,
+    // so the ATS kept the results indefinitely after answering 202. The local copy is now erased at once.
     [Fact]
-    public async Task An_accepted_erasure_waits_for_the_providers_subject_erased_event()
+    public async Task An_accepted_erasure_erases_the_ats_copy_at_once_without_waiting_for_subject_erased()
     {
-        _repository.AddCreatedAttempt("lia");
+        var attempt = _repository.AddCreatedAttempt("lia");
 
         var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 
         Assert.Equal(ProviderErasureOutcome.Requested, result.Outcome);
+        Assert.Contains(attempt.ProviderSubjectId!.Value, _repository.LocallyErasedSubjects);
+        // Every subject whose erasure the provider accepted, and only after its request was recorded.
+        Assert.Equal(_provider.ErasedSubjects, _repository.LocallyErasedSubjects);
+        Assert.True(_repository.Writes.IndexOf("erase") > _repository.Writes.FindIndex(w => w.StartsWith("erasure_requested:", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task An_erasure_the_provider_did_not_accept_erases_nothing_locally()
+    {
+        _repository.AddCreatedAttempt("lia");
+        _provider.OnEraseSubject = _ => ProviderCall<ProviderErasureReceipt>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+
+        await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
         Assert.Empty(_repository.LocallyErasedSubjects);
     }
 

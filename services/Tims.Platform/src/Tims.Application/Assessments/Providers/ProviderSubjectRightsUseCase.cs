@@ -36,10 +36,10 @@ public sealed record ProviderSubjectExportResult(ProviderExportOutcome Outcome, 
 /// audited (retry later); a subject the provider confirms it no longer holds is listed as <c>erased</c> or
 /// <c>not_found</c>. The audit row is committed with the export.</item>
 /// <item><b>Erasure.</b> ATS-initiated: <c>DELETE /v1/subjects/{id}</c> for every provider subject of the candidate. The
-/// provider erases asynchronously and then emits <c>subject.erased</c>, whose existing handler deletes the ATS's stored
-/// results. A subject the provider confirms it no longer holds (410, or a 404 its lookup confirms) emits no such event, so
-/// the ATS erases its own stored results for it at once. From the accepted request on, no result is fetched or stored for
-/// those attempts.</item>
+/// provider erases asynchronously and then emits <c>subject.erased</c>. The ATS erases its own stored results for the
+/// subject as soon as the request is accepted (or the provider confirms the subject gone, 410 or a 404 its lookup
+/// confirms), never waiting on that event, which may be lost. From the accepted request on, no result is fetched or stored
+/// for those attempts.</item>
 /// </list>
 /// </summary>
 public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
@@ -195,12 +195,11 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
 
             await _repository.MarkErasureRequestedAsync(organizationId, candidateId, subject, status, actorId, now, cancellationToken)
                 .ConfigureAwait(false);
-            if (!erased.Ok)
-            {
-                // A CONFIRMED 410/404 (the client confirms a 404 with the subject lookup): the provider holds nothing, so no
-                // subject.erased event will follow to delete what the ATS stored. Erase locally now, as that handler does.
-                await _repository.EraseSubjectAsync(organizationId, subject, now, cancellationToken).ConfigureAwait(false);
-            }
+            // The ATS's own copy is erased NOW, for an accepted request as for a confirmed 410/404: it never depends on
+            // the provider's subject.erased event, which may never arrive (a delivery that exhausts its retries, or no
+            // event at all for a subject already gone) and which the D17 poller cannot replace (it skips attempts under
+            // an erasure request). That event's handler, when it lands, repeats this idempotently.
+            await _repository.EraseSubjectAsync(organizationId, subject, now, cancellationToken).ConfigureAwait(false);
 
             requested++;
         }

@@ -271,10 +271,13 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
     }
 
     // A declined optional purpose must not stay active at the provider (an earlier attempt of this subject may have
-    // granted it): every ACTIVE consent of the subject for a declined purpose is withdrawn before the launch. A 404/410
+    // granted it): every ACTIVE consent of the subject for a declined purpose that COVERS this attempt's vacancy (unscoped,
+    // or scoped to it) is withdrawn before the launch. A consent scoped to ANOTHER vacancy is left alone: the provider
+    // never counts it toward this assignment, and withdrawing it would void that vacancy's sitting or result. A 404/410
     // means there is nothing to withdraw. False when the provider could not confirm it.
     private async Task<bool> WithdrawDeclinedAsync(
-        Guid subjectId, IReadOnlyList<string> declined, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid subjectId, string vacancyRef, IReadOnlyList<string> declined, DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         var consents = await _provider.ListConsentsAsync(subjectId, cancellationToken).ConfigureAwait(false);
         if (!consents.Ok)
@@ -282,7 +285,7 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return consents.Failure!.HttpStatus is 404 or 410;
         }
 
-        foreach (var consent in consents.Value!.Where(c => c.Status == "active" && declined.Contains(c.Purpose)))
+        foreach (var consent in consents.Value!.Where(c => c.Status == "active" && declined.Contains(c.Purpose) && c.Covers(vacancyRef)))
         {
             var withdrawn = await _provider.WithdrawConsentAsync(subjectId, consent.ConsentId, now, cancellationToken)
                 .ConfigureAwait(false);
@@ -314,7 +317,7 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
         }
 
         if (declined.Count > 0 && attempt.ProviderSubjectId is { } subjectId
-            && !await WithdrawDeclinedAsync(subjectId, declined, now, cancellationToken).ConfigureAwait(false))
+            && !await WithdrawDeclinedAsync(subjectId, attempt.VacancyId.ToString(), declined, now, cancellationToken).ConfigureAwait(false))
         {
             return ProviderCall<ProviderLaunch>.Fail(new ProviderFailure(null, "optional_consent_withdrawal_failed", true, []));
         }
