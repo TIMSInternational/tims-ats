@@ -104,10 +104,11 @@ public sealed record PortalAttemptsResponse(IReadOnlyList<PortalAttemptView> Att
 /// <summary>One attempt in the candidate portal. <c>Status</c> is one of <see cref="ProviderPortalStatuses"/>.</summary>
 public sealed record PortalAttemptView(
     Guid AttemptId, string Instrument, string Status, IReadOnlyList<string> MissingConsents, DateTimeOffset? ExpiresAt,
-    string Delivery)
+    string Delivery, Guid VacancyId)
 {
     public static PortalAttemptView From(PortalAttempt attempt) =>
-        new(attempt.AttemptId, attempt.Instrument, attempt.Status, attempt.MissingConsents, attempt.ExpiresAt, attempt.Delivery);
+        new(attempt.AttemptId, attempt.Instrument, attempt.Status, attempt.MissingConsents, attempt.ExpiresAt, attempt.Delivery,
+            attempt.VacancyId);
 }
 
 public sealed record PortalConsentTemplatesResponse(IReadOnlyList<ProviderConsentTemplate> Templates);

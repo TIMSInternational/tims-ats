@@ -84,7 +84,7 @@ export function PortalDashboardShell({
             {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
             {!pilot && <DashboardAssessments orgSlug={orgSlug} />}
             {/* AS-5 / D16: provider assessments (C# only), dark unless NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP. */}
-            {!pilot && isProviderAssessmentsPortalEnabled() && <DashboardProviderAssessments orgSlug={orgSlug} />}
+            {!pilot && isProviderAssessmentsPortalEnabled() && <DashboardProviderAssessments orgSlug={orgSlug} orgName={orgName} />}
             <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
             {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
             {profile && <DashboardProfile orgSlug={orgSlug} profile={profile} />}

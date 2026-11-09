@@ -50,11 +50,14 @@ export function ProviderAssessmentItem({
   busy,
   failureKey,
   consentOpen,
+  notice,
   onOpenConsent,
   onCancelConsent,
   onStart,
 }: {
   attempt: PortalProviderAttempt;
+  /** The organization's name and this attempt's vacancy title, for the consent notice. */
+  notice: { orgName: string; vacancyTitle: string };
   t: PortalMessages;
   deadline: string | null;
   busy: boolean;
@@ -89,6 +92,7 @@ export function ProviderAssessmentItem({
           <ProviderAssessmentConsent
             attemptId={attempt.attemptId}
             busy={busy}
+            notice={{ ...notice, instrumentName: name }}
             onAccept={onStart}
             onCancel={onCancelConsent}
           />

@@ -5037,6 +5037,8 @@ export interface components {
             /** Format: date-time */
             expiresAt: null | string;
             delivery: string;
+            /** Format: uuid */
+            vacancyId: string;
         };
         PortalConsentTemplatesResponse: {
             templates: components["schemas"]["ProviderConsentTemplate"][];

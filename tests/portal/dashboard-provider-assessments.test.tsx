@@ -26,6 +26,19 @@ vi.mock('../../apps/web/lib/assessment-player-launch', async (original) => ({
 }));
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal('fetch', fetchMock);
+const VACANCY = '44444444-4444-4444-8444-444444444444';
+// "My applications" (tRPC): the consent notice names each assessment's vacancy from it.
+vi.mock('../../apps/web/lib/trpc', () => ({
+  trpc: {
+    candidatePortal: {
+      myApplications: {
+        useQuery: () => ({
+          data: [{ vacancy: { id: '44444444-4444-4444-8444-444444444444', title: 'Data Analyst' } }],
+        }),
+      },
+    },
+  },
+}));
 
 import { DashboardProviderAssessments } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-provider-assessments';
 
@@ -40,6 +53,7 @@ const attempt = (status: string, extra: Record<string, unknown> = {}) => ({
   missingConsents: [],
   expiresAt: '2026-11-20T15:00:00Z',
   delivery: 'native',
+  vacancyId: VACANCY,
   ...extra,
 });
 
@@ -70,7 +84,7 @@ function renderSection(locale: 'EN' | 'ES' = 'EN') {
   return render(
     <QueryClientProvider client={client}>
       <I18nProvider>
-        <DashboardProviderAssessments orgSlug="acme" />
+        <DashboardProviderAssessments orgSlug="acme" orgName="Acme Corp" />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -217,10 +231,19 @@ describe('DashboardProviderAssessments', () => {
     fireEvent.click(await screen.findByRole('button', { name: m.providerReviewConsent }));
     expect(await screen.findByText('<b>Plain</b> text only.')).toBeInTheDocument(); // never parsed as HTML
     expect(screen.getByText('Who sees it')).toBeInTheDocument();
+    // Design §6.3: the organization's own notice comes first: TIMS Assessments named, the purpose "selection for
+    // vacancy X", marked as a draft pending counsel (D22).
+    const notice = screen.getByTestId('assessment-consent-notice');
+    expect(notice).toHaveTextContent('TIMS Assessments');
+    expect(notice).toHaveTextContent('Acme Corp');
+    expect(notice).toHaveTextContent(en.assessmentConsentNotice.purpose.replace('{vacancy}', 'Data Analyst'));
+    expect(notice).toHaveTextContent(en.assessmentConsentNotice.draftBanner);
     const accept = screen.getByRole('button', { name: m.providerAcceptAndStart });
     expect(accept).toBeDisabled();
 
     fireEvent.click(screen.getByLabelText(m.providerConsentAccept));
+    expect(accept).toBeDisabled(); // the notice is not read yet
+    fireEvent.click(screen.getByLabelText(en.assessmentConsentNotice.readAck));
     expect(accept).toBeEnabled();
     fireEvent.click(accept);
 

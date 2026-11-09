@@ -16191,7 +16191,8 @@
           "status",
           "missingConsents",
           "expiresAt",
-          "delivery"
+          "delivery",
+          "vacancyId"
         ],
         "type": "object",
         "properties": {
@@ -16220,6 +16221,10 @@
           },
           "delivery": {
             "type": "string"
+          },
+          "vacancyId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

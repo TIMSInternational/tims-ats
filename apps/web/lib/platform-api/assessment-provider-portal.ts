@@ -33,6 +33,8 @@ const portalAttemptSchema = z
     missingConsents: z.array(z.enum(CONSENT_PURPOSES)).max(4),
     expiresAt: z.string().max(40).datetime({ offset: true }).nullable(),
     delivery: z.enum(['native', 'link_out']),
+    /** The candidate's own application's vacancy, named in the consent notice. */
+    vacancyId: z.string().uuid(),
   })
   .strict();
 

@@ -53,10 +53,13 @@ public static class ProviderPortalStatuses
     }
 }
 
-/// <summary>One attempt as the candidate portal lists it. No scores, validity, reasons or provider ids leave.</summary>
+/// <summary>
+/// One attempt as the candidate portal lists it. No scores, validity, reasons or provider ids leave. The vacancy id is the
+/// candidate's own application's: the portal names the vacancy in the consent notice (purpose "selection for vacancy X").
+/// </summary>
 public sealed record PortalAttempt(
     Guid AttemptId, string Instrument, string Status, IReadOnlyList<string> MissingConsents, DateTimeOffset? ExpiresAt,
-    string Delivery);
+    string Delivery, Guid VacancyId = default);
 
 public enum PortalOutcome
 {
@@ -107,7 +110,8 @@ public sealed class ProviderPortalUseCase(IAssessmentProviderRepository reposito
             .Select(x => new PortalAttempt(
                 x.Attempt.Id, x.Attempt.Instrument, x.Status!,
                 x.Status == ProviderPortalStatuses.ConsentNeeded ? x.Attempt.MissingConsents ?? [] : [],
-                x.Attempt.ExpiresAt, ProviderInstruments.IsLinkOut(x.Attempt.Instrument) ? "link_out" : "native"))
+                x.Attempt.ExpiresAt, ProviderInstruments.IsLinkOut(x.Attempt.Instrument) ? "link_out" : "native",
+                x.Attempt.VacancyId))
             .ToList();
         return new PortalList(PortalOutcome.Ok, listed);
     }

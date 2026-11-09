@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { ErrorState, Skeleton } from '../../../../../components';
+import { ErrorState } from '../../../../../components';
+import { CandidateDetailSkeleton } from './candidate-detail-skeleton';
+import { ProviderAssessmentsCard } from './provider-assessments-card';
 import { CandidateHeader } from './candidate-header';
 import { ApplicationsCard, PersonalInfoCard, ProfileTab } from './profile-tab';
 import { AssessmentResults } from './assessment-results';
@@ -75,28 +77,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const csharpFitScores = useCandidateFitScoresViaCsharp(id);
   const timeline = trpc.candidate.getTimeline.useQuery({ candidateId: id });
 
-  if (candidate.isLoading) {
-    return (
-      <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex items-center px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
-          <Skeleton className="h-5 w-64 rounded" />
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          <Skeleton className="h-40 w-full rounded-xl mb-6" />
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:flex-[60] space-y-4">
-              <Skeleton className="h-48 w-full rounded-xl" />
-              <Skeleton className="h-32 w-full rounded-xl" />
-            </div>
-            <div className="w-full md:flex-[40] space-y-4">
-              <Skeleton className="h-64 w-full rounded-xl" />
-              <Skeleton className="h-32 w-full rounded-xl" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (candidate.isLoading) return <CandidateDetailSkeleton />;
 
   if (candidate.isError) {
     return (
@@ -157,6 +138,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               {showAssessments && c.assessmentAssignments.length > 0 && (
                 <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
               )}
+              {showAssessments && <ProviderAssessmentsCard candidateId={id} applications={c.applications} />}
               {c.fitScores.length > 0 && <FitBreakdown fitScores={c.fitScores} />}
               <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
               <CvParseCard candidateId={id} />
@@ -180,10 +162,15 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
           <EmptyTabPanel title={tabLabels.tabApplications} message={empty} />
         );
       case 'tabAssessments':
-        return c.assessmentAssignments.length > 0 ? (
-          <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
-        ) : (
-          <EmptyTabPanel title={tabLabels.tabAssessments} message={empty} />
+        return (
+          <div className="space-y-4">
+            <ProviderAssessmentsCard candidateId={id} applications={c.applications} />
+            {c.assessmentAssignments.length > 0 ? (
+              <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
+            ) : (
+              <EmptyTabPanel title={tabLabels.tabAssessments} message={empty} />
+            )}
+          </div>
         );
       case 'tabInterviews':
         return <CandidateInterviewsTab key={interviewsVersion} candidateId={id} onSchedule={openSchedule} />;

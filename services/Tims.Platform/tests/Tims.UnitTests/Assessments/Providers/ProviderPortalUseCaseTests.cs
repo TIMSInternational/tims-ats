@@ -72,6 +72,8 @@ public sealed class ProviderPortalUseCaseTests
         var first = list.Attempts.Single(a => a.Instrument == "lia");
         Assert.Equal((ProviderPortalStatuses.ConsentNeeded, "native"), (first.Status, first.Delivery));
         Assert.Equal(["assessment", "ai_scoring"], first.MissingConsents);
+        // The candidate's own application's vacancy: the portal names it in the consent notice.
+        Assert.Equal(FakeRepository.Vacancy, first.VacancyId);
         var second = list.Attempts.Single(a => a.Instrument == "pca");
         Assert.Equal((ProviderPortalStatuses.InProgress, "link_out"), (second.Status, second.Delivery));
         Assert.Empty(second.MissingConsents);

@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../../../lib/i18n';
+import { trpc } from '../../../../../lib/trpc';
 import { PlatformApiError } from '../../../../../lib/platform-api/client';
 import {
   launchProviderAttempt,
@@ -33,10 +34,13 @@ export function launchErrorKey(error: unknown): keyof PortalMessages {
   return 'providerLaunchError';
 }
 
-export function DashboardProviderAssessments({ orgSlug }: { orgSlug: string }) {
+export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: string; orgName: string }) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useMyProviderAssessments(orgSlug);
+  // The same (cached) read as "My applications": the consent notice names the vacancy of each assessment.
+  const applications = trpc.candidatePortal.myApplications.useQuery({ orgSlug });
+  const vacancyTitles = new Map((applications.data ?? []).map((a) => [a.vacancy.id, a.vacancy.title]));
   const [consentFor, setConsentFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ attemptId: string; key: keyof PortalMessages } | null>(null);
@@ -110,6 +114,7 @@ export function DashboardProviderAssessments({ orgSlug }: { orgSlug: string }) {
               busy={busy === attempt.attemptId}
               failureKey={failure?.attemptId === attempt.attemptId ? failure.key : null}
               consentOpen={consentFor === attempt.attemptId}
+              notice={{ orgName, vacancyTitle: vacancyTitles.get(attempt.vacancyId) ?? '' }}
               onOpenConsent={() => setConsentFor(attempt.attemptId)}
               onCancelConsent={() => setConsentFor(null)}
               onStart={(consents) => void start(attempt, consents)}

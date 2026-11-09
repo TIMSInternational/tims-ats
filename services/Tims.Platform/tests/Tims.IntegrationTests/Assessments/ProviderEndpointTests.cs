@@ -447,6 +447,7 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
         Assert.Equal(ProviderEndpointFixture.LaunchAttempt, attempt.GetProperty("attemptId").GetGuid());
         Assert.Equal("lia", attempt.GetProperty("instrument").GetString());
         Assert.Equal("native", attempt.GetProperty("delivery").GetString());
+        Assert.Equal(ProviderEndpointFixture.VacancyA, attempt.GetProperty("vacancyId").GetGuid());
         Assert.Contains(attempt.GetProperty("status").GetString(), new[] { "ready", "consent_needed", "in_progress" });
         Assert.False(attempt.TryGetProperty("providerAssignmentId", out _));
         Assert.Empty((await ReadJson(theirs)).GetProperty("attempts").EnumerateArray());
