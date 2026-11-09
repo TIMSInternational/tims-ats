@@ -223,8 +223,11 @@ the connector off, a provider instrument a vacancy lists shows as `no_result`.
 
 It reads the provider tables on their own connection, under `TenantScope`, while FIT v2 holds its
 per-(organization, candidate, vacancy) advisory lock, so a compute that follows another compute's commit reads every
-provider result committed before its read. Nothing recomputes FIT when a provider result arrives; the next compute
-picks it up, as for every other FIT input.
+provider result committed before its read. A provider attempt's state change or a stored provider result now
+enqueues a FIT v2 recompute of that candidate's row for the vacancy, in the same transaction (EF migration
+`20261109011531_fit_v2_provider_recompute`, triggers only, no model change; it calls the Prisma-owned
+`fit_v2_request_recompute` only when that function exists, so the two migrations apply in either order). See
+`fit-v2-per-instrument.md`, "Recompute on change".
 
 ## Unconfirmed 404s
 

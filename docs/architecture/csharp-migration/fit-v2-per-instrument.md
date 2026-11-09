@@ -1,6 +1,6 @@
 # FIT v2: per-instrument assessment fit (C# only, flag-gated)
 
-> Status: built and tested, **dark**. Nothing is enabled anywhere.
+> Status: built and tested, **dark**. Nothing is enabled anywhere. Two migrations are unapplied (see Rollout notes).
 > Flag: `Platform:FitEngineV2Enabled` (env `Platform__FitEngineV2Enabled`, terraform `feature_flags.fit_engine_v2`),
 > default `false`. It is inert unless `Platform:FitEngineWriteEnabled` also maps the compute route.
 > Code: `Tims.Domain/FitEngine/FitV2Kernels.cs` (rules), `FitV2Models.cs`,
@@ -56,6 +56,13 @@ equal split). Both are silent until a C#-owned writer validates the configuratio
 
 ## Rules
 
+**LIA is a minimum threshold only (owner default D20, 2026-11-08).** Until TIMS confirms the LIA norms (norm
+population, Working Memory ceiling, global-percentile formula; assessment-platform design §6.3), a SCORED LIA entry is
+evaluated as a GATE on the same minimum (`FitV2Kernels.ApplyLiaThresholdPolicy`): met / not met / unknown, never a
+number and never a rejection, its weight dropped so the other scored instruments split the assessment weight. The
+stored configuration is unchanged and the requirements writer reports `lia_threshold_only`; turning on
+`Platform:FitEngineLiaScoredEnabled` (default false) restores the curve below at the next compute.
+
 | Instrument           | Fit (0–100)                                                                           | Gate              |
 | -------------------- | ------------------------------------------------------------------------------------- | ----------------- |
 | lia                  | `min(100, round(p / min × 100))`, 100 when min ≤ 0 (the experience curve)             | p ≥ min           |
@@ -68,6 +75,11 @@ equal split). Both are silent until a C#-owned writer validates the configuratio
 
 - **Latest per instrument.** Results are grouped by instrument; the most recent (completedAt DESC, nulls last,
   then result id) is the one judged, even when it needs review.
+- **Several native quizzes.** A native quiz result carries its quiz (`assessment_type_id`) as its variant. The
+  `native_quiz` entry judges the most recent result of EACH quiz the candidate sat for the vacancy
+  (`FitV2Kernels.CombineVariants`): if any of them needs review, the instrument needs review (never a mean of the rest);
+  otherwise its value is the mean normalized score of those with one. Before this, a second quiz hid the first. The
+  entry then lists every combined id in `resultIds` (most recent first; `resultId` is the most recent).
 - **Integrity.** A result that is voided, flagged or awaiting review shows as `needs_review`, its gate as
   `unknown`, and it is excluded from the `assessment` dimension: it is never read as a low instrument score. A
   valid result without the judged value (e.g. a partial LIA battery with no global percentile) shows as
@@ -168,9 +180,20 @@ unit; `FitV2Visibility`): a scored entry with a minimum whose fit is under 100 l
 those fits; the ranking's overall is recomputed from the dimensions that remain (and the row marked partial), and
 the list re-sorted, since the stored overall would invert as well; simulateWeights runs over the redacted
 breakdown. English (D3) feeds only `languages`, which says covered or not, i.e. exactly "below minimum", so it
-stays. **Not covered:** the TS reads that still serve the web app (`fitEngine.getRankingForVacancy`,
-`fitEngine.explainFit`, and `candidate.getById`, which returns the breakdown) live in `packages/api` and are not
-redacted; see Rollout.
+stays.
+
+**D6 on every FIT read the web app makes (release slice "fit").** Under `NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP` the
+vacancy ranking, its what-if and its Compute button use the C# routes, and the candidate page (header, breakdown and
+assessment panels) reads `GET /fit-engine/candidates/{id}/fit-scores` (fit_engine:read, the vacancy scope probe per
+row, #312 rows hidden, the same redaction). The TS reads stay callable until they are deleted, so they apply the same
+rule: `@tims/ai` `fit-visibility.ts` is the TS twin of `FitV2Visibility` + the overall recompute, run on the same
+golden file (`contracts/fit-v2-fixtures/visibility.json`) by both stacks, and minimal call-site guards in
+`packages/api` apply it to `fitEngine.getRankingForVacancy` (re-sorted), `simulateWeights`, `explainFit` (the
+explainer is told `belowMinimum` and never to guess a level) and `candidate.getById`'s `fitScores`; the stored weights
+are read for the recompute and never returned. **Still exposed to a narrow reader:** the stored OVERALL score on the
+TS list surfaces (`candidate.list`, the pipeline cards, the talent pool, `candidate.getRisks`), which with the
+redacted dimensions and the weight profiles can be inverted to the hidden assessment dimension; and the native
+quiz's own `normalizedScore`/percentile on the candidate page's assessment panel (pre-existing, `candidate:read`).
 
 ## Result sources (`IAssessmentResultSource`)
 
@@ -186,16 +209,14 @@ redacted; see Rollout.
   Adds `proctoring_sessions` to `efcoreReadOnly[]` (SELECT only).
   - **The proctoring rule is inert today.** Nothing on main creates a `proctoring_sessions` row (the TS
     `assessment.flagProctoring` only updates an existing session and returns NOT_FOUND without one).
-  - **"Cancelled with a result" is rare but reachable.** The result row and `completed` are written in one
-    submission transaction, and `assessment.cancel` (`packages/api/src/routers/assessment.ts`) first checks that
-    the assignment is `assigned` or `in_progress`. But it then updates by id with no status predicate, so a
-    submission that commits between the check and the update leaves a `cancelled` assignment that holds a result.
-    v2 reads that as needs review, which is the intended outcome. The TOCTOU itself is a TS bug (the update
-    should carry the status predicate); it is outside this PR (survival rule) and tracked as a follow-up.
-  - **The severity a reviewer would clear never goes down.** `flagProctoring` only raises `severity` to the
-    maximum seen. Once sessions exist, an attempt a person reviewed and cleared would stay `needs_review` for
-    good. Before a session writer ships (the proctoring work adds `proctoring_sessions.review_status` and
-    per-event severity), define the review-completion signal and read it here, so a cleared result counts again.
+  - **"Cancelled with a result" no longer happens.** `assessment.cancel` now writes with the status predicate
+    (`updateMany … status IN ('assigned','in_progress')`, CONFLICT on 0 rows), so a submission that commits between
+    its check and its write wins. A pre-existing cancelled-with-result row still reads as needs review.
+  - **The review-completion signal is `proctoring_sessions.review_status`** (migration 20261109100000_fit_v2_integrity,
+    the same definition as the proctoring branch, CHECK `unreviewed | clear | concern | inconclusive`). `clear` (a
+    person reviewed the session and found no concern) releases the result whatever the severity; `concern`,
+    `inconclusive` or an unknown value always hold it; `unreviewed` holds it only at `high`/`critical`. The writer of
+    the review is the proctoring branch's review UI; nothing on this release sets it yet.
 - `ProviderFitResultSource` (release/assessments-fit-provider): an adapter over the AS-5 connector's
   `IProviderAssessmentResultSource`, whose `ProviderFitMapping` reads the stored typed results (`LiaResultV1`
   global percentile, `EnglishResultV1` CEFR, `ItciaResultV1` level; advisory instruments carry no value) and decides
@@ -215,26 +236,52 @@ redacted; see Rollout.
      dropped or changed entry (a non-empty array with no valid entry is refused). Under
      `NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP` the requirements card saves through it, without an `assessments` key.
      **Still open:** a web editor for the array itself (today it can only be set through the C# endpoint).
-  2. **Partly done — readers that mark `reviewPending`:** the candidate header and banner, the candidate table and
-     the talent-pool table (above); the ranking and the pipeline views flag `isPartial`. **Still open:** the
-     candidate page's breakdown and assessment panels.
-  3. **D6 on every surface a team leader can reach.** The C# reads redact (above). The web app still reads fit data
-     through `packages/api` (`fitEngine.getRankingForVacancy`, `fitEngine.explainFit`, `candidate.getById`), which
-     the survival rule does not let this PR change: those reads must move to C# (an FE wrapper over the C# fit-engine
-     reads, `FitEngineReadEnabled`) or be retired before a vacancy is configured.
-  4. **A review-completion signal** read by the ATS adapter before any proctoring-session writer ships.
-  5. **The DEI / LIA-norm checks** below.
+  2. **Done — readers that mark `reviewPending`:** the candidate header and banner, the candidate table and the
+     talent-pool table, and (release slice "fit") the candidate page's breakdown panel (the provisional badge and one
+     line per instrument: needs review, below minimum, gate state, advisory, score) and assessment panel (each
+     assignment a stored score holds as needs review); the ranking and the pipeline views flag `isPartial`.
+  3. **Done for the three reads that show the breakdown — D6** (above): the web app reads ranking, what-if and the
+     candidate page's fit scores from C# under the flag, and the TS reads apply the same rule while they exist.
+     **Still open:** the stored overall on the TS list surfaces and the quiz's own score on the assessment panel
+     (above).
+  4. **Done — the review-completion signal** (`proctoring_sessions.review_status`), read by the ATS adapter; its
+     writer ships with the proctoring branch.
+  5. **Done — recompute on change, and the TS writers kept off v2 rows** (below). **Still open:** the DEI
+     adverse-impact check (owner step before gates go live) and TIMS's confirmation of the LIA norms (until then LIA
+     is a threshold gate, above).
+  6. **Migrations to apply first** (unapplied): Prisma `20261109100000_fit_v2_integrity` (review column, the
+     `fit_scores_keep_v2` trigger, the queue and its triggers) BEFORE the C# service runs with
+     `FitEngineV2Enabled`, then `db/manual/20261109011531_fit_v2_provider_recompute.sql` (provider triggers; safe in
+     either order).
+- **Recompute on change (release slice "fit").** Database triggers enqueue a request in `fit_recompute_requests`
+  (Prisma-owned) in the same transaction that changes an input a FIT v2 row depends on: `assessment_assignments.status`
+  (a cancel, a completion), `assessment_results` (a submission, a grade), `proctoring_sessions` (a flag, a review) and,
+  through EF migration 20261109011531_fit_v2_provider_recompute, a provider attempt's state or a stored provider result
+  — for vacancies configured for FIT v2 only (their job profile has an `assessments` key). Each change bumps the
+  request's sequence. `FitRecomputeHostedService` (registered only with `FitEngineWriteEnabled` AND `FitEngineV2Enabled`)
+  drains it every 30 s: it claims due requests per organization (`FOR UPDATE SKIP LOCKED`, a lease doubling from 60 s),
+  recomputes the stored row through `RecomputeExistingAsync` (the same consent guard, FIT v2 lock and in-lock read; the
+  row's existence is checked under the lock, so a recompute never creates a row and waits for a first compute in
+  flight), and deletes the request only at the sequence it claimed, so a change during the recompute is not lost. After
+  8 failed claims a request rests until a new change re-arms it.
+- **The TS writers can no longer overwrite a v2 row.** The `fit_scores_keep_v2` trigger (BEFORE UPDATE) keeps a v2
+  row's score, breakdown, weights, partial flag and calculation time against any write that would replace it with a
+  non-v2 breakdown, unless the writer set `tims.fit_writer = fit_v2_aware` for its transaction (only the C# engine
+  does; its v1 compute is how a vacancy goes back to v1). A non-null `llmJudgment` (candidate.screenCandidate) is still
+  merged in. The TS caller sees no error; `screenCandidate` returns its own v1 number to its caller, while the stored
+  row stays v2.
 - **Essays (owner default D5).** A quiz with an essay awaiting a grade is needs review. `GET
   /fit-engine/assignments/{id}/essays` and `POST …/essays/{questionId}/grade` (`assessment:read` /
   `assessment:update` + the assignment's vacancy scope; mapped with the v2 flag) let a recruiter grade it from the
   candidate's assessment results. A grade runs in one transaction that locks the result row: it writes the
   response's points, removes the essay from `pendingManual`, records the grader in `breakdown.manualGrades`, and
-  recomputes `raw_score` / `normalized_score` as the TS `computeResult` does. It does not compute the norm
-  percentile or band (TS computes those only at submission) and does not recompute FIT; the next compute reads the
-  graded result as valid.
-- The C# compute is not called by the web app yet (no FE wrapper for the fit-engine surface; see `cutover.sh`).
-  The live TS writers (`fitEngine.computeForVacancy`, `candidateAiService.screenCandidate`) still write v1
-  breakdowns, and a later TS recompute overwrites a v2 row with v1.
+  recomputes `raw_score` / `normalized_score` as the TS `computeResult` does. Grading the LAST essay also writes the
+  local norm (`percentile`, `band`, `norm_sample_size`) exactly as the TS submission does for a quiz without essays
+  (`AssessmentNormBands`, the `computeNormBandFromCounts` arithmetic over the organization's other completed, fully
+  graded results of the same quiz; no percentile below 5). The grade's result change enqueues the FIT recompute.
+- The web app calls the C# compute under `NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP` (the vacancy ranking's Compute
+  button). The TS writers stay live for the flag-off path and for `screenCandidate`; the trigger above keeps them
+  off v2 rows.
 - **Concurrent recomputes: the results are read inside the write.** The results carry the integrity state (a
   cancel, a proctoring flag, an essay awaiting a grade), so a v2 compute reads them, evaluates and upserts the row in
   ONE transaction that holds a per-(organization, candidate, vacancy) advisory lock, taken after the #312 consent
@@ -244,10 +291,9 @@ redacted; see Rollout.
   write fails or is cancelled, the transaction rolls back and the stored row is untouched, so a compute never
   leaves a row it could not stand behind. This replaces the earlier write-then-verify loop and its settling write
   (Codex rounds 4-6). What remains:
-  - a change that commits after the last compute's in-lock read is picked up by the next compute, as for every
-    other input (nothing recomputes FIT when an assignment is cancelled or flagged);
+  - a change that commits after the last compute's in-lock read is picked up by the recompute queue (above);
   - only the results are read in the lock; the CV, interview and weight inputs keep v1's snapshot semantics;
-  - the live TS writers (v1) take no lock and can still overwrite a v2 row (see above).
+  - the live TS writers (v1) take no lock, but cannot replace a v2 row (the `fit_scores_keep_v2` trigger).
 - Turning the flag off affects the next compute only; stored v2 rows keep their extra keys, which every v1 reader
   ignores.
 - Before gates are used on real vacancies: monitor pass and fit rates by group (DEI), and confirm the LIA norms
