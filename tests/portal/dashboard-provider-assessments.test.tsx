@@ -296,9 +296,7 @@ describe('DashboardProviderAssessments', () => {
       },
       '/portal/assessment-attempts': () =>
         json({
-          attempts: [
-            attempt('consent_needed', { instrument: 'english', optionalConsents: ['voice', 'ai_scoring'] }),
-          ],
+          attempts: [attempt('consent_needed', { instrument: 'english', optionalConsents: ['voice', 'ai_scoring'] })],
         }),
     });
     renderSection();
