@@ -224,6 +224,9 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
             new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
                 [new AssignInstrumentItem("lia", null)], null, 1m, [], null, ProviderAgeBands.Adult), Now, CancellationToken.None);
         Assert.Equal(_provider.SubjectId, _repository.Attempts.Single().ProviderSubjectId);
+        // An outage leaves the create fence up (the provider may still act on that create); while it is live the erasure
+        // stays incomplete (Codex ats-final run 2), so this runs once it is stale.
+        _repository.DbNow += ProviderCreateFence.StaleAfter + TimeSpan.FromMinutes(1);
 
         var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 
@@ -285,9 +288,55 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
 
         Assert.Equal(ProviderErasureOutcome.Requested, result.Outcome);
         Assert.Contains(attempt.ProviderSubjectId!.Value, _repository.LocallyErasedSubjects);
-        // Every subject whose erasure the provider accepted, and only after its request was recorded.
+        // Every subject whose erasure the provider accepted.
         Assert.Equal(_provider.ErasedSubjects, _repository.LocallyErasedSubjects);
-        Assert.True(_repository.Writes.IndexOf("erase") > _repository.Writes.FindIndex(w => w.StartsWith("erasure_requested:", StringComparison.Ordinal)));
+    }
+
+    // Codex ats-final run 2 [P1]: the marker and the local deletion are separate transactions, so the deletion runs FIRST:
+    // an interruption between them must leave the results deleted, never stored behind a marker the poller skips.
+    [Fact]
+    public async Task An_interruption_after_the_providers_acceptance_still_leaves_the_ats_copy_erased()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.MarkErasureRequestedFails = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None));
+
+        Assert.Contains(attempt.ProviderSubjectId!.Value, _repository.LocallyErasedSubjects);
+        Assert.Null(_repository.Attempts.Single().ErasureRequestedAt); // the retry records it
+    }
+
+    // Codex ats-final run 2 [P1]: a create whose fence committed before the erasure's markers can still create a NEW
+    // provider subject (the provider forgot the erased one's external_ref). Seen after the markers, it keeps the erasure
+    // incomplete (503: retry) instead of reporting every subject erased.
+    [Fact]
+    public async Task A_create_in_flight_when_the_erasure_lands_keeps_it_incomplete()
+    {
+        _repository.AddCreatedAttempt("lia");
+        var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
+        Assert.True(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+
+        var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Incomplete, result.Outcome);
+        // The create can no longer begin again: its attempt is under the erasure marker.
+        Assert.False(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_create_fence_gone_stale_without_a_recorded_subject_is_resolved_and_erased_on_retry()
+    {
+        var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
+        _repository.Replace(pending.Id, a => a with { ProviderSubjectId = null, ErasureRequestedAt = Now });
+        _repository.CreatesInFlight[pending.Id] = _repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromMinutes(1);
+
+        var result = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        // The dead create may have made a subject no attempt names: resolved by (tenant, candidate id) and erased.
+        Assert.Equal(ProviderErasureOutcome.Requested, result.Outcome);
+        Assert.Contains("subject", _provider.Calls);
+        Assert.Equal([_provider.SubjectId], _provider.ErasedSubjects);
     }
 
     [Fact]

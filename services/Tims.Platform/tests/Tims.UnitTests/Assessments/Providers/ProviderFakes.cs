@@ -981,7 +981,12 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
                 Attempts.Any(a => a.CandidateId == candidateId),
                 ErasedSubjects.ToList(),
                 Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
-                    && a.ErasureRequestedAt is null)));
+                    && (a.ErasureRequestedAt is null || (CreatesInFlight.ContainsKey(a.Id) && a.ProviderSubjectId is null))),
+                Attempts.Any(a => a.CandidateId == candidateId && CreatesInFlight.TryGetValue(a.Id, out var begun)
+                    && begun >= DbNow - ProviderCreateFence.StaleAfter)));
+
+    /// <summary>Failure injection: the erasure marker's transaction throws (a crash or database failure at that point).</summary>
+    public bool MarkErasureRequestedFails { get; set; }
 
     /// <summary>Subjects whose subject.erased the fake has "recorded" (the real repository reads the inbox tombstone).</summary>
     public HashSet<Guid> ErasedSubjects { get; } = [];
@@ -990,6 +995,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        if (MarkErasureRequestedFails)
+        {
+            throw new InvalidOperationException("injected: the marker's transaction failed");
+        }
+
         Writes.Add("erasure_requested:" + receiptStatus);
         foreach (var attempt in Attempts.Where(a => a.ProviderSubjectId == providerSubjectId || a.ProviderSubjectId is null).ToList())
         {
@@ -1069,7 +1079,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return row;
     }
 
-    private void Replace(Guid attemptId, Func<AttemptRow, AttemptRow> change)
+    public void Replace(Guid attemptId, Func<AttemptRow, AttemptRow> change)
     {
         var index = Attempts.FindIndex(a => a.Id == attemptId);
         if (index >= 0)

@@ -193,15 +193,33 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
                 continue;
             }
 
-            await _repository.MarkErasureRequestedAsync(organizationId, candidateId, subject, status, actorId, now, cancellationToken)
-                .ConfigureAwait(false);
             // The ATS's own copy is erased NOW, for an accepted request as for a confirmed 410/404: it never depends on
             // the provider's subject.erased event, which may never arrive (a delivery that exhausts its retries, or no
             // event at all for a subject already gone) and which the D17 poller cannot replace (it skips attempts under
-            // an erasure request). That event's handler, when it lands, repeats this idempotently.
+            // an erasure request). That event's handler, when it lands, repeats this idempotently. It runs BEFORE the
+            // marker, each in its own transaction: an interruption between them leaves the results deleted (and the
+            // attempts erased, which refuses any later result) with the marker missing, so this run is not counted as
+            // requested and a retry, safe at any point, records it. The reverse order could strand the results.
             await _repository.EraseSubjectAsync(organizationId, subject, now, cancellationToken).ConfigureAwait(false);
+            await _repository.MarkErasureRequestedAsync(organizationId, candidateId, subject, status, actorId, now, cancellationToken)
+                .ConfigureAwait(false);
 
             requested++;
+        }
+
+        if (requested == subjects.Count)
+        {
+            // Codex ats-final run 2 [P1]: a create whose fence committed before the markers above may still send
+            // EnsureSubject. The provider forgot the erased subject's external_ref, so that call can create a NEW subject
+            // (with names and email) outside the list erased here. Read again AFTER the markers (a create that begins
+            // after them is refused): a live create, or a subject recorded meanwhile, keeps the erasure incomplete, and a
+            // retry erases what it made (recorded on its attempt, or resolved by external_ref once its fence is stale).
+            var after = await _repository.ListProviderSubjectsAsync(organizationId, candidateId, cancellationToken)
+                .ConfigureAwait(false);
+            if (after is null || after.CreatesInFlight || after.Subjects.Except(subjects).Any())
+            {
+                return new ProviderErasureResult(ProviderErasureOutcome.Incomplete, subjects.Count, requested);
+            }
         }
 
         return new ProviderErasureResult(

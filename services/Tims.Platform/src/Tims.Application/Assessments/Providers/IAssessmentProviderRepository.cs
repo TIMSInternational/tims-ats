@@ -372,10 +372,18 @@ public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 /// <param name="NeedsResolution">
 /// Whether the provider's subject for (tenant, candidate id) must still be resolved: some attempt of the candidate is
 /// neither erased nor under an accepted erasure request. False once every attempt is: the provider forgets the
-/// subject's external_ref when erasure is requested, so resolving it again would CREATE a fresh, empty subject.
+/// subject's external_ref when erasure is requested, so resolving it again would CREATE a fresh, empty subject. Also true
+/// while an attempt holds an UNANSWERED create (its create fence set, no subject recorded): that create may have made a
+/// provider subject no attempt names.
+/// </param>
+/// <param name="CreatesInFlight">
+/// Whether some attempt of the candidate holds a create announced by
+/// <see cref="IAssessmentProviderRepository.BeginCreateAsync"/> that is neither answered nor stale (database clock): it may
+/// still create a provider subject, so an erasure that saw it cannot be complete.
 /// </param>
 public sealed record ProviderCandidateSubjects(
-    IReadOnlyList<Guid> Subjects, bool HasAttempts, IReadOnlyList<Guid>? ErasedSubjects = null, bool NeedsResolution = true);
+    IReadOnlyList<Guid> Subjects, bool HasAttempts, IReadOnlyList<Guid>? ErasedSubjects = null, bool NeedsResolution = true,
+    bool CreatesInFlight = false);
 
 /// <summary>
 /// The DSAR access export: the ATS's own provider tables (<see cref="Attempts"/>, <see cref="Results"/>) and what the

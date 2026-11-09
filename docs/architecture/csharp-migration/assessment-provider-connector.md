@@ -221,7 +221,12 @@ a single-use launch code: it goes to the candidate's own response body only, and
   record if the erasure is accepted during the provider call (it marks the attempt under the subject lock only).
   The ATS's own stored results for the subject are erased as soon as the provider accepts the request (or confirms
   the subject gone), never waiting on `subject.erased`: that event may never arrive, and the poller skips attempts
-  under an erasure request. Its handler repeats the local erasure idempotently when it lands.
+  under an erasure request. Its handler repeats the local erasure idempotently when it lands. The local erasure runs
+  before the erasure marker (separate transactions), so an interruption between them leaves the results deleted and
+  the run incomplete (retry). A create announced before the markers may still create a NEW provider subject (the
+  provider forgot the erased subject's external_ref): the erasure re-reads the candidate after its markers and stays
+  incomplete (503) while such a create is live or recorded a subject the run did not erase; an unanswered create
+  with no recorded subject makes the next run resolve (tenant, candidate id) again.
 - **Portal status (D9).** A finished attempt that holds a result shows as completed even when a later revision voided
   it; "needs review" is only a sitting voided before any result (D4).
 

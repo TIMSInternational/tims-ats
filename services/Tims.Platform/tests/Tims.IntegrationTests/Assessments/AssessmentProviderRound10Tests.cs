@@ -332,4 +332,36 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         await AttemptAsync(org, "created", candidate); // a later, live assignment needs the subject again
         Assert.True((await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None)))!.NeedsResolution);
     }
+
+    // Codex ats-final run 2 [P1]: a create announced before an erasure's markers may still create a provider subject. A
+    // live fence is reported (the erasure stays incomplete); an unanswered one with no recorded subject forces resolution
+    // even under an erasure request; a stale or answered one does neither.
+    [Fact]
+    public async Task Subject_facts_report_a_live_create_and_resolve_an_unanswered_one()
+    {
+        var org = await OrgAsync();
+        var candidate = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES ('{candidate}', '{org}', 'B', 'C', 'f@r10.example')");
+        var attempt = await AttemptAsync(org, "pending_create", candidate, mapped: false);
+        Assert.True(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now() WHERE id = '{attempt}'");
+
+        var live = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.True(live!.CreatesInFlight);
+        Assert.True(live.NeedsResolution);
+
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET create_started_at = now() - interval '11 minutes' WHERE id = '{attempt}'");
+        var stale = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.False(stale!.CreatesInFlight);
+        Assert.True(stale.NeedsResolution);
+
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET provider_subject_id = gen_random_uuid() WHERE id = '{attempt}'");
+        var recorded = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.False(recorded!.CreatesInFlight);
+        Assert.False(recorded.NeedsResolution);
+    }
 }

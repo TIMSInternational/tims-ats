@@ -374,6 +374,22 @@ public sealed partial class AssessmentProviderRepository
                 .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId
                     && a.State != ProviderAttemptStates.Erased && a.ProviderErasureRequestedAt == null, cancellationToken)
                 .ConfigureAwait(false);
+            // A create announced (BeginCreateAsync) and never answered: it may have created a provider subject before it
+            // recorded it, so that subject is resolved even after an erasure was requested (Codex ats-final run 2). And
+            // one still live (database clock) may create a subject AFTER the erasure resolved the candidate's.
+            var createStaleSeconds = ProviderCreateFence.StaleAfter.TotalSeconds;
+            var fences = await _db.Database.SqlQuery<CreateFenceFacts>(
+                    $"""
+                     SELECT COALESCE(bool_or(provider_subject_id IS NULL AND state <> {ProviderAttemptStates.Erased}), false)
+                                AS "Unrecorded",
+                            COALESCE(bool_or(create_started_at >= clock_timestamp() - make_interval(secs => {createStaleSeconds})),
+                                false) AS "Live"
+                       FROM assessment_provider_attempts
+                      WHERE organization_id = {organizationId} AND candidate_id = {candidateId}
+                        AND create_started_at IS NOT NULL
+                     """)
+                .SingleAsync(cancellationToken).ConfigureAwait(false);
+            needsResolution |= fences.Unrecorded;
             var erased = new List<Guid>();
             foreach (var subject in subjects)
             {
@@ -383,7 +399,7 @@ public sealed partial class AssessmentProviderRepository
                 }
             }
 
-            result = new ProviderCandidateSubjects(subjects, hasAttempts, erased, needsResolution);
+            result = new ProviderCandidateSubjects(subjects, hasAttempts, erased, needsResolution, fences.Live);
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -431,5 +447,12 @@ public sealed partial class AssessmentProviderRepository
         });
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed class CreateFenceFacts
+    {
+        public bool Unrecorded { get; init; }
+
+        public bool Live { get; init; }
     }
 }
