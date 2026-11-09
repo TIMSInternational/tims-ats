@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
-import { buildCsp, cvUploadCspOrigin, originOf, type CspOrigins } from './lib/security/csp';
+import { buildCsp, cvUploadCspOrigin, httpsOriginOf, originOf, type CspOrigins } from './lib/security/csp';
 import { hasSupabaseSessionCookie, staffLoginUrl } from './lib/auth/staff-login-redirect';
 
 const PUBLIC_PATHS = [
@@ -45,6 +45,8 @@ const CSP_ORIGINS: CspOrigins = {
   // default region — so they cannot silently disagree. Resolved at module scope,
   // so a misconfiguration warning is logged once per instance, never per request.
   cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
+  // D16: the TIMS hosted assessment player, framed by the candidate portal only when configured (https only).
+  assessmentPlayer: httpsOriginOf(process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN),
 };
 
 // Pages whose URL carries a bearer credential (?token= or a path token): never

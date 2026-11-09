@@ -558,7 +558,7 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'calls the remote provider: covered by the same ProviderEndpointTests (401/403, export, erasure, unknown candidate). ' +
       'The two candidate-portal reads (D16: the attempt list and the consent templates) are authorized like the launch, ' +
       'by a CONFIRMED candidate email, never a role, and the templates come from the remote provider: covered by the same ' +
-      'ProviderEndpointTests (the dark flag, 401/403, only the candidate\'s own attempts, the 404 on another\'s attempt).',
+      "ProviderEndpointTests (the dark flag, 401/403, only the candidate's own attempts, the 404 on another's attempt).",
     routes: [
       'POST /assessments/provider-assignments',
       'POST /assessments/provider-assignments/{attemptId}/cancel',

@@ -8,6 +8,18 @@ export interface CspOrigins {
   platformApi: string;
   /** Origin the browser POSTs CV files to (S3 presigned POST), or '' when unset. */
   cvUpload: string;
+  /**
+   * The TIMS hosted assessment player's https origin (owner default D16), or '' when unset. Added to `frame-src` only:
+   * the candidate portal frames the player when this site's origin is one of the player's registered frame ancestors,
+   * and otherwise links out to it.
+   */
+  assessmentPlayer?: string;
+}
+
+/** The https origin of an absolute URL, or '' when unset, invalid or not https. */
+export function httpsOriginOf(url: string | undefined): string {
+  const origin = originOf(url);
+  return origin.startsWith('https://') ? origin : '';
 }
 
 /** Origin of an absolute URL, or '' when unset/invalid. */
@@ -141,7 +153,12 @@ export function buildCsp(nonce: string, pathname: string, origins: CspOrigins, i
     "font-src 'self' https://fonts.gstatic.com",
     `img-src 'self' data: blob: ${CSP_IMG_SRC_HOSTS.join(' ')}`,
     connectSrc,
-    "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
+    [
+      "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
+      origins.assessmentPlayer ?? '',
+    ]
+      .filter(Boolean)
+      .join(' '),
     "media-src 'self' blob: https://*.daily.co https://*.elevenlabs.io",
     // ElevenLabs Conversational AI loads its audio-processing AudioWorklet from a
     // blob URL; without worker-src blob: the live voice call fails to initialise.
