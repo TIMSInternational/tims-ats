@@ -38,8 +38,12 @@ public sealed class AtsAssessmentResultSource(FitEngineWriteDbContext db) : IAss
     /// <summary>The source tag on every result this adapter returns.</summary>
     public const string SourceName = "ats";
 
-    /// <summary>Upper bound on rows read per (candidate, vacancy); the most recent are kept.</summary>
-    public const int MaxRows = 50;
+    /// <summary>
+    /// Upper bound on the quizzes read per (candidate, vacancy). Only each quiz's most recent result is read (in SQL,
+    /// before the bound), so the bound never drops a quiz's latest result in favour of another quiz's older ones. Past
+    /// it, the instrument fails closed: every result is reported as needs review.
+    /// </summary>
+    public const int MaxQuizzes = 50;
 
     private static readonly HashSet<string> NeedsReviewSeverities =
         new(StringComparer.OrdinalIgnoreCase) { "high", "critical" };
@@ -64,31 +68,25 @@ public sealed class AtsAssessmentResultSource(FitEngineWriteDbContext db) : IAss
 
         await using var ownedScope = scope;
 
-        var rows = await (
-                from a in _db.AssessmentAssignments.AsNoTracking()
-                join r in _db.AssessmentResults.AsNoTracking() on a.Id equals r.AssignmentId
-                join p in _db.ProctoringSessions.AsNoTracking().Where(p => p.OrganizationId == organizationId)
-                    on a.Id equals p.AssignmentId into sessions
-                from p in sessions.DefaultIfEmpty()
-                where a.OrganizationId == organizationId
-                    && r.OrganizationId == organizationId
-                    && a.CandidateId == candidateId
-                    && a.VacancyId == vacancyId
-                orderby a.CompletedAt == null, a.CompletedAt descending, a.Id
-                select new
-                {
-                    a.Id,
-                    a.Status,
-                    a.CompletedAt,
-                    a.AssessmentTypeId,
-                    r.NormalizedScore,
-                    r.Breakdown,
-                    Severity = p != null ? p.Severity : null,
-                    ReviewStatus = p != null ? p.ReviewStatus : null,
-                })
-            .Take(MaxRows)
+        // The most recent result of EACH quiz (DISTINCT ON the quiz, in the kernel's recency order: completed_at DESC
+        // nulls last, then the assignment id), so no bound can hide a quiz behind another quiz's newer attempts. A
+        // FormattableString: every value is a bound parameter.
+        var rows = await _db.Database.SqlQuery<QuizResultRow>($"""
+                SELECT DISTINCT ON (a.assessment_type_id)
+                       a.id AS "Id", a.status AS "Status", a.completed_at AS "CompletedAt",
+                       a.assessment_type_id AS "AssessmentTypeId", r.normalized_score AS "NormalizedScore",
+                       r.breakdown::text AS "Breakdown", p.severity AS "Severity", p.review_status AS "ReviewStatus"
+                FROM assessment_assignments a
+                JOIN assessment_results r ON r.assignment_id = a.id AND r.organization_id = {organizationId}
+                LEFT JOIN proctoring_sessions p ON p.assignment_id = a.id AND p.organization_id = {organizationId}
+                WHERE a.organization_id = {organizationId} AND a.candidate_id = {candidateId}
+                  AND a.vacancy_id = {vacancyId}
+                ORDER BY a.assessment_type_id, (a.completed_at IS NULL), a.completed_at DESC, a.id
+                LIMIT {MaxQuizzes + 1}
+                """)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+        var overflow = rows.Count > MaxQuizzes;
 
         if (scope is not null)
         {
@@ -100,7 +98,9 @@ public sealed class AtsAssessmentResultSource(FitEngineWriteDbContext db) : IAss
                 FitInstruments.NativeQuiz,
                 row.Id.ToString(),
                 SourceName,
-                IntegrityOf(row.Status, row.Severity, row.ReviewStatus, HasPendingManualGrading(row.Breakdown)),
+                overflow
+                    ? ResultIntegrity.NeedsReview
+                    : IntegrityOf(row.Status, row.Severity, row.ReviewStatus, HasPendingManualGrading(row.Breakdown)),
                 row.CompletedAt is { } completedAt
                     ? new DateTimeOffset(DateTime.SpecifyKind(completedAt, DateTimeKind.Utc))
                     : null,
@@ -125,6 +125,26 @@ public sealed class AtsAssessmentResultSource(FitEngineWriteDbContext db) : IAss
             throw new InvalidOperationException(
                 "AtsAssessmentResultSource joined an open transaction that is not a tenant scope for this organization.");
         }
+    }
+
+    /// <summary>One quiz's most recent result, as the adapter's SQL returns it (column aliases match these names).</summary>
+    public sealed class QuizResultRow
+    {
+        public Guid Id { get; init; }
+
+        public string Status { get; init; } = null!;
+
+        public DateTime? CompletedAt { get; init; }
+
+        public Guid AssessmentTypeId { get; init; }
+
+        public double? NormalizedScore { get; init; }
+
+        public string? Breakdown { get; init; }
+
+        public string? Severity { get; init; }
+
+        public string? ReviewStatus { get; init; }
     }
 
     /// <summary>The review status a session has until a person reviews it.</summary>

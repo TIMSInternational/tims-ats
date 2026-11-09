@@ -47,14 +47,14 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         var results = await new AtsAssessmentResultSource(db).GetResultsAsync(
             FitEngineFixture.OrgA, FitEngineFixture.CandV2Flagged, FitEngineFixture.VacFitV2, CancellationToken.None);
 
-        Assert.Equal(
-            [FitEngineFixture.AsgV2FlaggedNew.ToString(), FitEngineFixture.AsgV2FlaggedOld.ToString()],
-            results.Select(r => r.ResultId).ToArray());
+        // Both attempts are the same quiz, so only its most recent result is read (slice "fit": the latest result of
+        // EACH quiz is picked in SQL): the older clean attempt never stands in for the newer flagged one.
+        Assert.Equal([FitEngineFixture.AsgV2FlaggedNew.ToString()], results.Select(r => r.ResultId).ToArray());
         var newest = results[0];
         Assert.Equal(ResultIntegrity.NeedsReview, newest.Integrity);
         Assert.Equal(90, newest.NormalizedScore);
         Assert.Equal(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero), newest.CompletedAt);
-        Assert.Equal(ResultIntegrity.Valid, results[1].Integrity);
+        Assert.Equal("0e000000-0000-0000-0000-000000000001", newest.Variant); // the quiz (assessment_type_id)
         Assert.All(results, r =>
         {
             Assert.Equal(FitInstruments.NativeQuiz, r.Instrument);
@@ -71,13 +71,11 @@ public sealed class FitV2Tests(FitEngineFixture fixture)
         var results = await new AtsAssessmentResultSource(db).GetResultsAsync(
             FitEngineFixture.OrgA, FitEngineFixture.CandV2Valid, FitEngineFixture.VacFitV2, CancellationToken.None);
 
-        Assert.Equal(
-            [FitEngineFixture.AsgV2Valid.ToString(), FitEngineFixture.AsgV2Cancelled.ToString()],
-            results.Select(r => r.ResultId).ToArray());
+        // One quiz: the dated valid attempt is its latest (a NULL completed_at sorts last, in SQL as in the kernel), so
+        // the cancelled, undated one is not read. (Cancelled = needs review is pinned by the integrity-rule theory.)
+        Assert.Equal([FitEngineFixture.AsgV2Valid.ToString()], results.Select(r => r.ResultId).ToArray());
         Assert.Equal(ResultIntegrity.Valid, results[0].Integrity); // 'low' session, pendingManual [] — not blocked
         Assert.Equal(75, results[0].NormalizedScore);
-        Assert.Equal(ResultIntegrity.NeedsReview, results[1].Integrity);
-        Assert.Null(results[1].CompletedAt);
         Assert.DoesNotContain(results, r => r.ResultId == FitEngineFixture.AsgV2OtherOrg.ToString());
         Assert.DoesNotContain(results, r => r.ResultId == FitEngineFixture.AsgV2NoResult.ToString());
     }

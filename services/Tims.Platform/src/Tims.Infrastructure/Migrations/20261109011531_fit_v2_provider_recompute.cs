@@ -9,9 +9,11 @@ namespace Tims.Infrastructure.Migrations
     /// stored provider result (a new revision, a validity change, a review flag) enqueues a recompute of the
     /// candidate's FIT v2 row for that vacancy, in the same transaction, through <c>fit_v2_request_recompute</c> (Prisma
     /// migration 20261109100000_fit_v2_integrity, which owns the queue and the function). The provider tables are
-    /// EF-owned, so their triggers live here. Each trigger calls the function only when it exists, so applying this
-    /// before the Prisma migration never breaks a provider write; the function itself enqueues only for a vacancy
-    /// configured for FIT v2. Raw SQL only: no model change.
+    /// EF-owned, so their triggers live here. Each trigger calls the function only when it exists and its owner may
+    /// execute it, so applying this before the Prisma migration (or as another role) never breaks a provider write; the function itself enqueues only for a vacancy
+    /// configured for FIT v2. The trigger functions are SECURITY DEFINER (owned by whoever applies this, the same owner as
+    /// the Prisma migration's) because only the owner may execute <c>fit_v2_request_recompute</c>; they pass only the ids
+    /// of the row being written. Raw SQL only: no model change.
     /// </summary>
     public partial class fit_v2_provider_recompute : Migration
     {
@@ -23,13 +25,15 @@ namespace Tims.Infrastructure.Migrations
                 CREATE OR REPLACE FUNCTION public.fit_v2_provider_attempt_changed()
                 RETURNS trigger
                 LANGUAGE plpgsql
+                SECURITY DEFINER
                 SET search_path = pg_catalog, public
                 AS $fn$
                 BEGIN
                   IF TG_OP = 'UPDATE' AND NEW.state IS NOT DISTINCT FROM OLD.state THEN
                     RETURN NULL;
                   END IF;
-                  IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NOT NULL THEN
+                  IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NOT NULL
+                     AND has_function_privilege('public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute') THEN
                     PERFORM public.fit_v2_request_recompute(NEW.organization_id, NEW.candidate_id, NEW.vacancy_id);
                   END IF;
                   RETURN NULL;
@@ -48,12 +52,14 @@ namespace Tims.Infrastructure.Migrations
                 CREATE OR REPLACE FUNCTION public.fit_v2_provider_result_changed()
                 RETURNS trigger
                 LANGUAGE plpgsql
+                SECURITY DEFINER
                 SET search_path = pg_catalog, public
                 AS $fn$
                 DECLARE
                   a record;
                 BEGIN
-                  IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NULL THEN
+                  IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NULL
+                     OR NOT has_function_privilege('public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute') THEN
                     RETURN NULL;
                   END IF;
                   SELECT x.organization_id, x.candidate_id, x.vacancy_id INTO a

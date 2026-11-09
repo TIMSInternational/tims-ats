@@ -153,6 +153,12 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
             "UPDATE assessment_provider_results SET requires_human_review = true WHERE attempt_id = 'e0000000-0000-4000-8000-0000000000a1'"));
         Assert.Null(await SeqAfterAsync(
             "UPDATE assessment_provider_attempts SET state = state WHERE id = 'e0000000-0000-4000-8000-0000000000a1'"));
+
+        // The C# provider writes run as app_tenant under TenantScope, which may not execute the enqueue function
+        // itself: the SECURITY DEFINER trigger does it for the row being written.
+        Assert.Equal(1, await SeqAfterAsync(
+            "SET LOCAL ROLE app_tenant; SELECT set_config('app.current_org_id', '11111111-1111-1111-1111-111111111111', true); "
+            + "UPDATE assessment_provider_attempts SET state = 'voided' WHERE id = 'e0000000-0000-4000-8000-0000000000a1'; RESET ROLE"));
     }
 
     // The #312 cascade's scheduled retry is registered with the connector and only with it (its tables exist only then).

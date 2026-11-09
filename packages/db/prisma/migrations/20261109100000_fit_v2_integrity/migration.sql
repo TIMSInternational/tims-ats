@@ -104,9 +104,12 @@ CREATE POLICY tenant_isolation ON "fit_recompute_requests"
 -- Enqueue (or re-arm) the request for one (candidate, vacancy), but only for a vacancy configured for FIT v2 (its job
 -- profile carries an `assessments` key). v1 computes only on demand, as before. The fit_scores row is deliberately NOT
 -- checked here: a compute still in flight has not committed it, and the worker checks it under the FIT v2 lock.
--- SECURITY DEFINER so a trigger fired by the RLS-bound app_tenant role can reach job_profiles and the queue for the
--- changed row's own organization; it takes its ids from that row only, and nobody but the application roles may call
--- it directly.
+--
+-- Tenant isolation: this is SECURITY DEFINER (it writes the RLS-protected queue on behalf of a trigger), so it must not
+-- be a way around RLS. Nobody but its owner may EXECUTE it: the triggers below are themselves SECURITY DEFINER and pass
+-- only the ids of the row being written (which RLS's WITH CHECK already pinned to the writer's organization), and a
+-- trigger function cannot be called directly. As a second guard, when the session carries a tenant
+-- (app.current_org_id), an organization other than that tenant is refused outright.
 CREATE OR REPLACE FUNCTION public.fit_v2_request_recompute(p_organization_id uuid, p_candidate_id uuid, p_vacancy_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -116,6 +119,11 @@ AS $$
 BEGIN
   IF p_organization_id IS NULL OR p_candidate_id IS NULL OR p_vacancy_id IS NULL THEN
     RETURN;
+  END IF;
+
+  IF coalesce(current_setting('app.current_org_id', true), '') NOT IN ('', p_organization_id::text) THEN
+    RAISE EXCEPTION 'fit_v2_request_recompute: organization % is not the current tenant', p_organization_id
+      USING ERRCODE = 'insufficient_privilege';
   END IF;
 
   IF NOT EXISTS (
@@ -143,6 +151,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.fit_v2_assignment_changed()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 BEGIN
@@ -162,6 +171,7 @@ CREATE TRIGGER "fit_v2_assignment_changed"
 CREATE OR REPLACE FUNCTION public.fit_v2_result_changed()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 DECLARE
@@ -192,6 +202,7 @@ CREATE TRIGGER "fit_v2_result_changed"
 CREATE OR REPLACE FUNCTION public.fit_v2_proctoring_changed()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 DECLARE
@@ -219,20 +230,25 @@ CREATE TRIGGER "fit_v2_proctoring_changed"
   FOR EACH ROW EXECUTE FUNCTION public.fit_v2_proctoring_changed();
 
 -- Grants. Production's default privileges give app_tenant DML on every new table; the C# worker needs exactly
--- SELECT/UPDATE/DELETE on the queue (the triggers insert through the SECURITY DEFINER function). Supabase's API roles
--- get nothing, and only the application roles may call the enqueue function.
+-- SELECT/UPDATE/DELETE on the queue (only the owner's triggers insert). Supabase's API roles get nothing, and nobody
+-- but the owner may call the enqueue function (an earlier draft granted it to app_tenant; that is revoked here, so a
+-- re-run on a database that applied the draft closes it too).
 DO $$
 DECLARE r text;
 BEGIN
   REVOKE ALL ON FUNCTION public.fit_v2_request_recompute(uuid, uuid, uuid) FROM PUBLIC;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "fit_recompute_requests" TO app_tenant;
-    GRANT EXECUTE ON FUNCTION public.fit_v2_request_recompute(uuid, uuid, uuid) TO app_tenant;
+    GRANT SELECT, UPDATE, DELETE ON TABLE "fit_recompute_requests" TO app_tenant;
+    REVOKE INSERT ON TABLE "fit_recompute_requests" FROM app_tenant;
+    REVOKE ALL ON FUNCTION public.fit_v2_request_recompute(uuid, uuid, uuid) FROM app_tenant;
   END IF;
   FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format('REVOKE ALL ON TABLE "fit_recompute_requests" FROM %I', r);
       EXECUTE format('REVOKE ALL ON FUNCTION public.fit_v2_request_recompute(uuid, uuid, uuid) FROM %I', r);
+      EXECUTE format('REVOKE ALL ON FUNCTION public.fit_v2_assignment_changed() FROM %I', r);
+      EXECUTE format('REVOKE ALL ON FUNCTION public.fit_v2_result_changed() FROM %I', r);
+      EXECUTE format('REVOKE ALL ON FUNCTION public.fit_v2_proctoring_changed() FROM %I', r);
     END IF;
   END LOOP;
 END

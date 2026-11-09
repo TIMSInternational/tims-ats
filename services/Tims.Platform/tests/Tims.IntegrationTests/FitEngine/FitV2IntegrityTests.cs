@@ -125,7 +125,7 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
     }
 
     [Fact]
-    public async Task The_triggers_enqueue_under_rls_as_the_tenant_role_and_only_the_application_roles_may_call_the_function()
+    public async Task The_triggers_enqueue_under_rls_as_the_tenant_role_but_nobody_may_call_the_function_directly()
     {
         var seed = await SeedQuizAsync(v2: true, normalized: 80);
 
@@ -149,8 +149,40 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         Assert.Equal(1, (await _fixture.GetRecomputeRequestAsync(seed.Candidate, seed.Vacancy))!.Value.Seq);
         Assert.False((bool)(await _fixture.ExecuteScalarAsync(
             "SELECT has_function_privilege('public', 'public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute')"))!);
-        Assert.True((bool)(await _fixture.ExecuteScalarAsync(
+        Assert.False((bool)(await _fixture.ExecuteScalarAsync(
             "SELECT has_function_privilege('app_tenant', 'public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute')"))!);
+        Assert.False((bool)(await _fixture.ExecuteScalarAsync(
+            "SELECT has_table_privilege('app_tenant', 'fit_recompute_requests', 'insert')"))!);
+    }
+
+    // Codex release round 1 [P1]: the SECURITY DEFINER enqueue must not be a way around RLS. A tenant-scoped session
+    // cannot call it at all, and even its owner is refused another organization while a tenant is set.
+    [Fact]
+    public async Task A_tenant_scoped_session_cannot_enqueue_for_another_organization()
+    {
+        var seed = await SeedQuizAsync(v2: true, normalized: 80);
+        var other = FitEngineFixture.OrgB;
+
+        async Task<PostgresException> CallAsync(string role)
+        {
+            await using var connection = new NpgsqlConnection(_fixture.ConnectionString);
+            await connection.OpenAsync();
+            await using var tx = await connection.BeginTransactionAsync();
+            await using var command = new NpgsqlCommand(
+                role + "SELECT set_config('app.current_org_id', @o, true); "
+                + "SELECT public.fit_v2_request_recompute(@other, @c, @v)", connection, tx);
+            command.Parameters.AddWithValue("o", Org.ToString());
+            command.Parameters.AddWithValue("other", other);
+            command.Parameters.AddWithValue("c", seed.Candidate);
+            command.Parameters.AddWithValue("v", seed.Vacancy);
+            return await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+        }
+
+        Assert.Equal("42501", (await CallAsync("SET LOCAL ROLE app_tenant; ")).SqlState); // no EXECUTE
+        var owner = await CallAsync(string.Empty);                                           // the owner, tenant set
+        Assert.Equal("42501", owner.SqlState);
+        Assert.Contains("is not the current tenant", owner.MessageText, StringComparison.Ordinal);
+        Assert.Null(await _fixture.GetRecomputeRequestAsync(seed.Candidate, seed.Vacancy));
     }
 
     [Fact]
@@ -270,6 +302,49 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
     }
 
     // ── several quizzes ──
+    // Codex release round 1 [P2]: a row bound applied before the per-quiz pick could drop an older quiz that needs
+    // review behind another quiz's newer attempts. The latest result of EACH quiz is picked in SQL first.
+    [Fact]
+    public async Task An_older_quiz_awaiting_review_is_never_hidden_by_many_newer_attempts_of_another_quiz()
+    {
+        var seed = await SeedQuizAsync(v2: true, normalized: 70);
+        await SqlAsync("UPDATE assessment_assignments SET status = 'cancelled', completed_at = now() - interval '30 days' WHERE id = @a", ("a", seed.Assignment));
+        var quizA = Guid.NewGuid();
+        await SqlAsync(
+            "WITH a AS (INSERT INTO assessment_assignments (id, organization_id, candidate_id, vacancy_id, status, completed_at, assessment_type_id) "
+            + "SELECT gen_random_uuid(), @o, @c, @v, 'completed', now() - (g || ' minutes')::interval, @t FROM generate_series(1, 60) g RETURNING id) "
+            + "INSERT INTO assessment_results (id, organization_id, assignment_id, normalized_score, breakdown) "
+            + "SELECT gen_random_uuid(), @o, a.id, 95, '{\"pendingManual\":[]}' FROM a",
+            ("o", Org), ("c", seed.Candidate), ("v", seed.Vacancy), ("t", quizA));
+
+        await using var db = _fixture.NewWriteContext();
+        var results = await new AtsAssessmentResultSource(db).GetResultsAsync(Org, seed.Candidate, seed.Vacancy, CancellationToken.None);
+
+        Assert.Equal(2, results.Count); // one per quiz
+        Assert.Contains(results, r => r.ResultId == seed.Assignment.ToString() && r.Integrity == ResultIntegrity.NeedsReview);
+        Assert.True(await RecomputeAsync(seed, onlyIfRowExists: false));
+        var breakdown = JsonNode.Parse((await _fixture.GetFitScoreAsync(seed.Candidate, seed.Vacancy))!.Breakdown)!;
+        Assert.Equal("needs_review", breakdown["assessments"]![0]!["status"]!.GetValue<string>());
+        Assert.True(breakdown["reviewPending"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task More_quizzes_than_the_bound_fail_closed_as_needs_review()
+    {
+        var seed = await SeedQuizAsync(v2: true, normalized: 70);
+        await SqlAsync(
+            "WITH a AS (INSERT INTO assessment_assignments (id, organization_id, candidate_id, vacancy_id, status, completed_at, assessment_type_id) "
+            + "SELECT gen_random_uuid(), @o, @c, @v, 'completed', now(), gen_random_uuid() FROM generate_series(1, @n) RETURNING id) "
+            + "INSERT INTO assessment_results (id, organization_id, assignment_id, normalized_score, breakdown) "
+            + "SELECT gen_random_uuid(), @o, a.id, 95, '{\"pendingManual\":[]}' FROM a",
+            ("o", Org), ("c", seed.Candidate), ("v", seed.Vacancy), ("n", AtsAssessmentResultSource.MaxQuizzes));
+
+        await using var db = _fixture.NewWriteContext();
+        var results = await new AtsAssessmentResultSource(db).GetResultsAsync(Org, seed.Candidate, seed.Vacancy, CancellationToken.None);
+
+        Assert.Equal(AtsAssessmentResultSource.MaxQuizzes + 1, results.Count);
+        Assert.All(results, r => Assert.Equal(ResultIntegrity.NeedsReview, r.Integrity));
+    }
     [Fact]
     public async Task Each_quiz_is_its_own_variant_so_the_latest_of_one_never_hides_another()
     {
