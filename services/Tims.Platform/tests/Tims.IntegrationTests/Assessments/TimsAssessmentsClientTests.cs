@@ -382,6 +382,7 @@ public sealed class TimsAssessmentsClientTests
     [InlineData(null, "/careers/invu/dashboard", null)]
     [InlineData("https://ats.test", null, null)]
     [InlineData("https://ats.test", "//evil.test/x", null)]
+    [InlineData("https://ats.test", "//evil/x", null)] // never an empty segment: no path reads as protocol-relative
     [InlineData("https://ats.test", "/careers/invu/dashboard?next=https://evil.test", null)]
     [InlineData("https://ats.test", "https://evil.test/x", null)]
     public async Task A_hosted_launch_sends_a_return_url_only_on_the_portal_origin(string? portal, string? path, string? expected)
