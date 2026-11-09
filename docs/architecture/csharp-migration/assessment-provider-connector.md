@@ -355,6 +355,13 @@ enqueues a FIT v2 recompute of that candidate's row for the vacancy, in the same
 `fit_v2_request_recompute` only when that function exists, so the two migrations apply in either order). See
 `fit-v2-per-instrument.md`, "Recompute on change".
 
+A provider result also CREATES a candidate's first FIT v2 row (round 11). The recompute drain rewrites an existing row,
+and when there is none it creates one only if, under the FIT v2 lock and on the same transaction, the candidate holds
+an active application for the vacancy (the population HR's Compute Rankings scores) and the result read holds a
+provider result for an instrument the vacancy lists. So HR no longer has to press Compute before a provider result
+shows in the ranking. Any other change to a pair without a row (an ATS quiz, a proctoring flag) still writes nothing;
+HR's compute decides those.
+
 ## Unconfirmed 404s
 
 A provider that does not serve a route answers its catch-all 404 with the same `not_found` code as "no such
@@ -474,3 +481,19 @@ it too. A present non-boolean value is off contract and the result is refused.
 6. Bind each org (platform owner), then set `Platform__AssessmentProvidersEnabled=true`.
 7. On Vercel, set `NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true` to show the portal section, and only if the player
    is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin). Both are build-time.
+8. Team leaders (owner default D6). The seeded `leader` role has no `assessment` grant, so a team leader sees no
+   assessments card at all, which is stricter than D6. To give the pilot organization's leaders the D6 view (only
+   "below minimum", never the level or CEFR, for vacancies of the teams they lead), review and run, once per
+   organization:
+
+   ```
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v org_id=<organization uuid> -f services/Tims.Platform/db/owner/leader_assessment_read.sql
+   ```
+
+   It adds `assessment:read` at `team` scope to that organization's `leader` role only, is idempotent, and leaves an
+   existing `assessment:read` grant at its scope. Its last statement prints the leader's assessment grants (expect
+   `read | team`). This is an owner SQL step rather than a seed change because the grant matrix's source of truth is
+   `packages/db/prisma/seed-access-matrix.ts` (outside this connector's build area), mirrored into the embedded
+   `role-grants.json` with a parity test. Organizations provisioned later get no such grant until that matrix gains
+   `{ module: 'assessment', actions: ['read'], scope: 'team' }` for `leader` and `role-grants.json` is regenerated
+   (`scripts/generate-dotnet-role-grants.ts`).

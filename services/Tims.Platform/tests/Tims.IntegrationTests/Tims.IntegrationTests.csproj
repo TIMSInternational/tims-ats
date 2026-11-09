@@ -59,6 +59,11 @@
       <Link>prisma-migrations\20261109100000_fit_v2_integrity.sql</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Round 11 owner step: the leader assessment:read grant SQL, applied verbatim by LeaderAssessmentReadOwnerSqlTests. -->
+    <Content Include="..\..\db\owner\leader_assessment_read.sql">
+      <Link>owner-sql\leader_assessment_read.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <!-- The shared DynamoDB rate-limit contract the TS suite also asserts (tests/ratelimit/dynamodb-contract.test.ts). -->
     <Content Include="..\..\..\..\contracts\ratelimit-fixtures\dynamodb.json">
       <Link>ratelimit-fixtures\%(Filename)%(Extension)</Link>
