@@ -225,6 +225,10 @@ public sealed record ProviderAssignmentRequest(
     DateTimeOffset? ExpiresAt,
     string ExternalRef);
 
+/// <summary>
+/// An assignment as the provider holds it. <see cref="ResultId"/> and the sitting timestamps are what the D17 poller
+/// reads to advance an attempt without a webhook (null until they happen, or when an older provider omits them).
+/// </summary>
 public sealed record ProviderAssignment(
     Guid AssignmentId,
     Guid TenantId,
@@ -236,7 +240,11 @@ public sealed record ProviderAssignment(
     IReadOnlyList<string> RequiredConsents,
     IReadOnlyList<string> MissingConsents,
     DateTimeOffset ExpiresAt,
-    string? ExternalRef = null);
+    string? ExternalRef = null,
+    Guid? ResultId = null,
+    DateTimeOffset? StartedAt = null,
+    DateTimeOffset? CompletedAt = null,
+    DateTimeOffset? VoidedAt = null);
 
 public sealed record ProviderConsentRequest(
     string Purpose, string TextVersion, string Locale, DateTimeOffset GrantedAt, string HostRecordRef,

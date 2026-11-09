@@ -135,6 +135,10 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_launched_at");
 
+                    b.Property<DateTime?>("LastPolledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_polled_at");
+
                     b.Property<Guid?>("LatestResultId")
                         .HasColumnType("uuid")
                         .HasColumnName("latest_result_id");
@@ -144,9 +148,24 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("locale");
 
+                    b.PrimitiveCollection<string[]>("MissingConsents")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("missing_consents")
+                        .HasDefaultValueSql("'{}'::text[]");
+
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
+
+                    b.Property<Guid?>("PollLeaseOwner")
+                        .HasColumnType("uuid")
+                        .HasColumnName("poll_lease_owner");
+
+                    b.Property<DateTime?>("PollLeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("poll_lease_until");
 
                     b.Property<Guid?>("ProviderAssignmentId")
                         .HasColumnType("uuid")
@@ -212,6 +231,10 @@ namespace Tims.Infrastructure.Migrations
                         .HasDatabaseName("ix_assessment_provider_attempts_withdrawal_pending")
                         .HasFilter("withdrawal_state = 'pending'");
 
+                    b.HasIndex("OrganizationId", "LastPolledAt")
+                        .HasDatabaseName("ix_assessment_provider_attempts_poll")
+                        .HasFilter("provider_assignment_id IS NOT NULL AND withdrawal_state IS NULL AND provider_erasure_requested_at IS NULL AND state IN ('created', 'launched', 'in_progress', 'completed', 'result_ready')");
+
                     b.HasIndex("OrganizationId", "ProviderAssignmentId")
                         .IsUnique()
                         .HasDatabaseName("ux_assessment_provider_attempts_provider_assignment");
@@ -244,6 +267,10 @@ namespace Tims.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_assessment_provider_attempts_instrument_version", "instrument_version IS NULL OR instrument_version ~ '^[0-9]{1,3}\\.[0-9]{1,3}$'");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_locale", "locale ~ '^[a-z]{2}(-[A-Z]{2})?$'");
+
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_missing_consents", "missing_consents <@ ARRAY['assessment', 'biometric', 'voice', 'ai_scoring']::text[]");
+
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_poll_lease", "(poll_lease_owner IS NULL) = (poll_lease_until IS NULL)");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_purpose", "purpose = 'selection'");
 
@@ -448,6 +475,11 @@ namespace Tims.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("name");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("slug");
 
                     b.HasKey("Id");
 

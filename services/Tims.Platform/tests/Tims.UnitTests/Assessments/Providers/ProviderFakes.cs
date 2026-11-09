@@ -697,6 +697,59 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.CompletedTask;
     }
 
+    /// <summary>Attempts currently leased by a poll (a claim skips them, like the real lease predicate).</summary>
+    public Dictionary<Guid, Guid> Leases { get; } = [];
+
+    public List<(Guid AttemptId, Guid Owner)> Released { get; } = [];
+
+    /// <summary>An organization whose claim throws (a failing org in a poll).</summary>
+    public Guid? FailingClaimOrganization { get; set; }
+
+    private bool IsPollable(AttemptRow a) =>
+        a.ProviderAssignmentId is not null && a.WithdrawalState is null && a.ErasureRequestedAt is null
+        && ProviderAttemptPolling.PollableStates.Contains(a.State) && !Leases.ContainsKey(a.Id);
+
+    public Task<IReadOnlyList<Guid>> ListOrganizationsWithPollableAttemptsAsync(int max, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Guid>>(Attempts.Where(IsPollable).Select(a => a.OrganizationId).Distinct().Take(max).ToList());
+
+    public Task<IReadOnlyList<PolledAttempt>> ClaimPollableAttemptsAsync(
+        Guid organizationId, Guid owner, int max, CancellationToken cancellationToken)
+    {
+        if (organizationId == FailingClaimOrganization)
+        {
+            throw new InvalidOperationException("claim failed");
+        }
+
+        var claimed = Attempts.Where(a => a.OrganizationId == organizationId && IsPollable(a)).Take(max).ToList();
+        foreach (var attempt in claimed)
+        {
+            Leases[attempt.Id] = owner;
+        }
+
+        Writes.Add("claimed:" + claimed.Count);
+        return Task.FromResult<IReadOnlyList<PolledAttempt>>(
+            claimed.Select(a => new PolledAttempt(a, Binding?.ProviderTenantId ?? Guid.Empty)).ToList());
+    }
+
+    public Task ReleasePollLeaseAsync(Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken)
+    {
+        if (Leases.TryGetValue(attemptId, out var holder) && holder == owner)
+        {
+            Leases.Remove(attemptId);
+            Released.Add((attemptId, owner));
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetMissingConsentsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> missingConsents, CancellationToken cancellationToken)
+    {
+        Writes.Add("missing:" + string.Join(",", missingConsents));
+        Replace(attemptId, a => a with { MissingConsents = missingConsents.ToList() });
+        return Task.CompletedTask;
+    }
+
     public AttemptRow AddCreatedAttempt(string instrument, string state = ProviderAttemptStates.Created, DateTimeOffset? expiresAt = null)
     {
         var row = new AttemptRow(Guid.NewGuid(), Org, Candidate, Vacancy, instrument, state, "Razón válida", "es", 1m, [],

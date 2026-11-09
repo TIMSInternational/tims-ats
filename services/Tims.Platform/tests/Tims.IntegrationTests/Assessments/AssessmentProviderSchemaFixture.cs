@@ -98,8 +98,8 @@ public sealed class AssessmentProviderSchemaFixture : IAsyncLifetime
     // migration so it is proven not to need them. Tenant-isolated like production, so a missing org filter would show.
     private const string PrismaStandIns =
         """
-        CREATE TABLE organizations (id uuid PRIMARY KEY, name text NOT NULL, is_active boolean NOT NULL DEFAULT true,
-            deleted_at timestamp NULL);
+        CREATE TABLE organizations (id uuid PRIMARY KEY, name text NOT NULL, slug text NOT NULL UNIQUE,
+            is_active boolean NOT NULL DEFAULT true, deleted_at timestamp NULL);
         CREATE TABLE candidates (id uuid PRIMARY KEY, organization_id uuid NOT NULL, first_name text NOT NULL,
             last_name text NOT NULL, email text NOT NULL, is_active boolean NOT NULL DEFAULT true, deleted_at timestamp NULL);
         CREATE TABLE vacancies (id uuid PRIMARY KEY, organization_id uuid NOT NULL, deleted_at timestamp NULL);
@@ -129,7 +129,7 @@ public sealed class AssessmentProviderSchemaFixture : IAsyncLifetime
         await using var seed = connection.CreateCommand();
         seed.CommandText =
             """
-            INSERT INTO organizations (id, name) VALUES (@orgA, 'Org A'), (@orgB, 'Org B');
+            INSERT INTO organizations (id, name, slug) VALUES (@orgA, 'Org A', 'org-a'), (@orgB, 'Org B', 'org-b');
             INSERT INTO candidates (id, organization_id, first_name, last_name, email)
             VALUES (@candA, @orgA, 'Ada', 'Alpha', 'ada@a.example'), (@candB, @orgB, 'Ben', 'Bravo', 'ben@b.example');
             INSERT INTO vacancies (id, organization_id) VALUES (@vacA, @orgA), (@vacB, @orgB);

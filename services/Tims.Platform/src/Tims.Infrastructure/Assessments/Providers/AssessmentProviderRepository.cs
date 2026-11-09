@@ -190,6 +190,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             attempt.InstrumentVersion = assignment.InstrumentVersion;
             attempt.ContentVersion = assignment.ContentVersion;
             attempt.RequiredConsents = [.. assignment.RequiredConsents];
+            attempt.MissingConsents = [.. assignment.MissingConsents.Where(ConsentPurposes.IsKnown).Distinct()];
             attempt.ExpiresAt = assignment.ExpiresAt.UtcDateTime;
             attempt.LastErrorCode = null;
             attempt.UpdatedAt = now.UtcDateTime;
@@ -524,7 +525,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         new(a.Id, a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument, a.State, a.JobRelatednessReason, a.Locale,
             a.TimeMultiplier, a.Aids, ToOffset(a.RequestedExpiresAt), a.ProviderSubjectId, a.ProviderAssignmentId,
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
-            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt));
+            a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

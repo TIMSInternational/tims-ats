@@ -289,44 +289,10 @@ public sealed class ProviderWebhookUseCase(IAssessmentProviderRepository reposit
             return (InboxStatuses.Failed, "invalid_data", false);
         }
 
-        var fetched = await _provider.GetResultAsync(resultId, cancellationToken).ConfigureAwait(false);
-        if (!fetched.Ok)
-        {
-            var failure = fetched.Failure!;
-            if (failure.Transient || failure.Code == ProviderFailure.Unconfigured)
-            {
-                return (InboxStatuses.Failed, failure.Code, true);
-            }
-
-            if (failure.Code == "result_not_visible")
-            {
-                // tenant_hr may see the status only: the attempt is finished, but there is nothing to store or score.
-                await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, ProviderAttemptStates.ResultReady,
-                    null, now, cancellationToken).ConfigureAwait(false);
-                return (InboxStatuses.Processed, failure.Code, false);
-            }
-
-            return failure.HttpStatus is 404 or 410
-                ? (InboxStatuses.Ignored, "result_gone", false)
-                : (InboxStatuses.Failed, failure.Code, false);
-        }
-
-        var result = fetched.Value!;
-        var matches = result.ResultId == resultId
-            && result.TenantId == envelope.ProviderTenantId
-            && result.AssignmentId == attempt.ProviderAssignmentId
-            && result.SubjectId == attempt.ProviderSubjectId
-            && result.Instrument == attempt.Instrument
-            && result.Purpose == "selection"
-            && result.ExternalVacancyRef == attempt.VacancyId.ToString()
-            && result.RenderedFor == "tenant_hr";
-        if (!matches)
-        {
-            return (InboxStatuses.Failed, "result_mismatch", false);
-        }
-
-        await _repository.StoreResultAsync(organizationId, attempt, result, now, cancellationToken).ConfigureAwait(false);
-        return (InboxStatuses.Processed, null, false);
+        var intake = await ProviderResultIntake.FetchAndStoreAsync(
+            _repository, _provider, organizationId, envelope.ProviderTenantId, attempt, resultId, now, cancellationToken)
+            .ConfigureAwait(false);
+        return (intake.Status, intake.Code, intake.Retry);
     }
 
     public static bool TryParseEnvelope(ReadOnlyMemory<byte> rawBody, out ProviderEventEnvelope? envelope, out string? error)

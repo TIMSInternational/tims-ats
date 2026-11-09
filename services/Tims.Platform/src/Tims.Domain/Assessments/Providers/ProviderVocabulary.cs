@@ -196,6 +196,56 @@ public static class ProviderAttemptStates
 }
 
 /// <summary>
+/// The D17 polling fallback (owner default 2026-11-08: "the ATS also polls stale attempts, so correctness never depends
+/// on cron frequency"). Webhooks stay the primary signal; the poller re-reads, with <c>GET /v1/assignments/{id}</c> and
+/// <c>GET /v1/results/{id}</c>, every mapped attempt whose sitting or result may still change and that nothing has
+/// touched for a while, and applies what it finds through the same guarded writes a webhook uses.
+/// </summary>
+public static class ProviderAttemptPolling
+{
+    /// <summary>
+    /// States whose sitting or result can still change at the provider. <c>result_ready</c> stays pollable for
+    /// <see cref="ResultRevisionWindow"/> after completion, because a later void or a staff review publishes a new
+    /// result revision.
+    /// </summary>
+    public static readonly IReadOnlyList<string> PollableStates =
+    [
+        ProviderAttemptStates.Created, ProviderAttemptStates.Launched, ProviderAttemptStates.InProgress,
+        ProviderAttemptStates.Completed, ProviderAttemptStates.ResultReady,
+    ];
+
+    /// <summary>A sitting-state attempt untouched (no write, no poll) for this long is polled.</summary>
+    public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(15);
+
+    /// <summary>A <c>result_ready</c> attempt is re-read at most this often, for revisions.</summary>
+    public static readonly TimeSpan ResultRevisionStaleAfter = TimeSpan.FromHours(6);
+
+    /// <summary>How long after completion a <c>result_ready</c> attempt is still re-read for revisions.</summary>
+    public static readonly TimeSpan ResultRevisionWindow = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// How long a claim holds an attempt. Longer than one attempt's worst case (two provider GETs, each bounded by the
+    /// client's per-call timeout of at most 30 s, plus token requests); an instance that dies mid-poll frees its claims
+    /// when they expire.
+    /// </summary>
+    public static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// The ATS state a provider <c>AssignmentStatus</c> moves an attempt to, or null when it moves nothing:
+    /// <c>created</c> is where every ATS attempt already is, and <c>cancelled</c> is never applied from the provider (only
+    /// an ATS cancel or the #312 cascade cancels an attempt). Unknown values are ignored (an extensible enum).
+    /// </summary>
+    public static string? StateFor(string providerStatus) => providerStatus switch
+    {
+        "in_progress" => ProviderAttemptStates.InProgress,
+        "completed" => ProviderAttemptStates.Completed,
+        "voided" => ProviderAttemptStates.Voided,
+        "expired" => ProviderAttemptStates.Expired,
+        _ => null,
+    };
+}
+
+/// <summary>
 /// Where an attempt stands in the #312 consent-withdrawal cascade to the provider (owner default D15, 2026-11-08). Set to
 /// <see cref="Pending"/> in the SAME transaction, under the same per-candidate lock, as the recruitment-consent
 /// withdrawal; <see cref="Done"/> once the provider confirmed the assignment's cancel and the subject's consent

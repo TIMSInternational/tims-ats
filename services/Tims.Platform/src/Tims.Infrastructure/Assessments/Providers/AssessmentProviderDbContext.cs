@@ -116,6 +116,10 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                     $"withdrawal_state IS NULL OR withdrawal_state IN ({InList(ProviderWithdrawalStates.All)})");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_consent_capture",
                     "consent_capture_generation >= 0 AND consent_captures_in_flight >= 0");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_missing_consents",
+                    $"missing_consents <@ {TextArray(ConsentPurposes.All)}");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_poll_lease",
+                    "(poll_lease_owner IS NULL) = (poll_lease_until IS NULL)");
                 // Past pending_create every attempt must carry the provider's ids (a cancelled one may never have had them).
                 t.HasCheckConstraint("ck_assessment_provider_attempts_external_ids",
                     "state IN ('pending_create', 'cancelled') OR (provider_assignment_id IS NOT NULL AND provider_subject_id IS NOT NULL)");
@@ -150,6 +154,10 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(a => a.ConsentCaptureGeneration).HasColumnName("consent_capture_generation").HasDefaultValue(0);
             entity.Property(a => a.ConsentCapturesInFlight).HasColumnName("consent_captures_in_flight").HasDefaultValue(0);
             entity.Property(a => a.ConsentCaptureStartedAt).HasColumnName("consent_capture_started_at");
+            entity.Property(a => a.MissingConsents).HasColumnName("missing_consents").HasDefaultValueSql("'{}'::text[]");
+            entity.Property(a => a.PollLeaseOwner).HasColumnName("poll_lease_owner");
+            entity.Property(a => a.PollLeaseUntil).HasColumnName("poll_lease_until");
+            entity.Property(a => a.LastPolledAt).HasColumnName("last_polled_at");
             entity.Property(a => a.AssignedById).HasColumnName("assigned_by_id");
             entity.Property(a => a.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(a => a.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
@@ -166,6 +174,12 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.HasIndex(a => new { a.OrganizationId, a.CandidateId })
                 .HasFilter($"withdrawal_state = '{ProviderWithdrawalStates.Pending}'")
                 .HasDatabaseName("ix_assessment_provider_attempts_withdrawal_pending");
+            // The D17 poller's work queue: mapped attempts whose sitting or result may still change, by staleness.
+            entity.HasIndex(a => new { a.OrganizationId, a.LastPolledAt })
+                .HasFilter("provider_assignment_id IS NOT NULL AND withdrawal_state IS NULL "
+                    + "AND provider_erasure_requested_at IS NULL "
+                    + $"AND state IN ({InList(ProviderAttemptPolling.PollableStates)})")
+                .HasDatabaseName("ix_assessment_provider_attempts_poll");
             // Idempotency backstop: at most one OPEN attempt per candidate + vacancy + instrument, even under a race.
             entity.HasIndex(a => new { a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument }).IsUnique()
                 .HasFilter($"state IN ({InList(ProviderAttemptStates.Open)})")
@@ -334,6 +348,7 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.HasKey(o => o.Id);
             entity.Property(o => o.Id).HasColumnName("id");
             entity.Property(o => o.Name).HasColumnName("name");
+            entity.Property(o => o.Slug).HasColumnName("slug");
             entity.Property(o => o.IsActive).HasColumnName("is_active");
             entity.Property(o => o.DeletedAt).HasColumnName("deleted_at").HasColumnType("timestamp");
         });

@@ -210,7 +210,39 @@ public interface IAssessmentProviderRepository
     Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// PRE-TENANT (privileged connection): the organizations holding at least one attempt the D17 poller could claim now
+    /// (<see cref="ClaimPollableAttemptsAsync"/>'s predicate), at most <paramref name="max"/>. Only organization ids leave.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListOrganizationsWithPollableAttemptsAsync(int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// D17 polling lease. ONE conditional UPDATE claims, for <paramref name="owner"/>, up to <paramref name="max"/> of the
+    /// org's stale pollable attempts whose lease is free or expired, locking them with <c>FOR UPDATE SKIP LOCKED</c>: two
+    /// pollers (two App Runner instances) never claim the same attempt, and neither waits on the other. The lease lasts
+    /// <see cref="Domain.Assessments.Providers.ProviderAttemptPolling.LeaseDuration"/> by the database clock. Returns the
+    /// claimed attempts with their binding's provider tenant.
+    /// </summary>
+    Task<IReadOnlyList<PolledAttempt>> ClaimPollableAttemptsAsync(
+        Guid organizationId, Guid owner, int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Ends <paramref name="owner"/>'s lease on one attempt and stamps <c>last_polled_at</c> (database clock). Conditional
+    /// on the owner: a lease that expired and was claimed by another poller is left alone.
+    /// </summary>
+    Task ReleasePollLeaseAsync(Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sets the consent purposes the provider still lacks for this attempt (its <c>missing_consents</c>), as just seen.
+    /// Unknown purposes are dropped. A no-op on an attempt that is not open.
+    /// </summary>
+    Task SetMissingConsentsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> missingConsents, CancellationToken cancellationToken);
 }
+
+/// <summary>An attempt the D17 poller claimed, with the provider tenant its binding maps to.</summary>
+public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 
 public sealed record ProviderCandidateSubjects(IReadOnlyList<Guid> Subjects, bool HasAttempts);
 
@@ -338,7 +370,8 @@ public sealed record AttemptRow(
     string? LastErrorCode,
     bool IsNew,
     string? WithdrawalState = null,
-    DateTimeOffset? ErasureRequestedAt = null)
+    DateTimeOffset? ErasureRequestedAt = null,
+    IReadOnlyList<string>? MissingConsents = null)
 {
     /// <summary>
     /// True once the candidate's #312 withdrawal reached this attempt (D15) or an erasure of its provider subject was

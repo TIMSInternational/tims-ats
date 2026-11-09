@@ -81,8 +81,17 @@ internal static partial class ProviderResponses
             return null;
         }
 
+        // result_id and the sitting timestamps are nullable in the contract; a value that is present must be well formed.
+        if (!OptionalGuid(root, "result_id", out var resultId) || !OptionalTimestamp(root, "started_at", out var startedAt)
+            || !OptionalTimestamp(root, "completed_at", out var completedAt)
+            || !OptionalTimestamp(root, "voided_at", out var voidedAt))
+        {
+            return null;
+        }
+
         return new ProviderAssignment(
-            id, tenant, subject, instrument, version, content, status, required, missing, expiresAt, Str(root, "external_ref", 128));
+            id, tenant, subject, instrument, version, content, status, required, missing, expiresAt, Str(root, "external_ref", 128),
+            resultId, startedAt, completedAt, voidedAt);
     }
 
     public static ProviderConsentRecord? Consent(JsonElement root) =>
@@ -242,6 +251,31 @@ internal static partial class ProviderResponses
 
     private static Guid? GuidOf(JsonElement obj, string name) =>
         Str(obj, name) is { } raw && Guid.TryParseExact(raw, "D", out var value) ? value : null;
+
+    // Absent or null: true with no value. Present: true only when it parses.
+    private static bool OptionalGuid(JsonElement obj, string name, out Guid? value)
+    {
+        value = null;
+        if (!obj.TryGetProperty(name, out var node) || node.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        value = GuidOf(obj, name);
+        return value is not null;
+    }
+
+    private static bool OptionalTimestamp(JsonElement obj, string name, out DateTimeOffset? value)
+    {
+        value = null;
+        if (!obj.TryGetProperty(name, out var node) || node.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        value = Timestamp(obj, name);
+        return value is not null;
+    }
 
     private static DateTimeOffset? Timestamp(JsonElement obj, string name) =>
         Str(obj, name) is { } raw && DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture,
