@@ -31,6 +31,13 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- ── 2a. The overall a narrow-scoped reader may see (owner default D6) ──────────────────────────────────────────
+-- A team leader sees "below minimum", never the level, so the stored overall (a known-weight mean that inverts back to
+-- the hidden level) must not reach them either. The C# FIT v2 compute stores here the overall recomputed without what a
+-- narrow reader may not see, or NULL when the row hides nothing (every v1 row). The TS list surfaces (candidate list and
+-- its fit-range filter, pipeline board, risk factors) read it for such a reader.
+ALTER TABLE "fit_scores" ADD COLUMN IF NOT EXISTS "restricted_overall_score" DOUBLE PRECISION;
+
 -- ── 2. A FIT v2 row is never replaced by a writer that does not know FIT v2 ──────────────────────────────────────
 -- The live TS writers (fitEngine.computeForVacancy and candidate.screenCandidate, both through computeFitScore) write a
 -- v1 breakdown with no lock. Before this trigger, the next TS recompute silently replaced a v2 row (per-instrument
@@ -55,6 +62,7 @@ BEGIN
      AND coalesce(current_setting('tims.fit_writer', true), '') <> 'fit_v2_aware'
   THEN
     NEW.overall_score := OLD.overall_score;
+    NEW.restricted_overall_score := OLD.restricted_overall_score;
     NEW.weights := OLD.weights;
     NEW.is_partial := OLD.is_partial;
     NEW.calculated_at := OLD.calculated_at;

@@ -35,6 +35,8 @@ export type { FitScoreResult, FitScoreInput } from './agents/interview-fit-score
 export { explainFit, fitExplainerOutputSchema } from './agents/fit-explainer';
 export {
   FIT_DIMENSION_KEYS,
+  fitOverallAsShown,
+  fitOverallRangeWhere,
   fitScoreAsShown,
   hidesBelowMinimum,
   redactFitBreakdownBelowMinimum,

@@ -122,3 +122,29 @@ export function fitScoreAsShown<T extends { overallScore: number; breakdown: unk
   const { weights: _weights, ...rest } = shown;
   return rest;
 }
+
+/**
+ * A stored fit score on a LIST surface (candidate list, pipeline board, risk factors), which reads no breakdown: for a
+ * narrow-scoped reader the overall is the stored D6 overall (`restrictedOverallScore`, written by the C# FIT v2 compute
+ * when the row hides something; null otherwise) and the row is partial (`isPartial`, when it has the key); anyone else
+ * gets the stored overall. `restrictedOverallScore` itself is never returned.
+ */
+export function fitOverallAsShown<T extends { overallScore: number; restrictedOverallScore?: number | null }>(
+  row: T,
+  hideBelowMinimum: boolean,
+): Omit<T, 'restrictedOverallScore'> {
+  const { restrictedOverallScore, ...rest } = row;
+  if (!hideBelowMinimum || typeof restrictedOverallScore !== 'number') return rest;
+  return { ...rest, overallScore: restrictedOverallScore, ...('isPartial' in rest ? { isPartial: true } : {}) };
+}
+
+/**
+ * The where-fragment of a fit-range filter on the stored overall. For a narrow-scoped reader it filters on the overall
+ * that reader sees (the D6 overall where one is stored), so the filter cannot be used to probe the hidden one.
+ */
+export function fitOverallRangeWhere(range: { gte?: number; lte?: number }, hideBelowMinimum: boolean) {
+  if (!hideBelowMinimum) return { overallScore: range };
+  return {
+    OR: [{ restrictedOverallScore: range }, { restrictedOverallScore: null, overallScore: range }],
+  };
+}

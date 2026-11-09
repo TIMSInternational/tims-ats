@@ -169,6 +169,14 @@ public interface IAssessmentProviderRepository
         Guid organizationId, IReadOnlyList<WithdrawalFence> fences, DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Moves the given attempts that are STILL pending to the back of <see cref="ListPendingWithdrawalsAsync"/>'s order
+    /// (their <c>updated_at</c> becomes <paramref name="now"/>), so a pass always reaches attempts it has not tried yet: a
+    /// batch that keeps failing can never starve the rest. A completed attempt is left alone (conditional write).
+    /// </summary>
+    Task DeferPendingWithdrawalsAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
     /// A launch announces a consent capture BEFORE it sends one, durably: one conditional write that bumps the attempt's
     /// capture generation and in-flight count, and refuses (false, nothing written) an attempt already in a #312
     /// withdrawal. Row-level locking orders it against the withdrawal's staging write, so either the staging sees the

@@ -629,6 +629,23 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult(fences);
     }
 
+    // Mirrors the real ordering (updated_at, id): a deferred attempt moves to the back of the pending listing.
+    public Task DeferPendingWithdrawalsAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var deferred = Attempts
+            .Where(a => attemptIds.Contains(a.Id) && a.WithdrawalState == ProviderWithdrawalStates.Pending)
+            .ToList();
+        foreach (var attempt in deferred)
+        {
+            Attempts.Remove(attempt);
+            Attempts.Add(attempt);
+        }
+
+        Writes.Add("withdrawal_deferred:" + deferred.Count);
+        return Task.CompletedTask;
+    }
+
     public Task<int> MarkWithdrawalDoneAsync(
         Guid organizationId, IReadOnlyList<WithdrawalFence> fences, DateTimeOffset now, CancellationToken cancellationToken)
     {

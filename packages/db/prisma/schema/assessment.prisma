@@ -184,6 +184,9 @@ model FitScore {
   candidateId    String   @map("candidate_id") @db.Uuid
   vacancyId      String   @map("vacancy_id") @db.Uuid
   overallScore   Float    @map("overall_score")
+  // FIT v2, owner default D6: the overall a reader below company scope may see (null when the row hides nothing).
+  // Written by the C# compute only; migration 20261109100000_fit_v2_integrity.
+  restrictedOverallScore Float? @map("restricted_overall_score")
   breakdown      Json
   weights        Json
   isPartial      Boolean  @default(false) @map("is_partial")

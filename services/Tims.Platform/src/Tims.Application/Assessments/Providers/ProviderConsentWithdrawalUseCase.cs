@@ -126,6 +126,14 @@ public sealed class ProviderConsentWithdrawalUseCase(IAssessmentProviderReposito
             .ToList();
         var moved = await _repository.MarkWithdrawalDoneAsync(organizationId, confirmed, now, cancellationToken)
             .ConfigureAwait(false);
+        if (moved < pending.Count)
+        {
+            // What this pass leaves pending goes to the back of the queue, so the next pass (or sweep) tries attempts it
+            // has not tried yet instead of the same failing batch forever (Codex release round 2 [P2]).
+            await _repository.DeferPendingWithdrawalsAsync(
+                organizationId, pending.Select(a => a.Id).ToList(), now, cancellationToken).ConfigureAwait(false);
+        }
+
         return new WithdrawalPropagation(moved, pending.Count - moved);
     }
 

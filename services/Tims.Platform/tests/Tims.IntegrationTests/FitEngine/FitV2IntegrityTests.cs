@@ -55,6 +55,7 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
     {
         var (candidate, vacancy) = (Guid.NewGuid(), Guid.NewGuid());
         await InsertFitScoreAsync(candidate, vacancy, 73, V2Breakdown, partial: true);
+        await SqlAsync("UPDATE fit_scores SET restricted_overall_score = 92 WHERE candidate_id = @c", ("c", candidate));
 
         // The TS computeFitScore upsert, as Prisma sends it: a v1 breakdown carrying a screening judgment.
         await TsUpsertAsync(candidate, vacancy, 99, """{"assessment":10,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":{"score":70,"recommendation":"advance","reasoning":"x","strengths":[],"gaps":[]}}""");
@@ -66,6 +67,8 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         Assert.Equal(50, breakdown["assessment"]!.GetValue<double>());
         Assert.Equal("advance", breakdown["llmJudgment"]!["recommendation"]!.GetValue<string>());
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Weights), JsonNode.Parse(row.Weights)), row.Weights);
+        Assert.Equal(92d, await _fixture.ExecuteScalarAsync(
+            "SELECT restricted_overall_score FROM fit_scores WHERE candidate_id = @c", ("c", candidate)));
 
         // computeForVacancy's TS recompute (llmJudgment null) changes nothing, not even the judgment.
         await TsUpsertAsync(candidate, vacancy, 12, """{"assessment":12,"interview":null,"experience":null,"education":null,"languages":null,"llmJudgment":null}""");
@@ -89,6 +92,8 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         var row = (await _fixture.GetFitScoreAsync(candidate, vacancy))!;
         Assert.Equal(64, row.OverallScore);
         Assert.Null(JsonNode.Parse(row.Breakdown)!["fitVersion"]);
+        Assert.Equal(DBNull.Value, await _fixture.ExecuteScalarAsync(
+            "SELECT restricted_overall_score FROM fit_scores WHERE candidate_id = @c", ("c", candidate))); // v1: none
     }
 
     // ── the recompute queue ──
@@ -361,6 +366,8 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
 
         var entry = JsonNode.Parse((await _fixture.GetFitScoreAsync(seed.Candidate, seed.Vacancy))!.Breakdown)!["assessments"]![0]!;
         Assert.Equal(75, entry["score"]!.GetValue<double>()); // (60 + 90) / 2, not the later quiz's 90 alone
+        Assert.Equal(DBNull.Value, await _fixture.ExecuteScalarAsync(
+            "SELECT restricted_overall_score FROM fit_scores WHERE candidate_id = @c", ("c", seed.Candidate))); // no minimum: nothing hidden
         Assert.Equal(
             [second.ToString(), seed.Assignment.ToString()],
             entry["resultIds"]!.AsArray().Select(n => n!.GetValue<string>()).ToArray());

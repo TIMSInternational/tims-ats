@@ -180,7 +180,7 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
         await ExecuteFitScoreUpsertAsync(
             organizationId, candidateId, vacancyId, overallScore, breakdownJson, weightsJson, isPartial, now,
-            cancellationToken).ConfigureAwait(false);
+            restrictedOverallScore: null, cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
@@ -203,7 +203,8 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
     // 20261109100000_fit_v2_integrity): only a writer that does NOT set this is kept from replacing a v2 row with v1.
     private async Task ExecuteFitScoreUpsertAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
+        string weightsJson, bool isPartial, DateTimeOffset now, double? restrictedOverallScore,
+        CancellationToken cancellationToken)
     {
         var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
         var transaction = (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
@@ -222,6 +223,10 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         command.Parameters.Add(new NpgsqlParameter("breakdown", NpgsqlDbType.Jsonb) { Value = breakdownJson });
         command.Parameters.Add(new NpgsqlParameter("weights", NpgsqlDbType.Jsonb) { Value = weightsJson });
         command.Parameters.Add(new NpgsqlParameter("partial", NpgsqlDbType.Boolean) { Value = isPartial });
+        command.Parameters.Add(new NpgsqlParameter("restricted", NpgsqlDbType.Double)
+        {
+            Value = restrictedOverallScore is { } restricted ? restricted : DBNull.Value,
+        });
         command.Parameters.Add(new NpgsqlParameter("now", NpgsqlDbType.Timestamp) { Value = ToTimestamp(now) });
 
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -269,7 +274,7 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
         await ExecuteFitScoreUpsertAsync(
             organizationId, candidateId, vacancyId, write.OverallScore, write.BreakdownJson, weightsJson,
-            write.IsPartial, now, cancellationToken).ConfigureAwait(false);
+            write.IsPartial, now, write.RestrictedOverallScore, cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
@@ -402,12 +407,14 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         "SELECT EXISTS (SELECT 1 FROM fit_scores WHERE organization_id = @org AND candidate_id = @cand "
         + "AND vacancy_id = @vac)";
 
+    // restricted_overall_score (migration 20261109100000_fit_v2_integrity): the D6 overall of a v2 row, NULL otherwise.
     private const string FitScoreUpsertSql =
-        "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, "
-        + "weights, is_partial, calculated_at, created_at, updated_at) "
-        + "VALUES (@id, @org, @cand, @vac, @score, @breakdown, @weights, @partial, @now, @now, @now) "
+        "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, restricted_overall_score, "
+        + "breakdown, weights, is_partial, calculated_at, created_at, updated_at) "
+        + "VALUES (@id, @org, @cand, @vac, @score, @restricted, @breakdown, @weights, @partial, @now, @now, @now) "
         + "ON CONFLICT (candidate_id, vacancy_id) "
-        + "DO UPDATE SET overall_score = EXCLUDED.overall_score, breakdown = EXCLUDED.breakdown, "
+        + "DO UPDATE SET overall_score = EXCLUDED.overall_score, "
+        + "restricted_overall_score = EXCLUDED.restricted_overall_score, breakdown = EXCLUDED.breakdown, "
         + "weights = EXCLUDED.weights, is_partial = EXCLUDED.is_partial, "
         + "calculated_at = EXCLUDED.calculated_at, updated_at = EXCLUDED.updated_at";
 

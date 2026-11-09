@@ -306,10 +306,16 @@ public sealed class FitEngineWriteUseCase(
         var result = FitEngineKernels.ComputeWeightedScore(rawScores, weights);
         var breakdown = FitV2Kernels.BuildBreakdown(rawScores, evaluation.Entries, evaluation.ReviewPending);
 
+        // Owner default D6: what a narrow-scoped reader may see of this row's overall (null when nothing is hidden).
+        var redacted = FitV2Visibility.RedactBelowMinimum(breakdown, out var hidesSomething);
+        double? restricted = hidesSomething
+            ? FitEngineKernels.ComputeWeightedScore(FitEngineKernels.ParseBreakdownScores(redacted), weights).OverallScore
+            : null;
+
         // A scored result awaiting review is left out of the number, so the number is provisional. Store the row as
         // partial; the breakdown's reviewPending says why, so a reader can hold the row apart.
         return new FitScoreWrite(
-            result.OverallScore, breakdown.ToJsonString(), result.IsPartial || evaluation.ReviewPending);
+            result.OverallScore, breakdown.ToJsonString(), result.IsPartial || evaluation.ReviewPending, restricted);
     }
 
     // TS resolveWeightProfile: roleFamily profile (an EMPTY-STRING roleFamily is falsy in TS → skipped) →

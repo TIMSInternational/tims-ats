@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { consentGuard } from './consent-guard.service';
 import type { Prisma } from '@tims/db';
-import { fitScoreAsShown } from '@tims/ai';
+import { fitOverallAsShown, fitScoreAsShown } from '@tims/ai';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { takeCursorPage } from '../lib/cursor-page';
 import { candidateAiService } from './candidate-ai.service';
@@ -29,11 +29,13 @@ export const candidateService = {
       fitMin?: number;
       fitMax?: number;
     },
+    hideBelowMinimum = false,
   ) {
-    const rows = await candidateRepository.list(orgId, scopeWhere, appScopeWhere, input);
+    const rows = await candidateRepository.list(orgId, scopeWhere, appScopeWhere, input, hideBelowMinimum);
     const { items, nextCursor } = takeCursorPage(rows, input.limit);
 
-    return { items, nextCursor };
+    // FIT owner default D6 (@tims/ai fit-visibility): the overall a narrow-scoped reader may see.
+    return { items: items.map((c) => ({ ...c, fitScores: c.fitScores.map((f) => fitOverallAsShown(f, hideBelowMinimum)) })), nextCursor };
   },
 
   async getById(
@@ -157,13 +159,13 @@ export const candidateService = {
   },
 
   // Risks
-  async getRisks(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
+  async getRisks(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput, hideBelowMinimum = false) {
     const candidate = await candidateRepository.getCandidateForRisks(orgId, candidateId, appScopeWhere);
     if (!candidate) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
     }
 
-    const latestFit = candidate.fitScores[0];
+    const latestFit = candidate.fitScores[0] && fitOverallAsShown(candidate.fitScores[0], hideBelowMinimum);
     const rejectedCount = candidate.applications.filter((a) => a.status === 'rejected').length;
 
     return {

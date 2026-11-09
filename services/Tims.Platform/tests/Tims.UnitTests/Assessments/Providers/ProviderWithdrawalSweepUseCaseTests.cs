@@ -71,6 +71,33 @@ public sealed class ProviderWithdrawalSweepUseCaseTests
         Assert.Equal(ProviderWithdrawalStates.Pending, _repository.Attempts.Single().WithdrawalState);
     }
 
+    // Codex release round 2 [P2]: a pass took the oldest 50 pending attempts and a failure left their order unchanged, so
+    // 50 attempts that keep failing were re-selected by every sweep and a healthy attempt behind them never completed.
+    [Fact]
+    public async Task A_batch_that_keeps_failing_never_starves_a_healthy_withdrawal_behind_it()
+    {
+        var failing = new HashSet<Guid>();
+        for (var i = 0; i < ProviderConsentWithdrawalUseCase.MaxAttemptsPerPass; i++)
+        {
+            failing.Add(_repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed).ProviderSubjectId!.Value);
+        }
+
+        var healthy = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        _repository.WithdrawnCandidates.Add(FakeRepository.Candidate);
+        await _repository.StageConsentWithdrawalAsync(FakeRepository.Org, FakeRepository.Candidate, Now, CancellationToken.None);
+        _provider.OnListConsents = subject => failing.Contains(subject)
+            ? ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true))
+            : ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success([]);
+
+        var first = await Sweep.RunAsync(Now, CancellationToken.None);   // the 50 oldest: all blocked, sent to the back
+        var second = await Sweep.RunAsync(Now, CancellationToken.None);  // the healthy one is reached
+
+        Assert.Equal(0, first.Confirmed);
+        Assert.Equal(1, second.Confirmed);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single(a => a.Id == healthy.Id).WithdrawalState);
+        Assert.Equal(ProviderConsentWithdrawalUseCase.MaxAttemptsPerPass, _repository.Attempts.Count(a => a.WithdrawalState == ProviderWithdrawalStates.Pending));
+    }
+
     [Fact]
     public async Task A_failing_organization_does_not_stop_the_others()
     {

@@ -66,4 +66,10 @@ public sealed record FitRequirementsSaved(JsonNode? FitRequirements, IReadOnlyLi
 /// What a FIT v2 compute writes for one candidate, built INSIDE the write transaction from an in-lock read of the
 /// results (see <c>IFitEngineWriteRepository.UpsertFitScoreV2Async</c>).
 /// </summary>
-public sealed record FitScoreWrite(double OverallScore, string BreakdownJson, bool IsPartial);
+/// <param name="RestrictedOverallScore">
+/// Owner default D6: the overall a reader below company scope may see (the breakdown redacted by
+/// <see cref="FitV2Visibility"/>, its overall recomputed), or null when the row hides nothing. Stored in
+/// <c>fit_scores.restricted_overall_score</c> for the TS list surfaces, which cannot recompute it.
+/// </param>
+public sealed record FitScoreWrite(
+    double OverallScore, string BreakdownJson, bool IsPartial, double? RestrictedOverallScore = null);

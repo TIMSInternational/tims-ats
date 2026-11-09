@@ -44,7 +44,7 @@ export const candidateCrudRouter = router({
       // List children (fit scores, app counts) + fit filters carry the
       // application fragment (codex re-review).
       const appScopeWhere = await scopeWhereFor('application', ctx.access, ctx.user.id);
-      return candidateService.list(ctx.user.organizationId, scopeWhere, appScopeWhere, input);
+      return candidateService.list(ctx.user.organizationId, scopeWhere, appScopeWhere, input, hidesBelowMinimum(ctx.access.scope));
     }),
 
   getById: permissionProcedure('candidate', 'read')

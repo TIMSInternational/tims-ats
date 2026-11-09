@@ -345,6 +345,42 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         Assert.Equal(1, await repository.MarkWithdrawalDoneAsync(Org, [next], DateTimeOffset.UtcNow, CancellationToken.None));
     }
 
+    // Codex release round 2 [P2] (slice "fit"): a pass sends what it leaves pending to the back of the listing, so a batch
+    // that keeps failing cannot starve the attempts behind it; a completed attempt is never touched.
+    [Fact]
+    public async Task Deferring_moves_still_pending_attempts_to_the_back_of_the_listing()
+    {
+        var candidate = await CandidateAsync($"{Guid.NewGuid():N}@a.example", withdrawn: true);
+        var (first, _) = await AttemptAsync(candidate, "result_ready");
+        var (second, _) = await AttemptAsync(candidate, "completed");
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET withdrawal_state = 'pending', updated_at = now() - interval '2 hours' WHERE id = '{first}'");
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET withdrawal_state = 'pending', updated_at = now() - interval '1 hour' WHERE id = '{second}'");
+        await using var db = fixture.NewContext();
+        var repository = new AssessmentProviderRepository(db);
+        try
+        {
+            var before = (await repository.ListPendingWithdrawalsAsync(Org, 500, CancellationToken.None)).Select(a => a.Id).ToList();
+            Assert.True(before.IndexOf(first) < before.IndexOf(second));
+
+            await repository.DeferPendingWithdrawalsAsync(Org, [first], DateTimeOffset.UtcNow, CancellationToken.None);
+
+            var after = (await repository.ListPendingWithdrawalsAsync(Org, 500, CancellationToken.None)).Select(a => a.Id).ToList();
+            Assert.True(after.IndexOf(second) < after.IndexOf(first));
+
+            await fixture.ExecuteAsync($"UPDATE assessment_provider_attempts SET withdrawal_state = 'done' WHERE id = '{second}'");
+            var doneAt = await fixture.ScalarAsync($"SELECT updated_at::text FROM assessment_provider_attempts WHERE id = '{second}'");
+            await repository.DeferPendingWithdrawalsAsync(Org, [second], DateTimeOffset.UtcNow.AddHours(1), CancellationToken.None);
+            Assert.Equal(doneAt, await fixture.ScalarAsync($"SELECT updated_at::text FROM assessment_provider_attempts WHERE id = '{second}'"));
+        }
+        finally
+        {
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_attempts SET withdrawal_state = 'done' WHERE id IN ('{first}', '{second}')");
+        }
+    }
+
     // Codex release review, round 3 [P1]: the sweep's pre-tenant listing sees every organization with pending work.
     [Fact]
     public async Task The_sweep_lists_every_organization_holding_a_pending_withdrawal_and_no_other()

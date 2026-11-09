@@ -449,6 +449,25 @@ public sealed class FitV2UseCaseTests
         Assert.Equal(39, scored["assessment"]!.GetValue<double>()); // (25×3 + 80×1)/4 = 38.75 → 39
     }
 
+    // ── owner default D6 on list surfaces: the stored restricted overall ──
+    [Fact]
+    public async Task A_row_that_hides_a_level_stores_the_overall_a_narrow_reader_may_see_and_one_that_hides_nothing_stores_null()
+    {
+        const string requirements =
+            """{"assessments":[{"instrument":"itcia","use":"scored","min":{"level":4}}]}""";
+        var below = Repo(requirements, interview: 80, profileWeights: """{"assessment":0.5,"interview":0.5}""");
+        await new FitEngineWriteUseCase(below, new FakeResultSource(Result(FitInstruments.Itcia, "r", level: 2)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        var hidden = Assert.Single(below.FitScoreUpserts);
+        Assert.Equal(60, hidden.OverallScore);  // (ITC-IA 40 + interview 80) / 2: inverts to level 2 given the weights
+        Assert.Equal(80, hidden.Restricted);    // the assessment dimension dropped: interview alone
+
+        var met = Repo(requirements, interview: 80, profileWeights: """{"assessment":0.5,"interview":0.5}""");
+        await new FitEngineWriteUseCase(met, new FakeResultSource(Result(FitInstruments.Itcia, "r", level: 5)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        Assert.Null(Assert.Single(met.FitScoreUpserts).Restricted);
+    }
+
     // ── the recompute queue's single-row recompute ──
     [Fact]
     public async Task Recompute_RewritesAnExistingRow_UnderTheLock_WithTheThresholdPolicy()
@@ -520,7 +539,8 @@ public sealed class FitV2UseCaseTests
         ResultIntegrity integrity = ResultIntegrity.Valid) =>
         new(instrument, id, "test", integrity, Now.AddDays(-1), score, percentile, cefr, level, null, null);
 
-    private sealed record FitScoreUpsert(double OverallScore, string BreakdownJson, string WeightsJson, bool IsPartial);
+    private sealed record FitScoreUpsert(
+        double OverallScore, string BreakdownJson, string WeightsJson, bool IsPartial, double? Restricted = null);
 
     private sealed class FakeResultSource(params InstrumentResult[] results) : IAssessmentResultSource
     {
@@ -707,7 +727,8 @@ public sealed class FitV2UseCaseTests
             }
 
             Events.Add("write");
-            FitScoreUpserts.Add(new FitScoreUpsert(write.OverallScore, write.BreakdownJson, weightsJson, write.IsPartial));
+            FitScoreUpserts.Add(new FitScoreUpsert(
+                write.OverallScore, write.BreakdownJson, weightsJson, write.IsPartial, write.RestrictedOverallScore));
             return true;
         }
 

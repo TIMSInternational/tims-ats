@@ -88,6 +88,27 @@ public sealed partial class AssessmentProviderRepository
         return rows.Select(r => new WithdrawalFence(r.AttemptId, r.Generation, r.InFlight, r.Stale)).ToList();
     }
 
+    public async Task DeferPendingWithdrawalsAsync(
+        Guid organizationId, IReadOnlyList<Guid> attemptIds, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(attemptIds);
+        if (attemptIds.Count == 0)
+        {
+            return;
+        }
+
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var ids = attemptIds.ToArray();
+        var timestamp = now.UtcDateTime;
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts
+                SET updated_at = {timestamp}
+              WHERE organization_id = {organizationId} AND id = ANY({ids}) AND withdrawal_state = 'pending'
+             """, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<int> MarkWithdrawalDoneAsync(
         Guid organizationId, IReadOnlyList<WithdrawalFence> fences, DateTimeOffset now, CancellationToken cancellationToken)
     {
