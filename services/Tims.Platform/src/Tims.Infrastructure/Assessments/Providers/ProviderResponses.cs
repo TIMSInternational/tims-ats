@@ -169,8 +169,11 @@ internal static partial class ProviderResponses
         };
     }
 
-    /// <summary>An RFC 9457 problem → a failure with the stable code. 429 and 5xx are transient.</summary>
-    public static ProviderFailure Problem(int status, string text)
+    /// <summary>
+    /// An RFC 9457 problem → a failure with the stable code. 429, 5xx and 409 <c>idempotency_key_in_use</c> (an earlier
+    /// request with the same key is still being processed; the amended contract's Idempotency section) are transient.
+    /// </summary>
+    public static ProviderFailure Problem(int status, string text, TimeSpan? retryAfter = null)
     {
         var transient = status == 429 || status >= 500;
         var code = status switch
@@ -200,7 +203,32 @@ internal static partial class ProviderResponses
             // Not a problem document (a proxy's HTML error page, for example): keep the status-derived code.
         }
 
-        return new ProviderFailure(status, code, transient, missing);
+        if (status == 409 && code == ProviderFailure.IdempotencyKeyInUse)
+        {
+            transient = true;
+        }
+
+        return new ProviderFailure(status, code, transient, missing) { RetryAfter = retryAfter };
+    }
+
+    /// <summary>
+    /// <c>Retry-After</c> as delay-seconds (RFC 9110 §10.2.3) or an HTTP date, relative to <paramref name="now"/>; null
+    /// when absent or unreadable. Bounded to a day so a hostile value cannot park a caller.
+    /// </summary>
+    public static TimeSpan? RetryAfter(System.Net.Http.Headers.RetryConditionHeaderValue? header, DateTimeOffset now)
+    {
+        var delay = header switch
+        {
+            { Delta: { } delta } => delta,
+            { Date: { } date } => date - now,
+            _ => (TimeSpan?)null,
+        };
+        if (delay is not { } value)
+        {
+            return null;
+        }
+
+        return value < TimeSpan.Zero ? TimeSpan.Zero : value > TimeSpan.FromDays(1) ? TimeSpan.FromDays(1) : value;
     }
 
     private static bool IsHttps(string value) =>

@@ -39,7 +39,8 @@ public sealed class TimsAssessmentsClientTests
         var wrapped = Options.Create(options ?? Configured());
         var cache = new ClientCredentialsTokenCache(new StubFactory(_handler), wrapped, _clock,
             NullLogger<ClientCredentialsTokenCache>.Instance);
-        return new TimsAssessmentsClient(new HttpClient(_handler), cache, wrapped, NullLogger<TimsAssessmentsClient>.Instance);
+        return new TimsAssessmentsClient(new HttpClient(_handler), cache, wrapped, NullLogger<TimsAssessmentsClient>.Instance,
+            _clock);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string json, string mediaType = "application/json") =>
@@ -604,6 +605,70 @@ public sealed class TimsAssessmentsClientTests
 
         Assert.Null(result.Failure!.HttpStatus);
         Assert.Equal(ProviderFailure.NotFoundUnconfirmed, result.Failure.Code);
+    }
+
+    // The amended contract (Idempotency): a request that arrives while an earlier one with the same Idempotency-Key and
+    // body is still being processed is refused with 409 idempotency_key_in_use and Retry-After, and nothing is done for
+    // it; a retry with the same key and body after the delay gets the original response.
+    private static HttpResponseMessage InUse(string? retryAfter)
+    {
+        var response = Json(HttpStatusCode.Conflict,
+            """{"type":"about:blank","title":"Conflict","status":409,"code":"idempotency_key_in_use"}""", "application/problem+json");
+        if (retryAfter is not null)
+        {
+            response.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
+        }
+
+        return response;
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData(null)] // no Retry-After: waited out for the 1 s default
+    public async Task An_idempotency_key_in_use_is_waited_out_once_and_resent_with_the_same_key_and_body(string? retryAfter)
+    {
+        var id = Guid.NewGuid();
+        var posts = 0;
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : ++posts == 1 ? InUse(retryAfter) : Json(HttpStatusCode.Created, AssignmentJson(id)));
+
+        var result = await Client().CreateAssignmentAsync(AssignmentRequest(), "ats-attempt-1", CancellationToken.None);
+
+        Assert.True(result.Ok);
+        Assert.Equal(id, result.Value!.AssignmentId);
+        var sent = _handler.Requests.Where(r => r.Uri != TokenUrl).ToList();
+        Assert.Equal(2, sent.Count);
+        Assert.All(sent, r => Assert.Equal("ats-attempt-1", r.IdempotencyKey));
+        Assert.Equal(sent[0].Body, sent[1].Body);
+    }
+
+    [Fact]
+    public async Task An_idempotency_key_in_use_with_a_long_retry_after_is_a_transient_failure_carrying_the_delay()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : InUse("30"));
+
+        var result = await Client().CreateAssignmentAsync(AssignmentRequest(), "ats-attempt-1", CancellationToken.None);
+
+        Assert.False(result.Ok);
+        Assert.Equal(409, result.Failure!.HttpStatus);
+        Assert.Equal(ProviderFailure.IdempotencyKeyInUse, result.Failure.Code);
+        Assert.True(result.Failure.Transient);
+        Assert.False(result.Failure.IsDefinitiveRefusal);
+        Assert.Equal(TimeSpan.FromSeconds(30), result.Failure.RetryAfter);
+        Assert.Single(_handler.Requests, r => r.Uri != TokenUrl);
+    }
+
+    [Fact]
+    public async Task A_second_idempotency_key_in_use_is_returned_not_retried_again()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : InUse("0"));
+
+        var result = await Client().EnsureSubjectAsync(
+            new ProviderSubjectRequest(Guid.Parse(Tenant), "c-1", null, null, null, null), "subject-key", CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.IdempotencyKeyInUse, result.Failure!.Code);
+        Assert.True(result.Failure.Transient);
+        Assert.Equal(2, _handler.Requests.Count(r => r.Uri != TokenUrl));
     }
 
     private sealed class StubHandler : HttpMessageHandler

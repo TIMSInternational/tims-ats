@@ -113,11 +113,24 @@ public sealed class ProviderCall<T>
 /// <summary>
 /// A provider failure. <see cref="Code"/> is the contract's problem <c>code</c> when the provider answered with one
 /// (<c>consent_required</c>, <c>vacancy_version_mismatch</c>, …), else one of the local codes below.
-/// <see cref="Transient"/> is true for outages, 429 and 5xx: retrying the same idempotent call is safe and useful.
+/// <see cref="Transient"/> is true for outages, 429, 5xx and 409 <see cref="IdempotencyKeyInUse"/>: retrying the same
+/// idempotent call (same key, same body) is safe and useful. <see cref="RetryAfter"/> is the provider's
+/// <c>Retry-After</c>, when it sent one.
 /// </summary>
 public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transient, IReadOnlyList<string> MissingConsents)
 {
     public const string Unconfigured = "provider_unconfigured";
+
+    /// <summary>
+    /// 409 (contract, Idempotency): an earlier request with the same <c>Idempotency-Key</c> and body is still being
+    /// processed, so nothing was done for this one. Retry with the same key and body after <c>Retry-After</c>: once the
+    /// first request has finished, the retry gets its original response. Transient, and never a refusal: the first
+    /// request may still create the resource (or store the consent).
+    /// </summary>
+    public const string IdempotencyKeyInUse = "idempotency_key_in_use";
+
+    /// <summary>The provider's <c>Retry-After</c> (429, 503, 409 <see cref="IdempotencyKeyInUse"/>), when present.</summary>
+    public TimeSpan? RetryAfter { get; init; }
     public const string Unavailable = "provider_unavailable";
     public const string ContractViolation = "provider_contract_violation";
     public const string TokenUnavailable = "provider_token_unavailable";
@@ -137,9 +150,10 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
     public const string SubjectDataRequired = "subject_data_required";
 
     // Contract codes (tims-assessments.v1.yaml, Errors) that refuse a create OUTRIGHT: the provider validated the
-    // request and created nothing. Deliberately absent: idempotency_key_in_use (another request with this key is still
-    // creating it), idempotency_key_reused (an earlier body under this key may have created it), and any code this
-    // connector does not know (the contract may add codes in a minor version).
+    // request and created nothing. Deliberately absent: idempotency_key_in_use (a 409 contract code since the amended
+    // contract: another request with this key is still creating it), idempotency_key_reused (an earlier body under this
+    // key may have created it), and any code this connector does not know (the contract may add codes in a minor
+    // version).
     private static readonly string[] RefusalCodes =
     [
         "invalid_request", "insufficient_scope", "forbidden", "not_found", "vacancy_version_mismatch", "subject_erased",

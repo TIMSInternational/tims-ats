@@ -19,7 +19,11 @@ namespace Tims.Infrastructure.Assessments.Providers;
 /// retries once with a fresh token.</item>
 /// <item>Every create sends <c>Idempotency-Key</c>; request bodies are built key by key (snake_case, nulls omitted).</item>
 /// <item>Errors are RFC 9457 problem documents: the stable <c>code</c> (and <c>missing_consents</c>) is surfaced;
-/// network errors, timeouts, 429 and 5xx are transient.</item>
+/// network errors, timeouts, 429, 5xx and 409 <c>idempotency_key_in_use</c> are transient.</item>
+/// <item>409 <c>idempotency_key_in_use</c> on a keyed request (the amended contract: an earlier request with the same key
+/// and body is still being processed, and nothing was done for this one) is retried ONCE in place with the same key and
+/// body when its <c>Retry-After</c> is at most <see cref="MaxInlineRetryAfter"/>; otherwise it is returned as transient
+/// with the delay, and the caller retries later with the same key and body.</item>
 /// <item>Every response is validated before use; an off-contract response is a non-transient contract violation.</item>
 /// <item>Logs carry the operation and HTTP status only — never tokens, secrets, bodies or ids of people.</item>
 /// </list>
@@ -28,10 +32,20 @@ public sealed class TimsAssessmentsClient(
     HttpClient http,
     ClientCredentialsTokenCache tokens,
     IOptions<AssessmentProviderOptions> options,
-    ILogger<TimsAssessmentsClient> logger) : IAssessmentProvider
+    ILogger<TimsAssessmentsClient> logger,
+    TimeProvider timeProvider) : IAssessmentProvider
 {
     public const string HttpClientName = "tims-assessments";
     public const int MaxResponseBytes = 262_144;
+
+    /// <summary>
+    /// The longest <c>Retry-After</c> an <c>idempotency_key_in_use</c> is waited out in place (once). Longer, the failure
+    /// goes back to the caller: a webhook, a launch or an assign must not hold its request that long. A 409 without
+    /// <c>Retry-After</c> is waited out for <see cref="DefaultInUseRetryAfter"/>.
+    /// </summary>
+    public static readonly TimeSpan MaxInlineRetryAfter = TimeSpan.FromSeconds(2);
+
+    public static readonly TimeSpan DefaultInUseRetryAfter = TimeSpan.FromSeconds(1);
 
     private readonly AssessmentProviderOptions _options = options.Value;
 
@@ -331,7 +345,9 @@ public sealed class TimsAssessmentsClient(
 
         // Relative join (D18): a base path such as https://www.timssuite.com/api is kept, never replaced by /v1.
         var uri = new Uri(_options.ResolvedBaseUri, pathAndQuery);
-        for (var attempt = 0; attempt < 2; attempt++)
+        var unauthorizedRetried = false;
+        var inUseRetried = false;
+        while (true)
         {
             var token = await tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
             if (token is null)
@@ -354,12 +370,14 @@ public sealed class TimsAssessmentsClient(
 
             HttpStatusCode status;
             string text;
+            TimeSpan? retryAfter;
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(_options.RequestTimeoutSeconds));
                 using var response = await http.SendAsync(request, timeout.Token).ConfigureAwait(false);
                 status = response.StatusCode;
+                retryAfter = ProviderResponses.RetryAfter(response.Headers.RetryAfter, timeProvider.GetUtcNow());
                 text = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
             }
             catch (HttpRequestException)
@@ -373,8 +391,14 @@ public sealed class TimsAssessmentsClient(
                 return ProviderCall<T>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, transient: true));
             }
 
-            if (status == HttpStatusCode.Unauthorized && attempt == 0)
+            if (status == HttpStatusCode.Unauthorized)
             {
+                if (unauthorizedRetried)
+                {
+                    return ProviderCall<T>.Fail(new ProviderFailure(401, "unauthorized", false, []));
+                }
+
+                unauthorizedRetried = true;
                 tokens.Invalidate();
                 continue;
             }
@@ -391,11 +415,22 @@ public sealed class TimsAssessmentsClient(
                 return ProviderCall<T>.Success(parsed);
             }
 
-            logger.LogWarning("TIMS Assessments {Operation} failed with {Status}", operation, (int)status);
-            return ProviderCall<T>.Fail(ProviderResponses.Problem((int)status, text));
-        }
+            var failure = ProviderResponses.Problem((int)status, text, retryAfter);
+            if (failure.Code == ProviderFailure.IdempotencyKeyInUse && idempotencyKey is not null && !inUseRetried
+                && (failure.RetryAfter ?? DefaultInUseRetryAfter) <= MaxInlineRetryAfter)
+            {
+                // The first request with this key is still running and nothing was done for this one: wait it out once,
+                // then send the SAME key and body, which then returns the first request's original response.
+                inUseRetried = true;
+                logger.LogInformation("TIMS Assessments {Operation}: idempotency key in use, retrying once", operation);
+                await Task.Delay(failure.RetryAfter ?? DefaultInUseRetryAfter, timeProvider, cancellationToken)
+                    .ConfigureAwait(false);
+                continue;
+            }
 
-        return ProviderCall<T>.Fail(new ProviderFailure(401, "unauthorized", false, []));
+            logger.LogWarning("TIMS Assessments {Operation} failed with {Status}", operation, (int)status);
+            return ProviderCall<T>.Fail(failure);
+        }
     }
 
     private static T? TryParse<T>(string text, Func<JsonElement, T?> parse)

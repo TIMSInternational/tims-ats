@@ -138,8 +138,10 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
                 consent.Locale, recorded.Ok, cancellationToken).ConfigureAwait(false);
             if (!recorded.Ok)
             {
-                // Without an HTTP answer (timeout, outage) the provider may still store this capture.
-                everyCaptureAnswered = recorded.Failure!.HttpStatus is not null;
+                // Without an HTTP answer (timeout, outage) the provider may still store this capture, and so it may
+                // after a 409 idempotency_key_in_use (a request with this key is still being processed there).
+                everyCaptureAnswered = recorded.Failure!.HttpStatus is not null
+                    && recorded.Failure.Code != ProviderFailure.IdempotencyKeyInUse;
                 captureFailure = recorded.Failure.Transient
                     ? LaunchResult.Fail(LaunchOutcome.ProviderUnavailable, recorded.Failure.Code)
                     : LaunchResult.Fail(LaunchOutcome.ConsentRejected, recorded.Failure.Code);

@@ -220,6 +220,24 @@ public sealed class LaunchProviderAttemptUseCaseTests
         Assert.Null(_repository.Attempts.Single().WithdrawalState);
     }
 
+    // The amended contract: 409 idempotency_key_in_use means a request with this key is still being processed at the
+    // provider, so the capture may still be stored. It is transient (503 to the candidate) and NOT an answer: the
+    // announcement stays in flight, so a withdrawal's cascade cannot complete before it is stale.
+    [Fact]
+    public async Task A_capture_answered_idempotency_key_in_use_stays_announced_and_is_transient()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _provider.OnRecordConsent = () => ProviderCall<ProviderConsentRecord>.Fail(
+            new ProviderFailure(409, ProviderFailure.IdempotencyKeyInUse, true, []) { RetryAfter = TimeSpan.FromSeconds(30) });
+
+        var result = await Launch(attempt.Id, consents: [Assessment]);
+
+        Assert.Equal(LaunchOutcome.ProviderUnavailable, result.Outcome);
+        Assert.DoesNotContain("capture_ended", _repository.Writes);
+        Assert.Equal((1, 1), (_repository.Captures[attempt.Id].Generation, _repository.Captures[attempt.Id].InFlight));
+        Assert.DoesNotContain("launch", _provider.Calls);
+    }
+
     [Fact]
     public async Task An_attempt_already_in_the_withdrawal_cascade_cannot_be_launched()
     {
