@@ -381,7 +381,9 @@ public sealed partial class AssessmentProviderRepository
         entity.ResultVisibilityGeneration++;
         // LatestResultId is KEPT (Codex r12 P2): the D17 poller re-reads result_ready attempts by it, so if the tenant
         // makes the result visible again and that webhook is lost, the poll still brings it back. Staff reads and FIT
-        // read the stored result rows, which were deleted above.
+        // read the stored result rows, which were deleted above. A result hidden on its FIRST fetch was never stored, so
+        // its id is recorded here (Codex r12 run 2 P2): without it the poller would exclude the attempt for good.
+        entity.LatestResultId ??= resultId;
 
         // The sitting finished either way: the attempt moves to result_ready when it still may (never backward, never
         // out of a terminal state), exactly as the not-visible answer always did.

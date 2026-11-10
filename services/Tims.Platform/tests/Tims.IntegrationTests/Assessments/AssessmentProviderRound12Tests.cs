@@ -222,10 +222,15 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
              """);
         var row = await WithRepository(r => r.FindAttemptAsync(org, attempt, CancellationToken.None));
 
-        Assert.Equal(0, await WithRepository(r => r.HideResultAsync(org, row!, Guid.NewGuid(), Now, CancellationToken.None)));
+        var hidden = Guid.NewGuid();
+        Assert.Equal(0, await WithRepository(r => r.HideResultAsync(org, row!, hidden, Now, CancellationToken.None)));
 
         Assert.Equal("result_ready", await fixture.ScalarAsync(
             $"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        // Hidden on its first fetch (never stored): its id is recorded so the poller can bring it back if it is made
+        // visible again and that webhook is lost (Codex r12 run 2 P2).
+        Assert.Equal(hidden, await fixture.ScalarAsync(
+            $"SELECT latest_result_id FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
 
     // ── 3. The platform owner's unbind ─────────────────────────────────────────────────────────────────────────────
