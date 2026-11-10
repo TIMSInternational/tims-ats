@@ -41,7 +41,9 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 | `GET /portal/assessment-attempts/{attemptId}/consent-templates?locale=es\|en`                         | the candidate, by confirmed email                                               | The provider's consent templates for the purposes the attempt still needs; 404 unless it is the candidate's and needs consent                                          |
 | `POST /webhooks/tims-assessments`                                                                     | anonymous, HMAC                                                                 | `TIMS-Signature`, a 300 s replay window; a `TIMS-Event-Id` that differs from the signed body is a 400; de-duplication on the body's `event_id`                         |
 | `GET /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export`   | platform owner                                                                  | DSAR access: the ATS's provider tables for one candidate plus the provider's own export of each of its subjects, audited fail-closed, `no-store` (D15)                 |
-| `POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure` | platform owner                                                                  | `DELETE /v1/subjects/{id}` for each provider subject of the candidate; 202 when all were accepted, 503 to retry (D15)                                                  |
+| `POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure` | platform owner                                                                  | `DELETE /v1/subjects/{id}` for each provider subject of the candidate; 202 when all were accepted, 503 to retry (D15). Every run audited (`assessment_provider_erasure_run`) |
+| `GET /platform/assessment-providers/organizations/{organizationId}/binding`                           | platform owner                                                                  | Round 12: the binding (in force or not), tenant, tests, locale, and the open work an unbind would strand. `no-store`                                                     |
+| `POST /platform/assessment-providers/organizations/{organizationId}/binding/unbind`                   | platform owner                                                                  | Round 12: `{ cancelOpenAttempts }`. 409 `binding_has_open_work` (nothing changed) while open work remains; confirmed, it cancels unfinished sittings first             |
 
 ## Hiring guardrails, and where each one is enforced
 
@@ -504,6 +506,27 @@ type, and so on), the method and the path (never the query, the envelope, a toke
 unchanged. If it happens again, the API's log names the cause. The cross-system spec's reload after the cancel is
 still in place.
 
+## Platform-owner tools (round 12)
+
+The platform organization page has a **TIMS Assessments** tab (only with the connector on in the build;
+`/platform` itself admits platform owners only, and every C# route above checks `PlatformOwnerGate`):
+
+- **State.** Bound or not, in force or not, the provider tenant, the enabled tests, the default language, and the
+  open work an unbind would strand: unfinished sittings, finished sittings still waiting for their result, #312
+  withdrawals not confirmed at the provider, orphaned cancels not confirmed, and creates still in flight.
+- **Bind or update.** The existing binding route (catalog-checked: selection-allowed tests only).
+- **Unbind, safely.** After the binding the ATS no longer receives the provider's events for the org, so an unbind that
+  left open work would strand it. It is refused (409, nothing changed) while any open work remains. Confirmed with
+  "cancel the unfinished tests first", each is cancelled through HR's cancel path (at the provider first), and the org is
+  unbound only if nothing is left (a sitting awaiting its result always blocks until the result arrives). The final
+  check and the deactivation are one privileged transaction under the advisory lock
+  `assessment-provider-binding:<org>`, which every assignment's reserve takes shared and under which it re-checks the
+  binding: no assignment can slip in between, and a reserve that read the binding before the unbind writes nothing.
+  Stored attempts and results are kept. Audit: `assessment_provider_binding_unset`. Re-binding re-activates the row.
+- **DSAR for one candidate.** The export downloads as JSON (to deliver to the data subject); the erasure asks for a
+  confirmation and reports `requested` of `subjects` (incomplete runs can be retried). Both work after an unbind: the
+  subject is resolved through the binding whether or not it is in force.
+
 ## Owner steps, in order
 
 1. Review the SQL. Apply the files in `services/Tims.Platform/db/manual`, in this order, with psql on the direct
@@ -549,4 +572,6 @@ still in place.
    `packages/db/prisma/seed-access-matrix.ts` (outside this connector's build area), mirrored into the embedded
    `role-grants.json` with a parity test. Organizations provisioned later get no such grant until that matrix gains
    `{ module: 'assessment', actions: ['read'], scope: 'team' }` for `leader` and `role-grants.json` is regenerated
-   (`scripts/generate-dotnet-role-grants.ts`).
+   (`scripts/generate-dotnet-role-grants.ts`). Until the step runs, the candidate page's TIMS Assessments card explains
+   itself to a leader (round 12): the C# read answers 403, and the card says the role lacks `assessment:read` and to
+   ask an administrator, instead of a generic load error.
