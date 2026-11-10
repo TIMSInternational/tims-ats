@@ -340,6 +340,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         IReadOnlyList<NewAttempt> attempts, DateTimeOffset now, CancellationToken cancellationToken)
     {
         Writes.Add("reserve");
+        if (BindingInactive)
+        {
+            return Task.FromResult(new ReserveOutcome(false, [], BindingInactive: true));
+        }
+
         if (WithdrawnUnderLock)
         {
             return Task.FromResult(new ReserveOutcome(true, []));
@@ -732,6 +737,57 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
         return Task.FromResult(erased.Count);
     }
+
+    /// <summary>Bindings the fake considers unbound (inactive) after a DeactivateBindingAsync.</summary>
+    public bool BindingInactive { get; set; }
+
+    public List<(Guid CandidateId, string Outcome, int Subjects, int Requested)> ErasureRuns { get; } = [];
+
+    public Task<ProviderBindingState> GetBindingStateAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        Task.FromResult(Binding is null
+            ? new ProviderBindingState(false, false, null, [], null, null, OpenWork())
+            : new ProviderBindingState(true, !BindingInactive, Binding.ProviderTenantId, Binding.EnabledInstruments,
+                Binding.DefaultLocale, null, OpenWork()));
+
+    public Task<ProviderBindingRow?> GetBindingAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        Task.FromResult(Binding);
+
+    public Task<IReadOnlyList<AttemptRow>> ListCancellableAttemptsAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AttemptRow>>(
+            Attempts.Where(a => a.OrganizationId == organizationId && ProviderAttemptStates.IsCancellable(a.State)).ToList());
+
+    public Task<ProviderOpenWork?> DeactivateBindingAsync(
+        Guid organizationId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (Binding is null || BindingInactive)
+        {
+            return Task.FromResult<ProviderOpenWork?>(null);
+        }
+
+        var work = OpenWork();
+        if (!work.Any)
+        {
+            BindingInactive = true;
+            Writes.Add("binding_unset");
+        }
+
+        return Task.FromResult<ProviderOpenWork?>(work);
+    }
+
+    public Task AuditErasureRunAsync(
+        Guid organizationId, Guid candidateId, Guid actorId, string outcome, int subjects, int requested,
+        CancellationToken cancellationToken)
+    {
+        ErasureRuns.Add((candidateId, outcome, subjects, requested));
+        return Task.CompletedTask;
+    }
+
+    private ProviderOpenWork OpenWork() => new(
+        Attempts.Count(a => ProviderAttemptStates.IsCancellable(a.State)),
+        Attempts.Count(a => a.State == ProviderAttemptStates.Completed),
+        Attempts.Count(a => a.WithdrawalState == ProviderWithdrawalStates.Pending),
+        Attempts.Count(ProviderCleanup.IsCancelPending),
+        Attempts.Count(a => HasLiveCreateFence(a.Id)));
 
     public Task<IReadOnlyList<ProviderFitRow>> GetFitRowsAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken) =>

@@ -225,4 +225,82 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
         Assert.Equal("result_ready", await fixture.ScalarAsync(
             $"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
+
+    // ── 3. The platform owner's unbind ─────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task An_unbind_is_refused_while_work_is_open_then_deactivates_with_an_audit_row_and_keeps_the_tenant()
+    {
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var attempt = await PendingAttemptAsync(org, candidate);
+        var actor = Guid.NewGuid();
+
+        var state = await WithRepository(r => r.GetBindingStateAsync(org, CancellationToken.None));
+        Assert.True(state.Bound);
+        Assert.True(state.Active);
+        Assert.Equal(1, state.OpenWork.Cancellable);
+
+        var blocked = await WithRepository(r => r.DeactivateBindingAsync(org, actor, Now, CancellationToken.None));
+        Assert.True(blocked!.Any);
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT is_active FROM assessment_provider_bindings WHERE organization_id = '{org}'"));
+
+        await fixture.ExecuteAsync($"UPDATE assessment_provider_attempts SET state = 'cancelled' WHERE id = '{attempt}'");
+        var done = await WithRepository(r => r.DeactivateBindingAsync(org, actor, Now, CancellationToken.None));
+        Assert.False(done!.Any);
+        Assert.Equal(false, await fixture.ScalarAsync(
+            $"SELECT is_active FROM assessment_provider_bindings WHERE organization_id = '{org}'"));
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE organization_id = '{org}' AND action = 'assessment_provider_binding_unset' AND actor_id = '{actor}'"));
+
+        // Unbound: nothing in force any more, but DSAR still reaches the provider tenant.
+        Assert.Null(await WithRepository(r => r.DeactivateBindingAsync(org, actor, Now, CancellationToken.None)));
+        Assert.Null(await WithRepository(r => r.GetActiveBindingAsync(org, CancellationToken.None)));
+        Assert.NotNull(await WithRepository(r => r.GetBindingAsync(org, CancellationToken.None)));
+        Assert.False((await WithRepository(r => r.GetBindingStateAsync(org, CancellationToken.None))).Active);
+    }
+
+    [Fact]
+    public async Task An_unbind_waits_for_a_reserve_in_flight_counts_its_attempt_and_a_later_reserve_writes_nothing()
+    {
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var binding = (await WithRepository(r => r.GetActiveBindingAsync(org, CancellationToken.None)))!;
+
+        // A reserve in flight: it holds the binding lock (shared) and has inserted its attempt, not yet committed.
+        await using var reserve = new Npgsql.NpgsqlConnection(fixture.ConnectionString);
+        await reserve.OpenAsync();
+        await using var tx = await reserve.BeginTransactionAsync();
+        await using (var command = new Npgsql.NpgsqlCommand(
+            $"""
+             SELECT pg_advisory_xact_lock_shared(hashtextextended('assessment-provider-binding:{org}', 0));
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, assigned_by_id, age_band)
+             VALUES (gen_random_uuid(), '{org}', '{org}', '{candidate}', gen_random_uuid(), 'lia', 'pending_create',
+                 'selection', 'Análisis de datos', 'es', 1, gen_random_uuid(), '18_plus');
+             """, reserve, tx))
+        {
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var unbind = WithRepository(r => r.DeactivateBindingAsync(org, Guid.NewGuid(), Now, CancellationToken.None));
+        await Task.Delay(500);
+        Assert.False(unbind.IsCompleted); // waits for the reserve
+        await tx.CommitAsync();
+        var work = await unbind;
+        Assert.Equal(1, work!.Cancellable); // the reserve's attempt is seen: nothing unbound
+
+        await fixture.ExecuteAsync($"UPDATE assessment_provider_attempts SET state = 'cancelled' WHERE organization_id = '{org}'");
+        Assert.False((await WithRepository(r => r.DeactivateBindingAsync(org, Guid.NewGuid(), Now, CancellationToken.None)))!.Any);
+
+        // A reserve that read the binding before the unbind finds it no longer in force, and writes nothing.
+        var outcome = await WithRepository(r => r.ReserveAttemptsAsync(org, Guid.NewGuid(), binding, candidate, Guid.NewGuid(),
+            [new NewAttempt("lia", "Análisis de datos", "es", 1m, [], null, "18_plus")], Now, CancellationToken.None));
+        Assert.True(outcome.BindingInactive);
+        Assert.Empty(outcome.Attempts);
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_attempts WHERE organization_id = '{org}'"));
+    }
 }
+

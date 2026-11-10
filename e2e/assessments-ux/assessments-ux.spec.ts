@@ -110,7 +110,9 @@ test('HR assigns the vacancy tests after the consent notice, then reads each res
   await expect(notice).toContainText('TIMS Assessments');
   await expect(notice).toContainText('Acme Corp');
   await expect(notice).toContainText('Selection for the vacancy “Data Analyst”');
-  await expect(notice.getByRole('note')).toContainText('DRAFT PENDING LEGAL REVIEW'); // D22
+  // Round 12: the final notice, with its version and no draft marker.
+  await expect(notice).toContainText('Notice version: 2026-11-09-ats-notice-v1');
+  await expect(notice).not.toContainText('DRAFT');
   const assign = dialog.getByRole('button', { name: 'Assign', exact: true });
   await expect(assign).toBeDisabled();
   await dialog.getByLabel('I have reviewed this notice.', { exact: false }).check();

@@ -20,9 +20,10 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// In ONE transaction, under the same per-candidate advisory lock a consent withdrawal takes: re-checks the
-    /// withdrawal, then for each instrument returns the open attempt or inserts a <c>pending_create</c> one, plus one
-    /// audit row. All instruments or none: when an open attempt carries other terms than requested (accommodation,
+    /// In ONE transaction, under the binding lock an unbind takes (shared here; the binding must still be in force, else
+    /// <see cref="ReserveOutcome.BindingInactive"/> and nothing is written) and the same per-candidate advisory lock a
+    /// consent withdrawal takes: re-checks the withdrawal, then for each instrument returns the open attempt or inserts a
+    /// <c>pending_create</c> one, plus one audit row. All instruments or none: when an open attempt carries other terms than requested (accommodation,
     /// locale or reason), nothing is written and that attempt comes back as <see cref="ReserveOutcome.TermsConflict"/>.
     /// </summary>
     Task<ReserveOutcome> ReserveAttemptsAsync(
@@ -195,6 +196,35 @@ public interface IAssessmentProviderRepository
 
     /// <summary>Privileged read of an active organization's display name, or null.</summary>
     Task<string?> GetActiveOrganizationNameAsync(Guid organizationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Platform owner (round 12): the org's binding, in force or not, with the open work an unbind would strand
+    /// (<see cref="ProviderOpenWork"/>). <c>Bound</c> is false when the org was never bound.
+    /// </summary>
+    Task<ProviderBindingState> GetBindingStateAsync(Guid organizationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The org's binding whether or not it is in force (null when never bound). DSAR export and erasure resolve the
+    /// candidate's provider subject through it, so an unbound org's data can still be exported and erased.
+    /// </summary>
+    Task<ProviderBindingRow?> GetBindingAsync(Guid organizationId, CancellationToken cancellationToken);
+
+    /// <summary>The org's attempts whose sitting has not finished (<see cref="ProviderAttemptStates.IsCancellable"/>).</summary>
+    Task<IReadOnlyList<AttemptRow>> ListCancellableAttemptsAsync(Guid organizationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Platform-owner unbind (privileged), in ONE transaction under the binding lock every reserve takes shared: null
+    /// when no binding is in force; the open work, with NOTHING changed, when any remains; otherwise the binding is
+    /// deactivated with an audit row (<c>assessment_provider_binding_unset</c>) and <see cref="ProviderOpenWork.None"/>
+    /// comes back.
+    /// </summary>
+    Task<ProviderOpenWork?> DeactivateBindingAsync(
+        Guid organizationId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>One audit row per DSAR erasure run (<c>assessment_provider_erasure_run</c>): its outcome and counts.</summary>
+    Task AuditErasureRunAsync(
+        Guid organizationId, Guid candidateId, Guid actorId, string outcome, int subjects, int requested,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// #312 to provider (D15). Under the per-candidate lock the withdrawal itself takes, and only when the candidate's
@@ -610,7 +640,9 @@ public sealed record AttemptRow(
 /// The reserve result. <see cref="TermsConflict"/>: an open attempt for one of the instruments carries other terms than
 /// requested; nothing was written (re-sending can never silently drop a corrected accommodation).
 /// </summary>
-public sealed record ReserveOutcome(bool ConsentWithdrawn, IReadOnlyList<AttemptRow> Attempts, AttemptRow? TermsConflict = null);
+/// <param name="BindingInactive">An unbind committed before the reserve could take the binding lock: nothing was written.</param>
+public sealed record ReserveOutcome(
+    bool ConsentWithdrawn, IReadOnlyList<AttemptRow> Attempts, AttemptRow? TermsConflict = null, bool BindingInactive = false);
 
 /// <summary>The attempt plus the candidate identity a launch is checked against.</summary>
 public sealed record LaunchContext(

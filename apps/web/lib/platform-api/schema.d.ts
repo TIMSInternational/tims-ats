@@ -2052,6 +2052,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/platform/assessment-providers/organizations/{organizationId}/binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderBindingState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/platform/assessment-providers/organizations/{organizationId}/binding/unbind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["AssessmentProviderUnbind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assessments/provider-catalog": {
         parameters: {
             query?: never;
@@ -5099,6 +5131,16 @@ export interface components {
             instruments?: string[];
             defaultLocale?: string;
         };
+        ProviderBindingStateView: {
+            bound: boolean;
+            active: boolean;
+            providerTenantId: null | string;
+            enabledInstruments: string[];
+            defaultLocale: null | string;
+            /** Format: date-time */
+            updatedAt: null | string;
+            openWork: components["schemas"]["ProviderOpenWorkView"];
+        };
         ProviderBindingView: {
             organizationId: string;
             providerTenantId: string;
@@ -5177,9 +5219,14 @@ export interface components {
             consents?: null | components["schemas"]["ProviderLaunchConsentBody"][];
             embedded?: null | boolean;
             declinedConsents?: null | string[];
+            notice?: null | components["schemas"]["ProviderLaunchNoticeBody"];
         };
         ProviderLaunchConsentBody: {
             purpose?: string;
+            textVersion?: string;
+            locale?: string;
+        };
+        ProviderLaunchNoticeBody: {
             textVersion?: string;
             locale?: string;
         };
@@ -5190,10 +5237,41 @@ export interface components {
             hostedUrl: string;
             frameAncestors: string[];
         };
+        ProviderOpenWorkView: {
+            /** Format: int32 */
+            cancellable: number | string;
+            /** Format: int32 */
+            awaitingResult: number | string;
+            /** Format: int32 */
+            pendingWithdrawals: number | string;
+            /** Format: int32 */
+            cancelPending: number | string;
+            /** Format: int32 */
+            createsInFlight: number | string;
+        };
         ProviderSubjectExport: {
             attempts: components["schemas"]["ProviderExportAttempt"][];
             results: components["schemas"]["ProviderExportResult"][];
             providerExports?: components["schemas"]["ProviderHeldSubjectExport"][];
+        };
+        ProviderUnbindBlockedView: {
+            error: string;
+            openWork: components["schemas"]["ProviderOpenWorkView"];
+            /** Format: int32 */
+            cancelled: number | string;
+            /** Format: int32 */
+            cancelFailed: number | string;
+        };
+        ProviderUnbindBody: {
+            cancelOpenAttempts?: null | boolean;
+        };
+        ProviderUnbindView: {
+            unbound: boolean;
+            openWork: components["schemas"]["ProviderOpenWorkView"];
+            /** Format: int32 */
+            cancelled: number | string;
+            /** Format: int32 */
+            cancelFailed: number | string;
         };
         PutTeamMemberBody: {
             role?: null | string;
@@ -11926,6 +12004,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderErasureView"];
+                };
+            };
+        };
+    };
+    AssessmentProviderBindingState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderBindingStateView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderUnbind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderUnbindBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderUnbindView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderUnbindBlockedView"];
                 };
             };
         };

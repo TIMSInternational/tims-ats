@@ -50,6 +50,7 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.TryAddSingleton<ProviderInboxSignal>();
         services.AddScoped<IProviderInboxWorker, ProviderInboxWorkerUseCase>();
         services.AddScoped<ProviderBindingUseCase>();
+        services.AddScoped<ProviderBindingAdminUseCase>();
         services.AddScoped<ProviderConsentWithdrawalUseCase>();
         services.AddScoped<ProviderSubjectRightsUseCase>();
         services.AddScoped<IProviderWithdrawalSweep, ProviderWithdrawalSweepUseCase>();

@@ -135,7 +135,9 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             // The subject is created BEFORE its assignment and recorded only with it, so a failed or crashed create can
             // leave a provider subject (possibly with names and email) no attempt names. Subjects are idempotent on
             // (tenant, external_ref = candidate id): resolve it that way, never trusting the local record alone.
-            var binding = await _repository.GetActiveBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
+            // In force or not (round 12): an org the platform owner unbound keeps its provider tenant, and its
+            // candidates' data must still be exportable and erasable.
+            var binding = await _repository.GetBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
             if (binding is null)
             {
                 return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete);
@@ -162,6 +164,23 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         IReadOnlyList<Guid> Subjects, IReadOnlyList<Guid> Erased, ProviderErasureOutcome? Outcome);
 
     public async Task<ProviderErasureResult> EraseAsync(
+        Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var result = await EraseSubjectsAsync(organizationId, candidateId, actorId, now, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Outcome != ProviderErasureOutcome.CandidateNotFound)
+        {
+            // Every run is on record (round 12), whatever it achieved: the platform owner's request, its outcome and
+            // counts. Per-subject requests are audited where they are recorded.
+            await _repository.AuditErasureRunAsync(
+                organizationId, candidateId, actorId, result.Outcome.ToString(), result.Subjects, result.Requested,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    private async Task<ProviderErasureResult> EraseSubjectsAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var resolved = await ResolveSubjectsAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false);

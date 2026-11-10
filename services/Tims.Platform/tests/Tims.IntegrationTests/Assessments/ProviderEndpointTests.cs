@@ -400,6 +400,76 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
             $"SELECT count(*) FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND provider_erasure_requested_at IS NOT NULL"));
     }
 
+    // ── Round 12: the platform owner's binding tools ────────────────────────────────────
+
+    private static string BindingState(Guid org) => $"/platform/assessment-providers/organizations/{org}/binding";
+
+    [Fact]
+    public async Task BindingAdmin_IsPlatformOwnerOnly()
+    {
+        await using var factory = Factory();
+        using var client = factory.CreateClient();
+        var admin = Mint(ProviderEndpointFixture.AdminSub);
+
+        var read = await Get(client, BindingState(ProviderEndpointFixture.OrgA), admin);
+        var unbind = await Send(client, BindingState(ProviderEndpointFixture.OrgA) + "/unbind", "{}", admin);
+
+        Assert.Equal(HttpStatusCode.Forbidden, read.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, unbind.StatusCode);
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT is_active FROM assessment_provider_bindings WHERE organization_id = '{ProviderEndpointFixture.OrgA}'"));
+    }
+
+    [Fact]
+    public async Task BindingAdmin_ShowsTheState_RefusesAnUnbindThatStrandsWork_AndUnbindsOnceConfirmed()
+    {
+        var org = Guid.NewGuid();
+        var attempt = Guid.NewGuid();
+        var assignment = Guid.NewGuid();
+        await fixture.ScalarAsync(
+            $"""
+             INSERT INTO organizations (id, name, slug) VALUES ('{org}', 'R12 Unbind', 'r12-{org:N}');
+             INSERT INTO assessment_provider_bindings (id, organization_id, provider, provider_tenant_id, enabled_instruments, default_locale)
+             VALUES ('{org}', '{org}', 'tims-assessments', gen_random_uuid(), ARRAY['lia'], 'es');
+             INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES ('{attempt}', '{org}', 'Uma', 'Unbind', 'uma@r12.example');
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 instrument_version, content_version, required_consents, expires_at, assigned_by_id)
+             VALUES ('{attempt}', '{org}', '{org}', '{attempt}', gen_random_uuid(), 'lia', 'in_progress', 'selection',
+                 'Análisis de datos', 'es', 1, gen_random_uuid(), '{assignment}', '1.0', 'content-1', ARRAY['assessment'],
+                 now() + interval '14 days', 'c0000000-0000-0000-0000-0000000000ff');
+             SELECT 1;
+             """);
+        var provider = new FakeProvider();
+        await using var factory = Factory(provider: provider);
+        using var client = factory.CreateClient();
+        var owner = Mint(ProviderEndpointFixture.OwnerSub);
+
+        var state = await Get(client, BindingState(org), owner);
+        Assert.Equal(HttpStatusCode.OK, state.StatusCode);
+        Assert.Equal("no-store", state.Headers.CacheControl?.ToString());
+        var json = await ReadJson(state);
+        Assert.True(json.GetProperty("bound").GetBoolean());
+        Assert.True(json.GetProperty("active").GetBoolean());
+        Assert.Equal(1, json.GetProperty("openWork").GetProperty("cancellable").GetInt32());
+
+        var refused = await Send(client, BindingState(org) + "/unbind", "{}", owner);
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal("binding_has_open_work", (await ReadJson(refused)).GetProperty("error").GetString());
+        Assert.DoesNotContain("cancel", provider.Calls);
+
+        var confirmed = await Send(client, BindingState(org) + "/unbind", """{"cancelOpenAttempts":true}""", owner);
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        var unbound = await ReadJson(confirmed);
+        Assert.True(unbound.GetProperty("unbound").GetBoolean());
+        Assert.Equal(1, unbound.GetProperty("cancelled").GetInt32());
+        Assert.Contains(assignment, provider.CancelledAssignments);
+        Assert.Equal("cancelled", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        Assert.False((await ReadJson(await Get(client, BindingState(org), owner))).GetProperty("active").GetBoolean());
+        Assert.Equal(HttpStatusCode.NotFound, (await Send(client, BindingState(org) + "/unbind", "{}", owner)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Get(client, BindingState(Guid.NewGuid()), owner)).StatusCode);
+    }
+
     // ── Launch (the candidate, by confirmed email) ──────────────────────────────────────
 
     [Fact]

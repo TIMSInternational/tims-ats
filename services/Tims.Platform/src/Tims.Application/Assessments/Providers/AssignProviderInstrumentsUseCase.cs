@@ -171,6 +171,12 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             return ProviderAssignResult.Fail(ProviderAssignOutcome.ConsentWithdrawn);
         }
 
+        if (reserved.BindingInactive)
+        {
+            // The platform owner unbound the org between the binding read above and the reserve: nothing was written.
+            return ProviderAssignResult.Fail(ProviderAssignOutcome.NotEnabled);
+        }
+
         if (reserved.TermsConflict is { } conflict)
         {
             // A re-send with a corrected accommodation must never answer 200 while the old terms stay in force.

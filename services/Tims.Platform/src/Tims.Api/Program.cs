@@ -1656,6 +1656,7 @@ try
         app.MapProviderCandidateEndpoints();
         app.MapProviderPortalEndpoints();
         app.MapProviderSubjectRightsEndpoints();
+        app.MapProviderBindingAdminEndpoints(); // round 12: the platform owner's binding state and safe unbind
         app.MapProviderStaffReadEndpoints(); // AS-7 / AS-14: the staff catalog and a candidate's attempts with results
     }
 

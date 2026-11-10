@@ -83,6 +83,14 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
 
+        // Round 12: the binding lock (shared; an unbind takes it exclusively), FIRST, then the binding re-checked in force
+        // in this transaction: an assignment can never slip in between an unbind's open-work check and its deactivation.
+        if (!await LockActiveBindingAsync(organizationId, binding.Id, cancellationToken).ConfigureAwait(false))
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new ReserveOutcome(false, [], BindingInactive: true);
+        }
+
         // The lock CandidateConsentRepository.WithdrawOneAsync and the FIT upsert take for this candidate.
         await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidateId, cancellationToken)
             .ConfigureAwait(false);
