@@ -3993,6 +3993,8 @@
     "selectTypePlaceholder": "Selecciona un tipo de evaluación…",
     "noTypes": "Aún no hay tipos de evaluación",
     "noTypesDesc": "Crea un tipo de evaluación antes de redactar preguntas.",
+    "ownQuizHint": "Aquí se asignan las evaluaciones propias de la empresa. Las pruebas TIMS (LIA, Inglés, Personalidad y PCA/DISC) se asignan en el bloque «TIMS Assessments» del candidato.",
+    "ownQuizHasNoQuestions": "Esta evaluación propia aún no tiene preguntas. Agrégalas en Reclutamiento → Evaluaciones, o asigna las pruebas TIMS desde el bloque «TIMS Assessments».",
     "typeAuthoring": {
       "newType": "Nuevo tipo de evaluación",
       "editType": "Editar tipo",

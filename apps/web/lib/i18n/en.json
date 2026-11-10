@@ -3993,6 +3993,8 @@
     "selectTypePlaceholder": "Select an assessment type…",
     "noTypes": "No assessment types yet",
     "noTypesDesc": "Create an assessment type before authoring questions.",
+    "ownQuizHint": "This assigns the company's own quizzes. TIMS tests (LIA, English, Personality and PCA/DISC) are assigned from the candidate's “TIMS Assessments” block.",
+    "ownQuizHasNoQuestions": "This own quiz has no questions yet. Add them under Recruitment → Assessments, or assign the TIMS tests from the “TIMS Assessments” block.",
     "typeAuthoring": {
       "newType": "New assessment type",
       "editType": "Edit type",
