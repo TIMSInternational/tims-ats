@@ -224,6 +224,12 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnName("required_consents")
                         .HasDefaultValueSql("'{}'::text[]");
 
+                    b.Property<int>("ResultVisibilityGeneration")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("result_visibility_generation");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");

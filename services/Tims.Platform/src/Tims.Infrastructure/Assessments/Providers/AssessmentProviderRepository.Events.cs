@@ -242,7 +242,10 @@ public sealed partial class AssessmentProviderRepository
         if (entity is null || entity.State is ProviderAttemptStates.Erased or ProviderAttemptStates.Cancelled
             || entity.WithdrawalState is not null || entity.ProviderErasureRequestedAt is not null
             || await IsWithdrawnAsync(organizationId, entity.CandidateId, cancellationToken).ConfigureAwait(false)
-            || await IsSubjectErasedAsync(organizationId, result.SubjectId, cancellationToken).ConfigureAwait(false))
+            || await IsSubjectErasedAsync(organizationId, result.SubjectId, cancellationToken).ConfigureAwait(false)
+            // Codex r12 P1: the attempt was read BEFORE the fetch; a hide that committed since bumped the generation,
+            // so these scores may be ones the tenant has hidden. Not stored; the next read (fresh row) decides again.
+            || entity.ResultVisibilityGeneration != attempt.ResultVisibilityGeneration)
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
             return false;
@@ -374,10 +377,11 @@ public sealed partial class AssessmentProviderRepository
             .Where(r => r.OrganizationId == organizationId && r.AttemptId == entity.Id && r.ProviderResultId == resultId)
             .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         var from = entity.State;
-        if (entity.LatestResultId == resultId)
-        {
-            entity.LatestResultId = null;
-        }
+        // Fence every fetch already in flight (Codex r12 P1): it read the attempt under the old generation.
+        entity.ResultVisibilityGeneration++;
+        // LatestResultId is KEPT (Codex r12 P2): the D17 poller re-reads result_ready attempts by it, so if the tenant
+        // makes the result visible again and that webhook is lost, the poll still brings it back. Staff reads and FIT
+        // read the stored result rows, which were deleted above.
 
         // The sitting finished either way: the attempt moves to result_ready when it still may (never backward, never
         // out of a terminal state), exactly as the not-visible answer always did.
@@ -386,9 +390,9 @@ public sealed partial class AssessmentProviderRepository
             entity.State = ProviderAttemptStates.ResultReady;
         }
 
+        entity.UpdatedAt = timestamp;
         if (removed > 0 || from != entity.State)
         {
-            entity.UpdatedAt = timestamp;
             AddAudit(organizationId, null, "assessment_provider_result_hidden", entity.Id, new Dictionary<string, object?>
             {
                 ["instrument"] = entity.Instrument,
@@ -397,9 +401,10 @@ public sealed partial class AssessmentProviderRepository
                 ["from"] = from,
                 ["to"] = entity.State,
             });
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        // Always saved: the generation bump is the fence, even when nothing was stored yet.
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return removed;
     }

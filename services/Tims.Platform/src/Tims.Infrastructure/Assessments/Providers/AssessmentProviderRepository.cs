@@ -618,7 +618,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
             a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand, a.LatestResultId,
             a.GrantedOptionalConsents, a.DeclinedOptionalConsents, a.ConsentCapturesInFlight,
-            ToOffset(a.ConsentCaptureStartedAt));
+            ToOffset(a.ConsentCaptureStartedAt), a.ResultVisibilityGeneration);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

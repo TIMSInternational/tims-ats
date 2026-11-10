@@ -71,6 +71,12 @@ public sealed class ProviderAttemptEntity
 
     public Guid? LatestResultId { get; set; }
 
+    /// <summary>
+    /// Bumped by every hide (a <c>result_not_visible</c> answer, Codex r12 P1). A result fetched under an older value
+    /// is never stored: a fetch that began before the tenant hid the result cannot bring its scores back.
+    /// </summary>
+    public int ResultVisibilityGeneration { get; set; }
+
     public string? LastErrorCode { get; set; }
 
     /// <summary>D15: <c>pending</c> from the #312 withdrawal's own transaction until the provider confirms, then <c>done</c>.</summary>

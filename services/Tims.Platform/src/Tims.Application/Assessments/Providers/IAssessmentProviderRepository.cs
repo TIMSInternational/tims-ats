@@ -614,7 +614,8 @@ public sealed record AttemptRow(
     IReadOnlyList<string>? GrantedOptionalConsents = null,
     IReadOnlyList<string>? DeclinedOptionalConsents = null,
     int ConsentCapturesInFlight = 0,
-    DateTimeOffset? ConsentCaptureStartedAt = null)
+    DateTimeOffset? ConsentCaptureStartedAt = null,
+    int ResultVisibilityGeneration = 0)
 {
     /// <summary>
     /// A consent capture announced by a launch and not answered yet, and not stale at <paramref name="now"/>: the provider

@@ -425,6 +425,43 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
     }
 
     [Fact]
+    public async Task A_result_fetched_before_a_hide_committed_is_never_stored_and_a_fresh_read_stores_again()
+    {
+        // Codex r12 P1: worker A reads the attempt and fetches visible scores; worker B's result_not_visible commits a
+        // hide; A then stores. The hide bumped the generation A read, so A's scores are refused.
+        var (attempt, subject) = await InsertAttemptAsync("completed");
+        var before = await RowAsync(attempt);
+        var fetched = ResultFor(before.ProviderAssignmentId!.Value) with { SubjectId = subject };
+
+        await using (var hide = fixture.NewContext())
+        {
+            await new AssessmentProviderRepository(hide).HideResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, before, fetched.ResultId, DateTimeOffset.UtcNow, CancellationToken.None);
+        }
+
+        await using (var stale = fixture.NewContext())
+        {
+            Assert.False(await new AssessmentProviderRepository(stale).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, before, fetched, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal(0L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+
+        // Made visible again: a fetch that starts from a fresh read stores it.
+        var after = await RowAsync(attempt);
+        Assert.Equal(before.ResultVisibilityGeneration + 1, after.ResultVisibilityGeneration);
+        await using (var fresh = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(fresh).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, after, fetched, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+    }
+
+    [Fact]
     public async Task A_corrected_revision_restores_the_attempt_when_the_only_newer_one_was_cancelled()
     {
         var (voided, subject) = await InsertAttemptAsync("voided");

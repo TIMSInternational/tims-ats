@@ -156,6 +156,7 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(a => a.CompletedAt).HasColumnName("completed_at");
             entity.Property(a => a.LastLaunchedAt).HasColumnName("last_launched_at");
             entity.Property(a => a.LatestResultId).HasColumnName("latest_result_id");
+            entity.Property(a => a.ResultVisibilityGeneration).HasColumnName("result_visibility_generation").HasDefaultValue(0);
             entity.Property(a => a.LastErrorCode).HasColumnName("last_error_code");
             entity.Property(a => a.WithdrawalState).HasColumnName("withdrawal_state");
             entity.Property(a => a.ProviderErasureRequestedAt).HasColumnName("provider_erasure_requested_at");

@@ -161,7 +161,7 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
     // ── 2. A result that is no longer visible ──────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task A_result_no_longer_visible_deletes_the_stored_copy_and_clears_the_latest_result()
+    public async Task A_result_no_longer_visible_deletes_the_stored_copy_and_keeps_the_latest_result_for_polling()
     {
         var org = await OrgAsync();
         var candidate = await CandidateAsync(org);
@@ -194,7 +194,9 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
         Assert.Equal(1L, await fixture.ScalarAsync(
             $"SELECT count(*) FROM assessment_provider_results WHERE provider_result_id = '{other}'")); // only the one named
         Assert.Equal(true, await fixture.ScalarAsync(
-            $"SELECT latest_result_id IS NULL AND state = 'result_ready' FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+            // The latest result id is KEPT (Codex r12 P2): the poller re-reads it, so a result made visible again
+            // comes back even when its webhook is lost. Staff and FIT read the deleted result rows, not this id.
+            $"SELECT latest_result_id = '{result}' AND state = 'result_ready' FROM assessment_provider_attempts WHERE id = '{attempt}'"));
         Assert.Equal(1L, await fixture.ScalarAsync(
             $"SELECT count(*) FROM audit_logs WHERE entity_id = '{attempt}' AND action = 'assessment_provider_result_hidden'"));
 
