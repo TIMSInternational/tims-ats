@@ -33,6 +33,8 @@ const PORTS = {
   api: 57474,
   player: 57475,
   audio: 57476,
+  pcaApi: 57479,
+  pcaSurvey: 57480,
 };
 const DB = `${PREFIX}-db`;
 const REST = `${PREFIX}-rest`;
@@ -131,6 +133,80 @@ function supabaseProxy(): Server {
     req.pipe(up);
   }).listen(PORTS.supabase, '127.0.0.1');
 }
+/**
+ * A local stand-in for the TIMS legacy PCA provider (timshr.com), so PCA can be
+ * driven through /v1 without a TIMS sandbox key. It holds NO assessment content:
+ * the "survey" is one button that marks the sitting complete, and the results
+ * are fixed synthetic numbers. API over http (the suite calls it), the survey
+ * page over https (the ATS only accepts an https provider URL).
+ */
+function fakePcaServers(): Server[] {
+  const done = new Set<string>();
+  let n = 0;
+  const surveyBase = `https://localhost:${PORTS.pcaSurvey}`;
+  // A JWT-shaped token whose payload names a company and user, as the provider's does.
+  const token = `fake.${Buffer.from(JSON.stringify({ unique_name: '1_1' })).toString('base64url')}.sig`;
+  const json = (res: import('node:http').ServerResponse, body: unknown) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+  const api = createHttpServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => {
+      const body = (() => { try { return JSON.parse(raw || '{}') as Record<string, unknown>; } catch { return {}; } })();
+      const cod = String(body.PcaCod ?? '');
+      switch (req.url) {
+        case '/login/authenticate':
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          return void res.end(`"${token}"`);
+        case '/Pca/AddSurvey': {
+          n += 1;
+          const code = `LOCAL-${Date.now().toString(36)}-${n}`;
+          return json(res, { PcaCod: code, PcaLink: `${surveyBase}/survey?c=${code}` });
+        }
+        case '/Pca/GetLink':
+          return json(res, { PcaEst: done.has(cod) ? '7' : '1', PcaLink: `${surveyBase}/survey?c=${cod}` });
+        case '/Pca/GetPcaResult': {
+          const d = new Date();
+          const fec = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+          return json(res, [{ PcaFec: fec, PcaD1: 62, PcaI1: 48, PcaS1: 35, PcaC1: 55, PcaD2: 70, PcaI2: 40, PcaS2: 30,
+            PcaC2: 52, PcaD3: 55, PcaI3: 50, PcaS3: 42, PcaC3: 49 }]);
+        }
+        case '/Pca/GetCompetencesResult':
+          return json(res, { PcaCmps: [{ CmpNom: 'Orientación a resultados', Level: 3 },
+            { CmpNom: 'Trabajo en equipo', Level: 4 }, { CmpNom: 'Planificación', Level: 2 }] });
+        case '/report':
+          res.writeHead(200, { 'Content-Type': 'application/pdf' });
+          return void res.end(Buffer.from('%PDF-1.4\n% local stand-in report\n%%EOF\n'));
+        default:
+          res.writeHead(404).end();
+      }
+    });
+  }).listen(PORTS.pcaApi, '127.0.0.1');
+  const page = (title: string, body: string) =>
+    `<!doctype html><html lang="es"><meta charset="utf-8"><title>${title}</title>` +
+    `<body style="font-family:system-ui;max-width:36rem;margin:4rem auto;line-height:1.5">${body}</body></html>`;
+  const survey = createHttpsServer({ cert: readFileSync(need('TLS_CERT')), key: readFileSync(need('TLS_KEY')) }, (req, res) => {
+    const u = new URL(req.url ?? '/', surveyBase);
+    const code = (u.searchParams.get('c') ?? '').replace(/[^A-Za-z0-9-]/g, '');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (u.pathname === '/survey' && req.method === 'GET' && code) {
+      return void res.end(page('PCA (simulado)', `<h1>PCA — proveedor simulado</h1>
+        <p>Esta página reemplaza localmente el sitio de TIMS donde la persona responde el PCA.</p>
+        <p>Código de la evaluación: <code>${code}</code></p>
+        <form method="post" action="/survey/complete?c=${code}"><button type="submit">Completar el PCA</button></form>`));
+    }
+    if (u.pathname === '/survey/complete' && req.method === 'POST' && code) {
+      done.add(code);
+      return void res.end(page('PCA completado', `<h1>PCA completado</h1>
+        <p>Listo. Puede cerrar esta pestaña y volver al portal. El resultado llega a la empresa en la próxima revisión programada.</p>`));
+    }
+    res.writeHead(404).end();
+  }).listen(PORTS.pcaSurvey, 'localhost');
+  return [api, survey];
+}
+
 /** The public English listening clips (what FRONTEND_URL serves in production), over https. */
 function audioServer(): Server {
   const root = join(WEB, 'public');
@@ -233,6 +309,7 @@ async function main() {
 
   const playerOrigin = `https://localhost:${PORTS.player}`;
   servers.push(audioServer());
+  servers.push(...fakePcaServers());
   const cronSecret = randomBytes(24).toString('hex');
   execFileSync(join(WEB, 'node_modules/.bin/vite'), ['build', '-c', 'vite.hosted.config.ts', '--logLevel', 'warn'], {
     cwd: WEB,
@@ -258,6 +335,10 @@ async function main() {
       V1_ENGLISH_LISTENING_PUBLIC_FALLBACK: 'true',
       V1_WEBHOOK_SECRET_KEY: randomBytes(32).toString('base64'),
       CRON_SECRET: cronSecret,
+      // PCA through /v1 against the local stand-in provider above (no TIMS key).
+      PCA_COKEY: 'local-stand-in',
+      PCA_BASE_URL: `http://127.0.0.1:${PORTS.pcaApi}`,
+      PCA_REPORT_URL: `http://127.0.0.1:${PORTS.pcaApi}/report`,
       ENGLISH_AUDIO_BASE_URL: `https://localhost:${PORTS.audio}/audio/english/listening`,
       NODE_EXTRA_CA_CERTS: need('CA_PEM'),
       AWS_ENDPOINT_URL: 'http://127.0.0.1:9',
