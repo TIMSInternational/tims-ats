@@ -97,7 +97,13 @@ async function submitItem(item: Locator): Promise<boolean> {
  */
 export async function driveSitting(
   f: Frame,
-  opts: { timeoutMs: number; leftPlayer: () => boolean; stopWhen?: (itemType: string) => boolean },
+  opts: {
+    timeoutMs: number;
+    leftPlayer: () => boolean;
+    stopWhen?: (itemType: string) => boolean;
+    /** Called before the candidate acts on a step (an instructions screen or an item), e.g. to take a screenshot. */
+    onScreen?: (what: string) => Promise<void>;
+  },
 ): Promise<DriveReport & { stoppedAt?: string }> {
   const report: DriveReport = { steps: {}, items: {}, answers: 0 };
   const attempts = new Map<string, number>();
@@ -139,6 +145,7 @@ export async function driveSitting(
           .catch(() => false))
       ) {
         report.steps[kind] = (report.steps[kind] ?? 0) + 1;
+        await opts.onScreen?.(kind);
         const before = ((await step.textContent().catch(() => '')) ?? '').slice(0, 80);
         await ack
           .first()
@@ -167,6 +174,7 @@ export async function driveSitting(
         continue;
       }
       const key = `page:${((await step.textContent()) ?? '').slice(0, 120)}`;
+      await opts.onScreen?.(`page:${(await items.first().getAttribute('data-tims-item')) ?? '?'}`);
       const n = attempts.get(key) ?? 0;
       attempts.set(key, n + 1);
       for (const item of await items.all()) {
@@ -191,6 +199,7 @@ export async function driveSitting(
       continue;
     }
     const type = (await item.getAttribute('data-tims-item')) ?? '?';
+    await opts.onScreen?.(type);
     if (opts.stopWhen?.(type)) return { ...report, stoppedAt: type };
     const key = `${type}:${await item.getAttribute('aria-labelledby')}:${((await item.textContent()) ?? '').slice(0, 160)}`;
     const n = attempts.get(key) ?? 0;

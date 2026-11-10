@@ -90,8 +90,8 @@ fs.writeFileSync(dir+"/jwt-keys.json",JSON.stringify([{...privateKey.export({for
 const b=(o)=>Buffer.from(JSON.stringify(o)).toString("base64url");
 const sign=(cl)=>{const h=b({alg:"ES256",typ:"JWT",kid}),p=b(cl);return h+"."+p+"."+c.sign("sha256",Buffer.from(h+"."+p),{key:privateKey,dsaEncoding:"ieee-p1363"}).toString("base64url");};
 const now=Math.floor(Date.now()/1000);
-fs.writeFileSync(dir+"/service.key",sign({role:"service_role",iss:"supabase",iat:now,exp:now+86400}));
-fs.writeFileSync(dir+"/anon.key",sign({role:"anon",iss:"supabase",iat:now,exp:now+86400}));
+fs.writeFileSync(dir+"/service.key",sign({role:"service_role",iss:"supabase",iat:now,exp:now+30*86400}));
+fs.writeFileSync(dir+"/anon.key",sign({role:"anon",iss:"supabase",iat:now,exp:now+30*86400}));
 fs.writeFileSync(dir+"/jwt-hs.secret",c.randomBytes(32).toString("hex"));' "$STATE"
 fi
 docker ps -q -f "name=^$P-ats-mail$" | grep -q . ||

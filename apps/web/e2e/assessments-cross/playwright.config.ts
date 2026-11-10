@@ -6,6 +6,9 @@ import { defineConfig, devices } from '@playwright/test';
 // itself unless ASSESSMENTS_CROSS_STATE names the state file stack/up.sh wrote.
 const stateFile = process.env.ASSESSMENTS_CROSS_STATE;
 const baseURL = stateFile ? (JSON.parse(readFileSync(stateFile, 'utf8')) as { baseURL: string }).baseURL : undefined;
+// ASSESSMENTS_CROSS_RECORD=<dir>: a walkthrough run — video and a trace of every test, an HTML report in <dir>/html,
+// and the spec's named screenshots in <dir>/shots (see `shot` in cross.spec.ts).
+const recordDir = process.env.ASSESSMENTS_CROSS_RECORD;
 
 export default defineConfig({
   testDir: '.',
@@ -15,12 +18,13 @@ export default defineConfig({
   retries: 0,
   timeout: 20 * 60_000,
   expect: { timeout: 20_000 },
-  reporter: [['list']],
+  reporter: recordDir ? [['list'], ['html', { open: 'never', outputFolder: `${recordDir}/html` }]] : [['list']],
   outputDir: 'test-results',
   use: {
     baseURL,
     ignoreHTTPSErrors: true,
-    trace: 'retain-on-failure',
+    trace: recordDir ? 'on' : 'retain-on-failure',
+    video: recordDir ? 'on' : 'off',
     actionTimeout: 30_000,
     navigationTimeout: 60_000,
     viewport: { width: 1280, height: 900 },

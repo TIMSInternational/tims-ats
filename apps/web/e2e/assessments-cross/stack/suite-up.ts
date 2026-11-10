@@ -154,7 +154,13 @@ function fakePcaServers(): Server[] {
     let raw = '';
     req.on('data', (c) => (raw += c));
     req.on('end', () => {
-      const body = (() => { try { return JSON.parse(raw || '{}') as Record<string, unknown>; } catch { return {}; } })();
+      const body = (() => {
+        try {
+          return JSON.parse(raw || '{}') as Record<string, unknown>;
+        } catch {
+          return {};
+        }
+      })();
       const cod = String(body.PcaCod ?? '');
       switch (req.url) {
         case '/login/authenticate':
@@ -170,12 +176,32 @@ function fakePcaServers(): Server[] {
         case '/Pca/GetPcaResult': {
           const d = new Date();
           const fec = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-          return json(res, [{ PcaFec: fec, PcaD1: 62, PcaI1: 48, PcaS1: 35, PcaC1: 55, PcaD2: 70, PcaI2: 40, PcaS2: 30,
-            PcaC2: 52, PcaD3: 55, PcaI3: 50, PcaS3: 42, PcaC3: 49 }]);
+          return json(res, [
+            {
+              PcaFec: fec,
+              PcaD1: 62,
+              PcaI1: 48,
+              PcaS1: 35,
+              PcaC1: 55,
+              PcaD2: 70,
+              PcaI2: 40,
+              PcaS2: 30,
+              PcaC2: 52,
+              PcaD3: 55,
+              PcaI3: 50,
+              PcaS3: 42,
+              PcaC3: 49,
+            },
+          ]);
         }
         case '/Pca/GetCompetencesResult':
-          return json(res, { PcaCmps: [{ CmpNom: 'Orientación a resultados', Level: 3 },
-            { CmpNom: 'Trabajo en equipo', Level: 4 }, { CmpNom: 'Planificación', Level: 2 }] });
+          return json(res, {
+            PcaCmps: [
+              { CmpNom: 'Orientación a resultados', Level: 3 },
+              { CmpNom: 'Trabajo en equipo', Level: 4 },
+              { CmpNom: 'Planificación', Level: 2 },
+            ],
+          });
         case '/report':
           res.writeHead(200, { 'Content-Type': 'application/pdf' });
           return void res.end(Buffer.from('%PDF-1.4\n% local stand-in report\n%%EOF\n'));
@@ -187,23 +213,36 @@ function fakePcaServers(): Server[] {
   const page = (title: string, body: string) =>
     `<!doctype html><html lang="es"><meta charset="utf-8"><title>${title}</title>` +
     `<body style="font-family:system-ui;max-width:36rem;margin:4rem auto;line-height:1.5">${body}</body></html>`;
-  const survey = createHttpsServer({ cert: readFileSync(need('TLS_CERT')), key: readFileSync(need('TLS_KEY')) }, (req, res) => {
-    const u = new URL(req.url ?? '/', surveyBase);
-    const code = (u.searchParams.get('c') ?? '').replace(/[^A-Za-z0-9-]/g, '');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    if (u.pathname === '/survey' && req.method === 'GET' && code) {
-      return void res.end(page('PCA (simulado)', `<h1>PCA — proveedor simulado</h1>
+  const survey = createHttpsServer(
+    { cert: readFileSync(need('TLS_CERT')), key: readFileSync(need('TLS_KEY')) },
+    (req, res) => {
+      const u = new URL(req.url ?? '/', surveyBase);
+      const code = (u.searchParams.get('c') ?? '').replace(/[^A-Za-z0-9-]/g, '');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      if (u.pathname === '/survey' && req.method === 'GET' && code) {
+        return void res.end(
+          page(
+            'PCA (simulado)',
+            `<h1>PCA — proveedor simulado</h1>
         <p>Esta página reemplaza localmente el sitio de TIMS donde la persona responde el PCA.</p>
         <p>Código de la evaluación: <code>${code}</code></p>
-        <form method="post" action="/survey/complete?c=${code}"><button type="submit">Completar el PCA</button></form>`));
-    }
-    if (u.pathname === '/survey/complete' && req.method === 'POST' && code) {
-      done.add(code);
-      return void res.end(page('PCA completado', `<h1>PCA completado</h1>
-        <p>Listo. Puede cerrar esta pestaña y volver al portal. El resultado llega a la empresa en la próxima revisión programada.</p>`));
-    }
-    res.writeHead(404).end();
-  }).listen(PORTS.pcaSurvey, 'localhost');
+        <form method="post" action="/survey/complete?c=${code}"><button type="submit">Completar el PCA</button></form>`,
+          ),
+        );
+      }
+      if (u.pathname === '/survey/complete' && req.method === 'POST' && code) {
+        done.add(code);
+        return void res.end(
+          page(
+            'PCA completado',
+            `<h1>PCA completado</h1>
+        <p>Listo. Puede cerrar esta pestaña y volver al portal. El resultado llega a la empresa en la próxima revisión programada.</p>`,
+          ),
+        );
+      }
+      res.writeHead(404).end();
+    },
+  ).listen(PORTS.pcaSurvey, 'localhost');
   return [api, survey];
 }
 
@@ -295,7 +334,9 @@ async function main() {
   const serviceKey = jwt(jwtSecret, {
     role: 'service_role',
     iss: 'assessments-cross',
-    exp: Math.floor(Date.now() / 1000) + 12 * 3600,
+    // Long-lived on purpose: a 12 h key silently broke every /v1 call of a stack left up overnight
+    // ("JWT expired" from PostgREST). The secret is generated per bring-up and never leaves this machine.
+    exp: Math.floor(Date.now() / 1000) + 30 * 86_400,
   });
 
   await execFileAsync(join(API_DIR, 'node_modules/.bin/tsx'), ['scripts/seed-lia-questions.ts'], {
