@@ -568,15 +568,20 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'The two candidate-portal reads (D16: the attempt list and the consent templates) are authorized like the launch, ' +
       'by a CONFIRMED candidate email, never a role, and the templates come from the remote provider: covered by the same ' +
       "ProviderEndpointTests (the dark flag, 401/403, only the candidate's own attempts, the 404 on another's attempt). " +
-      "The two staff reads of release slice \"atsux\" (the assignable catalog and a candidate's attempts with results) " +
+      'The two staff reads of release slice "atsux" (the assignable catalog and a candidate\'s attempts with results) ' +
       'read the remote catalog or provider-fed results and apply D6 by scope: covered by ProviderEndpointTests.Staff (the ' +
-      'dark flag, 401/403, the vacancy scope 404 and omission, D6 redaction for a narrow reader, #312, the pinned version).',
+      'dark flag, 401/403, the vacancy scope 404 and omission, D6 redaction for a narrow reader, #312, the pinned version). ' +
+      "The two round-12 platform-owner binding tools (read one organization's binding state; unbind, refused with " +
+      'binding_has_open_work while attempts are open) are platform-owner only, like bindings: covered by the same ' +
+      'ProviderEndpointTests (round-12 section: 401/403, state, unbind, the open-work refusal).',
     routes: [
       'GET /assessments/provider-catalog',
       'GET /assessments/provider-attempts',
       'POST /assessments/provider-assignments',
       'POST /assessments/provider-assignments/{attemptId}/cancel',
       'POST /platform/assessment-providers/bindings',
+      'GET /platform/assessment-providers/organizations/{organizationId}/binding',
+      'POST /platform/assessment-providers/organizations/{organizationId}/binding/unbind',
       'POST /portal/assessment-attempts/{attemptId}/launch',
       'GET /portal/assessment-attempts',
       'GET /portal/assessment-attempts/{attemptId}/consent-templates',
@@ -679,7 +684,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         219 → 220 (release slice "fit"): the candidate page's fit-scores read joins the FIT v2 group.
     //         220 → 224 (release slice "atsux"): the two provider staff reads join the AS-5 group; the vacancy
     //         assessments editor's GET and PUT join the FIT v2 group.
-    expect(deployed.size).toBe(224);
+    //         224 → 226 (round 12): the platform owner's binding state read and unbind join the AS-5 group.
+    expect(deployed.size).toBe(226);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -764,7 +770,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 121 → 123 (release/assessments-fit-provider, D16): the two candidate-portal reads join the AS-5 group.
     // 123 → 124 (release slice "fit"): the candidate fit-scores read joins the FIT v2 group.
     // 124 → 128 (release slice "atsux"): two staff reads join the AS-5 group, the editor's two routes the FIT v2 group.
-    expect(allowlistNormalised.length).toBe(128);
+    // 128 → 130 (round 12): the binding state read and unbind join the AS-5 group.
+    expect(allowlistNormalised.length).toBe(130);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
