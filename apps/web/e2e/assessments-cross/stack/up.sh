@@ -75,7 +75,8 @@ SQL
   for f in 20261107232524_assessment_providers 20261108224533_assessment_provider_consent_capture \
     20261109010328_assessment_provider_attempt_poll 20261109011531_fit_v2_provider_recompute \
     20261109030506_fit_v2_provider_erasure_recompute 20261109055548_assessment_provider_queues \
-    20261109233537_assessment_provider_round12; do
+    20261109233537_assessment_provider_round12 \
+    20261110031301_assessment_provider_result_visibility; do
     psql "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/services/Tims.Platform/db/manual/$f.sql" >>"$STATE/logs/manual-ddl.log" 2>&1 || die "manual DDL $f failed"
   done
 fi

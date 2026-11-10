@@ -253,7 +253,8 @@ async function main() {
       V1_TOKEN_SIGNING_SECRET: randomBytes(32).toString('hex'),
       V1_PUBLIC_BASE_URL: `${playerOrigin}/api`,
       V1_HOSTED_PLAYER_URL: playerOrigin,
-      V1_ALLOW_DRAFT_CONSENT_TEXTS: 'true',
+      // Production consent mode: only the approved texts are served and recorded.
+      V1_ALLOW_DRAFT_CONSENT_TEXTS: 'false',
       V1_ENGLISH_LISTENING_PUBLIC_FALLBACK: 'true',
       V1_WEBHOOK_SECRET_KEY: randomBytes(32).toString('base64'),
       CRON_SECRET: cronSecret,
