@@ -533,7 +533,8 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    connection (`:5432`): `20261107232524_assessment_providers.sql`, `20261108224533_assessment_provider_consent_capture.sql`,
    `20261109010328_assessment_provider_attempt_poll.sql`, `20261109011531_fit_v2_provider_recompute.sql`,
    `20261109030506_fit_v2_provider_erasure_recompute.sql`, `20261109055548_assessment_provider_queues.sql`, then
-   `20261109233537_assessment_provider_round12.sql` (round 12: per-create fences, and the result trigger on DELETE).
+   `20261109233537_assessment_provider_round12.sql` (round 12: per-create fences, and the result trigger on DELETE), then
+   `20261110031301_assessment_provider_result_visibility.sql` (round 12: the hide fence, `result_visibility_generation`).
 2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be these
    four tables, their policies, grants and indexes). Then run `/gate` checks 14, 16 and 17.
    - Check 18 (`pre-flip-scan --flip-diff`) will list the four tables as "newly efcore-owned". They are new tables,
