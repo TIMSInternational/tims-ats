@@ -56,8 +56,8 @@ H1 bind the org (token, catalog, tenant) · H2 HR sets LIA (scored), English (ga
 a vacancy · H3 three candidates apply on the careers page · H4 HR assigns (age band, notice) A and B, and the ATS
 creates the subject and one `/v1` assignment per test · H4b HR turns on lockdown and alert control (warn at 3) in
 Settings > Assessment security and assigns C; only C's sittings carry that proctoring · H5 candidate A signs in with
-the mailed code, consents and completes the three sittings in the hosted player (framed: the frame closes itself on
-the player's `sitting_ended`) and PCA on the provider's page (framed with timssuite.com's PCA header; leaving asks
+the mailed code, consents and completes the three sittings in the hosted player (framed: on the player's `sitting_ended` the
+frame stays on the suite's receipt and "Back to my assessments" returns to a dashboard that already shows Completed) and PCA on the provider's page (framed with timssuite.com's PCA header; leaving asks
 first) · H5b C's LIA shows the suite's lockdown overlay, enters full screen, and one tab switch draws the suite's
 anti-cheat warning (embedded only; headless Chromium never hides a page, so the frame reports the switch through
 `visibilitychange`) · H6 signed events reach the ATS inbox and every result is fetched (PCA: the scheduled
@@ -76,8 +76,6 @@ would see no card at all).
 
 **Local differences:** the English listening clips come from the suite's public fallback (no S3), so the suite publishes
 English as `needs_review` (`human_review_required`); H8 then checks the review state and H9 runs the D6 check on the LIA.
-A recorded run holds the player's `sitting_ended` (and the dashboard's read) for one sitting so the suite's receipt can
-be captured; a normal run never does.
 
 **Not covered locally:** anything that needs AWS — the English speaking upload (S3) and its AI scoring (Bedrock), and
 the ITC-IA judge — and the real TIMS PCA site (a stand-in answers its API; every real survey is billable). ITC-IA and MI

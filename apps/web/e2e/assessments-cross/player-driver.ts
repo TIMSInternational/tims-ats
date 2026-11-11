@@ -38,6 +38,8 @@ export interface DriveOptions {
   onScreen?: (label: string) => Promise<void>;
 }
 
+/** Reads in one pass: an element can vanish between two reads when the step re-renders; the next pass retries. */
+const READ_MS = 2_000;
 /** Longer than the SDK's longest wait (a Retry-After of up to 2 minutes). */
 const STALL_MS = 150_000;
 const TEXT =
@@ -227,7 +229,7 @@ async function tick(
     await f.waitForTimeout(100);
     return 'continue';
   }
-  const kind = (await step.getAttribute('data-kind')) ?? '?';
+  const kind = (await step.getAttribute('data-kind', { timeout: READ_MS }).catch(() => null)) ?? '?';
   // The suite's own screens mark every button that moves the sitting on without answering (a subtest intro's
   // «Comenzar Práctica», the practice feedback's «Intentar de nuevo» / «Siguiente», «Comenzar Sección») as
   // `data-tims-part="ack"`, wherever it sits in the step.
@@ -263,7 +265,7 @@ async function tick(
   }
 
   const items = step.locator('[data-tims="item"]');
-  if ((await step.getAttribute('data-layout')) === 'all_on_page') {
+  if ((await step.getAttribute('data-layout', { timeout: READ_MS }).catch(() => null)) === 'all_on_page') {
     const idle = await items.evaluateAll((els) => els.filter((e) => e.getAttribute('data-status') === 'idle').length);
     if (idle === 0) {
       await f.waitForTimeout(150);
@@ -274,7 +276,7 @@ async function tick(
     const n = attempts.get(key) ?? 0;
     attempts.set(key, n + 1);
     for (const item of await items.all()) {
-      const type = (await item.getAttribute('data-tims-item')) ?? '?';
+      const type = (await item.getAttribute('data-tims-item', { timeout: READ_MS }).catch(() => null)) ?? '?';
       report.items[type] = (report.items[type] ?? 0) + 1;
       await fillItem(ctx, item, n);
     }
@@ -288,16 +290,20 @@ async function tick(
   }
 
   const item = items.first();
-  if ((await item.count()) === 0 || (await item.getAttribute('data-status')) !== 'idle') {
+  if (
+    (await item.count()) === 0 ||
+    (await item.getAttribute('data-status', { timeout: READ_MS }).catch(() => null)) !== 'idle'
+  ) {
     await f.waitForTimeout(100);
     return 'continue';
   }
-  const type = (await item.getAttribute('data-tims-item')) ?? '?';
+  const type = (await item.getAttribute('data-tims-item', { timeout: READ_MS }).catch(() => null)) ?? '?';
   const label = await screenLabel(step);
   await seen(ctx, label);
   if (opts.stopWhen?.(type, label)) return { stoppedAt: type, label };
   // Items of one subtest can read alike (LIA's rotated figures are all "R"): the item id tells them apart.
-  const key = await item.evaluate(itemKey);
+  const key = await item.evaluate(itemKey, undefined, { timeout: READ_MS }).catch(() => null);
+  if (key === null) return 'continue';
   const n = attempts.get(key) ?? 0;
   attempts.set(key, n + 1);
   report.items[type] = (report.items[type] ?? 0) + 1;

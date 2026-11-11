@@ -347,64 +347,6 @@ async function leaveFrame(page: Page, shotName?: string): Promise<void> {
   await expect(assessmentDialog(page)).toHaveCount(0);
 }
 
-/**
- * Walkthrough only: the portal closes the frame the moment the sitting ends, so the suite's receipt is never on screen
- * long enough to capture. Hold the player's `sitting_ended` message (and the dashboard's attempts read) for a moment,
- * capture the receipt, then deliver that same message (same data, same origin) to the portal; the portal's own
- * listener does the rest. Never used outside a recorded run.
- */
-let releaseAttemptsRead: (() => void) | null = null;
-const ATTEMPTS_READ = /\/api\/platform\/portal\/assessment-attempts\?/;
-async function holdSittingEnded(page: Page): Promise<void> {
-  // The dashboard also closes the frame once its (refetch-on-focus) read sees the attempt finished: that read waits too.
-  const released = new Promise<void>((r) => (releaseAttemptsRead = r));
-  await page.route(ATTEMPTS_READ, async (route) => {
-    await released;
-    await route.continue();
-  });
-  await page.evaluate(() => {
-    (window as unknown as { __timsHoldArmed?: boolean }).__timsHoldArmed = true;
-  });
-}
-/**
- * Registered before the portal's own scripts (an init script), so it runs before the portal's listener; inert unless
- * a recorded run arms it (holdSittingEnded).
- */
-function installSittingEndedHold(): void {
-  const w = window as unknown as {
-    __timsHoldArmed?: boolean;
-    __timsHeld?: { data: unknown; origin: string };
-    __timsReleased?: boolean;
-  };
-  window.addEventListener(
-    'message',
-    (e: MessageEvent) => {
-      const d = e.data as { source?: string; type?: string } | null;
-      if (!w.__timsHoldArmed || w.__timsReleased) return;
-      if (d?.source !== 'tims-hosted-player' || d.type !== 'sitting_ended') return;
-      // Every copy is held until release (the player may post more than once).
-      e.stopImmediatePropagation();
-      w.__timsHeld ??= { data: e.data, origin: e.origin };
-    },
-    true,
-  );
-}
-async function releaseSittingEnded(page: Page): Promise<void> {
-  await expect
-    .poll(() => page.evaluate(() => Boolean((window as unknown as { __timsHeld?: unknown }).__timsHeld)), {
-      timeout: 30_000,
-      message: 'the player posted sitting_ended to the portal',
-    })
-    .toBe(true);
-  await page.evaluate(() => {
-    const w = window as unknown as { __timsHeld: { data: unknown; origin: string }; __timsReleased?: boolean };
-    w.__timsReleased = true;
-    window.dispatchEvent(new MessageEvent('message', { data: w.__timsHeld.data, origin: w.__timsHeld.origin }));
-  });
-  releaseAttemptsRead?.();
-  await page.unroute(ATTEMPTS_READ);
-}
-
 /** Where the sitting runs: the portal's frame (embedded) or the page itself (link-out). */
 async function sittingSurface(page: Page, origin: string): Promise<Frame> {
   return st.embedded ? frameOn(page, origin) : page.mainFrame();
@@ -437,9 +379,6 @@ async function consentAndOpen(
   else await page.waitForURL((u) => u.origin === st.suite.playerOrigin, { timeout: 60_000 });
 }
 
-/** Sittings whose dashboard still read "In progress" after the frame closed itself (see sitAndReturn). */
-const staleAfterClose: string[] = [];
-
 // The distinct suite screens worth a walkthrough shot, per instrument (one shot per label, first time seen).
 const SCREEN_SHOTS: Record<string, string[]> = {
   lia: [
@@ -462,15 +401,12 @@ async function sitAndReturn(page: Page, instrument: string, shots = false): Prom
   await start.waitFor({ timeout: 60_000 });
   // LIA: the general instructions; English: the welcome (sections + microphone check); Personality: its intro.
   if (shots) await shot(page, `player-${instrument}-start`);
-  // One sitting keeps the frame open on the receipt for a shot; the others close by themselves at once.
-  const holdReceipt = Boolean(shotsDir) && shots && st.embedded && instrument === 'lia';
-  if (holdReceipt) await holdSittingEnded(page);
   await start.click();
   const seen = new Set<string>();
   const wanted = SCREEN_SHOTS[instrument] ?? [];
   const report = await driveSitting(surface, {
     timeoutMs: 15 * 60_000,
-    // Link-out: the player sends the candidate back. Embedded: the portal closes the frame on `sitting_ended`.
+    // Link-out: the player sends the candidate back. Embedded: the driver stops at the suite's receipt.
     leftPlayer: () => (st.embedded ? surface.isDetached() : page.url().startsWith(st.baseURL)),
     onScreen: async (label) => {
       if (!shots || seen.has(label)) return;
@@ -482,26 +418,23 @@ async function sitAndReturn(page: Page, instrument: string, shots = false): Prom
     },
   });
   if (st.embedded) {
-    if (holdReceipt) {
-      // The driver shot the suite's receipt (it stops there); deliver the held message and the frame closes itself.
-      expect(seen.has('receipt'), "the suite's receipt was on screen").toBe(true);
-      await releaseSittingEnded(page);
-    }
-    // Nobody presses anything: the player's `sitting_ended` closes the frame and the dashboard refreshes.
-    await expect(assessmentDialog(page)).toHaveCount(0, { timeout: 30_000 });
-    if (shots) await shot(page, `candidate-portal-frame-closed-itself-after-${instrument}`);
+    // The frame stays open on the suite's receipt; its bar offers one way back, without a question.
+    await expect(surface.getByTestId('sitting-ended')).toBeVisible();
+    expect(report.screens).toContain('receipt');
+    const done = assessmentDialog(page).getByRole('button', { name: 'Back to my assessments' });
+    await expect(done).toBeVisible();
+    await expect(assessmentDialog(page).getByRole('button', { name: 'Leave', exact: true })).toHaveCount(0);
+    if (shots) await shot(page, `candidate-portal-receipt-done-button-${instrument}`);
+    await done.click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(assessmentDialog(page)).toHaveCount(0);
   } else
     await page.waitForURL((u) => u.href.startsWith(`${st.baseURL}/careers/${st.orgSlug}/dashboard`), {
       timeout: 60_000,
     });
-  const completed = portalItem(page, instrument).getByText('Completed', { exact: true });
-  if (st.embedded && !(await completed.isVisible({ timeout: 10_000 }).catch(() => false))) {
-    // Known race (reported): the frame's close refreshes the list once, and the suite's webhook can land at the ATS a
-    // moment later, so the dashboard keeps "In progress · Continue" until the candidate reloads or refocuses.
-    staleAfterClose.push(instrument);
-    await page.reload();
-  }
-  await expect(completed).toBeVisible({ timeout: 60_000 });
+  // No reload or refocus: the dashboard re-reads until the result has arrived.
+  await expect(portalItem(page, instrument).getByText('Completed', { exact: true })).toBeVisible({ timeout: 60_000 });
+  if (shots && st.embedded) await shot(page, `candidate-portal-after-${instrument}`);
   if (shots && !st.embedded) await shot(page, `candidate-portal-after-${instrument}`);
   return JSON.stringify({ answers: report.answers, items: report.items, screens: report.screens });
 }
@@ -510,7 +443,6 @@ test('H5 candidate A signs in (OTP), consents and completes LIA, Personality and
   browser,
 }) => {
   const page = await persona(browser);
-  if (shotsDir && st.embedded) await page.addInitScript(installSittingEndedHold);
   await portalSignIn(page, candA.email);
   await expect(portalItem(page, 'pca')).toBeVisible({ timeout: 60_000 });
   await shot(page, 'candidate-portal-four-tests');
@@ -577,7 +509,7 @@ test('H5 candidate A signs in (OTP), consents and completes LIA, Personality and
   ).toContain('voice');
   record(
     'H5 candidate sittings',
-    `consents at the suite: ${consents}; the 3 native suite assignments completed, PCA open at the provider; dashboard stale after the frame closed (needed a reload): ${staleAfterClose.join(',') || 'none'}; ${seen.join(' | ')}`,
+    `consents at the suite: ${consents}; the 3 native suite assignments completed, PCA open at the provider; each hosted sitting ended on the suite's receipt in the frame, "Back to my assessments" returned, and the dashboard showed Completed without a reload; ${seen.join(' | ')}`,
   );
 });
 
