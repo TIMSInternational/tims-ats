@@ -134,8 +134,12 @@ public interface IAssessmentProviderRepository
 
     Task MarkExpiredAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
 
-    /// <summary>Pre-tenant: the org bound to a provider tenant id (active bindings only), or null.</summary>
-    Task<Guid?> FindOrganizationByProviderTenantAsync(Guid providerTenantId, CancellationToken cancellationToken);
+    /// <summary>
+    /// Pre-tenant: the org bound to a provider tenant id and whether that binding is still in force, or null. An unbound
+    /// (inactive) binding is returned too: it may retain results, and the events that erase or invalidate them
+    /// (<see cref="ProviderEventTypes.RetainedDataEvents"/>) must still reach its inbox.
+    /// </summary>
+    Task<ProviderTenantOwner?> FindOrganizationByProviderTenantAsync(Guid providerTenantId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Inserts and COMMITS the inbox row, due at once (<c>next_attempt_at</c> = now), or reports what an earlier delivery
@@ -348,6 +352,15 @@ public interface IAssessmentProviderRepository
     /// it, so the announcement stays in flight until it is stale (<see cref="ProviderCleanup.ConsentCaptureStaleAfter"/>).
     /// </summary>
     Task EndConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <see cref="EndConsentCaptureAsync"/> and <see cref="RecordOptionalConsentDecisionsAsync"/> in ONE transaction under
+    /// the attempt lock (the lock a launch holds while it enforces the recorded declines): no other launch can see the
+    /// fence cleared while this launch's decisions are not on record yet (Codex r12 P2).
+    /// </summary>
+    Task EndConsentCaptureAndRecordDecisionsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> granted, IReadOnlyList<string> declined,
+        DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>
     /// DSAR access (C# path): every provider attempt and stored result of one candidate, with a fail-closed audit row in
@@ -574,6 +587,9 @@ public sealed record WithdrawalFence(
 
 /// <summary>The organization's stored proctoring settings, when they were last changed, and by whom.</summary>
 public sealed record ProctoringSettingsRow(AssessmentProctoring Settings, DateTimeOffset UpdatedAt, Guid UpdatedById);
+
+/// <summary>The org a provider tenant is bound to, and whether the binding is in force (false: unbound, results retained).</summary>
+public sealed record ProviderTenantOwner(Guid OrganizationId, bool BindingActive);
 
 public sealed record ProviderBindingRow(
     Guid Id, Guid OrganizationId, Guid ProviderTenantId, IReadOnlyList<string> EnabledInstruments, string DefaultLocale);

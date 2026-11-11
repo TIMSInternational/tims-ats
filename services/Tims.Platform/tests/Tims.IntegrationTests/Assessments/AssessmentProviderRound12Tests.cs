@@ -1,4 +1,6 @@
+using System.Text;
 using Tims.Application.Assessments.Providers;
+using Tims.Domain.Assessments.Providers;
 using Tims.Infrastructure.Assessments.Providers;
 
 namespace Tims.IntegrationTests.Assessments;
@@ -309,5 +311,131 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
         Assert.Equal(1L, await fixture.ScalarAsync(
             $"SELECT count(*) FROM assessment_provider_attempts WHERE organization_id = '{org}'"));
     }
-}
 
+    // ── 4. Round 13: privacy events after an unbind; the capture fence ends with the decision ───────────────────────
+
+    private static byte[] Event(Guid eventId, string type, Guid tenant, string data) =>
+        Encoding.UTF8.GetBytes(
+            $$"""{"event_id":"{{eventId}}","event_type":"{{type}}","event_version":1,"occurred_at":"2026-11-09T14:38:06Z","producer":"tims-assessments","tenant_id":"{{tenant}}","data":{{data}}}""");
+
+    private Task<WebhookResult> Deliver(Guid tenant, string type, string data)
+    {
+        var eventId = Guid.NewGuid();
+        var body = Event(eventId, type, tenant, data);
+        return WithRepository(r => new ProviderWebhookUseCase(r, new ProviderEndpointTests.FakeProvider()).HandleAsync(
+            body, WebhookSignature.BuildHeader(ProviderEndpointTests.WebhookSecret, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), body),
+            eventId.ToString(), type, 1, DateTimeOffset.UtcNow, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task After_an_unbind_a_subject_erased_still_enters_the_inbox_and_erases_the_retained_scores()
+    {
+        // Codex r12 P1: the webhook lookup required an ACTIVE binding, so after a safe unbind (which retains completed
+        // results) a subject.erased was acknowledged as unknown_tenant and the erased subject's scores stayed with staff
+        // and FIT. Polling cannot repair it (the assignment answers 404/410 and leaves local data unchanged).
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var (attempt, subject, result, vacancy) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 latest_result_id, assigned_by_id, age_band)
+             VALUES ('{attempt}', '{org}', '{org}', '{candidate}', '{vacancy}', 'lia', 'result_ready',
+                 'selection', 'Análisis de datos', 'es', 1, '{subject}', gen_random_uuid(), '{result}', gen_random_uuid(), '18_plus');
+             INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
+                 result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version,
+                 scoring_method, purpose, validity_status, completion, global_percentile, time_multiplier_applied,
+                 rendered_for, rendered_level, completed_at, scored_at)
+             VALUES (gen_random_uuid(), '{org}', '{attempt}', '{result}', 1, 'LiaResultV1', 'lia', '1.0', 'content-1', repeat('a', 64),
+                     'norms-1', 'scoring-1', 'deterministic', 'selection', 'valid', 'complete', 46.2, 1, 'tenant_hr', 'full',
+                     now(), now());
+             """);
+        var tenant = (Guid)(await fixture.ScalarAsync(
+            $"SELECT provider_tenant_id FROM assessment_provider_bindings WHERE organization_id = '{org}'"))!;
+        var fit = Assert.Single(await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None)));
+        Assert.Equal(result, fit.ProviderResultId); // FIT reads the retained score before the erasure
+
+        // The safe unbind: a result_ready attempt is not open work, so the binding is deactivated with its results retained.
+        Assert.False((await WithRepository(r => r.DeactivateBindingAsync(org, Guid.NewGuid(), Now, CancellationToken.None)))!.Any);
+        Assert.Equal(new ProviderTenantOwner(org, false),
+            await WithRepository(r => r.FindOrganizationByProviderTenantAsync(tenant, CancellationToken.None)));
+
+        // A lifecycle event for the unbound binding is still refused, and never recorded.
+        var started = await Deliver(tenant, ProviderEventTypes.AssignmentStarted, $$"""{"assignment_id":"{{Guid.NewGuid()}}"}""");
+        Assert.Equal(new WebhookResult(WebhookOutcome.Ignored, "binding_inactive"), started);
+
+        var erased = await Deliver(tenant, ProviderEventTypes.SubjectErased, $$"""{"subject_id":"{{subject}}"}""");
+        Assert.Equal(WebhookOutcome.Queued, erased.Outcome);
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_webhook_inbox WHERE organization_id = '{org}'"));
+
+        // The inbox worker's step: claim the row and apply it.
+        var owner = Guid.NewGuid();
+        var claimed = await WithRepository(r => r.ClaimInboxEventAsync(org, owner, CancellationToken.None));
+        var processed = await WithRepository(r => new ProviderInboxProcessor(r, new ProviderEndpointTests.FakeProvider())
+            .ProcessAsync(org, claimed!.Envelope, Now, CancellationToken.None));
+        Assert.Equal(new InboxProcessing(InboxStatuses.Processed, null, false), processed);
+
+        Assert.Equal(0L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+        Assert.Equal("erased", await fixture.ScalarAsync(
+            $"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        var after = Assert.Single(await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None)));
+        Assert.Null(after.ProviderResultId); // FIT (and the staff read, from the same result rows) no longer has a score
+        Assert.Null(after.GlobalPercentile);
+        Assert.Equal(ProviderAttemptStates.Erased, after.AttemptState);
+    }
+
+    [Fact]
+    public async Task Ending_a_capture_with_its_decisions_waits_for_the_attempt_lock_and_commits_both_together()
+    {
+        // Codex r12 P2: the fence and the decision are one locked write. A launch holding the attempt lock (another tab
+        // enforcing a decline) is waited for; once it is released, the fence is ended and the grant recorded at once.
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var attempt = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 assigned_by_id, age_band, declined_optional_consents)
+             VALUES ('{attempt}', '{org}', '{org}', '{candidate}', gen_random_uuid(), 'english', 'created',
+                 'selection', 'Atención al cliente', 'es', 1, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), '18_plus',
+                 ARRAY['voice']);
+             """);
+        Assert.True(await WithRepository(r => r.BeginConsentCaptureAsync(org, attempt, Now, CancellationToken.None)));
+
+        await using var other = new Npgsql.NpgsqlConnection(fixture.ConnectionString);
+        await other.OpenAsync();
+        await using var tx = await other.BeginTransactionAsync();
+        await using (var command = new Npgsql.NpgsqlCommand(
+            $"SELECT pg_advisory_xact_lock(hashtextextended('assessment-provider-attempt:{attempt}', 0))", other, tx))
+        {
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var end = WithRepository(async r =>
+        {
+            await r.EndConsentCaptureAndRecordDecisionsAsync(org, attempt, ["voice"], [], Now, CancellationToken.None);
+            return 0;
+        });
+        await Task.Delay(500);
+        Assert.False(end.IsCompleted); // waits for the launch holding the attempt lock
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT consent_captures_in_flight = 1 AND declined_optional_consents = ARRAY['voice'] FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        await tx.CommitAsync();
+        await end;
+
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"""
+             SELECT consent_captures_in_flight = 0 AND consent_capture_started_at IS NULL
+                    AND granted_optional_consents = ARRAY['voice'] AND cardinality(declined_optional_consents) = 0
+               FROM assessment_provider_attempts WHERE id = '{attempt}'
+             """));
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE entity_id = '{attempt}' AND action = 'assessment_provider_optional_consents_recorded'"));
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE entity_id = '{attempt}' AND action = 'assessment_provider_consent_capture_ended'"));
+    }
+}

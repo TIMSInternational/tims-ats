@@ -125,6 +125,18 @@ public static class ProviderEventTypes
         [AssignmentStarted, SessionCompleted, SessionVoided, ResultReady, AssignmentExpired, AssignmentVoided, SubjectErased];
 
     public static bool IsKnown(string? type) => type is not null && All.Contains(type, StringComparer.Ordinal);
+
+    /// <summary>
+    /// The events that ERASE or INVALIDATE data the ATS already holds: a DSAR erasure, a void, and a result revision (the
+    /// provider re-publishes a later void of a scored sitting as a new revision with <c>validity.status = voided</c>). An
+    /// unbound binding keeps the results it retained (an unbind needs no open work, not no results), so these are still
+    /// accepted and applied for it; every other event for an unbound binding is refused (Codex r12 P1).
+    /// </summary>
+    public static readonly IReadOnlyList<string> RetainedDataEvents =
+        [SubjectErased, ResultReady, SessionVoided, AssignmentVoided];
+
+    public static bool IsRetainedDataEvent(string? type) =>
+        type is not null && RetainedDataEvents.Contains(type, StringComparer.Ordinal);
 }
 
 /// <summary>

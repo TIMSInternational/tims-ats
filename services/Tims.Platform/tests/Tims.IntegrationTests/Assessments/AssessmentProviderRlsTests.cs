@@ -167,7 +167,7 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         await using var db = fixture.NewContext();
         var repository = new AssessmentProviderRepository(db);
 
-        Assert.Equal(AssessmentProviderSchemaFixture.OrgB,
+        Assert.Equal(new ProviderTenantOwner(AssessmentProviderSchemaFixture.OrgB, true),
             await repository.FindOrganizationByProviderTenantAsync(AssessmentProviderSchemaFixture.TenantB, CancellationToken.None));
         Assert.Null(await repository.FindOrganizationByProviderTenantAsync(Guid.NewGuid(), CancellationToken.None));
     }

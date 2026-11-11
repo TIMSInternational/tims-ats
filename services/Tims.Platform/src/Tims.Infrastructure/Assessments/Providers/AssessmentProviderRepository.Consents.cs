@@ -14,6 +14,16 @@ public sealed partial class AssessmentProviderRepository
         ArgumentNullException.ThrowIfNull(declined);
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        await ApplyOptionalConsentDecisionsAsync(organizationId, attemptId, granted, declined, cancellationToken)
+            .ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    // Inside the caller's tenant scope, under the attempt lock the caller already holds.
+    private async Task ApplyOptionalConsentDecisionsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> granted, IReadOnlyList<string> declined,
+        CancellationToken cancellationToken)
+    {
         _db.ChangeTracker.Clear();
         var attempt = await _db.Attempts
             .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
@@ -42,7 +52,5 @@ public sealed partial class AssessmentProviderRepository
                 await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
         }
-
-        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 }

@@ -52,8 +52,23 @@ public sealed class ProviderInboxProcessor(IAssessmentProviderRepository reposit
             return (InboxStatuses.Failed, "invalid_data", false);
         }
 
+        // An UNBOUND binding (Codex r12 P1) keeps receiving only the events that erase or invalidate the results it
+        // retained: a lifecycle event queued before the unbind is not applied, an unknown assignment is never reconciled
+        // (that would map a new attempt), and a result is applied only as a revision of one already stored (below).
+        var bindingActive = await _repository.GetActiveBindingAsync(organizationId, cancellationToken).ConfigureAwait(false)
+            is not null;
+        if (!bindingActive && !ProviderEventTypes.IsRetainedDataEvent(envelope.EventType))
+        {
+            return (InboxStatuses.Ignored, "binding_inactive", false);
+        }
+
         var attempt = await _repository.FindAttemptByProviderAssignmentAsync(organizationId, assignmentId, cancellationToken)
             .ConfigureAwait(false);
+        if (attempt is null && !bindingActive)
+        {
+            return (InboxStatuses.Ignored, "unknown_assignment", false);
+        }
+
         if (attempt is null)
         {
             var (reconciled, code, retry) = await ReconcileAsync(
@@ -119,6 +134,13 @@ public sealed class ProviderInboxProcessor(IAssessmentProviderRepository reposit
         {
             // Withdrawn (cascade confirmed) or an ATS-initiated erasure requested: never fetched or applied again.
             return (InboxStatuses.Ignored, attempt.WithdrawalState is not null ? "consent_withdrawn" : "erasure_requested", false);
+        }
+
+        if (!bindingActive && envelope.EventType == ProviderEventTypes.ResultReady
+            && attempt.State != ProviderAttemptStates.ResultReady)
+        {
+            // No retained result to revise: a first result after the unbind would ADD scores, so it is not fetched.
+            return (InboxStatuses.Ignored, "binding_inactive", false);
         }
 
         switch (envelope.EventType)

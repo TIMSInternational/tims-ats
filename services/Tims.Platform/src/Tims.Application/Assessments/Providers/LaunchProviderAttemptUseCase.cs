@@ -205,9 +205,23 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             captured.Add(consent.Purpose);
         }
 
+        var offered = OptionalConsents.For(attempt.Instrument);
+        var grantedOptional = captured.Where(offered.Contains).ToList();
+        var declinedNow = declinedOptional.Where(offered.Contains).ToList();
+        var decisionsRecorded = false;
         if (consents.Count > 0)
         {
-            if (everyCaptureAnswered)
+            if (everyCaptureAnswered && captureFailure is null && (grantedOptional.Count > 0 || declinedNow.Count > 0))
+            {
+                // Every capture succeeded: the fence ends in the SAME locked write that records the optional decisions
+                // (Codex r12 P2). Ending it first let another tab, seeing no capture in flight, enforce an older decline
+                // (withdrawing the consent just captured) before this grant was on record, so the grant recorded after it
+                // no longer matched what the provider held.
+                await _repository.EndConsentCaptureAndRecordDecisionsAsync(
+                    found.OrganizationId, attempt.Id, grantedOptional, declinedNow, now, cancellationToken).ConfigureAwait(false);
+                decisionsRecorded = true;
+            }
+            else if (everyCaptureAnswered)
             {
                 // Nothing of this launch is in flight at the provider any more. Otherwise the announcement stays in flight
                 // until it is stale, and the cascade keeps the attempt pending meanwhile.
@@ -237,14 +251,12 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
             return captureFailure;
         }
 
-        var offered = OptionalConsents.For(attempt.Instrument);
-        var grantedOptional = captured.Where(offered.Contains).ToList();
-        var declinedNow = declinedOptional.Where(offered.Contains).ToList();
-        if (grantedOptional.Count > 0 || declinedNow.Count > 0)
+        if (!decisionsRecorded && (grantedOptional.Count > 0 || declinedNow.Count > 0))
         {
-            // Recorded under the attempt lock. The provider is made to match the RECORDED declines inside the launch's
-            // own locks (LaunchAtProviderAsync), so a concurrent grant from another tab can never interleave between a
-            // withdrawal and the launch: whichever decision was recorded last is the one the provider holds at launch.
+            // No capture fence of this launch to end (only declines): recorded under the attempt lock. The provider is made
+            // to match the RECORDED declines inside the launch's own locks (LaunchAtProviderAsync), and a grant from
+            // another tab is recorded together with the end of its fence, so whichever decision was recorded last is the
+            // one the provider holds at launch.
             await _repository.RecordOptionalConsentDecisionsAsync(
                 found.OrganizationId, attempt.Id, grantedOptional, declinedNow, cancellationToken).ConfigureAwait(false);
         }

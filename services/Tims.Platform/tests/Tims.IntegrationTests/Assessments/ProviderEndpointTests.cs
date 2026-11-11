@@ -34,7 +34,7 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
     private const string Assign = "/assessments/provider-assignments";
     private const string Bindings = "/platform/assessment-providers/bindings";
     private const string Webhook = "/webhooks/tims-assessments";
-    private const string WebhookSecret = "whsec_endpoint_test_value";
+    internal const string WebhookSecret = "whsec_endpoint_test_value";
 
     private static readonly RSA SigningRsa = RSA.Create(2048);
     private static readonly RsaSecurityKey PrivateKey = new(SigningRsa) { KeyId = "assessment-provider-endpoint-test-key" };
@@ -742,7 +742,7 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
     }
 
     /// <summary>The remote TIMS Assessments API, faked: canned success answers and a record of every call.</summary>
-    private sealed class FakeProvider : IAssessmentProvider
+    internal sealed class FakeProvider : IAssessmentProvider
     {
         /// <summary>(external_ref, the proctoring block) of every create, in order.</summary>
         public ConcurrentQueue<(string ExternalRef, AssessmentProctoring? Proctoring)> CreatedProctoring { get; } = new();

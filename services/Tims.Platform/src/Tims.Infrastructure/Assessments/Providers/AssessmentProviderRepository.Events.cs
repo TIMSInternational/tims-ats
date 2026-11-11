@@ -14,12 +14,14 @@ public sealed partial class AssessmentProviderRepository
         await AdvanceAttemptAsync(organizationId, attemptId, ProviderAttemptStates.Expired, null, now, cancellationToken)
             .ConfigureAwait(false);
 
-    public async Task<Guid?> FindOrganizationByProviderTenantAsync(Guid providerTenantId, CancellationToken cancellationToken)
+    public async Task<ProviderTenantOwner?> FindOrganizationByProviderTenantAsync(
+        Guid providerTenantId, CancellationToken cancellationToken)
     {
-        // PRE-TENANT on the privileged connection: a webhook names a provider tenant, not an org. Only the org id leaves.
+        // PRE-TENANT on the privileged connection: a webhook names a provider tenant, not an org. Only the org id and the
+        // binding's in-force flag leave. Unique on (provider, provider_tenant_id): at most one row, active or unbound.
         return await _db.Bindings.AsNoTracking()
-            .Where(b => b.Provider == ProviderNames.TimsAssessments && b.ProviderTenantId == providerTenantId && b.IsActive)
-            .Select(b => (Guid?)b.OrganizationId)
+            .Where(b => b.Provider == ProviderNames.TimsAssessments && b.ProviderTenantId == providerTenantId)
+            .Select(b => new ProviderTenantOwner(b.OrganizationId, b.IsActive))
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }
 

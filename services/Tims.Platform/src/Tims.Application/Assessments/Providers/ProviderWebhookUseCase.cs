@@ -32,7 +32,8 @@ public sealed record WebhookResult(WebhookOutcome Outcome, string Reason);
 /// before this.</item>
 /// <item>Envelope shape (<c>AssessmentsEventEnvelopeV1</c>), and the <c>TIMS-Event-Id</c>/<c>TIMS-Event-Type</c>
 /// headers must equal the signed body's values.</item>
-/// <item>The provider tenant must be bound to an org (pre-tenant lookup).</item>
+/// <item>The provider tenant must be bound to an org (pre-tenant lookup). For an UNBOUND binding only the events that
+/// erase or invalidate retained data (<see cref="ProviderEventTypes.RetainedDataEvents"/>) are recorded.</item>
 /// <item>The event is COMMITTED to the inbox (unique on org + event id) before the 2xx: the row is the durable record
 /// and carries <c>next_attempt_at</c>. A crash after the commit loses nothing; a redelivery of an event already applied
 /// is acknowledged without being applied twice.</item>
@@ -86,12 +87,23 @@ public sealed class ProviderWebhookUseCase(
             return new WebhookResult(WebhookOutcome.Ignored, "unknown_event_type");
         }
 
-        var organizationId = await _repository.FindOrganizationByProviderTenantAsync(envelope.ProviderTenantId, cancellationToken)
+        var owner = await _repository.FindOrganizationByProviderTenantAsync(envelope.ProviderTenantId, cancellationToken)
             .ConfigureAwait(false);
-        if (organizationId is not { } org)
+        if (owner is null)
         {
             return new WebhookResult(WebhookOutcome.Ignored, "unknown_tenant");
         }
+
+        // An unbound binding may retain completed results (an unbind needs no open work, not no results): the events that
+        // erase or invalidate them still enter its inbox and are applied (Codex r12 P1: a subject.erased acknowledged as
+        // unknown_tenant left the erased subject's scores with staff and FIT, and polling cannot repair it). Every other
+        // event for it is acknowledged and dropped.
+        if (!owner.BindingActive && !ProviderEventTypes.IsRetainedDataEvent(envelope.EventType))
+        {
+            return new WebhookResult(WebhookOutcome.Ignored, "binding_inactive");
+        }
+
+        var org = owner.OrganizationId;
 
         // Committed before the acknowledgement. A row not yet processed (new, or one a redelivery finds still failing)
         // is due now; the worker is woken so the event is usually applied within seconds.

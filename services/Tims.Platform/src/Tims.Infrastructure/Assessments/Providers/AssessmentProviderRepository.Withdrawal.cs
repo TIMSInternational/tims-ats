@@ -315,6 +315,30 @@ public sealed partial class AssessmentProviderRepository
         Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await EndConsentCaptureCoreAsync(organizationId, attemptId, now, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task EndConsentCaptureAndRecordDecisionsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> granted, IReadOnlyList<string> declined,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(granted);
+        ArgumentNullException.ThrowIfNull(declined);
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // The attempt lock FIRST, as a launch holds it while it reads the recorded declines and checks the fence: that
+        // launch either ran before (and saw the fence in flight, so it retried) or runs after this commit and sees both the
+        // fence ended and the decision recorded. Never one without the other.
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        await ApplyOptionalConsentDecisionsAsync(organizationId, attemptId, granted, declined, cancellationToken)
+            .ConfigureAwait(false);
+        await EndConsentCaptureCoreAsync(organizationId, attemptId, now, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task EndConsentCaptureCoreAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         var timestamp = now.UtcDateTime;
         var ended = await _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -331,8 +355,6 @@ public sealed partial class AssessmentProviderRepository
             AddAudit(organizationId, null, "assessment_provider_consent_capture_ended", attemptId, []);
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private sealed class FenceRow

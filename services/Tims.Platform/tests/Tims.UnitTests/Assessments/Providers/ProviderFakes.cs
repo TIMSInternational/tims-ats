@@ -330,7 +330,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     public string? CandidateEmail { get; set; } = "ana@example.com";
 
     public Task<ProviderBindingRow?> GetActiveBindingAsync(Guid organizationId, CancellationToken cancellationToken) =>
-        Task.FromResult(Binding);
+        Task.FromResult(BindingInactive ? null : Binding);
 
     /// <summary>The org's stored proctoring settings (null: never saved, every setting off).</summary>
     public ProctoringSettingsRow? ProctoringSettings { get; set; }
@@ -619,8 +619,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.CompletedTask;
     }
 
-    public Task<Guid?> FindOrganizationByProviderTenantAsync(Guid providerTenantId, CancellationToken cancellationToken) =>
-        Task.FromResult(OrganizationForTenant);
+    public Task<ProviderTenantOwner?> FindOrganizationByProviderTenantAsync(Guid providerTenantId, CancellationToken cancellationToken) =>
+        Task.FromResult(OrganizationForTenant is { } org ? new ProviderTenantOwner(org, !BindingInactive) : null);
 
     /// <summary>The inbox as a queue: per event, the envelope, attempts made, received time, due time and lease owner.</summary>
     public Dictionary<Guid, InboxRow> InboxRows { get; } = [];
@@ -1090,7 +1090,30 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         var (generation, inFlight, startedAt) = CaptureOf(attemptId);
         Captures[attemptId] = (generation + 1, Math.Max(inFlight - 1, 0), inFlight <= 1 ? null : startedAt);
         Writes.Add("capture_ended");
+        RunAfterConsentCaptureEnded();
         return Task.CompletedTask;
+    }
+
+    public async Task EndConsentCaptureAndRecordDecisionsAsync(
+        Guid organizationId, Guid attemptId, IReadOnlyList<string> granted, IReadOnlyList<string> declined,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // Mirrors the real repository: both writes in one locked transaction, so the hook sees them together.
+        var hook = AfterConsentCaptureEnded;
+        AfterConsentCaptureEnded = null;
+        await RecordOptionalConsentDecisionsAsync(organizationId, attemptId, granted, declined, cancellationToken);
+        await EndConsentCaptureAsync(organizationId, attemptId, now, cancellationToken);
+        hook?.Invoke();
+    }
+
+    /// <summary>Runs once, right after a capture fence is ended (another tab interleaving at that point).</summary>
+    public Action? AfterConsentCaptureEnded { get; set; }
+
+    private void RunAfterConsentCaptureEnded()
+    {
+        var hook = AfterConsentCaptureEnded;
+        AfterConsentCaptureEnded = null;
+        hook?.Invoke();
     }
 
     public List<int> ExportAudits { get; } = [];
