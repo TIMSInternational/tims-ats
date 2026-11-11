@@ -3943,11 +3943,16 @@
     "providerLaunchExpired": "The time to start this assessment has passed.",
     "providerLaunchConsentRequired": "A consent still needs to be accepted. Read it and try again.",
     "providerFrameTitle": "Online assessment",
-    "providerFrameClose": "Close the assessment",
     "providerOptionalTitle": "Optional consents: English speaking section",
     "providerOptionalIntro": "These consents are optional. You may leave them unticked and still take the test: the speaking section is then not given, and the hiring team will see that it was not assessed because you did not consent. Ticking these boxes or not changes nothing else about your application.",
     "providerOptionalAccept": "I agree (optional).",
-    "providerFrameHint": "When you finish, close this window to return to your dashboard."
+    "providerFrameLeave": "Leave",
+    "providerLeaveTitle": "Leave the assessment?",
+    "providerLeaveBody": "Your answers are saved, but the time of a timed section keeps running.",
+    "providerLeaveStay": "Stay in the assessment",
+    "providerLeaveConfirm": "Leave the assessment",
+    "providerPcaFrameTitle": "Personal Competencies Analysis (PCA)",
+    "providerPcaFrameHint": "Complete the questionnaire below"
   },
   "billing": {
     "breadcrumbParent": "Settings",

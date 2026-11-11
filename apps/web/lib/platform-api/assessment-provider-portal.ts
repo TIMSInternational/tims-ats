@@ -95,13 +95,15 @@ export type ProviderLaunch = z.infer<typeof launchSchema>;
 export const providerAttemptsKey = (orgSlug: string) => ['platform', 'provider-assessments', orgSlug] as const;
 
 /** GET /portal/assessment-attempts — the signed-in candidate's provider attempts at this organization. */
-export function useMyProviderAssessments(orgSlug: string) {
+export function useMyProviderAssessments(orgSlug: string, options: { pollMs?: number | false } = {}) {
   return useQuery({
     queryKey: providerAttemptsKey(orgSlug),
     enabled: isProviderAssessmentsPortalEnabled(),
     retry: false,
     // A sitting may finish in another tab or in the player: refresh when the candidate comes back.
     refetchOnWindowFocus: true,
+    // While a provider's own page is framed (PCA, which sends no message), poll as timssuite.com does (every 15 s).
+    refetchInterval: options.pollMs ?? false,
     queryFn: async (): Promise<PortalProviderAttempt[]> =>
       portalAttemptsSchema.parse(await platformGet('/portal/assessment-attempts', { organizationSlug: orgSlug }))
         .attempts,

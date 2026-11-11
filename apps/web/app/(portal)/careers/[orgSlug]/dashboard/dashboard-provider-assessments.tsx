@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
@@ -11,6 +11,7 @@ import {
   useMyProviderAssessments,
   type ConsentDecision,
   type PortalProviderAttempt,
+  type PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
 import { ProviderAssessmentFrame } from './provider-assessment-frame';
@@ -26,6 +27,9 @@ const PLAYER_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN;
 // PCA is answered on the provider's own site: framed (sandboxed) when that site is the configured provider frame origin,
 // as timssuite.com frames it; otherwise a top-level link-out.
 const PROVIDER_FRAME_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN;
+/** timssuite.com checks its PCA page's survey every 15 s. */
+export const PCA_POLL_MS = 15_000;
+const FINISHED_STATUSES = new Set<PortalStatus>(['completed', 'needs_review', 'expired']);
 
 /** The message for a failed launch, from the route's stable code (or its status). */
 export function launchErrorKey(error: unknown): keyof PortalMessages {
@@ -40,14 +44,21 @@ export function launchErrorKey(error: unknown): keyof PortalMessages {
 export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: string; orgName: string }) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
-  const { data, isLoading, isError } = useMyProviderAssessments(orgSlug);
+  const [frame, setFrame] = useState<{
+    url: string;
+    sandboxed: boolean;
+    instrument: string;
+    attemptId: string;
+  } | null>(null);
+  const { data, isLoading, isError } = useMyProviderAssessments(orgSlug, {
+    pollMs: frame?.sandboxed ? PCA_POLL_MS : false,
+  });
   // The same (cached) read as "My applications": the consent notice names the vacancy of each assessment.
   const applications = trpc.candidatePortal.myApplications.useQuery({ orgSlug });
   const vacancyTitles = new Map((applications.data ?? []).map((a) => [a.vacancy.id, a.vacancy.title]));
   const [consentFor, setConsentFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ attemptId: string; key: keyof PortalMessages } | null>(null);
-  const [frame, setFrame] = useState<{ url: string; sandboxed: boolean; instrument: string } | null>(null);
 
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: providerAttemptsKey(orgSlug) }),
@@ -74,7 +85,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
       }
       setConsentFor(null);
       if (target.kind === 'iframe')
-        setFrame({ url: target.url, sandboxed: target.sandboxed === true, instrument: attempt.instrument });
+        setFrame({ url: target.url, sandboxed: target.sandboxed === true, instrument: attempt.instrument, attemptId });
       else if (target.kind === 'navigate') openTopLevel(target.url);
       else setFailure({ attemptId, key: 'providerLaunchError' });
     } catch (error) {
@@ -84,6 +95,18 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
       setBusy(null);
     }
   };
+
+  const closeFrame = useCallback(() => {
+    setFrame(null);
+    void refresh();
+  }, [refresh]);
+
+  // The framed attempt finished (PCA: seen by polling; the player also posts a message): close it, as timssuite.com
+  // leaves its PCA page when the survey is done.
+  const framedStatus = frame ? data?.find((a) => a.attemptId === frame.attemptId)?.status : undefined;
+  useEffect(() => {
+    if (framedStatus && FINISHED_STATUSES.has(framedStatus)) setFrame(null);
+  }, [framedStatus]);
 
   const header = (
     <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.providerAssessments}</h2>
@@ -132,10 +155,9 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
           url={frame.url}
           sandboxed={frame.sandboxed}
           name={portalInstrumentName(t.portalDashboard, frame.instrument)}
-          onClose={() => {
-            setFrame(null);
-            void refresh();
-          }}
+          playerOrigin={PLAYER_ORIGIN}
+          onClose={closeFrame}
+          onFinished={closeFrame}
         />
       )}
     </>,

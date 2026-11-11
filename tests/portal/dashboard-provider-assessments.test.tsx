@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import en from '../../apps/web/lib/i18n/en.json';
 import es from '../../apps/web/lib/i18n/es.json';
@@ -41,6 +41,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
 }));
 
 import { DashboardProviderAssessments } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-provider-assessments';
+import { portalInstrumentName } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/provider-assessment-item';
 
 const ATTEMPT = '33333333-3333-4333-8333-333333333333';
 const m = en.portalDashboard;
@@ -179,7 +180,7 @@ describe('DashboardProviderAssessments', () => {
       { notice: NOTICE, embedded: true },
       { notice: NOTICE, embedded: false },
     ]);
-    expect(screen.queryByTitle(m.providerFrameTitle)).not.toBeInTheDocument();
+    expect(document.querySelector('iframe')).toBeNull();
   });
 
   it('never asks a link-out instrument for an embedded launch', async () => {
@@ -227,15 +228,59 @@ describe('DashboardProviderAssessments', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: m.providerContinue }));
 
-    const frame = await screen.findByTitle(m.providerFrameTitle);
+    const liaName = portalInstrumentName(m, 'lia');
+    const frame = await screen.findByTitle(liaName);
     expect(frame.getAttribute('src')).toBe('https://player.test/launch/code-2');
     expect(frame.getAttribute('referrerpolicy')).toBe('no-referrer');
+    // The player needs the camera (identity checks), the microphone (English speaking) and fullscreen (lockdown).
+    expect(frame.getAttribute('allow')).toBe('camera; microphone; fullscreen; autoplay');
+    expect(frame.hasAttribute('sandbox')).toBe(false);
     expect(openTopLevel).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: m.providerFrameClose }));
-    await waitFor(() => expect(screen.queryByTitle(m.providerFrameTitle)).not.toBeInTheDocument());
+    // Leaving asks first; staying keeps the test open.
+    fireEvent.click(screen.getByRole('button', { name: m.providerFrameLeave }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(m.providerLeaveTitle);
+    fireEvent.click(screen.getByRole('button', { name: m.providerLeaveStay }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByTitle(liaName)).toBeInTheDocument();
+    // Escape asks too (it never closes a test on its own).
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: m.providerLeaveConfirm }));
+    await waitFor(() => expect(screen.queryByTitle(liaName)).not.toBeInTheDocument());
     await waitFor(() => expect(lists).toBe(2));
     // A sitting in progress resumes: its notice was acknowledged when it was first launched.
     expect(launchBodies).toEqual([{ embedded: true }]);
+  });
+
+  it('closes the frame when the player says the sitting ended, trusting only the player origin', async () => {
+    let lists = 0;
+    respond({
+      '/launch': () =>
+        json({
+          delivery: 'native',
+          expiresAt: '2026-11-09T14:05:00Z',
+          hostedUrl: 'https://player.test/launch/code-9',
+          frameAncestors: [window.location.origin],
+        }),
+      '/portal/assessment-attempts': () => {
+        lists++;
+        return json({ attempts: [attempt('in_progress')] });
+      },
+    });
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: m.providerContinue }));
+    const liaName = portalInstrumentName(m, 'lia');
+    await screen.findByTitle(liaName);
+    const ended = { source: 'tims-hosted-player', v: 1, type: 'sitting_ended', reason: 'finished' };
+    // The frame appeared after an async launch: let React attach its listeners first.
+    await act(async () => {});
+    // Any other origin (or another message) is ignored.
+    window.dispatchEvent(new MessageEvent('message', { data: ended, origin: 'https://evil.test' }));
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'sitting_ended' }, origin: 'https://player.test' }));
+    expect(screen.getByTitle(liaName)).toBeInTheDocument();
+    window.dispatchEvent(new MessageEvent('message', { data: ended, origin: 'https://player.test' }));
+    await waitFor(() => expect(screen.queryByTitle(liaName)).not.toBeInTheDocument());
+    await waitFor(() => expect(lists).toBe(2));
   });
 
   it('shows each consent text as plain text and launches only once every one is accepted, with its text version', async () => {
@@ -341,7 +386,7 @@ describe('DashboardProviderAssessments', () => {
     fireEvent.click(boxes[1]!); // ai_scoring yes, voice left unticked
     fireEvent.click(accept);
 
-    await screen.findByTitle(m.providerFrameTitle);
+    await screen.findByTitle(portalInstrumentName(m, 'english'));
     expect(launchBodies).toEqual([
       {
         consents: [{ purpose: 'ai_scoring', textVersion: approved('ai_scoring'), locale: 'en' }],

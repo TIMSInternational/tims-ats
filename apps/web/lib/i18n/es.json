@@ -3954,11 +3954,16 @@
     "providerLaunchExpired": "El plazo para comenzar esta evaluación venció.",
     "providerLaunchConsentRequired": "Falta aceptar un consentimiento. Léalo y vuelva a intentarlo.",
     "providerFrameTitle": "Evaluación en línea",
-    "providerFrameClose": "Cerrar la evaluación",
     "providerOptionalTitle": "Consentimientos opcionales: sección oral de inglés",
     "providerOptionalIntro": "Estos consentimientos son opcionales. Puede dejarlos sin marcar y presentar la prueba igualmente: en ese caso la sección oral (hablar) no se administra y el equipo de selección verá que no se evaluó por falta de su consentimiento. Marcar o no estas casillas no cambia nada más de su postulación.",
     "providerOptionalAccept": "Acepto (opcional).",
-    "providerFrameHint": "Cuando termine, cierre esta ventana para volver a su panel."
+    "providerFrameLeave": "Salir",
+    "providerLeaveTitle": "¿Salir de la evaluación?",
+    "providerLeaveBody": "Sus respuestas quedan guardadas, pero el tiempo de una sección cronometrada sigue corriendo.",
+    "providerLeaveStay": "Seguir en la evaluación",
+    "providerLeaveConfirm": "Salir de la evaluación",
+    "providerPcaFrameTitle": "Análisis de Competencias Personales (PCA)",
+    "providerPcaFrameHint": "Completa el cuestionario a continuación"
   },
   "billing": {
     "breadcrumbParent": "Configuración",
