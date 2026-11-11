@@ -819,17 +819,23 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
             return Task.FromResult(ProviderCall<ProviderErasureReceipt>.Success(new ProviderErasureReceipt(subjectId, "accepted")));
         }
 
+        /// <summary>The subject's consents as the provider lists them; by default none.</summary>
+        public Func<Guid, IReadOnlyList<ProviderConsentRecord>>? OnListConsents { get; set; }
+
+        public ConcurrentQueue<Guid> WithdrawnConsents { get; } = new();
+
         public Task<ProviderCall<IReadOnlyList<ProviderConsentRecord>>> ListConsentsAsync(
             Guid subjectId, CancellationToken cancellationToken)
         {
             Calls.Enqueue("list_consents");
-            return Task.FromResult(ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success([]));
+            return Task.FromResult(ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success(OnListConsents?.Invoke(subjectId) ?? []));
         }
 
         public Task<ProviderCall<ProviderConsentRecord>> WithdrawConsentAsync(
             Guid subjectId, Guid consentId, DateTimeOffset withdrawnAt, CancellationToken cancellationToken)
         {
             Calls.Enqueue("withdraw_consent");
+            WithdrawnConsents.Enqueue(consentId);
             return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(consentId, "assessment", "withdrawn")));
         }
 
@@ -886,11 +892,15 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
                 ["assessment"], [], DateTimeOffset.UtcNow.AddDays(14))));
         }
 
+        /// <summary>The provider's answer to a consent capture; by default the consent is recorded.</summary>
+        public Func<ProviderConsentRequest, ProviderCall<ProviderConsentRecord>>? OnRecordConsent { get; set; }
+
         public Task<ProviderCall<ProviderConsentRecord>> RecordConsentAsync(
             Guid subjectId, ProviderConsentRequest request, string idempotencyKey, CancellationToken cancellationToken)
         {
             Calls.Enqueue("consent");
-            return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active")));
+            return Task.FromResult(OnRecordConsent?.Invoke(request)
+                ?? ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(Guid.NewGuid(), request.Purpose, "active")));
         }
 
         public Task<ProviderCall<ProviderLaunch>> LaunchAsync(Guid assignmentId, string? returnPath, CancellationToken cancellationToken)

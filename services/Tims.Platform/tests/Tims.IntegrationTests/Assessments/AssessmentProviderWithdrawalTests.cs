@@ -322,6 +322,65 @@ public sealed class AssessmentProviderWithdrawalTests(AssessmentProviderSchemaFi
         Assert.Equal("result_ready||done", await RowAsync(attempt));
     }
 
+    // Codex ATS r13 P1, through the launch and the cascade on the real schema: the gateway answers the capture 504 while
+    // the provider behind it may still store the consent. The fence stays in flight, so the withdrawal staged right after
+    // does not complete; the provider then commits the consent; the pass that reads the fence stale lists it, withdraws
+    // it, and only then completes.
+    [Fact]
+    public async Task A_capture_answered_504_holds_the_withdrawal_until_a_stale_pass_withdraws_what_landed()
+    {
+        var email = $"{Guid.NewGuid():N}@a.example";
+        var candidate = await CandidateAsync(email, withdrawn: false);
+        var (attempt, _) = await AttemptAsync(candidate, "created");
+        var late = new ProviderConsentRecord(Guid.NewGuid(), "assessment", "active");
+        var landed = false;
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnRecordConsent = _ => ProviderCall<ProviderConsentRecord>.Fail(
+                new ProviderFailure(504, ProviderFailure.Unavailable, true, [])),
+            OnListConsents = _ => landed ? [late] : [],
+        };
+        await using (var db = fixture.NewContext())
+        {
+            var launch = await new LaunchProviderAttemptUseCase(new AssessmentProviderRepository(db), provider).LaunchAsync(
+                attempt, email, [new CapturedConsent("assessment", "assessment-v2026-11-cr", "es")], DateTimeOffset.UtcNow,
+                CancellationToken.None, notice: new NoticeAcknowledgment(AtsNotice.CurrentVersion, "es"));
+            Assert.Equal(LaunchOutcome.ProviderUnavailable, launch.Outcome);
+        }
+
+        Assert.Equal("1|1|true", (string?)await fixture.ScalarAsync(
+            $"SELECT consent_capture_generation || '|' || consent_captures_in_flight || '|' || (consent_capture_started_at IS NOT NULL) FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        Assert.Equal(0L, (long)(await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE entity_id = '{attempt}' AND action = 'assessment_provider_consent_capture_ended'"))!);
+        Assert.DoesNotContain("launch", provider.Calls);
+
+        await WithdrawAsync(candidate);
+        await using (var db = fixture.NewContext())
+        {
+            // The pass is organization-wide (the fixture's org is shared), so this attempt's own row is what is checked.
+            await new ProviderConsentWithdrawalUseCase(new AssessmentProviderRepository(db), provider)
+                .StageAndPropagateAsync(Org, candidate, DateTimeOffset.UtcNow, CancellationToken.None);
+        }
+
+        Assert.Equal("pending", (string?)await fixture.ScalarAsync(
+            $"SELECT withdrawal_state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+
+        landed = true; // the provider commits the capture the gateway gave up on
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET consent_capture_started_at = clock_timestamp() - interval '11 minutes' WHERE id = '{attempt}'");
+        // The first pass deferred it to the back of the org's queue: passes run until it is reached (bounded).
+        for (var pass = 0; pass < 20 && !provider.WithdrawnConsents.Contains(late.ConsentId); pass++)
+        {
+            await using var db = fixture.NewContext();
+            await new ProviderConsentWithdrawalUseCase(new AssessmentProviderRepository(db), provider)
+                .PropagateAsync(Org, DateTimeOffset.UtcNow, CancellationToken.None);
+        }
+
+        Assert.Contains(late.ConsentId, provider.WithdrawnConsents);
+        Assert.Equal("done", (string?)await fixture.ScalarAsync(
+            $"SELECT withdrawal_state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+    }
+
     [Fact]
     public async Task Completion_is_refused_when_a_capture_ended_after_the_fence_was_read()
     {

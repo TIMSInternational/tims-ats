@@ -192,10 +192,12 @@ public sealed class LaunchProviderAttemptUseCase(IAssessmentProviderRepository r
                 consent.Locale, recorded.Ok, cancellationToken).ConfigureAwait(false);
             if (!recorded.Ok)
             {
-                // Without an HTTP answer (timeout, outage) the provider may still store this capture, and so it may
-                // after a 409 idempotency_key_in_use (a request with this key is still being processed there).
-                everyCaptureAnswered = recorded.Failure!.HttpStatus is not null
-                    && recorded.Failure.Code != ProviderFailure.IdempotencyKeyInUse;
+                // Only a refusal the provider itself gave (4xx) settles the capture. Without an HTTP answer (timeout,
+                // outage), after a 5xx (a gateway's 502/504 while the provider may still be processing it behind it,
+                // Codex ATS r13 P1) or a 409 idempotency_key_in_use (a request with this key is still being processed),
+                // the provider may still store it: the fence then stays in flight until it is stale, so no withdrawal
+                // completes meanwhile, and a pass that reads it stale lists (and withdraws) whatever the provider holds.
+                everyCaptureAnswered = recorded.Failure!.SettlesConsentCapture;
                 captureFailure = recorded.Failure.Transient
                     ? LaunchResult.Fail(LaunchOutcome.ProviderUnavailable, recorded.Failure.Code)
                     : LaunchResult.Fail(LaunchOutcome.ConsentRejected, recorded.Failure.Code);

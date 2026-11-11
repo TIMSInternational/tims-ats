@@ -208,6 +208,18 @@ public sealed record ProviderFailure(int? HttpStatus, string Code, bool Transien
             ? RefusalCodes.Contains(Code, StringComparer.Ordinal)
             : HttpStatus is null && Code is SubjectDataRequired or AgeAttestationRequired;
 
+    /// <summary>
+    /// True only when this failure of a consent capture (<c>recordConsent</c>) PROVES the provider will not store that
+    /// consent after this answer: the provider (or a gateway in front of it) refused the request outright with a 4xx, so
+    /// nothing of it is still being processed there. Everything else may still be stored AFTER the answer, so the
+    /// launch's capture fence must stay in flight (until stale) rather than end: no HTTP answer (a timeout, an outage, a
+    /// lost connection, a cancellation, a 2xx whose body broke the contract), any 5xx (a gateway's 502/503/504 while the
+    /// provider may still be processing the request behind it, Codex ATS r13 P1), and 409
+    /// <see cref="IdempotencyKeyInUse"/> (the first request with this key is still running).
+    /// </summary>
+    public bool SettlesConsentCapture =>
+        HttpStatus is >= 400 and < 500 && Code != IdempotencyKeyInUse;
+
     public static ProviderFailure Local(string code, bool transient) => new(null, code, transient, []);
 }
 

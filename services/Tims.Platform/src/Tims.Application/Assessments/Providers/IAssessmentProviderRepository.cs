@@ -401,8 +401,10 @@ public interface IAssessmentProviderRepository
 
     /// <summary>
     /// The launch's captures all got the provider's answer: bumps the generation and decrements the in-flight count. Not
-    /// called when a capture ended without an answer (a timeout, an outage, a cancellation): the provider may still store
-    /// it, so the announcement stays in flight until it is stale (<see cref="ProviderCleanup.ConsentCaptureStaleAfter"/>).
+    /// called when a capture ended without an answer that settles it (a timeout, an outage, a cancellation, a 5xx such as
+    /// a gateway's 502/504, a 409 idempotency_key_in_use: <see cref="ProviderFailure.SettlesConsentCapture"/>): the
+    /// provider may still store it, so the announcement stays in flight until it is stale
+    /// (<see cref="ProviderCleanup.ConsentCaptureStaleAfter"/>).
     /// </summary>
     Task EndConsentCaptureAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
 
