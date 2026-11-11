@@ -71,20 +71,52 @@ public sealed class ProviderConsentWithdrawalUseCase(
             return new WithdrawalPropagation(0, 0);
         }
 
+        var finished = false;
         try
         {
-            return await PropagateClaimedAsync(organizationId, pending, now, budget.Token).ConfigureAwait(false);
+            var outcome = await PropagateClaimedAsync(organizationId, pending, now, budget.Token, cancellationToken)
+                .ConfigureAwait(false);
+            finished = true;
+            return outcome;
         }
         finally
         {
-            await _repository.ReleaseWithdrawalLeasesAsync(
-                organizationId, pending.Select(a => a.Id).ToList(), owner, CancellationToken.None).ConfigureAwait(false);
+            var ids = pending.Select(a => a.Id).ToList();
+            if (!finished)
+            {
+                // Codex ATS r3 P1: a pass that ran out of budget (slow provider calls, a timeout) or failed never reached
+                // its own deferral, so the same oldest batch was claimed by every sweep and the withdrawals behind it
+                // starved. What it claimed and left pending goes to the back of the queue here, on a cleanup token of its
+                // own (the budget's is already cancelled). A failed deferral never hides the pass's own outcome.
+                using var cleanup = new CancellationTokenSource(DeferCleanupTimeout);
+                try
+                {
+                    await _repository.DeferPendingWithdrawalsAsync(organizationId, ids, now, cleanup.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // Left in order; the lease release below still runs, and the next pass retries.
+                }
+            }
+
+            await _repository.ReleaseWithdrawalLeasesAsync(organizationId, ids, owner, CancellationToken.None).ConfigureAwait(false);
         }
     }
 
+    /// <summary>How long the deferral of an unfinished pass may take once its budget is spent.</summary>
+    private static readonly TimeSpan DeferCleanupTimeout = TimeSpan.FromSeconds(30);
+
+    // Codex ATS r3 P1: when the pass budget runs out (slow or timing-out provider calls), the provider phase stops, and
+    // what it already finished is still completed and the rest deferred, on a finishing token of its own. Before, the
+    // budget cancelled the whole pass before either step: nothing completed, nothing moved back, and every sweep claimed
+    // the same oldest batch again, so the withdrawals behind it starved.
     private async Task<WithdrawalPropagation> PropagateClaimedAsync(
-        Guid organizationId, IReadOnlyList<AttemptRow> pending, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, IReadOnlyList<AttemptRow> pending, DateTimeOffset now, CancellationToken cancellationToken,
+        CancellationToken callerToken)
     {
+        bool BudgetSpent(Exception ex) =>
+            ex is OperationCanceledException && cancellationToken.IsCancellationRequested && !callerToken.IsCancellationRequested;
+
         // The fences are read FIRST: before the consents are listed (a launch that begins or ends a consent capture after
         // this read changes the fence, and completion is conditional on it) and before any lookup by external_ref (a
         // create announced and not answered at this read keeps its attempt pending while it may still land, Codex P1).
@@ -94,75 +126,109 @@ public sealed class ProviderConsentWithdrawalUseCase(
         var binding = await _repository.GetActiveBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
         var blocked = new HashSet<Guid>();
         var current = new List<AttemptRow>();
-        foreach (var listed in pending)
+        try
         {
-            var attempt = listed;
-            if (attempt.ProviderAssignmentId is null)
+            foreach (var listed in pending)
             {
-                // An attempt whose create was sent but never answered may exist at the provider: look it up (D11). An
-                // empty answer is conclusive only once no create can still be in flight (the fence, above).
-                if (binding is null)
+                cancellationToken.ThrowIfCancellationRequested();
+                var attempt = listed;
+                if (attempt.ProviderAssignmentId is null)
                 {
-                    blocked.Add(attempt.Id);
-                    current.Add(attempt);
-                    continue;
+                    // An attempt whose create was sent but never answered may exist at the provider: look it up (D11). An
+                    // empty answer is conclusive only once no create can still be in flight (the fence, above).
+                    if (binding is null)
+                    {
+                        blocked.Add(attempt.Id);
+                        current.Add(attempt);
+                        continue;
+                    }
+
+                    var lookup = await _provider.FindAssignmentByExternalRefAsync(
+                        binding.ProviderTenantId, attempt.Id.ToString(), cancellationToken).ConfigureAwait(false);
+                    if (!lookup.Ok)
+                    {
+                        blocked.Add(attempt.Id);
+                        current.Add(attempt);
+                        continue;
+                    }
+
+                    if (lookup.Value!.Assignment is { } orphan && orphan.Instrument == attempt.Instrument)
+                    {
+                        await _repository.MarkCreatedAsync(organizationId, attempt.Id, orphan, now, cancellationToken)
+                            .ConfigureAwait(false);
+                        attempt = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken)
+                            .ConfigureAwait(false) ?? attempt;
+                    }
+                    else if (lookup.Value.Assignment is null && ProviderCleanup.IsCancelUnconfirmed(attempt)
+                             && fences.FirstOrDefault(f => f.AttemptId == attempt.Id) is not { CreateAllowsCompletion: false })
+                    {
+                        // A staff cancel left without ids while its create could not be ruled out: this definitive lookup
+                        // (no create in flight at the fence read) confirms it, or its marker would hold the cascade forever.
+                        await _repository.ConfirmCancelAbsentAsync(organizationId, attempt.Id, now, cancellationToken)
+                            .ConfigureAwait(false);
+                        attempt = attempt with { LastErrorCode = null };
+                    }
                 }
 
-                var lookup = await _provider.FindAssignmentByExternalRefAsync(
-                    binding.ProviderTenantId, attempt.Id.ToString(), cancellationToken).ConfigureAwait(false);
-                if (!lookup.Ok)
+                if (ProviderCleanup.IsCancelPending(attempt))
                 {
-                    blocked.Add(attempt.Id);
-                    current.Add(attempt);
-                    continue;
+                    var cancelled = await _provider.CancelAssignmentAsync(attempt.ProviderAssignmentId!.Value, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (cancelled.Ok || cancelled.Failure!.HttpStatus is 404 or 410)
+                    {
+                        await _repository.MarkProviderCancelledAsync(organizationId, attempt.Id, now, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        blocked.Add(attempt.Id);
+                    }
                 }
 
-                if (lookup.Value!.Assignment is { } orphan && orphan.Instrument == attempt.Instrument)
-                {
-                    await _repository.MarkCreatedAsync(organizationId, attempt.Id, orphan, now, cancellationToken)
-                        .ConfigureAwait(false);
-                    attempt = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken)
-                        .ConfigureAwait(false) ?? attempt;
-                }
-                else if (lookup.Value.Assignment is null && ProviderCleanup.IsCancelUnconfirmed(attempt)
-                         && fences.FirstOrDefault(f => f.AttemptId == attempt.Id) is not { CreateAllowsCompletion: false })
-                {
-                    // A staff cancel left without ids while its create could not be ruled out: this definitive lookup
-                    // (no create in flight at the fence read) confirms it, or its marker would hold the cascade forever.
-                    await _repository.ConfirmCancelAbsentAsync(organizationId, attempt.Id, now, cancellationToken)
-                        .ConfigureAwait(false);
-                    attempt = attempt with { LastErrorCode = null };
-                }
+                current.Add(attempt);
             }
-
-            if (ProviderCleanup.IsCancelPending(attempt))
+        }
+        catch (Exception ex) when (BudgetSpent(ex))
+        {
+            // Out of budget: every attempt not reached stays pending (blocked) for a later pass.
+            foreach (var unreached in pending.Where(a => current.All(c => c.Id != a.Id)))
             {
-                var cancelled = await _provider.CancelAssignmentAsync(attempt.ProviderAssignmentId!.Value, cancellationToken)
-                    .ConfigureAwait(false);
-                if (cancelled.Ok || cancelled.Failure!.HttpStatus is 404 or 410)
+                blocked.Add(unreached.Id);
+                current.Add(unreached);
+            }
+        }
+
+        var subjects = current.Where(a => a.ProviderSubjectId is not null).GroupBy(a => a.ProviderSubjectId!.Value).ToList();
+        var withdrawn = new HashSet<Guid>();
+        try
+        {
+            foreach (var subject in subjects)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (await WithdrawSubjectConsentsAsync(subject.Key, now, cancellationToken).ConfigureAwait(false))
                 {
-                    await _repository.MarkProviderCancelledAsync(organizationId, attempt.Id, now, cancellationToken)
-                        .ConfigureAwait(false);
+                    withdrawn.Add(subject.Key);
                 }
                 else
                 {
-                    blocked.Add(attempt.Id);
+                    foreach (var attempt in subject)
+                    {
+                        blocked.Add(attempt.Id);
+                    }
                 }
             }
-
-            current.Add(attempt);
         }
-
-        foreach (var subject in current.Where(a => a.ProviderSubjectId is not null).GroupBy(a => a.ProviderSubjectId!.Value))
+        catch (Exception ex) when (BudgetSpent(ex))
         {
-            if (!await WithdrawSubjectConsentsAsync(subject.Key, now, cancellationToken).ConfigureAwait(false))
+            foreach (var attempt in subjects.Where(g => !withdrawn.Contains(g.Key)).SelectMany(g => g))
             {
-                foreach (var attempt in subject)
-                {
-                    blocked.Add(attempt.Id);
-                }
+                blocked.Add(attempt.Id);
             }
         }
+
+        // The finishing writes run on their own token: the budget may be spent, and they are what keeps the queue moving.
+        using var finishing = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+        finishing.CancelAfter(DeferCleanupTimeout);
 
         // A create still announced at the fence read blocks completion unless this pass found and recorded its assignment
         // (the orphan, now cancelled). Even then MarkWithdrawalDoneAsync's own condition decides at the database: a create
@@ -173,14 +239,14 @@ public sealed class ProviderConsentWithdrawalUseCase(
                 && current.FirstOrDefault(a => a.Id == f.AttemptId) is { } attempt
                 && (f.CreateAllowsCompletion || attempt.ProviderAssignmentId is not null))
             .ToList();
-        var moved = await _repository.MarkWithdrawalDoneAsync(organizationId, confirmed, now, cancellationToken)
+        var moved = await _repository.MarkWithdrawalDoneAsync(organizationId, confirmed, now, finishing.Token)
             .ConfigureAwait(false);
         if (moved < pending.Count)
         {
             // What this pass leaves pending goes to the back of the queue, so the next pass (or sweep) tries attempts it
             // has not tried yet instead of the same failing batch forever (Codex release round 2 [P2]).
             await _repository.DeferPendingWithdrawalsAsync(
-                organizationId, pending.Select(a => a.Id).ToList(), now, cancellationToken).ConfigureAwait(false);
+                organizationId, pending.Select(a => a.Id).ToList(), now, finishing.Token).ConfigureAwait(false);
         }
 
         return new WithdrawalPropagation(moved, pending.Count - moved);

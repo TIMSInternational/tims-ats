@@ -98,6 +98,48 @@ public sealed class ProviderWithdrawalSweepUseCaseTests
         Assert.Equal(ProviderConsentWithdrawalUseCase.MaxAttemptsPerPass, _repository.Attempts.Count(a => a.WithdrawalState == ProviderWithdrawalStates.Pending));
     }
 
+    // Codex ATS r3 P1: provider calls slow enough to spend the pass budget cut the whole pass off before it completed or
+    // deferred anything, so every sweep claimed the same oldest batch again and a healthy withdrawal behind it never
+    // completed. Both ways a budget ends a call: a slow transient failure, and the call cancelled by the budget.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_batch_that_spends_the_pass_budget_never_starves_a_healthy_withdrawal_behind_it(bool callThrows)
+    {
+        var slow = new HashSet<Guid>();
+        for (var i = 0; i < ProviderConsentWithdrawalUseCase.MaxAttemptsPerPass; i++)
+        {
+            slow.Add(_repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed).ProviderSubjectId!.Value);
+        }
+
+        var healthy = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
+        _repository.WithdrawnCandidates.Add(FakeRepository.Candidate);
+        await _repository.StageConsentWithdrawalAsync(FakeRepository.Org, FakeRepository.Candidate, Now, CancellationToken.None);
+        var budget = TimeSpan.FromMilliseconds(60);
+        _provider.OnListConsents = subject =>
+        {
+            if (!slow.Contains(subject))
+            {
+                return ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success([]);
+            }
+
+            Thread.Sleep(callThrows ? budget * 2 : TimeSpan.FromMilliseconds(15));
+            return callThrows
+                ? throw new TaskCanceledException("cancelled by the pass budget")
+                : ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        };
+        var sweep = new ProviderWithdrawalSweepUseCase(_repository, new ProviderConsentWithdrawalUseCase(_repository, _provider, budget));
+
+        var first = await sweep.RunAsync(Now, CancellationToken.None);   // spends its budget on the 50 oldest
+        var second = await sweep.RunAsync(Now, CancellationToken.None);  // the healthy one is reached and completed
+
+        Assert.Equal(0, first.Confirmed);
+        Assert.Contains("withdrawal_deferred:" + ProviderConsentWithdrawalUseCase.MaxAttemptsPerPass, _repository.Writes);
+        Assert.Equal(1, second.Confirmed);
+        Assert.Equal(ProviderWithdrawalStates.Done, _repository.Attempts.Single(a => a.Id == healthy.Id).WithdrawalState);
+        Assert.Empty(_repository.WithdrawalLeases);
+    }
+
     [Fact]
     public async Task A_failing_organization_does_not_stop_the_others()
     {
