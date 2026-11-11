@@ -107,13 +107,14 @@ public sealed record PortalAttemptsResponse(IReadOnlyList<PortalAttemptView> Att
 /// OPTIONAL purposes the candidate has not decided on yet (English speaking: voice, ai_scoring); empty unless the status is
 /// consent_needed.
 /// </param>
+/// <param name="Locale">The language the test is administered in (<c>es</c>, <c>en</c>); the frame's bar uses it.</param>
 public sealed record PortalAttemptView(
     Guid AttemptId, string Instrument, string Status, IReadOnlyList<string> MissingConsents, DateTimeOffset? ExpiresAt,
-    string Delivery, Guid VacancyId, IReadOnlyList<string> OptionalConsents)
+    string Delivery, Guid VacancyId, IReadOnlyList<string> OptionalConsents, string Locale)
 {
     public static PortalAttemptView From(PortalAttempt attempt) =>
         new(attempt.AttemptId, attempt.Instrument, attempt.Status, attempt.MissingConsents, attempt.ExpiresAt, attempt.Delivery,
-            attempt.VacancyId, attempt.OptionalConsents ?? []);
+            attempt.VacancyId, attempt.OptionalConsents ?? [], attempt.Locale);
 }
 
 /// <param name="OptionalPurposes">The purposes among the templates the candidate may decline (separate, unticked).</param>

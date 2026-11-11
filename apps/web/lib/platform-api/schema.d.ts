@@ -5162,6 +5162,7 @@ export interface components {
             /** Format: uuid */
             vacancyId: string;
             optionalConsents: string[];
+            locale: string;
         };
         PortalConsentTemplatesResponse: {
             templates: components["schemas"]["ProviderConsentTemplate"][];

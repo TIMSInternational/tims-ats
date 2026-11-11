@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
+import { frameMessages } from './provider-frame-messages';
 
 // A TIMS test, framed full screen inside the portal (D16). Two kinds:
 //  - the TIMS hosted player (LIA, English, Personality): it draws timssuite.com's own test screens, so this frame adds
@@ -11,7 +12,7 @@ import { useI18n } from '../../../../../lib/i18n';
 //    header ("Análisis de Competencias Personales (PCA)" · "Completa el cuestionario a continuación"), scripts, forms and
 //    its own origin only, no camera or microphone. TIMS's page sends no message, so the dashboard polls for completion.
 // Leaving a test in progress always asks first (Escape included): a sitting keeps its answers, but a timed section keeps
-// running on the server.
+// running on the server. The bar and the leave question speak the TEST's language (`locale`), not the portal's.
 export const PLAYER_MESSAGE_SOURCE = 'tims-hosted-player';
 
 export function isSittingEndedMessage(event: MessageEvent, playerOrigin: string | undefined): boolean {
@@ -33,6 +34,7 @@ export function ProviderAssessmentFrame({
   name,
   playerOrigin,
   finished = false,
+  locale,
 }: {
   url: string;
   /** The candidate left (after confirming). */
@@ -46,6 +48,8 @@ export function ProviderAssessmentFrame({
   playerOrigin?: string;
   /** The sitting ended: the player shows the suite's receipt; the way out no longer asks. */
   finished?: boolean;
+  /** The language the test is administered in (the attempt's locale); unknown or absent: the portal's language. */
+  locale?: string;
 }) {
   const { t } = useI18n();
   const leaveRef = useRef<HTMLButtonElement>(null);
@@ -79,7 +83,7 @@ export function ProviderAssessmentFrame({
     };
   }, [onFinished, onClose, playerOrigin, finished]);
 
-  const m = t.portalDashboard;
+  const m = frameMessages(locale, t.portalDashboard);
   const leaveButton = finished ? (
     // The sitting is over and the suite's receipt is on screen: one clear way back, no question asked.
     <button

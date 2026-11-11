@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
+import es from '../../apps/web/lib/i18n/es.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
 import {
   ProviderAssessmentFrame,
@@ -83,5 +84,18 @@ describe('ProviderAssessmentFrame', () => {
     expect(frame.getAttribute('sandbox')).toBe('allow-forms allow-scripts allow-same-origin');
     expect(frame.getAttribute('allow')).toBe('fullscreen');
     expect(frame.getAttribute('referrerpolicy')).toBe('strict-origin-when-cross-origin');
+  });
+
+  it('speaks the language of the test, not the portal language', () => {
+    // The portal is in English (renderFrame sets EN); the test is administered in Spanish.
+    renderFrame({ locale: 'es' });
+    fireEvent.click(screen.getByRole('button', { name: es.portalDashboard.providerFrameLeave }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(es.portalDashboard.providerLeaveTitle);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(es.portalDashboard.providerLeaveBody);
+  });
+
+  it('falls back to the portal language for a test locale it has no strings for', () => {
+    renderFrame({ locale: 'pt' });
+    expect(screen.getByRole('button', { name: m.providerFrameLeave })).toBeInTheDocument();
   });
 });

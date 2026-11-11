@@ -15,6 +15,7 @@ import {
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
 import { ProviderAssessmentFrame } from './provider-assessment-frame';
+import { frameMessages } from './provider-frame-messages';
 import { ProviderAssessmentItem, portalInstrumentName, type PortalMessages } from './provider-assessment-item';
 
 // "Online assessments": the candidate's assessments run by the TIMS Assessments provider (AS-5, D16), next to the
@@ -53,6 +54,8 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     sandboxed: boolean;
     instrument: string;
     attemptId: string;
+    /** The test's language: the frame's bar follows it. */
+    locale: string;
     /** The player said the sitting ended (its receipt is on screen). */
     finished?: boolean;
   } | null>(null);
@@ -95,7 +98,13 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
       }
       setConsentFor(null);
       if (target.kind === 'iframe')
-        setFrame({ url: target.url, sandboxed: target.sandboxed === true, instrument: attempt.instrument, attemptId });
+        setFrame({
+          url: target.url,
+          sandboxed: target.sandboxed === true,
+          instrument: attempt.instrument,
+          attemptId,
+          locale: attempt.locale,
+        });
       else if (target.kind === 'navigate') openTopLevel(target.url);
       else setFailure({ attemptId, key: 'providerLaunchError' });
     } catch (error) {
@@ -154,7 +163,8 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     <ProviderAssessmentFrame
       url={frame.url}
       sandboxed={frame.sandboxed}
-      name={portalInstrumentName(t.portalDashboard, frame.instrument)}
+      name={portalInstrumentName(frameMessages(frame.locale, t.portalDashboard), frame.instrument)}
+      locale={frame.locale}
       playerOrigin={PLAYER_ORIGIN}
       finished={frame.finished === true}
       onClose={closeFrame}

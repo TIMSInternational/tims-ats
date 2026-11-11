@@ -60,10 +60,12 @@ public static class ProviderPortalStatuses
 /// <summary>
 /// One attempt as the candidate portal lists it. No scores, validity, reasons or provider ids leave. The vacancy id is the
 /// candidate's own application's: the portal names the vacancy in the consent notice (purpose "selection for vacancy X").
+/// <c>Locale</c> is the language the test is administered in (the attempt's own): the portal's frame around it speaks that
+/// language too, whatever language the portal itself is shown in.
 /// </summary>
 public sealed record PortalAttempt(
     Guid AttemptId, string Instrument, string Status, IReadOnlyList<string> MissingConsents, DateTimeOffset? ExpiresAt,
-    string Delivery, Guid VacancyId = default, IReadOnlyList<string>? OptionalConsents = null);
+    string Delivery, string Locale, Guid VacancyId = default, IReadOnlyList<string>? OptionalConsents = null);
 
 public enum PortalOutcome
 {
@@ -117,7 +119,7 @@ public sealed class ProviderPortalUseCase(IAssessmentProviderRepository reposito
                 x.Attempt.Id, x.Attempt.Instrument, x.Status!,
                 x.Status == ProviderPortalStatuses.ConsentNeeded ? x.Attempt.MissingConsents ?? [] : [],
                 x.Attempt.ExpiresAt, ProviderInstruments.IsLinkOut(x.Attempt.Instrument) ? "link_out" : "native",
-                x.Attempt.VacancyId,
+                x.Attempt.Locale, x.Attempt.VacancyId,
                 x.Status == ProviderPortalStatuses.ConsentNeeded ? x.Attempt.PendingOptionalConsents : []))
             .ToList();
         return new PortalList(PortalOutcome.Ok, listed);

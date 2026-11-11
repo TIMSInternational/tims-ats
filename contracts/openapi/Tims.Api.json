@@ -16711,7 +16711,8 @@
           "expiresAt",
           "delivery",
           "vacancyId",
-          "optionalConsents"
+          "optionalConsents",
+          "locale"
         ],
         "type": "object",
         "properties": {
@@ -16750,6 +16751,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "locale": {
+            "type": "string"
           }
         }
       },

@@ -56,6 +56,7 @@ const attempt = (status: string, extra: Record<string, unknown> = {}) => ({
   delivery: 'native',
   vacancyId: VACANCY,
   optionalConsents: [],
+  locale: 'en',
   ...extra,
 });
 
@@ -250,6 +251,42 @@ describe('DashboardProviderAssessments', () => {
     await waitFor(() => expect(lists).toBe(2));
     // A sitting in progress resumes: its notice was acknowledged when it was first launched.
     expect(launchBodies).toEqual([{ embedded: true }]);
+  });
+
+  it('refuses a list whose attempt carries no test language (strict contract)', async () => {
+    const { locale: _omitted, ...withoutLocale } = attempt('ready');
+    respond({ '/portal/assessment-attempts': () => json({ attempts: [withoutLocale] }) });
+    renderSection();
+
+    expect(await screen.findByText(m.providerError)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: m.providerStart })).not.toBeInTheDocument();
+  });
+
+  it('speaks the TEST language in the frame bar, not the portal language', async () => {
+    // The portal is read in English, the test is administered in Spanish: the bar, its way out and the leave question
+    // are the test's (as on timssuite.com), so the candidate never sees two languages around one test.
+    respond({
+      '/launch': () =>
+        json({
+          delivery: 'native',
+          expiresAt: '2026-11-09T14:05:00Z',
+          hostedUrl: 'https://player.test/launch/code-es',
+          frameAncestors: [window.location.origin],
+        }),
+      '/portal/assessment-attempts': () => json({ attempts: [attempt('in_progress', { locale: 'es' })] }),
+    });
+    renderSection('EN');
+
+    fireEvent.click(await screen.findByRole('button', { name: m.providerContinue }));
+
+    const esName = portalInstrumentName(es.portalDashboard, 'lia');
+    expect(esName).not.toBe(portalInstrumentName(m, 'lia'));
+    expect(await screen.findByTitle(esName)).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: esName })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: m.providerFrameLeave })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: es.portalDashboard.providerFrameLeave }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(es.portalDashboard.providerLeaveTitle);
+    expect(screen.getByRole('button', { name: es.portalDashboard.providerLeaveStay })).toBeInTheDocument();
   });
 
   it('keeps the receipt on screen when the player says the sitting ended (trusting only the player origin), then re-reads until the result arrives', async () => {

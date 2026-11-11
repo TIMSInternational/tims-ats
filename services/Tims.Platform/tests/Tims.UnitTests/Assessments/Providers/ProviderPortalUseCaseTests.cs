@@ -61,7 +61,7 @@ public sealed class ProviderPortalUseCaseTests
     public async Task The_list_carries_status_missing_purposes_deadline_and_delivery_and_hides_the_rest()
     {
         var lia = _repository.AddCreatedAttempt("lia");
-        _repository.Attempts[0] = lia with { MissingConsents = ["assessment", "ai_scoring"] };
+        _repository.Attempts[0] = lia with { MissingConsents = ["assessment", "ai_scoring"], Locale = "en" };
         _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
         _repository.AddCreatedAttempt("english", ProviderAttemptStates.Cancelled);
 
@@ -74,9 +74,12 @@ public sealed class ProviderPortalUseCaseTests
         Assert.Equal(["assessment", "ai_scoring"], first.MissingConsents);
         // The candidate's own application's vacancy: the portal names it in the consent notice.
         Assert.Equal(FakeRepository.Vacancy, first.VacancyId);
+        // The test's own language (the frame's bar follows it, not the portal's language).
+        Assert.Equal("en", first.Locale);
         var second = list.Attempts.Single(a => a.Instrument == "pca");
         Assert.Equal((ProviderPortalStatuses.InProgress, "link_out"), (second.Status, second.Delivery));
         Assert.Empty(second.MissingConsents);
+        Assert.Equal("es", second.Locale);
         Assert.Empty(_provider.Calls); // listing never calls the provider
     }
 

@@ -37,6 +37,8 @@ const portalAttemptSchema = z
     vacancyId: z.string().uuid(),
     /** OPTIONAL purposes not decided yet (English speaking: voice, ai_scoring); may be declined. */
     optionalConsents: z.array(z.enum(CONSENT_PURPOSES)).max(4),
+    /** The language the test is administered in (es, en): the portal frame's bar follows it. */
+    locale: z.string().min(2).max(10),
   })
   .strict();
 
