@@ -65,19 +65,22 @@ public sealed partial class AssessmentProviderRepository
         // ONE statement, like the poller's claim: the subquery locks what it picks (SKIP LOCKED: never waits on a row
         // another pass is claiming), and a row another pass claimed and committed meanwhile is re-checked against its new
         // version, whose live lease excludes it. Oldest first (updated_at, id): a pass defers what it leaves pending.
+        // A MATERIALIZED CTE, as in the poller's claim: an `id IN (subquery LIMIT n FOR UPDATE SKIP LOCKED)` semi-join
+        // may re-run the subquery and claim more than `max` rows (reproduced there, Codex ATS r2 P2).
         var claimed = await _db.Database.SqlQuery<Guid>(
                 $"""
-                 UPDATE assessment_provider_attempts a
-                    SET withdrawal_lease_owner = {owner},
-                        withdrawal_lease_until = clock_timestamp() + make_interval(secs => {lease})
-                  WHERE a.organization_id = {organizationId}
-                    AND a.id IN (
+                 WITH picked AS MATERIALIZED (
                         SELECT p.id FROM assessment_provider_attempts p
                          WHERE p.organization_id = {organizationId} AND p.withdrawal_state = 'pending'
                            AND (p.withdrawal_lease_until IS NULL OR p.withdrawal_lease_until < clock_timestamp())
                          ORDER BY p.updated_at, p.id
                          LIMIT {max}
                          FOR UPDATE SKIP LOCKED)
+                 UPDATE assessment_provider_attempts a
+                    SET withdrawal_lease_owner = {owner},
+                        withdrawal_lease_until = clock_timestamp() + make_interval(secs => {lease})
+                   FROM picked
+                  WHERE a.organization_id = {organizationId} AND a.id = picked.id
                  RETURNING a.id AS "Value"
                  """)
             .ToListAsync(cancellationToken).ConfigureAwait(false);

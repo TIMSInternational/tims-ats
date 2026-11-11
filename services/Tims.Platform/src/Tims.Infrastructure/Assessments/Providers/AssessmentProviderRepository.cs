@@ -359,8 +359,13 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             var from = attempt.State;
             attempt.State = ProviderAttemptStates.Cancelled;
             // An unmapped attempt whose create could not be ruled out: the marker without ids keeps the cancel pending
-            // (and the binding in place) until a lookup confirms it.
-            var unconfirmed = providerCancelUnconfirmed && attempt.ProviderAssignmentId is null;
+            // (and the binding in place) until a lookup confirms it. Re-checked HERE, under the lock (Codex ATS r2 P1):
+            // a create announced after the caller's fence read and lookup (its fence is on the row now, unanswered)
+            // may land with its answer lost, so ANY create fence still on an unmapped pending attempt keeps the marker,
+            // whatever the caller concluded. An answered create removes its own fence; a later lookup clears the marker.
+            var unconfirmed = attempt.ProviderAssignmentId is null
+                && (providerCancelUnconfirmed
+                    || (from == ProviderAttemptStates.PendingCreate && attempt.CreateFences.Length > 0));
             if (unconfirmed)
             {
                 attempt.LastErrorCode = ProviderCleanup.CancelPending;

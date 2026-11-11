@@ -323,6 +323,68 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
     }
 
     [Fact]
+    public async Task A_create_announced_after_the_cancels_fence_read_keeps_the_cancel_pending()
+    {
+        // Codex ATS r2 P1: the cancel reads no fence; the assign request then announces its create; the cancel's lookup
+        // comes back empty (the create has not landed yet) and it would cancel with no marker. The create then lands
+        // with its answer lost: after ten minutes nothing would block the unbind. The locked write re-checks the fences.
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var attempt = await PendingAttemptAsync(org, candidate);
+        var announced = false;
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnLookup = _ =>
+            {
+                if (!announced)
+                {
+                    announced = true;
+                    WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)).GetAwaiter().GetResult();
+                }
+
+                return ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(null));
+            },
+        };
+        var row = await WithRepository(r => r.FindAttemptAsync(org, attempt, CancellationToken.None));
+
+        var cancel = await WithRepository(r => new CancelProviderAttemptUseCase(r, provider)
+            .CancelAsync(org, Guid.NewGuid(), row!, Now, CancellationToken.None));
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, cancel.Outcome);
+        Assert.True(announced);
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT state = 'cancelled' AND provider_assignment_id IS NULL AND last_error_code = 'provider_cancel_pending' FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        // Even once that fence is stale, the marker keeps the unbind refused until a lookup confirms it.
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET create_fences = ARRAY[now() - interval '1 hour'] WHERE id = '{attempt}'");
+        var blocked = await WithRepository(r => r.DeactivateBindingAsync(org, Guid.NewGuid(), Now, CancellationToken.None));
+        Assert.Equal(1, blocked!.CancelPending);
+    }
+
+    [Fact]
+    public async Task A_withdrawal_claim_never_leases_more_than_it_asked_for()
+    {
+        // Codex ATS r2 P2: the same `id IN (... LIMIT n FOR UPDATE SKIP LOCKED)` shape over-claimed in the poller.
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        for (var i = 0; i < 6; i++)
+        {
+            var pending = await PendingAttemptAsync(org, candidate);
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_attempts SET state = 'cancelled', withdrawal_state = 'pending', instrument = 'lia', vacancy_id = gen_random_uuid() WHERE id = '{pending}'");
+        }
+
+        for (var batch = 0; batch < 3; batch++)
+        {
+            var claimed = await WithRepository(r => r.ClaimPendingWithdrawalsAsync(org, Guid.NewGuid(), 1, CancellationToken.None));
+            Assert.Single(claimed);
+        }
+
+        Assert.Equal(3L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_attempts WHERE organization_id = '{org}' AND withdrawal_lease_owner IS NOT NULL"));
+    }
+
+    [Fact]
     public async Task A_definitive_empty_lookup_confirms_an_unconfirmed_cancel_but_never_over_recorded_ids()
     {
         var org = await OrgAsync();
