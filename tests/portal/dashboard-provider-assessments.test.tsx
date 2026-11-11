@@ -252,7 +252,7 @@ describe('DashboardProviderAssessments', () => {
     expect(launchBodies).toEqual([{ embedded: true }]);
   });
 
-  it('closes the frame when the player says the sitting ended, trusting only the player origin', async () => {
+  it('keeps the receipt on screen when the player says the sitting ended (trusting only the player origin), then re-reads until the result arrives', async () => {
     let lists = 0;
     respond({
       '/launch': () =>
@@ -264,7 +264,8 @@ describe('DashboardProviderAssessments', () => {
         }),
       '/portal/assessment-attempts': () => {
         lists++;
-        return json({ attempts: [attempt('in_progress')] });
+        // The result reaches the ATS after the end message: in progress on the first re-read, completed later.
+        return json({ attempts: [attempt(lists <= 2 ? 'in_progress' : 'completed')] });
       },
     });
     renderSection();
@@ -279,8 +280,15 @@ describe('DashboardProviderAssessments', () => {
     window.dispatchEvent(new MessageEvent('message', { data: { type: 'sitting_ended' }, origin: 'https://player.test' }));
     expect(screen.getByTitle(liaName)).toBeInTheDocument();
     window.dispatchEvent(new MessageEvent('message', { data: ended, origin: 'https://player.test' }));
+    // The suite's receipt stays visible; the way out becomes one clear button that does not ask.
+    const done = await screen.findByRole('button', { name: m.providerFrameDone });
+    expect(screen.getByTitle(liaName)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: m.providerFrameLeave })).not.toBeInTheDocument();
+    // Re-read until the attempt has left "in progress" (the webhook lands after the end message).
+    await waitFor(() => expect(lists).toBeGreaterThanOrEqual(3), { timeout: 6000 });
+    fireEvent.click(done);
     await waitFor(() => expect(screen.queryByTitle(liaName)).not.toBeInTheDocument());
-    await waitFor(() => expect(lists).toBe(2));
+    expect(await screen.findByText(m.providerStatusCompleted)).toBeInTheDocument();
   });
 
   it('shows each consent text as plain text and launches only once every one is accepted, with its text version', async () => {

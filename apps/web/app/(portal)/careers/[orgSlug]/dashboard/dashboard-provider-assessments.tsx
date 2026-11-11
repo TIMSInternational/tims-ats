@@ -29,6 +29,9 @@ const PLAYER_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN;
 const PROVIDER_FRAME_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN;
 /** timssuite.com checks its PCA page's survey every 15 s. */
 export const PCA_POLL_MS = 15_000;
+/** After a sitting ends, re-read every 2 s for at most 60 s until its result has arrived. */
+export const SETTLE_POLL_MS = 2_000;
+const SETTLE_MAX_MS = 60_000;
 const FINISHED_STATUSES = new Set<PortalStatus>(['completed', 'needs_review', 'expired']);
 
 /** The message for a failed launch, from the route's stable code (or its status). */
@@ -49,9 +52,15 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     sandboxed: boolean;
     instrument: string;
     attemptId: string;
+    /** The player said the sitting ended (its receipt is on screen). */
+    finished?: boolean;
   } | null>(null);
+  // The result reaches the ATS by the suite's webhook moments after the sitting ends, so the list is re-read until the
+  // attempt leaves "in progress" (not just once): otherwise the dashboard can keep offering "Continue" for a finished
+  // test. A framed PCA (TIMS's page sends no message) is polled as timssuite.com polls it.
+  const [settling, setSettling] = useState<{ attemptId: string; until: number } | null>(null);
   const { data, isLoading, isError } = useMyProviderAssessments(orgSlug, {
-    pollMs: frame?.sandboxed ? PCA_POLL_MS : false,
+    pollMs: settling ? SETTLE_POLL_MS : frame?.sandboxed ? PCA_POLL_MS : false,
   });
   // The same (cached) read as "My applications": the consent notice names the vacancy of each assessment.
   const applications = trpc.candidatePortal.myApplications.useQuery({ orgSlug });
@@ -96,17 +105,37 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     }
   };
 
+  const framedAttemptId = frame?.attemptId ?? null;
   const closeFrame = useCallback(() => {
+    if (framedAttemptId) setSettling({ attemptId: framedAttemptId, until: Date.now() + SETTLE_MAX_MS });
     setFrame(null);
     void refresh();
-  }, [refresh]);
+  }, [framedAttemptId, refresh]);
 
-  // The framed attempt finished (PCA: seen by polling; the player also posts a message): close it, as timssuite.com
-  // leaves its PCA page when the survey is done.
+  // The player says the sitting ended: keep its receipt on screen (as timssuite.com shows it) and start re-reading.
+  const finishFrame = useCallback(() => {
+    if (framedAttemptId) setSettling({ attemptId: framedAttemptId, until: Date.now() + SETTLE_MAX_MS });
+    setFrame((current) => (current ? { ...current, finished: true } : current));
+    void refresh();
+  }, [framedAttemptId, refresh]);
+
+  // A framed PCA that finished (seen by polling) closes, as timssuite.com leaves its PCA page when the survey is done.
   const framedStatus = frame ? data?.find((a) => a.attemptId === frame.attemptId)?.status : undefined;
   useEffect(() => {
-    if (framedStatus && FINISHED_STATUSES.has(framedStatus)) setFrame(null);
-  }, [framedStatus]);
+    if (frame?.sandboxed && framedStatus && FINISHED_STATUSES.has(framedStatus)) closeFrame();
+  }, [frame?.sandboxed, framedStatus, closeFrame]);
+
+  // Stop re-reading once the attempt has left "in progress", or after SETTLE_MAX_MS.
+  const settlingStatus = settling ? data?.find((a) => a.attemptId === settling.attemptId)?.status : undefined;
+  useEffect(() => {
+    if (!settling) return;
+    if (settlingStatus && FINISHED_STATUSES.has(settlingStatus)) {
+      setSettling(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setSettling(null), Math.max(0, settling.until - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [settling, settlingStatus]);
 
   const header = (
     <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.providerAssessments}</h2>
@@ -156,8 +185,9 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
           sandboxed={frame.sandboxed}
           name={portalInstrumentName(t.portalDashboard, frame.instrument)}
           playerOrigin={PLAYER_ORIGIN}
+          finished={frame.finished === true}
           onClose={closeFrame}
-          onFinished={closeFrame}
+          onFinished={finishFrame}
         />
       )}
     </>,

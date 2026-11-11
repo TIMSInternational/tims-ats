@@ -3958,6 +3958,7 @@
     "providerOptionalTitle": "Consentimientos opcionales: sección oral de inglés",
     "providerOptionalIntro": "Estos consentimientos son opcionales. Puede dejarlos sin marcar y presentar la prueba igualmente: en ese caso la sección oral (hablar) no se administra y el equipo de selección verá que no se evaluó por falta de su consentimiento. Marcar o no estas casillas no cambia nada más de su postulación.",
     "providerOptionalAccept": "Acepto (opcional).",
+    "providerFrameDone": "Volver a mis evaluaciones",
     "providerFrameLeave": "Salir",
     "providerLeaveTitle": "¿Salir de la evaluación?",
     "providerLeaveBody": "Sus respuestas quedan guardadas, pero el tiempo de una sección cronometrada sigue corriendo.",

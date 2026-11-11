@@ -65,6 +65,16 @@ describe('ProviderAssessmentFrame', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('after the end, offers one way back that does not ask; Escape returns too', () => {
+    const { onClose } = renderFrame({ finished: true });
+    expect(screen.queryByRole('button', { name: m.providerFrameLeave })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: m.providerFrameDone }));
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
   it('frames the PCA as timssuite.com does: its header, forms and scripts on its own origin, no popups or devices', () => {
     renderFrame({ url: 'https://timshr.test/s/1', sandboxed: true, name: 'PCA' });
     expect(screen.getByRole('heading', { name: m.providerPcaFrameTitle })).toBeInTheDocument();

@@ -32,6 +32,7 @@ export function ProviderAssessmentFrame({
   sandboxed = false,
   name,
   playerOrigin,
+  finished = false,
 }: {
   url: string;
   /** The candidate left (after confirming). */
@@ -43,6 +44,8 @@ export function ProviderAssessmentFrame({
   name?: string;
   /** The hosted player's origin: the only sender trusted for `sitting_ended`. */
   playerOrigin?: string;
+  /** The sitting ended: the player shows the suite's receipt; the way out no longer asks. */
+  finished?: boolean;
 }) {
   const { t } = useI18n();
   const leaveRef = useRef<HTMLButtonElement>(null);
@@ -51,7 +54,7 @@ export function ProviderAssessmentFrame({
 
   useEffect(() => {
     leaveRef.current?.focus();
-  }, []);
+  }, [finished]);
 
   useEffect(() => {
     if (confirming) stayRef.current?.focus();
@@ -60,8 +63,10 @@ export function ProviderAssessmentFrame({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      // Escape asks; a second Escape keeps the candidate in the test (the safe choice).
-      setConfirming((open) => !open);
+      // After the end nothing is at stake: Escape returns. During a test, Escape asks; a second Escape keeps the
+      // candidate in the test (the safe choice).
+      if (finished) onClose();
+      else setConfirming((open) => !open);
     };
     const onMessage = (event: MessageEvent) => {
       if (isSittingEndedMessage(event, playerOrigin)) onFinished();
@@ -72,10 +77,20 @@ export function ProviderAssessmentFrame({
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('message', onMessage);
     };
-  }, [onFinished, playerOrigin]);
+  }, [onFinished, onClose, playerOrigin, finished]);
 
   const m = t.portalDashboard;
-  const leaveButton = (
+  const leaveButton = finished ? (
+    // The sitting is over and the suite's receipt is on screen: one clear way back, no question asked.
+    <button
+      ref={leaveRef}
+      type="button"
+      onClick={onClose}
+      className="inline-flex items-center min-h-11 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#150D33] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
+    >
+      {m.providerFrameDone}
+    </button>
+  ) : (
     <button
       ref={leaveRef}
       type="button"
@@ -108,7 +123,7 @@ export function ProviderAssessmentFrame({
           {leaveButton}
         </div>
       )}
-      {confirming && (
+      {confirming && !finished && (
         <div
           role="alertdialog"
           aria-labelledby="provider-leave-title"
