@@ -26,8 +26,9 @@ containers (default `assessments-cross-*`), `CROSS_STATE_DIR` moves the state di
 `CROSS_EMBED=1` builds the portal **embedded**, as timssuite.com does it: it frames the hosted player
 (`NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN`; the local ATS origin is the partner's registered frame ancestor) and the PCA
 provider's page in a sandboxed frame (`NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN`, the local stand-in). The spec
-reads the mode from `cross.json` (`embedded`). Open (2026-11-10): framed, an English reading question that shares its
-passage with the previous one does not advance, so the default build links out.
+reads the mode from `cross.json` (`embedded`). The player draws timssuite.com's own screens; `player-driver.ts` drives
+them as the suite's hosted e2e driver does (`data-tims-part` option | ack | submit | skip, `data-tims-key`, the lockdown
+overlay, DOM clicks while the frame is fullscreen) and names each distinct screen for the walkthrough.
 
 `ASSESSMENTS_CROSS_RECORD=<dir>` records a walkthrough: video and a trace of every test, an HTML report in
 `<dir>/html`, and numbered screenshots in story order in `<dir>/shots`.
@@ -52,10 +53,14 @@ Two local-only allowances, both outside the products' code:
 ## What the spec drives (one serial story)
 
 H1 bind the org (token, catalog, tenant) · H2 HR sets LIA (scored), English (gate), Personality and PCA (advisory) on
-a vacancy · H3 two candidates apply on the careers page · H4 HR assigns (age band, notice) and the ATS creates the
-subject and one `/v1` assignment per test · H5 candidate A signs in with the mailed code, consents and completes the
-three sittings in the hosted player (framed in the portal, or link-out) and PCA on the provider's page (the local
-stand-in, framed or link-out) · H6 signed events reach the ATS inbox and every result is fetched (PCA: the scheduled
+a vacancy · H3 three candidates apply on the careers page · H4 HR assigns (age band, notice) A and B, and the ATS
+creates the subject and one `/v1` assignment per test · H4b HR turns on lockdown and alert control (warn at 3) in
+Settings > Assessment security and assigns C; only C's sittings carry that proctoring · H5 candidate A signs in with
+the mailed code, consents and completes the three sittings in the hosted player (framed: the frame closes itself on
+the player's `sitting_ended`) and PCA on the provider's page (framed with timssuite.com's PCA header; leaving asks
+first) · H5b C's LIA shows the suite's lockdown overlay, enters full screen, and one tab switch draws the suite's
+anti-cheat warning (embedded only; headless Chromium never hides a page, so the frame reports the switch through
+`visibilitychange`) · H6 signed events reach the ATS inbox and every result is fetched (PCA: the scheduled
 run polls the provider) · H7 the provider results create the candidate's FIT v2 row, with no HR compute · H8 HR sees
 each result, and the Assessments tab's results board draws every profile (LIA subtests, English skills, Personality
 dimensions, PCA's DISC graphs and competencies) · H9 a
@@ -68,6 +73,11 @@ Local fixtures the spec sets itself: the vacancy is moved to the team the seeded
 `leader` role gets `assessment:read` at team scope by applying the owner step
 `services/Tims.Platform/db/owner/leader_assessment_read.sql` verbatim (the seed grants it none, so without that step it
 would see no card at all).
+
+**Local differences:** the English listening clips come from the suite's public fallback (no S3), so the suite publishes
+English as `needs_review` (`human_review_required`); H8 then checks the review state and H9 runs the D6 check on the LIA.
+A recorded run holds the player's `sitting_ended` (and the dashboard's read) for one sitting so the suite's receipt can
+be captured; a normal run never does.
 
 **Not covered locally:** anything that needs AWS — the English speaking upload (S3) and its AI scoring (Bedrock), and
 the ITC-IA judge — and the real TIMS PCA site (a stand-in answers its API; every real survey is billable). ITC-IA and MI
