@@ -291,6 +291,40 @@ describe('DashboardProviderAssessments', () => {
     expect(await screen.findByText(m.providerStatusCompleted)).toBeInTheDocument();
   });
 
+  it('keeps a running test mounted when a background refresh of the list fails (Codex r13)', async () => {
+    let lists = 0;
+    respond({
+      '/launch': () =>
+        json({
+          delivery: 'native',
+          expiresAt: '2026-11-09T14:05:00Z',
+          hostedUrl: 'https://player.test/launch/code-11',
+          frameAncestors: [window.location.origin],
+        }),
+      '/portal/assessment-attempts': () => {
+        lists++;
+        // The first read works; every refresh after the launch fails.
+        return lists === 1 ? json({ attempts: [attempt('in_progress')] }) : json({ code: 'unavailable' }, 503);
+      },
+    });
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: m.providerContinue }));
+    const liaName = portalInstrumentName(m, 'lia');
+    await screen.findByTitle(liaName);
+    await act(async () => {});
+    // The end message triggers a refresh, which fails: the frame (and its receipt) must stay, the error shows apart.
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { source: 'tims-hosted-player', v: 1, type: 'sitting_ended', reason: 'finished' },
+        origin: 'https://player.test',
+      }),
+    );
+    await waitFor(() => expect(lists).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText(m.providerError)).toBeInTheDocument();
+    expect(screen.getByTitle(liaName)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: m.providerFrameDone })).toBeInTheDocument();
+  });
+
   it('lists the tests in the same order as everywhere else: LIA, English, Personality, PCA', async () => {
     const at = (id: string, instrument: string) => ({ ...attempt('ready', { instrument }), attemptId: id });
     respond({

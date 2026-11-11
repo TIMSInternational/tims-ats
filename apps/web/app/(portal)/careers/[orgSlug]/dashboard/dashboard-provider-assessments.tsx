@@ -148,8 +148,29 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     </section>
   );
 
-  if (isLoading) return section(<p className="text-[12px] text-muted">{t.portalDashboard.providerLoading}</p>);
-  if (isError) return section(<p className="text-[12px] text-[#B42318]">{t.portalDashboard.providerError}</p>);
+  // A test in progress stays mounted whatever happens to the list: a failed background refresh (the PCA poll, a window
+  // refocus) must never unmount a running sitting, whose single-use launch link cannot be loaded again.
+  const frameNode = frame && (
+    <ProviderAssessmentFrame
+      url={frame.url}
+      sandboxed={frame.sandboxed}
+      name={portalInstrumentName(t.portalDashboard, frame.instrument)}
+      playerOrigin={PLAYER_ORIGIN}
+      finished={frame.finished === true}
+      onClose={closeFrame}
+      onFinished={finishFrame}
+    />
+  );
+  const errorLine = <p className="text-[12px] text-[#B42318]">{t.portalDashboard.providerError}</p>;
+
+  if (!data) {
+    return section(
+      <>
+        {isLoading ? <p className="text-[12px] text-muted">{t.portalDashboard.providerLoading}</p> : isError ? errorLine : null}
+        {frameNode}
+      </>,
+    );
+  }
 
   // The same order everywhere the TIMS tests appear (HR's results board, the vacancy setup): LIA, English, Personality, PCA.
   const attempts = [...(data ?? [])].sort(
@@ -162,6 +183,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
 
   return section(
     <>
+      {isError && <div className="mb-3">{errorLine}</div>}
       {attempts.length === 0 ? (
         <p className="text-[12px] text-muted">{t.portalDashboard.providerEmpty}</p>
       ) : (
@@ -183,17 +205,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
           ))}
         </ul>
       )}
-      {frame && (
-        <ProviderAssessmentFrame
-          url={frame.url}
-          sandboxed={frame.sandboxed}
-          name={portalInstrumentName(t.portalDashboard, frame.instrument)}
-          playerOrigin={PLAYER_ORIGIN}
-          finished={frame.finished === true}
-          onClose={closeFrame}
-          onFinished={finishFrame}
-        />
-      )}
+      {frameNode}
     </>,
   );
 }
