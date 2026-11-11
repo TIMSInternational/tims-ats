@@ -197,4 +197,64 @@ public sealed class AssessmentProviderPollLeaseTests(AssessmentProviderSchemaFix
         Assert.Equal("{}", (string?)await fixture.ScalarAsync(
             $"SELECT missing_consents::text FROM assessment_provider_attempts WHERE id = '{closed}'"));
     }
+
+    [Fact]
+    public async Task Every_organization_is_visited_across_capped_runs_even_past_the_first_two_hundred_by_id()
+    {
+        // Codex ATS P2: the org listing was ORDER BY id LIMIT 200, so while the first 200 orgs (by id) kept pollable
+        // work, org 201 was never visited. Here every org keeps more work than one visit takes (two stale attempts, one
+        // claimed per visit), which is what an org with more than MaxAttemptsPerOrganization stale attempts looks like.
+        const int cap = ProviderAttemptPollUseCase.MaxOrganizations;
+        var orgs = Enumerable.Range(0, cap + 1).Select(_ => Guid.NewGuid()).ToList();
+        var values = string.Join(",\n", orgs.Select(o => $"('{o}'::uuid)"));
+        await fixture.ExecuteAsync(
+            $"""
+             WITH o(id) AS (VALUES {values})
+             INSERT INTO organizations (id, name, slug) SELECT id, 'Fair', 'fair-' || replace(id::text, '-', '') FROM o;
+             WITH o(id) AS (VALUES {values})
+             INSERT INTO assessment_provider_bindings (id, organization_id, provider, provider_tenant_id, enabled_instruments, default_locale)
+             SELECT id, id, 'tims-assessments', gen_random_uuid(), ARRAY['lia'], 'es' FROM o;
+             WITH o(id) AS (VALUES {values})
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 instrument_version, content_version, assigned_by_id, expires_at, created_at, updated_at)
+             SELECT gen_random_uuid(), o.id, o.id, gen_random_uuid(), gen_random_uuid(), 'lia', 'in_progress', 'selection',
+                 'Análisis de datos', 'es', 1, gen_random_uuid(), gen_random_uuid(), '1.0', 'content-1', gen_random_uuid(),
+                 now() + interval '7 days', now() - interval '1 hour', now() - interval '1 hour'
+               FROM o CROSS JOIN generate_series(1, 2);
+             """);
+        var mine = $"ARRAY[{string.Join(", ", orgs.Select(o => $"'{o}'::uuid"))}]";
+        // Only these orgs are due for this test (the collection runs serially; earlier tests' orgs are made fresh).
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET last_polled_at = now() WHERE organization_id <> ALL ({mine})");
+        try
+        {
+            var visited = new HashSet<Guid>();
+            for (var run = 0; run < 2; run++)
+            {
+                IReadOnlyList<Guid> listed;
+                await using (var db = fixture.NewContext())
+                {
+                    listed = await new AssessmentProviderRepository(db).ListOrganizationsWithPollableAttemptsAsync(cap, CancellationToken.None);
+                }
+
+                Assert.Equal(cap, listed.Count);
+                foreach (var org in listed)
+                {
+                    // One visit: one attempt claimed and released (stamping last_polled_at); the other stays pollable.
+                    var owner = Guid.NewGuid();
+                    var claimed = Assert.Single(await ClaimAsync(org, owner, max: 1));
+                    await ReleaseAsync(org, claimed, owner);
+                    visited.Add(org);
+                }
+            }
+
+            Assert.Equal(orgs.Order(), visited.Order());
+        }
+        finally
+        {
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_attempts SET last_polled_at = now() WHERE organization_id = ANY ({mine})");
+        }
+    }
 }

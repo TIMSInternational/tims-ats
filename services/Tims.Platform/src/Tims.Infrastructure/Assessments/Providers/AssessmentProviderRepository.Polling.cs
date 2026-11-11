@@ -26,10 +26,16 @@ public sealed partial class AssessmentProviderRepository
     {
         // PRE-TENANT on the privileged connection (no TenantScope), like ListOrganizationsWithPendingWithdrawalsAsync:
         // only organization ids leave this query; each is then claimed under its own tenant scope.
+        // Fairness (Codex ATS P2): ordered by the org's most recent visit (the latest last_polled_at over ALL its
+        // attempts; never visited first), not by id. A visit stamps last_polled_at on what it claimed, so a visited org
+        // goes to the back even while it keeps more pollable work than one run takes (MaxAttemptsPerOrganization): with
+        // ORDER BY id, an org past the first MaxOrganizations ids was never visited at all.
         var (stale, revisionStale, window) = PollIntervals();
         return await _db.Database.SqlQuery<Guid>(
                 $"""
-                 SELECT DISTINCT p.organization_id AS "Value"
+                 SELECT o.organization_id AS "Value"
+                   FROM (
+                 SELECT DISTINCT p.organization_id
                    FROM assessment_provider_attempts p
                   WHERE p.provider_assignment_id IS NOT NULL AND p.withdrawal_state IS NULL
                     AND p.provider_erasure_requested_at IS NULL
@@ -44,7 +50,10 @@ public sealed partial class AssessmentProviderRepository
                           AND COALESCE(p.completed_at, p.updated_at) > clock_timestamp() - make_interval(secs => {window})
                           AND GREATEST(p.updated_at, COALESCE(p.last_polled_at, '-infinity'))
                               < clock_timestamp() - make_interval(secs => {revisionStale})))
-                  ORDER BY 1
+                        ) o
+                  ORDER BY (SELECT max(v.last_polled_at) FROM assessment_provider_attempts v
+                             WHERE v.organization_id = o.organization_id) NULLS FIRST,
+                           o.organization_id
                   LIMIT {max}
                  """)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -58,14 +67,13 @@ public sealed partial class AssessmentProviderRepository
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         // ONE statement: the subquery locks the rows it picks (SKIP LOCKED: a row another poller is claiming right now is
         // skipped, never waited for), and a row another poller claimed and committed meanwhile is re-checked against its
-        // new version, whose live lease excludes it. So no attempt is ever leased to two owners at once.
+        // new version, whose live lease excludes it. So no attempt is ever leased to two owners at once. The pick is a
+        // MATERIALIZED CTE: as an `id IN (subquery LIMIT n)` semi-join the planner may re-run the subquery per outer
+        // row, and with SKIP LOCKED each run can pick a different row, so more than `max` rows were claimed (seen with
+        // max = 1: the poller then polled one and left the other leased, unpolled, until its lease ran out).
         var claimed = await _db.Database.SqlQuery<Guid>(
                 $"""
-                 UPDATE assessment_provider_attempts a
-                    SET poll_lease_owner = {owner},
-                        poll_lease_until = clock_timestamp() + make_interval(secs => {lease})
-                  WHERE a.organization_id = {organizationId}
-                    AND a.id IN (
+                 WITH picked AS MATERIALIZED (
                         SELECT p.id FROM assessment_provider_attempts p
                          WHERE p.organization_id = {organizationId}
                            AND p.provider_assignment_id IS NOT NULL AND p.withdrawal_state IS NULL
@@ -85,6 +93,11 @@ public sealed partial class AssessmentProviderRepository
                          ORDER BY GREATEST(p.updated_at, COALESCE(p.last_polled_at, '-infinity')), p.id
                          LIMIT {max}
                          FOR UPDATE SKIP LOCKED)
+                 UPDATE assessment_provider_attempts a
+                    SET poll_lease_owner = {owner},
+                        poll_lease_until = clock_timestamp() + make_interval(secs => {lease})
+                   FROM picked
+                  WHERE a.organization_id = {organizationId} AND a.id = picked.id
                  RETURNING a.id AS "Value"
                  """)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
