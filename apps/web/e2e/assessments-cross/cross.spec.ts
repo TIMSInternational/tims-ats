@@ -338,12 +338,12 @@ async function frameOn(page: Page, origin: string): Promise<Frame> {
 
 /** Embedded mode: leave the test through the frame's bar, which always asks first. */
 async function leaveFrame(page: Page, shotName?: string): Promise<void> {
-  await assessmentDialog(page).getByRole('button', { name: 'Leave', exact: true }).click();
-  const confirm = page.getByRole('alertdialog', { name: 'Leave the assessment?' });
+  await assessmentDialog(page).getByRole('button', { name: 'Salir', exact: true }).click();
+  const confirm = page.getByRole('alertdialog', { name: '¿Salir de la evaluación?' });
   await expect(confirm).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Stay in the assessment' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Seguir en la evaluación' })).toBeFocused();
   if (shotName) await shot(page, shotName);
-  await confirm.getByRole('button', { name: 'Leave the assessment', exact: true }).click();
+  await confirm.getByRole('button', { name: 'Salir de la evaluación', exact: true }).click();
   await expect(assessmentDialog(page)).toHaveCount(0);
 }
 
@@ -421,9 +421,10 @@ async function sitAndReturn(page: Page, instrument: string, shots = false): Prom
     // The frame stays open on the suite's receipt; its bar offers one way back, without a question.
     await expect(surface.getByTestId('sitting-ended')).toBeVisible();
     expect(report.screens).toContain('receipt');
-    const done = assessmentDialog(page).getByRole('button', { name: 'Back to my assessments' });
+    // The bar speaks the test's language (the assignment is es; the portal is en).
+    const done = assessmentDialog(page).getByRole('button', { name: 'Volver a mis evaluaciones' });
     await expect(done).toBeVisible();
-    await expect(assessmentDialog(page).getByRole('button', { name: 'Leave', exact: true })).toHaveCount(0);
+    await expect(assessmentDialog(page).getByRole('button', { name: 'Salir', exact: true })).toHaveCount(0);
     if (shots) await shot(page, `candidate-portal-receipt-done-button-${instrument}`);
     await done.click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
@@ -462,9 +463,9 @@ test('H5 candidate A signs in (OTP), consents and completes LIA, Personality and
   if (st.embedded) {
     // timssuite.com's PCA header over TIMS's own page, sandboxed (no popups).
     await expect(
-      assessmentDialog(page).getByRole('heading', { name: 'Personal Competencies Analysis (PCA)' }),
+      assessmentDialog(page).getByRole('heading', { name: 'Análisis de Competencias Personales (PCA)' }),
     ).toBeVisible();
-    await expect(assessmentDialog(page).getByText('Complete the questionnaire below')).toBeVisible();
+    await expect(assessmentDialog(page).getByText('Completa el cuestionario a continuación')).toBeVisible();
     await expect(assessmentDialog(page).locator('iframe')).toHaveAttribute(
       'sandbox',
       'allow-forms allow-scripts allow-same-origin',
