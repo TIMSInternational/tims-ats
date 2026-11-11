@@ -235,7 +235,8 @@ async function tick(
   // `data-tims-part="ack"`, wherever it sits in the step.
   const suiteAck = step.locator('[data-tims-part="ack"]');
   if (await visible(suiteAck)) {
-    if (await suiteAck.first().isEnabled()) {
+    // The screen can move on between the visibility check and this read: give up quickly and let the next tick look again.
+    if (await suiteAck.first().isEnabled({ timeout: 2_000 }).catch(() => false)) {
       report.steps[kind] = (report.steps[kind] ?? 0) + 1;
       await seen(ctx, await screenLabel(step));
       await press(ctx, suiteAck.first());
