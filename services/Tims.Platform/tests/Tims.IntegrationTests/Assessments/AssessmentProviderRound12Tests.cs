@@ -332,7 +332,7 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
     {
         // Codex r12 P1: the webhook lookup required an ACTIVE binding, so after a safe unbind (which retains completed
         // results) a subject.erased was acknowledged as unknown_tenant and the erased subject's scores stayed with staff
-        // and FIT. Polling cannot repair it (the assignment answers 404/410 and leaves local data unchanged).
+        // and FIT. (Since Codex r13 the poller also repairs a LOST subject.erased: see section 5.)
         var org = await OrgAsync();
         var candidate = await CandidateAsync(org);
         var (attempt, subject, result, vacancy) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
@@ -385,6 +385,99 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
         Assert.Null(after.ProviderResultId); // FIT (and the staff read, from the same result rows) no longer has a score
         Assert.Null(after.GlobalPercentile);
         Assert.Equal(ProviderAttemptStates.Erased, after.AttemptState);
+    }
+
+    // ── 5. Codex r13 P1: a provider erasure whose subject.erased never arrived is applied by the poller ──────────────
+
+    /// <summary>A result_ready attempt with one stored result, stale enough for the revision poll to claim it.</summary>
+    private async Task<(Guid Org, Guid Candidate, Guid Vacancy, Guid Attempt, Guid Subject, Guid Result)> PollableResultAsync()
+    {
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var (attempt, subject, result, vacancy) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                 purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                 latest_result_id, assigned_by_id, age_band, completed_at, updated_at)
+             VALUES ('{attempt}', '{org}', '{org}', '{candidate}', '{vacancy}', 'lia', 'result_ready',
+                 'selection', 'Análisis de datos', 'es', 1, '{subject}', gen_random_uuid(), '{result}', gen_random_uuid(), '18_plus',
+                 now() - interval '1 day', now() - interval '7 hours');
+             INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
+                 result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version,
+                 scoring_method, purpose, validity_status, completion, global_percentile, time_multiplier_applied,
+                 rendered_for, rendered_level, completed_at, scored_at)
+             VALUES (gen_random_uuid(), '{org}', '{attempt}', '{result}', 1, 'LiaResultV1', 'lia', '1.0', 'content-1', repeat('a', 64),
+                     'norms-1', 'scoring-1', 'deterministic', 'selection', 'valid', 'complete', 46.2, 1, 'tenant_hr', 'full',
+                     now(), now());
+             """);
+        return (org, candidate, vacancy, attempt, subject, result);
+    }
+
+    private async Task<bool> ClaimAndPollAsync(Guid org, Guid attempt, ProviderEndpointTests.FakeProvider provider)
+    {
+        var owner = Guid.NewGuid();
+        var claimed = Assert.Single(await WithRepository(r => r.ClaimPollableAttemptsAsync(org, owner, 5, CancellationToken.None)));
+        Assert.Equal(attempt, claimed.Attempt.Id);
+        var changed = await WithRepository(r => new ProviderAttemptPollUseCase(r, provider)
+            .PollOneAsync(org, claimed, Now, CancellationToken.None));
+        await WithRepository(async r =>
+        {
+            await r.ReleasePollLeaseAsync(org, attempt, owner, CancellationToken.None);
+            return 0;
+        });
+        return changed;
+    }
+
+    [Fact]
+    public async Task A_provider_erasure_without_its_webhook_is_confirmed_by_the_subject_lookup_and_erases_the_scores()
+    {
+        var (org, candidate, vacancy, attempt, subject, result) = await PollableResultAsync();
+        Assert.Equal(result, Assert.Single(
+            await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None))).ProviderResultId);
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnGetAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])),
+            OnGetSubject = id => id == subject
+                ? ProviderCall<ProviderSubject>.Fail(new ProviderFailure(410, "subject_erased", false, []))
+                : ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, "active")),
+        };
+
+        Assert.True(await ClaimAndPollAsync(org, attempt, provider));
+
+        Assert.Contains("get_subject", provider.Calls);
+        Assert.Equal(0L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+        Assert.Equal("erased", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        var after = Assert.Single(await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None)));
+        Assert.Null(after.ProviderResultId); // FIT (and the staff read, from the same rows) no longer has the score
+        Assert.Null(after.GlobalPercentile);
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"""
+             SELECT count(*) FROM audit_logs WHERE organization_id = '{org}' AND action = 'assessment_provider_subject_erased'
+                AND entity_id = '{attempt}' AND metadata::jsonb ->> 'via' = 'poll'
+             """));
+        // Idempotent: an erased attempt is never claimed again, so the erasure is applied (and audited) once.
+        Assert.Empty(await WithRepository(r => r.ClaimPollableAttemptsAsync(org, Guid.NewGuid(), 5, CancellationToken.None)));
+    }
+
+    [Fact]
+    public async Task A_gone_assignment_whose_subject_is_still_active_keeps_the_scores()
+    {
+        var (org, candidate, vacancy, attempt, _, result) = await PollableResultAsync();
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnGetAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])),
+        };
+
+        Assert.False(await ClaimAndPollAsync(org, attempt, provider));
+
+        Assert.Contains("get_subject", provider.Calls);
+        Assert.Equal(1L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+        Assert.Equal("result_ready", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        Assert.Equal(result, Assert.Single(
+            await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None))).ProviderResultId);
+        Assert.Equal(0L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE organization_id = '{org}' AND action = 'assessment_provider_subject_erased'"));
     }
 
     [Fact]

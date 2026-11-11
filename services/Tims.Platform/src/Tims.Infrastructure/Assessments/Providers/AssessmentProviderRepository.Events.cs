@@ -441,7 +441,8 @@ public sealed partial class AssessmentProviderRepository
     }
 
     public async Task<int> EraseSubjectAsync(
-        Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken,
+        string? via = null)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         // The subject lock first: a mapping (MarkCreatedAsync) or result write for this subject either committed
@@ -475,10 +476,13 @@ public sealed partial class AssessmentProviderRepository
                 attempt.UpdatedAt = now.UtcDateTime;
             }
 
-            AddAudit(organizationId, null, "assessment_provider_subject_erased", ids[0], new Dictionary<string, object?>
+            var metadata = new Dictionary<string, object?> { ["attempts"] = ids.Count };
+            if (via is not null)
             {
-                ["attempts"] = ids.Count,
-            });
+                metadata["via"] = via;
+            }
+
+            AddAudit(organizationId, null, "assessment_provider_subject_erased", ids[0], metadata);
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 

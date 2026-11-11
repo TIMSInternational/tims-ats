@@ -133,7 +133,7 @@ public sealed class ProviderAttemptPollUseCaseTests
         Assert.Equal(["assessment", "voice"], _repository.Attempts.Single().MissingConsents);
     }
 
-    // Never a 404 read as a state: neither a confirmed nor an unconfirmed one changes the attempt.
+    // Never a 404 read as a state: neither a confirmed nor an unconfirmed one changes the attempt (the subject is active).
     [Theory]
     [InlineData(404, "not_found", false)]
     [InlineData(null, ProviderFailure.NotFoundUnconfirmed, true)]
@@ -149,6 +149,105 @@ public sealed class ProviderAttemptPollUseCaseTests
         Assert.DoesNotContain(_repository.Writes, w => w.StartsWith("advance:", StringComparison.Ordinal));
         Assert.Equal((attempt.Id, Owner), Assert.Single(_repository.Released));
         Assert.Empty(_repository.Leases);
+    }
+
+    // Codex r13 P1: an erasure at the provider whose subject.erased delivery was lost (or exhausted its retries) left the
+    // scores with staff and FIT, since every failed assignment read was ignored. A gone assignment whose subject the
+    // provider confirms erased now applies the webhook's own local erasure.
+    [Theory]
+    [InlineData(404, "not_found", "410")]
+    [InlineData(410, "subject_erased", "410")]
+    [InlineData(404, "not_found", "erased")]
+    [InlineData(404, "not_found", "erasure_pending")]
+    public async Task A_provider_erasure_without_its_webhook_erases_the_stored_scores_on_the_next_poll(
+        int assignmentStatus, string assignmentCode, string subjectAnswer)
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.ResultReady);
+        var sibling = _repository.AddCreatedAttempt("english", ProviderAttemptStates.Created);
+        _repository.Replace(sibling.Id, a => a with { ProviderSubjectId = attempt.ProviderSubjectId });
+        _provider.OnGetAssignment = _ =>
+            ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(assignmentStatus, assignmentCode, false, []));
+        _provider.OnGetSubject = id => subjectAnswer == "410"
+            ? ProviderCall<ProviderSubject>.Fail(new ProviderFailure(410, "subject_erased", false, []))
+            : ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, subjectAnswer));
+
+        var changed = await new ProviderAttemptPollUseCase(_repository, _provider)
+            .PollOneAsync(_repository.Binding!.OrganizationId, new PolledAttempt(attempt, _repository.Binding.ProviderTenantId),
+                Now, CancellationToken.None);
+
+        Assert.True(changed);
+        Assert.Equal(attempt.ProviderSubjectId, Assert.Single(_provider.SubjectLookups));
+        Assert.Equal(attempt.ProviderSubjectId, Assert.Single(_repository.LocallyErasedSubjects));
+        Assert.Equal("poll", Assert.Single(_repository.EraseVia));
+        // The same cascade as subject.erased: every attempt of the subject, not only the polled one.
+        Assert.All(_repository.Attempts.Where(a => a.Id == attempt.Id || a.Id == sibling.Id),
+            a => Assert.Equal(ProviderAttemptStates.Erased, a.State));
+        Assert.DoesNotContain("result", _provider.Calls);
+    }
+
+    [Fact]
+    public async Task A_confirmed_erasure_counts_as_a_change_and_the_lease_is_still_released()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.ResultReady);
+        _provider.OnGetAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, []));
+        _provider.OnGetSubject = _ => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(410, "subject_erased", false, []));
+
+        var outcome = await Run();
+
+        Assert.Equal((1, 1, 0), (outcome.Polled, outcome.Changed, outcome.Failed));
+        Assert.Equal(ProviderAttemptStates.Erased, _repository.Attempts.Single(a => a.Id == attempt.Id).State);
+        Assert.Equal((attempt.Id, Owner), Assert.Single(_repository.Released));
+    }
+
+    // A gone assignment is not proof of erasure: the subject lookup must confirm it. Anything else (an active subject,
+    // a 404 that may be a route the provider does not serve, another 410 code, an outage, a lookup for another subject)
+    // keeps today's behaviour: nothing changes and the attempt is polled again.
+    [Theory]
+    [InlineData("active")]
+    [InlineData("404")]
+    [InlineData("410_other")]
+    [InlineData("503")]
+    [InlineData("other_subject_erased")]
+    public async Task A_gone_assignment_whose_subject_erasure_is_not_confirmed_changes_nothing(string subjectAnswer)
+    {
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.ResultReady);
+        _provider.OnGetAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, []));
+        _provider.OnGetSubject = id => subjectAnswer switch
+        {
+            "active" => ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, "active")),
+            "404" => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(404, "not_found", false, [])),
+            "410_other" => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(410, "assignment_expired", false, [])),
+            "503" => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(503, ProviderFailure.Unavailable, true, [])),
+            _ => ProviderCall<ProviderSubject>.Success(new ProviderSubject(Guid.NewGuid(), "erased")),
+        };
+
+        var outcome = await Run();
+
+        Assert.Equal((1, 0), (outcome.Polled, outcome.Changed));
+        Assert.Single(_provider.SubjectLookups);
+        Assert.Empty(_repository.LocallyErasedSubjects);
+        Assert.Equal(ProviderAttemptStates.ResultReady, _repository.Attempts.Single(a => a.Id == attempt.Id).State);
+        Assert.Equal((attempt.Id, Owner), Assert.Single(_repository.Released));
+    }
+
+    // An outage or an unconfirmed 404 on the assignment is not even asked about: only a definitive 404/410 is.
+    [Theory]
+    [InlineData(null, ProviderFailure.NotFoundUnconfirmed, true)]
+    [InlineData(503, ProviderFailure.Unavailable, true)]
+    [InlineData(null, ProviderFailure.Unconfigured, true)]
+    [InlineData(403, "forbidden", false)]
+    public async Task A_failed_assignment_read_that_is_not_a_definitive_404_or_410_never_looks_up_the_subject(
+        int? status, string code, bool transient)
+    {
+        _repository.AddCreatedAttempt("lia", ProviderAttemptStates.ResultReady);
+        _provider.OnGetAssignment = _ => ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(status, code, transient, []));
+        _provider.OnGetSubject = _ => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(410, "subject_erased", false, []));
+
+        var outcome = await Run();
+
+        Assert.Equal(0, outcome.Changed);
+        Assert.Empty(_provider.SubjectLookups);
+        Assert.Empty(_repository.LocallyErasedSubjects);
     }
 
     [Fact]

@@ -44,6 +44,13 @@ public interface IAssessmentProvider
         Guid subjectId, ProviderSubjectUpdate update, CancellationToken cancellationToken);
 
     /// <summary>
+    /// <c>GET /v1/subjects/{subject_id}</c> (<c>getSubject</c>): the subject as the provider holds it. An erased or
+    /// erasure-pending subject answers 410 <c>subject_erased</c>. The poller uses it to confirm an erasure whose
+    /// <c>subject.erased</c> delivery never arrived.
+    /// </summary>
+    Task<ProviderCall<ProviderSubject>> GetSubjectAsync(Guid subjectId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// <c>DELETE /v1/subjects/{subject_id}</c>: starts the provider's asynchronous erasure of everything it holds for the
     /// subject (DSAR). A 410 means the subject is already erased or erasure-pending.
     /// </summary>

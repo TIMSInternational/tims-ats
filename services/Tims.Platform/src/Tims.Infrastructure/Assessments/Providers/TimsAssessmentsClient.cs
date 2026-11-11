@@ -115,6 +115,12 @@ public sealed class TimsAssessmentsClient(
             cancellationToken);
     }
 
+    /// <summary><c>GET /v1/subjects/{id}</c>; a 200 for another subject id is off contract.</summary>
+    public Task<ProviderCall<ProviderSubject>> GetSubjectAsync(Guid subjectId, CancellationToken cancellationToken) =>
+        SendAsync(HttpMethod.Get, $"v1/subjects/{subjectId:D}", null, null, "get_subject",
+            root => ProviderResponses.Subject(root) is { } subject && subject.SubjectId == subjectId ? subject : null,
+            cancellationToken);
+
     /// <summary>
     /// <c>DELETE /v1/subjects/{id}</c>. A 404 is returned as such ("no such subject") ONLY when <c>GET /v1/subjects/{id}</c>
     /// confirms it; a 410 there is returned as the subject already erased. A provider that does not serve the erase
@@ -223,10 +229,7 @@ public sealed class TimsAssessmentsClient(
     /// </summary>
     private async Task<ProviderFailure> ConfirmSubjectGoneAsync(Guid subjectId, string operation, CancellationToken cancellationToken)
     {
-        var probe = await SendAsync(HttpMethod.Get, $"v1/subjects/{subjectId:D}", null, null, "get_subject",
-                root => ProviderResponses.Subject(root) is { } subject && subject.SubjectId == subjectId ? subject : null,
-                cancellationToken)
-            .ConfigureAwait(false);
+        var probe = await GetSubjectAsync(subjectId, cancellationToken).ConfigureAwait(false);
         if (!probe.Ok && probe.Failure!.HttpStatus is 404 or 410)
         {
             return probe.Failure;

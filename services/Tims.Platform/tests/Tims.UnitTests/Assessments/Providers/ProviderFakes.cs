@@ -110,6 +110,19 @@ internal sealed class FakeProvider : IAssessmentProvider
         return Task.FromResult(ProviderCall<ProviderSubject>.Success(new ProviderSubject(subjectId, "active", true)));
     }
 
+    public List<Guid> SubjectLookups { get; } = [];
+
+    /// <summary>getSubject; by default the subject is active (nothing erased).</summary>
+    public Func<Guid, ProviderCall<ProviderSubject>>? OnGetSubject { get; set; }
+
+    public Task<ProviderCall<ProviderSubject>> GetSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+    {
+        Calls.Add("get_subject");
+        SubjectLookups.Add(subjectId);
+        return Task.FromResult(OnGetSubject?.Invoke(subjectId)
+            ?? ProviderCall<ProviderSubject>.Success(new ProviderSubject(subjectId, "active")));
+    }
+
     public List<Guid> ErasedSubjects { get; } = [];
 
     public Func<Guid, ProviderCall<ProviderErasureReceipt>>? OnEraseSubject { get; set; }
@@ -745,9 +758,15 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public List<Guid> LocallyErasedSubjects { get; } = [];
 
-    public Task<int> EraseSubjectAsync(Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>The <c>via</c> of every local erasure, in order (null: the webhook).</summary>
+    public List<string?> EraseVia { get; } = [];
+
+    public Task<int> EraseSubjectAsync(
+        Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken,
+        string? via = null)
     {
         Writes.Add("erase");
+        EraseVia.Add(via);
         LocallyErasedSubjects.Add(providerSubjectId);
         // Mirrors the real repository: every attempt of the subject is erased (results gone, state terminal).
         var erased = Attempts.Where(a => a.OrganizationId == organizationId && a.ProviderSubjectId == providerSubjectId)

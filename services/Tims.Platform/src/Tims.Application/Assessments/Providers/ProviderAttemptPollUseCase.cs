@@ -30,7 +30,11 @@ public interface IProviderAttemptPoll
 /// </list>
 /// A candidate whose #312 withdrawal had not reached the attempt is staged first, and nothing is fetched for it (the
 /// cascade and its sweep own it from then on). A failed attempt never stops the others; it is polled again once stale.
-/// Nothing here treats a 404 as a state: an unconfirmed or confirmed 404 on the assignment changes nothing.
+/// A 404 or 410 on the assignment is never read as a state by itself. It is the one answer an erased subject's assignment
+/// gives, though, so it is checked with <c>GET /v1/subjects/{id}</c> for the attempt's known subject: when that confirms
+/// the erasure (410 <c>subject_erased</c>, or the subject itself reported <c>erasure_pending</c>/<c>erased</c>), the
+/// same local erasure as <c>subject.erased</c> is applied (Codex r13 P1: a lost or exhausted webhook must not leave the
+/// scores with staff and FIT). Any other answer, or a failed lookup, changes nothing and the attempt is polled again.
 /// </summary>
 /// <param name="maxPollDurationForTests">TEST-ONLY: replaces <see cref="ProviderAttemptPolling.MaxPollDuration"/>.</param>
 public sealed class ProviderAttemptPollUseCase(
@@ -131,8 +135,11 @@ public sealed class ProviderAttemptPollUseCase(
         var fetched = await _provider.GetAssignmentAsync(assignmentId, cancellationToken).ConfigureAwait(false);
         if (!fetched.Ok)
         {
-            // Transient, unconfigured, or a 404/410 (confirmed or not): nothing is inferred from it. Polled again later.
-            return false;
+            // Transient, unconfigured or anything else: nothing is inferred from it, and it is polled again later. A
+            // definitive 404/410 is asked about the subject: only a confirmed erasure changes anything.
+            return fetched.Failure!.HttpStatus is 404 or 410 && !fetched.Failure.Transient
+                && attempt.ProviderSubjectId is { } subjectId
+                && await ApplyConfirmedErasureAsync(organizationId, subjectId, now, cancellationToken).ConfigureAwait(false);
         }
 
         var assignment = fetched.Value!;
@@ -197,4 +204,29 @@ public sealed class ProviderAttemptPollUseCase(
 
         return changed;
     }
+
+    /// <summary>
+    /// The assignment is gone: confirms with the provider's subject lookup that the attempt's subject was erased, and only
+    /// then applies the webhook's own local erasure (results deleted, every attempt of the subject erased, FIT recomputed,
+    /// audited). True when it erased something.
+    /// </summary>
+    private async Task<bool> ApplyConfirmedErasureAsync(
+        Guid organizationId, Guid subjectId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var subject = await _provider.GetSubjectAsync(subjectId, cancellationToken).ConfigureAwait(false);
+        var erased = subject.Ok
+            ? subject.Value!.SubjectId == subjectId && subject.Value.Status is SubjectErasurePending or SubjectErased
+            : subject.Failure!.HttpStatus == 410 && subject.Failure.Code == SubjectErasedCode;
+        if (!erased)
+        {
+            return false;
+        }
+
+        return await _repository.EraseSubjectAsync(organizationId, subjectId, now, cancellationToken, via: "poll")
+            .ConfigureAwait(false) > 0;
+    }
+
+    private const string SubjectErasedCode = "subject_erased";
+    private const string SubjectErasurePending = "erasure_pending";
+    private const string SubjectErased = "erased";
 }

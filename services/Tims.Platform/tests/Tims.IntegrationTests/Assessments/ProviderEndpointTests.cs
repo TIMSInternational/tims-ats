@@ -849,10 +849,24 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
                 ["assessment"], DateTimeOffset.UtcNow.AddDays(14), request.ExternalRef)));
         }
 
+        /// <summary>getAssignment; by default 404 <c>not_found</c>.</summary>
+        public Func<Guid, ProviderCall<ProviderAssignment>>? OnGetAssignment { get; set; }
+
         public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)
         {
             Calls.Enqueue("get_assignment");
-            return Task.FromResult(ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])));
+            return Task.FromResult(OnGetAssignment?.Invoke(assignmentId)
+                ?? ProviderCall<ProviderAssignment>.Fail(new ProviderFailure(404, "not_found", false, [])));
+        }
+
+        /// <summary>getSubject; by default the subject is active.</summary>
+        public Func<Guid, ProviderCall<ProviderSubject>>? OnGetSubject { get; set; }
+
+        public Task<ProviderCall<ProviderSubject>> GetSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("get_subject");
+            return Task.FromResult(OnGetSubject?.Invoke(subjectId)
+                ?? ProviderCall<ProviderSubject>.Success(new ProviderSubject(subjectId, "active")));
         }
 
         public Task<ProviderCall<ProviderAssignment>> CancelAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken)

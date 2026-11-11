@@ -206,9 +206,14 @@ public interface IAssessmentProviderRepository
     Task<int> HideResultAsync(
         Guid organizationId, AttemptRow attempt, Guid resultId, DateTimeOffset now, CancellationToken cancellationToken);
 
-    /// <summary>DSAR cascade from <c>subject.erased</c>: deletes the subject's stored results, marks attempts erased.</summary>
+    /// <summary>
+    /// DSAR cascade from <c>subject.erased</c>, or from the poller once <c>getSubject</c> confirmed the erasure: deletes the
+    /// subject's stored results, marks attempts erased. Idempotent (an erased attempt holds nothing more to delete).
+    /// <paramref name="via"/> names the signal in the audit row (<c>poll</c>); null for the webhook.
+    /// </summary>
     Task<int> EraseSubjectAsync(
-        Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken);
+        Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken,
+        string? via = null);
 
     Task<IReadOnlyList<ProviderFitRow>> GetFitRowsAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken);
