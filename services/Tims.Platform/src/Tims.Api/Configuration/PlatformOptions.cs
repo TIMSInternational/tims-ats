@@ -445,6 +445,16 @@ public sealed class PlatformOptions
     public bool AssessmentProvidersEnabled { get; init; }
 
     /// <summary>
+    /// Proctoring parity (owner decision 2026-11-11): whether HR may turn on the IDENTITY CHECK (camera face checks) in
+    /// the org's assessment security settings, and whether a stored identity-check setting is sent with new
+    /// assignments. DEFAULT false, and it must stay false until TIMS approves a <c>biometric</c> consent text that
+    /// describes the face checks: the approved text (<c>2026-11-09-biometric-v1</c>) tells the candidate that no
+    /// assessment uses the camera, so turning the check on under it would make that text false. Lockdown and
+    /// anti-cheat do not depend on it. Enable with <c>Platform__AssessmentIdentityCheckEnabled=true</c>.
+    /// </summary>
+    public bool AssessmentIdentityCheckEnabled { get; init; }
+
+    /// <summary>
     /// Phase-5 Slice 16 (efcoreStranglerWrite): when true, the C# engagement WRITE surface is mapped and live — the
     /// 5 writes <c>POST /engagement/surveys</c> (createSurvey), <c>POST /engagement/surveys/{id}/activate</c>
     /// (activateSurvey), <c>POST /engagement/surveys/{id}/responses</c> (submitSurveyResponse), <c>POST

@@ -17,6 +17,8 @@ namespace Tims.Infrastructure.Assessments.Providers;
 /// validity, the FIT value, and the provider's <c>scores</c> object for the HR view.</item>
 /// <item><c>assessment_provider_webhook_inbox</c> — one row per received event id: de-duplication and an audit trail
 /// of what each delivery did.</item>
+/// <item><c>assessment_provider_settings</c> — one per org: HR's assessment security settings (proctoring), migration
+/// <c>assessment_provider_proctoring</c>. <c>app_tenant</c> may SELECT, INSERT and UPDATE it (never DELETE).</item>
 /// </list>
 /// It also maps Prisma-owned rows READ-ONLY (candidates, applications, vacancies, job_profiles, data_consents,
 /// organizations) and appends <c>audit_logs</c>; those are <c>ExcludeFromMigrations</c>, so the migration can never
@@ -28,6 +30,7 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
     public const string AttemptsTable = "assessment_provider_attempts";
     public const string ResultsTable = "assessment_provider_results";
     public const string InboxTable = "assessment_provider_webhook_inbox";
+    public const string SettingsTable = "assessment_provider_settings";
 
     public DbSet<ProviderBindingEntity> Bindings => Set<ProviderBindingEntity>();
 
@@ -36,6 +39,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
     public DbSet<ProviderResultEntity> Results => Set<ProviderResultEntity>();
 
     public DbSet<ProviderWebhookInboxEntity> Inbox => Set<ProviderWebhookInboxEntity>();
+
+    public DbSet<ProviderSettingsEntity> Settings => Set<ProviderSettingsEntity>();
 
     public DbSet<ProviderCandidateRef> Candidates => Set<ProviderCandidateRef>();
 
@@ -128,6 +133,17 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                     $"granted_optional_consents <@ {TextArray(ConsentPurposes.All)} "
                     + $"AND declined_optional_consents <@ {TextArray(ConsentPurposes.All)} "
                     + "AND NOT (granted_optional_consents && declined_optional_consents)");
+                // The proctoring snapshot is all-or-nothing (the anti-cheat pair may be null inside a block).
+                t.HasCheckConstraint("ck_assessment_provider_attempts_proctoring",
+                    "(proctoring_lockdown IS NULL) = (proctoring_identity_check IS NULL) "
+                    + "AND (proctoring_anti_cheat_threshold IS NULL) = (proctoring_anti_cheat_consequence IS NULL) "
+                    + "AND (proctoring_anti_cheat_threshold IS NULL OR proctoring_lockdown IS NOT NULL) "
+                    + $"AND (proctoring_anti_cheat_threshold IS NULL OR proctoring_anti_cheat_threshold BETWEEN {AntiCheatPolicy.MinThreshold} AND {AntiCheatPolicy.MaxThreshold}) "
+                    + $"AND (proctoring_anti_cheat_consequence IS NULL OR proctoring_anti_cheat_consequence IN ({InList(AntiCheatConsequences.All)}))");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_completed_by",
+                    $"completed_by IS NULL OR completed_by IN ({InList(ProviderCompletionCauses.All)})");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_void_reason",
+                    $"void_reason IS NULL OR void_reason IN ({InList(ProviderVoidReasons.All)})");
                 // Past pending_create every attempt must carry the provider's ids (a cancelled one may never have had them).
                 t.HasCheckConstraint("ck_assessment_provider_attempts_external_ids",
                     "state IN ('pending_create', 'cancelled') OR (provider_assignment_id IS NOT NULL AND provider_subject_id IS NOT NULL)");
@@ -177,6 +193,12 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                 .HasDefaultValueSql("'{}'::text[]");
             entity.Property(a => a.DeclinedOptionalConsents).HasColumnName("declined_optional_consents")
                 .HasDefaultValueSql("'{}'::text[]");
+            entity.Property(a => a.ProctoringLockdown).HasColumnName("proctoring_lockdown");
+            entity.Property(a => a.ProctoringAntiCheatThreshold).HasColumnName("proctoring_anti_cheat_threshold");
+            entity.Property(a => a.ProctoringAntiCheatConsequence).HasColumnName("proctoring_anti_cheat_consequence");
+            entity.Property(a => a.ProctoringIdentityCheck).HasColumnName("proctoring_identity_check");
+            entity.Property(a => a.CompletedBy).HasColumnName("completed_by");
+            entity.Property(a => a.VoidReason).HasColumnName("void_reason");
             entity.Property(a => a.AssignedById).HasColumnName("assigned_by_id");
             entity.Property(a => a.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
             entity.Property(a => a.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
@@ -203,6 +225,29 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.HasIndex(a => new { a.OrganizationId, a.CandidateId, a.VacancyId, a.Instrument }).IsUnique()
                 .HasFilter($"state IN ({InList(ProviderAttemptStates.Open)})")
                 .HasDatabaseName("ux_assessment_provider_attempts_open");
+        });
+
+        modelBuilder.Entity<ProviderSettingsEntity>(entity =>
+        {
+            entity.ToTable(SettingsTable, t =>
+            {
+                t.HasCheckConstraint("ck_assessment_provider_settings_anti_cheat",
+                    "(anti_cheat_threshold IS NULL) = (anti_cheat_consequence IS NULL) "
+                    + $"AND (anti_cheat_threshold IS NULL OR anti_cheat_threshold BETWEEN {AntiCheatPolicy.MinThreshold} AND {AntiCheatPolicy.MaxThreshold}) "
+                    + $"AND (anti_cheat_consequence IS NULL OR anti_cheat_consequence IN ({InList(AntiCheatConsequences.All)}))");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(x => x.OrganizationId).HasColumnName("organization_id");
+            entity.Property(x => x.ProctoringLockdown).HasColumnName("proctoring_lockdown").HasDefaultValue(false);
+            entity.Property(x => x.AntiCheatThreshold).HasColumnName("anti_cheat_threshold");
+            entity.Property(x => x.AntiCheatConsequence).HasColumnName("anti_cheat_consequence");
+            entity.Property(x => x.IdentityCheck).HasColumnName("identity_check").HasDefaultValue(false);
+            entity.Property(x => x.UpdatedById).HasColumnName("updated_by_id");
+            entity.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("now()");
+            entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
+            // One row per organization: the upsert's conflict target, and its tenant-filter index.
+            entity.HasIndex(x => x.OrganizationId).IsUnique().HasDatabaseName("ux_assessment_provider_settings_org");
         });
 
         modelBuilder.Entity<ProviderResultEntity>(entity =>

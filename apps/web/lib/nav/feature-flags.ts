@@ -1,5 +1,6 @@
 import { isCandidateConsentEnabled } from '../platform-api/candidate-consent';
 import { isTenantInvitationsEnabled } from '../platform-api/tenant-invitations';
+import { isProviderAssessmentsStaffEnabled } from '../platform-api/assessment-providers-staff';
 import type { NavFeatureFlag } from './manifest';
 
 /** Resolves a nav item's `featureFlag` against the deploy-time env (NEXT_PUBLIC_*, inlined at build). */
@@ -9,5 +10,7 @@ export function isNavFeatureOn(flag: NavFeatureFlag): boolean {
       return isTenantInvitationsEnabled();
     case 'candidateConsent':
       return isCandidateConsentEnabled();
+    case 'providerAssessments':
+      return isProviderAssessmentsStaffEnabled();
   }
 }

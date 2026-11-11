@@ -294,9 +294,26 @@ public sealed class TimsAssessmentsClient(
             body["instrument_version"] = version;
         }
 
+        // The sitting's proctoring, from the attempt row (never re-read from the org's settings), so every re-send
+        // carries the same block. Never for a link-out instrument: the contract refuses it there.
+        if (request.Proctoring is { } proctoring && !ProviderInstruments.IsLinkOut(request.Instrument))
+        {
+            body["proctoring"] = ProctoringBody(proctoring);
+        }
+
         return SendAsync(HttpMethod.Post, "v1/assignments", body, idempotencyKey, "create_assignment",
             ProviderResponses.Assignment, cancellationToken);
     }
+
+    /// <summary><c>AssignmentProctoring</c>: every key present; <c>anti_cheat</c> is null when not enforced.</summary>
+    internal static JsonObject ProctoringBody(AssessmentProctoring proctoring) => new()
+    {
+        ["lockdown"] = proctoring.Lockdown,
+        ["anti_cheat"] = proctoring.AntiCheat is { } antiCheat
+            ? new JsonObject { ["threshold"] = antiCheat.Threshold, ["consequence"] = antiCheat.Consequence }
+            : null,
+        ["identity_check"] = proctoring.IdentityCheck,
+    };
 
     public Task<ProviderCall<ProviderAssignment>> GetAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken) =>
         SendAsync(HttpMethod.Get, $"v1/assignments/{assignmentId:D}", null, null, "get_assignment",

@@ -128,13 +128,18 @@ public sealed class ProviderInboxProcessor(IAssessmentProviderRepository reposit
                     TryTimestamp(data, "started_at"), now, cancellationToken).ConfigureAwait(false);
                 return (InboxStatuses.Processed, null, false);
             case ProviderEventTypes.SessionCompleted:
+                // completed_by (required since the proctoring amendment; absent from an older provider): who closed the
+                // sitting. proctoring_auto_submit tells HR the server ended it on proctoring grounds, before the
+                // needs_review result arrives.
                 await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, ProviderAttemptStates.Completed,
-                    TryTimestamp(data, "completed_at"), now, cancellationToken).ConfigureAwait(false);
+                    TryTimestamp(data, "completed_at"), now, cancellationToken, TryString(data, "completed_by"))
+                    .ConfigureAwait(false);
                 return (InboxStatuses.Processed, null, false);
             case ProviderEventTypes.SessionVoided:
             case ProviderEventTypes.AssignmentVoided:
                 await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, ProviderAttemptStates.Voided,
-                    TryTimestamp(data, "voided_at"), now, cancellationToken).ConfigureAwait(false);
+                    TryTimestamp(data, "voided_at"), now, cancellationToken, TryString(data, "reason"))
+                    .ConfigureAwait(false);
                 return (InboxStatuses.Processed, null, false);
             case ProviderEventTypes.AssignmentExpired:
                 await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, ProviderAttemptStates.Expired,
@@ -219,6 +224,12 @@ public sealed class ProviderInboxProcessor(IAssessmentProviderRepository reposit
         return obj.TryGetProperty(name, out var node) && node.ValueKind == JsonValueKind.String
             && Guid.TryParseExact(node.GetString(), "D", out value);
     }
+
+    private static string? TryString(JsonElement obj, string name) =>
+        obj.TryGetProperty(name, out var node) && node.ValueKind == JsonValueKind.String
+        && node.GetString() is { Length: > 0 and <= 64 } value
+            ? value
+            : null;
 
     private static DateTimeOffset? TryTimestamp(JsonElement obj, string name) =>
         obj.TryGetProperty(name, out var node) && node.ValueKind == JsonValueKind.String

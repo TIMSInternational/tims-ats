@@ -95,9 +95,13 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
 
+    /// <param name="identityCheckAllowed">
+    /// <c>Platform:AssessmentIdentityCheckEnabled</c>: whether the org's identity-check setting may be sent. Off (the
+    /// default), no assignment asks for face checks whatever the stored setting says.
+    /// </param>
     public async Task<ProviderAssignResult> AssignAsync(
         Guid organizationId, Guid actorId, AssignProviderInstrumentsInput input, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool identityCheckAllowed = false)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (input.ExpiresAt is { } expires && (expires <= now || expires > now.AddDays(MaxExpiryDays)))
@@ -146,6 +150,11 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 
         var listed = JobRelatedness.ParseListedInstruments(context.FitRequirementsJson);
         var locale = input.Locale ?? binding.DefaultLocale;
+        // The org's proctoring (owner decision 2026-11-11: tims-suite parity), snapshotted onto each NEW attempt at
+        // reserve: the attempt row is what every create is built from, so a later settings change never alters a sitting
+        // already assigned, and never turns a retried create into a 409 external_ref_conflict.
+        var proctoring = (await _repository.GetProctoringSettingsAsync(organizationId, cancellationToken).ConfigureAwait(false))
+            ?.Settings;
         var attempts = new List<NewAttempt>();
         foreach (var item in input.Instruments)
         {
@@ -160,7 +169,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             }
 
             attempts.Add(new NewAttempt(
-                item.Instrument, reason, locale, input.TimeMultiplier, input.Aids, input.ExpiresAt, input.AgeBand));
+                item.Instrument, reason, locale, input.TimeMultiplier, input.Aids, input.ExpiresAt, input.AgeBand,
+                AssessmentProctoring.ForAssignment(item.Instrument, proctoring, identityCheckAllowed)));
         }
 
         var reserved = await _repository.ReserveAttemptsAsync(
@@ -317,7 +327,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             attempt.RequestedExpiresAt,
             attempt.Id.ToString(),
             attempt.AgeBand!,
-            attempt.InstrumentVersion);
+            attempt.InstrumentVersion,
+            ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring);
 
 
         var created = await _provider.CreateAssignmentAsync(request, IdempotencyKeys.Assignment(attempt.Id), cancellationToken)

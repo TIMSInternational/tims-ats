@@ -143,7 +143,51 @@ public sealed class ProviderAttemptEntity
     /// <summary>OPTIONAL consent purposes the candidate declined for this attempt (English: no speaking section).</summary>
     public string[] DeclinedOptionalConsents { get; set; } = [];
 
+    /// <summary>
+    /// The proctoring block this attempt's assignment carries (the org's settings when it was reserved), never re-read
+    /// from the settings, so a create re-sent after a settings change sends the same block. All four null: no block was
+    /// sent (every setting off, a link-out instrument, or an attempt reserved before proctoring settings existed).
+    /// </summary>
+    public bool? ProctoringLockdown { get; set; }
+
+    public int? ProctoringAntiCheatThreshold { get; set; }
+
+    public string? ProctoringAntiCheatConsequence { get; set; }
+
+    public bool? ProctoringIdentityCheck { get; set; }
+
+    /// <summary>The provider's <c>completed_by</c> for the sitting (<c>proctoring_auto_submit</c> when the server ended it).</summary>
+    public string? CompletedBy { get; set; }
+
+    /// <summary>The provider's void reason (<c>proctoring_void</c>, <c>administrative_void</c>, ...), when voided.</summary>
+    public string? VoidReason { get; set; }
+
     public Guid AssignedById { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// One organization's assessment security settings (tims-suite parity): lockdown, anti-cheat threshold and consequence
+/// (both null = not enforced) and the identity check. Written by HR through the tenant connection.
+/// </summary>
+public sealed class ProviderSettingsEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public bool ProctoringLockdown { get; set; }
+
+    public int? AntiCheatThreshold { get; set; }
+
+    public string? AntiCheatConsequence { get; set; }
+
+    public bool IdentityCheck { get; set; }
+
+    public Guid UpdatedById { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

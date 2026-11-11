@@ -157,6 +157,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 CreatedAt = timestamp,
                 UpdatedAt = timestamp,
             };
+            // The org's proctoring as of this reserve: every create of this attempt is built from this row.
+            SetProctoring(entity, ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring);
             _db.Attempts.Add(entity);
             created.Add(entity.Id);
             rows.Add(ToRow(entity, isNew: true));
@@ -173,6 +175,9 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 ["timeMultiplier"] = attempts[0].TimeMultiplier,
                 ["aidsCount"] = attempts[0].Aids.Count,
                 ["ageBand"] = attempts[0].AgeBand,
+                ["proctoring"] = attempts.FirstOrDefault(a => a.Proctoring is not null)?.Proctoring is { } p
+                    ? AuditShape(p)
+                    : null,
             });
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -618,7 +623,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
             a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand, a.LatestResultId,
             a.GrantedOptionalConsents, a.DeclinedOptionalConsents, a.ConsentCapturesInFlight,
-            ToOffset(a.ConsentCaptureStartedAt), a.ResultVisibilityGeneration);
+            ToOffset(a.ConsentCaptureStartedAt), a.ResultVisibilityGeneration, ProctoringOf(a), a.CompletedBy, a.VoidReason);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

@@ -195,6 +195,10 @@ const resultSchema = z
 
 export const SPEAKING_NOT_ASSESSED = ['no_voice_consent', 'no_ai_scoring_consent'] as const;
 
+/** What proctoring did to a sitting (C# ProviderProctoringOutcomes). Never shown to the candidate (D9). */
+export const PROCTORING_OUTCOMES = ['auto_submitted', 'voided'] as const;
+export type ProctoringOutcome = (typeof PROCTORING_OUTCOMES)[number];
+
 const attemptSchema = z
   .object({
     attemptId: z.string().uuid(),
@@ -213,6 +217,8 @@ const attemptSchema = z
     result: resultSchema.nullable(),
     /** English only: the candidate declined an optional purpose the speaking section needs. */
     speakingNotAssessed: z.enum(SPEAKING_NOT_ASSESSED).nullable().optional(),
+    /** Company scope only (D6): what the sitting's proctoring did — auto-submitted it, or voided it. */
+    proctoringOutcome: z.enum(PROCTORING_OUTCOMES).nullable().optional(),
   })
   .strict();
 

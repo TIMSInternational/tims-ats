@@ -102,6 +102,8 @@ public sealed record StaffProviderResult(
 /// instrument (<see cref="ProviderCountsIn"/>, D3/D20), and the result. The accommodation (multiplier and aids) is for
 /// company-scope readers only. <c>SpeakingNotAssessed</c> (English only): <c>no_voice_consent</c> or
 /// <c>no_ai_scoring_consent</c> when the candidate declined an optional purpose the speaking section needs.
+/// <c>ProctoringOutcome</c> (<see cref="ProviderProctoringOutcomes"/>, company scope only, like the validity reasons):
+/// <c>auto_submitted</c> or <c>voided</c> when the sitting's proctoring ended it; null otherwise and for narrow readers.
 /// </summary>
 public sealed record StaffProviderAttempt(
     Guid AttemptId,
@@ -118,7 +120,8 @@ public sealed record StaffProviderAttempt(
     IReadOnlyList<string>? Aids,
     string CountsIn,
     StaffProviderResult? Result,
-    string? SpeakingNotAssessed = null);
+    string? SpeakingNotAssessed = null,
+    string? ProctoringOutcome = null);
 
 public sealed record StaffCandidateAttemptList(bool ConsentWithdrawn, IReadOnlyList<StaffProviderAttempt> Attempts);
 
@@ -277,7 +280,10 @@ public sealed class ProviderStaffReadUseCase(
             view,
             // The candidate declined an optional English purpose: the provider does not administer speaking, and HR is
             // told why instead of reading a gap in the result as a provider fault.
-            OptionalConsents.SpeakingNotAssessedReason(a.Instrument, a.DeclinedOptionalConsents ?? []));
+            OptionalConsents.SpeakingNotAssessedReason(a.Instrument, a.DeclinedOptionalConsents ?? []),
+            // Owner default D6: a narrow reader's view is unchanged (no reasons, no proctoring detail). A withdrawn or
+            // erased attempt shows nothing about its sitting.
+            hidesLevels || withdrawn || erased ? null : ProviderProctoringOutcomes.For(a.CompletedBy, a.VoidReason));
     }
 
     private static IReadOnlyList<AssessmentRequirement> ParseRequirements(string? json, bool liaScoredAllowed)

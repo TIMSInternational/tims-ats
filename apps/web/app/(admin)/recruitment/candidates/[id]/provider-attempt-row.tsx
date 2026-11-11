@@ -4,6 +4,7 @@ import { useI18n } from '../../../../../lib/i18n';
 import type { StaffProviderAttempt } from '../../../../../lib/platform-api/assessment-providers-staff';
 import { ProviderStatusChip } from './provider-status-chip';
 import { ProviderResultDetail } from './provider-result-detail';
+import { ProviderProctoringNote } from './provider-proctoring-note';
 
 const CANCELLABLE = new Set(['pending', 'consent_needed', 'sent', 'in_progress']);
 
@@ -67,6 +68,7 @@ export function ProviderAttemptRow({
       {attempt.status === 'pending' && attempt.lastErrorCode && (
         <p className="text-[11px] text-amber-700">{pa.pendingError.replace('{code}', attempt.lastErrorCode)}</p>
       )}
+      <ProviderProctoringNote outcome={attempt.proctoringOutcome} reasons={attempt.result?.validityReasons} />
       {attempt.result ? (
         <ProviderResultDetail instrument={attempt.instrument} result={attempt.result} countsIn={attempt.countsIn} />
       ) : (

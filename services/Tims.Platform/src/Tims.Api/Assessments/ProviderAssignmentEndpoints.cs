@@ -71,7 +71,8 @@ public static class ProviderAssignmentEndpoints
                 }
 
                 var result = await useCase.AssignAsync(
-                    gate.OrganizationId, gate.UserId, input, timeProvider.GetUtcNow(), cancellationToken);
+                    gate.OrganizationId, gate.UserId, input, timeProvider.GetUtcNow(), cancellationToken,
+                    platformOptions.Value.AssessmentIdentityCheckEnabled);
                 return ToResult(result);
             })
             .RequireAuthorization()

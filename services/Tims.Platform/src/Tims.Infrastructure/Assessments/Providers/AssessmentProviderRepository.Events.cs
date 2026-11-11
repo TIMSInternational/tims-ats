@@ -173,8 +173,10 @@ public sealed partial class AssessmentProviderRepository
 
     public async Task<bool> AdvanceAttemptAsync(
         Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? cause = null)
     {
+        var completedBy = toState == ProviderAttemptStates.Completed && ProviderCompletionCauses.IsKnown(cause) ? cause : null;
+        var voidReason = toState == ProviderAttemptStates.Voided && ProviderVoidReasons.IsKnown(cause) ? cause : null;
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
@@ -188,8 +190,29 @@ public sealed partial class AssessmentProviderRepository
         if (attempt is null || !ProviderAttemptStates.CanTransition(attempt.State, toState)
             || (toState == ProviderAttemptStates.Voided && attempt.LatestResultId is not null))
         {
+            // The state came first (the poller reads no completed_by, and a result can land before session.completed is
+            // processed): the cause is still recorded once, on an attempt already in that state (or, for a completion,
+            // already result_ready), without another state change.
+            var late = attempt is not null
+                && (attempt.State == toState || (completedBy is not null && attempt.State == ProviderAttemptStates.ResultReady))
+                && ((completedBy is not null && attempt.CompletedBy is null) || (voidReason is not null && attempt.VoidReason is null));
+            if (late)
+            {
+                attempt!.CompletedBy ??= completedBy;
+                attempt.VoidReason ??= voidReason;
+                attempt.UpdatedAt = now.UtcDateTime;
+                AddAudit(organizationId, null, "assessment_provider_state_cause_recorded", attempt.Id, new Dictionary<string, object?>
+                {
+                    ["instrument"] = attempt.Instrument,
+                    ["state"] = toState,
+                    ["completedBy"] = completedBy,
+                    ["voidReason"] = voidReason,
+                });
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return false;
+            return late;
         }
 
         var from = attempt.State;
@@ -204,11 +227,15 @@ public sealed partial class AssessmentProviderRepository
             attempt.CompletedAt ??= completed.UtcDateTime;
         }
 
+        attempt.CompletedBy ??= completedBy;
+        attempt.VoidReason ??= voidReason;
         AddAudit(organizationId, null, "assessment_provider_state_changed", attempt.Id, new Dictionary<string, object?>
         {
             ["instrument"] = attempt.Instrument,
             ["from"] = from,
             ["to"] = toState,
+            ["completedBy"] = completedBy,
+            ["voidReason"] = voidReason,
         });
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);

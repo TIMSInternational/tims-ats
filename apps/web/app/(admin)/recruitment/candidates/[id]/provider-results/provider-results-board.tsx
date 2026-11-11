@@ -9,6 +9,7 @@ import {
 import { useVacancyAssessments } from '../../../../../../lib/platform-api/vacancy-assessments';
 import { isFitEngineV2Enabled } from '../../../../../../lib/platform-api/fit-engine';
 import { ProviderStatusChip } from '../provider-status-chip';
+import { ProviderProctoringNote } from '../provider-proctoring-note';
 import { fill } from './chart-parts';
 import { EnglishProfile } from './english-profile';
 import { LiaProfile } from './lia-profile';
@@ -35,6 +36,9 @@ function ResultBody({
   const { t } = useI18n();
   const r = t.providerAssessments.results;
   const result = attempt.result;
+  // A sitting proctoring ended (auto-submitted for review, or voided) says so, in place of the generic states.
+  if (attempt.proctoringOutcome && (!result || result.reviewPending))
+    return <ProviderProctoringNote outcome={attempt.proctoringOutcome} reasons={result?.validityReasons} />;
   if (!result) return <p className="text-[13px] text-[#6B6B6B]">{r.notReady}</p>;
   if (result.reviewPending) return <p className="text-[13px] text-amber-800">{r.underReview}</p>;
   const profile = result.profile;

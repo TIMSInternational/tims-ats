@@ -147,6 +147,71 @@ public sealed class TimsAssessmentsClientTests
         Assert.False(body.AsObject().ContainsKey("instrument_version"));
     }
 
+    // Proctoring parity (2026-11-11): the attempt's stored block is sent as AssignmentProctoring, every key present.
+    [Fact]
+    public async Task Create_assignment_sends_the_attempts_proctoring_block()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.Created, AssignmentJson(Guid.NewGuid())));
+        var proctoring = new AssessmentProctoring(true, new AntiCheatPolicy(3, AntiCheatConsequences.AutoSubmit), false);
+
+        await Client().CreateAssignmentAsync(AssignmentRequest() with { Proctoring = proctoring }, "k", CancellationToken.None);
+
+        var sent = _handler.Requests.Single(r => r.Uri == "https://assessments.test/v1/assignments");
+        Assert.Equal(
+            """{"lockdown":true,"anti_cheat":{"threshold":3,"consequence":"auto_submit"},"identity_check":false}""",
+            JsonNode.Parse(sent.Body)!["proctoring"]!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task Create_assignment_sends_anti_cheat_null_when_violations_are_only_recorded()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.Created, AssignmentJson(Guid.NewGuid())));
+
+        await Client().CreateAssignmentAsync(
+            AssignmentRequest() with { Proctoring = new AssessmentProctoring(true, null, false) }, "k", CancellationToken.None);
+
+        var body = JsonNode.Parse(_handler.Requests.Single(r => r.Uri == "https://assessments.test/v1/assignments").Body)!;
+        Assert.True(body["proctoring"]!.AsObject().ContainsKey("anti_cheat"));
+        Assert.Null(body["proctoring"]!["anti_cheat"]);
+    }
+
+    [Fact]
+    public async Task Create_assignment_without_proctoring_sends_no_block()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.Created, AssignmentJson(Guid.NewGuid())));
+
+        await Client().CreateAssignmentAsync(AssignmentRequest(), "k", CancellationToken.None);
+
+        var body = JsonNode.Parse(_handler.Requests.Single(r => r.Uri == "https://assessments.test/v1/assignments").Body)!;
+        Assert.False(body.AsObject().ContainsKey("proctoring"));
+    }
+
+    [Fact]
+    public async Task Create_assignment_never_sends_proctoring_for_a_link_out_instrument()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.Created, AssignmentJson(Guid.NewGuid())));
+
+        await Client().CreateAssignmentAsync(
+            AssignmentRequest() with { Instrument = "pca", Proctoring = new AssessmentProctoring(true, null, false) }, "k",
+            CancellationToken.None);
+
+        var body = JsonNode.Parse(_handler.Requests.Single(r => r.Uri == "https://assessments.test/v1/assignments").Body)!;
+        Assert.False(body.AsObject().ContainsKey("proctoring"));
+    }
+
+    [Fact]
+    public async Task An_assignment_answer_with_a_proctoring_void_reason_is_read()
+    {
+        var id = Guid.NewGuid();
+        var json = AssignmentJson(id).Replace("\"status\":\"created\"", "\"status\":\"voided\",\"void_reason\":\"proctoring_void\"",
+            StringComparison.Ordinal);
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, json));
+
+        var result = await Client().GetAssignmentAsync(id, CancellationToken.None);
+
+        Assert.Equal(ProviderVoidReasons.ProctoringVoid, result.Value!.VoidReason);
+    }
+
     // Design §6.3: a vacancy already pinned to a version sends it, so every candidate sits the same one.
     [Fact]
     public async Task Create_assignment_sends_the_vacancy_pinned_instrument_version()

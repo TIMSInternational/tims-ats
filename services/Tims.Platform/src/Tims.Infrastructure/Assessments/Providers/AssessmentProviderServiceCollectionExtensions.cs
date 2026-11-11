@@ -43,6 +43,7 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddScoped<IProviderStaffReadRepository, AssessmentProviderRepository>();
         services.AddScoped<ProviderStaffReadUseCase>();
         services.AddScoped<AssignProviderInstrumentsUseCase>();
+        services.AddScoped<ProviderProctoringSettingsUseCase>();
         services.AddScoped<CancelProviderAttemptUseCase>();
         services.AddScoped<LaunchProviderAttemptUseCase>();
         services.AddScoped<ProviderPortalUseCase>();

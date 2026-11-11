@@ -332,6 +332,23 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     public Task<ProviderBindingRow?> GetActiveBindingAsync(Guid organizationId, CancellationToken cancellationToken) =>
         Task.FromResult(Binding);
 
+    /// <summary>The org's stored proctoring settings (null: never saved, every setting off).</summary>
+    public ProctoringSettingsRow? ProctoringSettings { get; set; }
+
+    public List<(Guid ActorId, AssessmentProctoring Settings)> SavedProctoring { get; } = [];
+
+    public Task<ProctoringSettingsRow?> GetProctoringSettingsAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        Task.FromResult(ProctoringSettings);
+
+    public Task<ProctoringSettingsRow> SaveProctoringSettingsAsync(
+        Guid organizationId, Guid actorId, AssessmentProctoring settings, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Writes.Add("proctoring_settings");
+        SavedProctoring.Add((actorId, settings));
+        ProctoringSettings = new ProctoringSettingsRow(settings, now, actorId);
+        return Task.FromResult(ProctoringSettings);
+    }
+
     public Task<AssignmentContext> LoadAssignmentContextAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken) => Task.FromResult(Context);
 
@@ -373,7 +390,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             var row = new AttemptRow(Guid.NewGuid(), organizationId, candidateId, vacancyId, attempt.Instrument,
                 ProviderAttemptStates.PendingCreate, attempt.Reason, attempt.Locale, attempt.TimeMultiplier, attempt.Aids,
                 attempt.ExpiresAt, null, null, PinnedVersions.GetValueOrDefault(attempt.Instrument), null, [], null, null, true,
-                AgeBand: attempt.AgeBand);
+                AgeBand: attempt.AgeBand,
+                Proctoring: ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring);
             Attempts.Add(row);
             rows.Add(row);
         }
@@ -690,10 +708,14 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult(Attempts.FirstOrDefault(a => a.ProviderAssignmentId == providerAssignmentId));
     }
 
+    public List<(string State, string? Cause)> Advances { get; } = [];
+
     public Task<bool> AdvanceAttemptAsync(
-        Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now, CancellationToken cancellationToken,
+        string? cause = null)
     {
         Writes.Add("advance:" + toState);
+        Advances.Add((toState, cause));
         return Task.FromResult(true);
     }
 

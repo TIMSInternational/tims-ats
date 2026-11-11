@@ -156,7 +156,8 @@ internal static partial class ProviderResponses
 
         return new ProviderAssignment(
             id, tenant, subject, instrument, version, content, status, required, missing, expiresAt, Str(root, "external_ref", 128),
-            resultId, startedAt, completedAt, voidedAt);
+            resultId, startedAt, completedAt, voidedAt,
+            Str(root, "void_reason") is { } voidReason && ProviderVoidReasons.IsKnown(voidReason) ? voidReason : null);
     }
 
     public static ProviderConsentRecord? Consent(JsonElement root) =>

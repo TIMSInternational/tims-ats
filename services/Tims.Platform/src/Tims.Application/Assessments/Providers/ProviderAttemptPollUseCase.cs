@@ -173,7 +173,8 @@ public sealed class ProviderAttemptPollUseCase(
         var deferVoid = toState == ProviderAttemptStates.Voided && assignment.ResultId is not null;
         if (toState is not null && !deferVoid)
         {
-            changed |= await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, toState, at, now, cancellationToken)
+            changed |= await _repository.AdvanceAttemptAsync(organizationId, attempt.Id, toState, at, now, cancellationToken,
+                    toState == ProviderAttemptStates.Voided ? assignment.VoidReason : null)
                 .ConfigureAwait(false);
         }
 
@@ -188,7 +189,8 @@ public sealed class ProviderAttemptPollUseCase(
             if (deferVoid && !intake.Retry)
             {
                 changed |= await _repository.AdvanceAttemptAsync(
-                        organizationId, attempt.Id, ProviderAttemptStates.Voided, at, now, cancellationToken)
+                        organizationId, attempt.Id, ProviderAttemptStates.Voided, at, now, cancellationToken,
+                        assignment.VoidReason)
                     .ConfigureAwait(false);
             }
         }

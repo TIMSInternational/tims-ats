@@ -123,7 +123,8 @@
     "myOnboarding": "Mi Onboarding",
     "my360": "Mi 360",
     "evaluations360": "Evaluación 360",
-    "auditLog": "Registro de Auditoría"
+    "auditLog": "Registro de Auditoría",
+    "assessmentSecurity": "Seguridad de las evaluaciones"
   },
   "platformSidebar": {
     "platform": "Plataforma",
@@ -5394,6 +5395,26 @@
         "competencies": "Competencias",
         "noCompetencies": "TIMS no devolvió competencias para este resultado."
       }
+    },
+    "proctoring": {
+      "autoSubmittedTitle": "Enviada automáticamente por seguridad",
+      "autoSubmitted": "La prueba se cerró sola al llegar al límite de alertas de seguridad, con las respuestas que el candidato alcanzó a dar. Una persona debe revisar este resultado antes de usarlo: el sistema nunca decide por sí solo.",
+      "voidedTitle": "Anulada por seguridad",
+      "voided": "La prueba se anuló al llegar al límite de alertas de seguridad. Ese intento ya se usó: si quieres que el candidato la repita, asígnala de nuevo.",
+      "reasonsLabel": "Motivos de la revisión: {reasons}",
+      "reasons": {
+        "proctoring_flagged": "alertas de seguridad durante la prueba",
+        "proctoring_void": "anulada por las alertas de seguridad",
+        "identity_check_failed": "la verificación de identidad no coincidió",
+        "identity_unverified": "no se pudo verificar la identidad",
+        "identity_check_withdrawn": "el candidato retiró el consentimiento biométrico",
+        "incomplete": "prueba incompleta",
+        "human_review_required": "requiere revisión de una persona",
+        "ai_scoring_unavailable": "la calificación automática no estuvo disponible",
+        "administrative_void": "anulada por administración",
+        "consent_withdrawn": "el candidato retiró su consentimiento",
+        "provider_error": "error del proveedor"
+      }
     }
   },
   "assignProviderAssessments": {
@@ -5534,5 +5555,47 @@
       "http_403": "Solo el propietario de la plataforma puede usar esta sección.",
       "unknown": "Ocurrió un error inesperado."
     }
+  },
+  "assessmentSecurity": {
+    "title": "Seguridad de las evaluaciones",
+    "subtitle": "Elige cómo se protegen las pruebas TIMS que tus candidatos hacen desde el ATS. Son los mismos controles que ofrece timssuite.com.",
+    "loading": "Cargando la configuración…",
+    "unavailable": "Las evaluaciones TIMS no están activas para tu organización.",
+    "noPermission": "No tienes permiso para cambiar esta configuración. Pídeselo a un administrador de RR. HH.",
+    "lockdownLabel": "Modo bloqueado",
+    "lockdownHelp": "La prueba se abre en pantalla completa y bloquea atajos como copiar y pegar. Si el candidato tiene una segunda pantalla conectada, no puede empezar hasta desconectarla.",
+    "antiCheatLabel": "Control de alertas",
+    "antiCheatHelp": "Cuenta las alertas de la prueba: cambiar de pestaña, salir de la ventana o conectar otra pantalla. El candidato ve un aviso con cada alerta.",
+    "antiCheatOffHint": "Apagado: las alertas se registran, pero nunca cambian nada de la prueba.",
+    "thresholdLabel": "Alertas permitidas",
+    "thresholdHelp": "Al llegar a este número se aplica lo que elijas abajo. Entre {min} y {max}.",
+    "thresholdDecrease": "Una alerta menos",
+    "thresholdIncrease": "Una alerta más",
+    "consequenceLegend": "Al llegar al límite",
+    "consequence": {
+      "warn": {
+        "label": "Solo avisar",
+        "help": "El candidato sigue con la prueba. Las alertas quedan registradas."
+      },
+      "auto_submit": {
+        "label": "Enviar la prueba",
+        "help": "La prueba se cierra con las respuestas dadas hasta ese momento. El resultado queda en revisión: una persona decide."
+      },
+      "void": {
+        "label": "Anular la prueba",
+        "help": "La prueba se anula y el intento cuenta como usado. Para repetirla, asígnala de nuevo."
+      }
+    },
+    "identityLabel": "Verificación de identidad",
+    "identityHelp": "Usa la cámara: toma una foto del candidato al empezar y la compara con fotos periódicas durante la prueba. Necesita el consentimiento biométrico del candidato, que se le pide antes de empezar.",
+    "identityUnavailable": "Todavía no disponible: necesita un texto de consentimiento biométrico aprobado por TIMS que describa la verificación con cámara. Lo activaremos cuando esté listo.",
+    "appliesNote": "Los cambios se aplican a las pruebas que asignes desde ahora. Las pruebas ya asignadas conservan la configuración con la que se enviaron.",
+    "pcaNote": "El PCA se responde en el sitio de su proveedor y no usa estos controles.",
+    "updatedAt": "Última actualización: {date}",
+    "save": "Guardar cambios",
+    "saving": "Guardando…",
+    "saved": "Configuración guardada. Se aplica a las próximas pruebas que asignes.",
+    "saveError": "No se pudo guardar la configuración. Inténtalo de nuevo.",
+    "identityRefused": "La verificación de identidad todavía no está disponible."
   }
 }

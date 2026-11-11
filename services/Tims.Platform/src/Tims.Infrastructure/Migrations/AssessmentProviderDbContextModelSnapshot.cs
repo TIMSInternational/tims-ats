@@ -87,6 +87,10 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
 
+                    b.Property<string>("CompletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("completed_by");
+
                     b.Property<int>("ConsentCaptureGeneration")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -196,6 +200,22 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("poll_lease_until");
 
+                    b.Property<string>("ProctoringAntiCheatConsequence")
+                        .HasColumnType("text")
+                        .HasColumnName("proctoring_anti_cheat_consequence");
+
+                    b.Property<int?>("ProctoringAntiCheatThreshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("proctoring_anti_cheat_threshold");
+
+                    b.Property<bool?>("ProctoringIdentityCheck")
+                        .HasColumnType("boolean")
+                        .HasColumnName("proctoring_identity_check");
+
+                    b.Property<bool?>("ProctoringLockdown")
+                        .HasColumnType("boolean")
+                        .HasColumnName("proctoring_lockdown");
+
                     b.Property<Guid?>("ProviderAssignmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("provider_assignment_id");
@@ -253,6 +273,10 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("vacancy_id");
 
+                    b.Property<string>("VoidReason")
+                        .HasColumnType("text")
+                        .HasColumnName("void_reason");
+
                     b.Property<Guid?>("WithdrawalLeaseOwner")
                         .HasColumnType("uuid")
                         .HasColumnName("withdrawal_lease_owner");
@@ -299,6 +323,8 @@ namespace Tims.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_aids", "aids <@ ARRAY['extended_breaks', 'screen_reader', 'screen_magnification', 'high_contrast', 'assistive_input', 'captions_or_transcript', 'reader_assistance', 'separate_setting']::text[]");
 
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_completed_by", "completed_by IS NULL OR completed_by IN ('candidate', 'time_limit', 'proctoring_auto_submit')");
+
                             t.HasCheckConstraint("ck_assessment_provider_attempts_consent_capture", "consent_capture_generation >= 0 AND consent_captures_in_flight >= 0");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_content_version", "content_version IS NULL OR char_length(content_version) <= 64");
@@ -319,6 +345,8 @@ namespace Tims.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_poll_lease", "(poll_lease_owner IS NULL) = (poll_lease_until IS NULL)");
 
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_proctoring", "(proctoring_lockdown IS NULL) = (proctoring_identity_check IS NULL) AND (proctoring_anti_cheat_threshold IS NULL) = (proctoring_anti_cheat_consequence IS NULL) AND (proctoring_anti_cheat_threshold IS NULL OR proctoring_lockdown IS NOT NULL) AND (proctoring_anti_cheat_threshold IS NULL OR proctoring_anti_cheat_threshold BETWEEN 1 AND 20) AND (proctoring_anti_cheat_consequence IS NULL OR proctoring_anti_cheat_consequence IN ('warn', 'auto_submit', 'void'))");
+
                             t.HasCheckConstraint("ck_assessment_provider_attempts_purpose", "purpose = 'selection'");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_reason", "char_length(job_relatedness_reason) BETWEEN 3 AND 500");
@@ -328,6 +356,8 @@ namespace Tims.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_assessment_provider_attempts_state", "state IN ('pending_create', 'created', 'launched', 'in_progress', 'completed', 'result_ready', 'voided', 'expired', 'cancelled', 'erased')");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_time_multiplier", "time_multiplier BETWEEN 1 AND 3");
+
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_void_reason", "void_reason IS NULL OR void_reason IN ('proctoring_void', 'identity_check_failed', 'administrative_void', 'consent_withdrawn')");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_withdrawal_lease", "(withdrawal_lease_owner IS NULL) = (withdrawal_lease_until IS NULL)");
 
@@ -713,6 +743,64 @@ namespace Tims.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_assessment_provider_results_time_multiplier", "time_multiplier_applied BETWEEN 1 AND 3");
 
                             t.HasCheckConstraint("ck_assessment_provider_results_validity", "validity_status IN ('valid', 'voided', 'needs_review')");
+                        });
+                });
+
+            modelBuilder.Entity("Tims.Infrastructure.Assessments.Providers.ProviderSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AntiCheatConsequence")
+                        .HasColumnType("text")
+                        .HasColumnName("anti_cheat_consequence");
+
+                    b.Property<int?>("AntiCheatThreshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("anti_cheat_threshold");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<bool>("IdentityCheck")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("identity_check");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<bool>("ProctoringLockdown")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("proctoring_lockdown");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid>("UpdatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_assessment_provider_settings_org");
+
+                    b.ToTable("assessment_provider_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assessment_provider_settings_anti_cheat", "(anti_cheat_threshold IS NULL) = (anti_cheat_consequence IS NULL) AND (anti_cheat_threshold IS NULL OR anti_cheat_threshold BETWEEN 1 AND 20) AND (anti_cheat_consequence IS NULL OR anti_cheat_consequence IN ('warn', 'auto_submit', 'void'))");
                         });
                 });
 

@@ -744,6 +744,9 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
     /// <summary>The remote TIMS Assessments API, faked: canned success answers and a record of every call.</summary>
     private sealed class FakeProvider : IAssessmentProvider
     {
+        /// <summary>(external_ref, the proctoring block) of every create, in order.</summary>
+        public ConcurrentQueue<(string ExternalRef, AssessmentProctoring? Proctoring)> CreatedProctoring { get; } = new();
+
         public const string PlayerUrl = "https://player.test/launch/single-use-code";
 
         public ConcurrentQueue<string> Calls { get; } = new();
@@ -838,6 +841,7 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
         {
             Calls.Enqueue("assignment");
             CreatedVersions.Enqueue(request.InstrumentVersion);
+            CreatedProctoring.Enqueue((request.ExternalRef, request.Proctoring));
             var id = Guid.NewGuid();
             Created.Enqueue(id);
             return Task.FromResult(ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(

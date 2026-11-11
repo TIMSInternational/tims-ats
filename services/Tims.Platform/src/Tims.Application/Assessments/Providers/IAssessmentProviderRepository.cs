@@ -16,6 +16,21 @@ public interface IAssessmentProviderRepository
 {
     Task<ProviderBindingRow?> GetActiveBindingAsync(Guid organizationId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The organization's assessment proctoring settings (<c>assessment_provider_settings</c>), or null when HR never
+    /// saved any (every setting off). Read under the tenant scope with an explicit organization filter.
+    /// </summary>
+    Task<ProctoringSettingsRow?> GetProctoringSettingsAsync(Guid organizationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Upserts the organization's proctoring settings and appends one <c>audit_logs</c> row
+    /// (<c>assessment_provider_settings_updated</c>, the before and after values, no PII) in the same transaction.
+    /// Returns the stored row.
+    /// </summary>
+    Task<ProctoringSettingsRow> SaveProctoringSettingsAsync(
+        Guid organizationId, Guid actorId, AssessmentProctoring settings, DateTimeOffset now,
+        CancellationToken cancellationToken);
+
     Task<AssignmentContext> LoadAssignmentContextAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken);
 
@@ -158,10 +173,15 @@ public interface IAssessmentProviderRepository
     Task<AttemptRow?> FindAttemptByProviderAssignmentAsync(
         Guid organizationId, Guid providerAssignmentId, CancellationToken cancellationToken);
 
-    /// <summary>Moves an attempt forward on a lifecycle event (never backward, never out of a terminal state).</summary>
+    /// <summary>
+    /// Moves an attempt forward on a lifecycle event (never backward, never out of a terminal state). <paramref name="cause"/>
+    /// is the event's cause when it has one: <c>completed_by</c> of a completion (<see cref="ProviderCompletionCauses"/>)
+    /// or the reason of a void (<see cref="ProviderVoidReasons"/>); an unknown value is not stored. A cause that arrives
+    /// after the attempt already reached that state (the poller saw the state first) is still recorded, once.
+    /// </summary>
     Task<bool> AdvanceAttemptAsync(
         Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, string? cause = null);
 
     /// <summary>
     /// Upserts a result and updates the attempt, with one audit row. Nothing is written when the stored revision is equal
@@ -552,6 +572,9 @@ public sealed record WithdrawalFence(
     public bool CreateAllowsCompletion => !CreateInFlight || CreateStale;
 }
 
+/// <summary>The organization's stored proctoring settings, when they were last changed, and by whom.</summary>
+public sealed record ProctoringSettingsRow(AssessmentProctoring Settings, DateTimeOffset UpdatedAt, Guid UpdatedById);
+
 public sealed record ProviderBindingRow(
     Guid Id, Guid OrganizationId, Guid ProviderTenantId, IReadOnlyList<string> EnabledInstruments, string DefaultLocale);
 
@@ -566,9 +589,14 @@ public sealed record AssignmentContext(
     string? CandidateLastName,
     string? CandidateEmail);
 
+/// <param name="Proctoring">
+/// The proctoring block the attempt's assignment will carry (<see cref="AssessmentProctoring.ForAssignment"/>): stored on
+/// the attempt when it is inserted and never re-read, so the sitting keeps what it was assigned with. Not part of the
+/// terms an open attempt is compared on: a settings change applies to assignments created after it.
+/// </param>
 public sealed record NewAttempt(
     string Instrument, string Reason, string Locale, decimal TimeMultiplier, IReadOnlyList<string> Aids,
-    DateTimeOffset? ExpiresAt, string? AgeBand = null)
+    DateTimeOffset? ExpiresAt, string? AgeBand = null, AssessmentProctoring? Proctoring = null)
 {
     /// <summary>
     /// True when an open attempt already carries exactly these terms: the accommodation (time multiplier and aids, as
@@ -615,7 +643,10 @@ public sealed record AttemptRow(
     IReadOnlyList<string>? DeclinedOptionalConsents = null,
     int ConsentCapturesInFlight = 0,
     DateTimeOffset? ConsentCaptureStartedAt = null,
-    int ResultVisibilityGeneration = 0)
+    int ResultVisibilityGeneration = 0,
+    AssessmentProctoring? Proctoring = null,
+    string? CompletedBy = null,
+    string? VoidReason = null)
 {
     /// <summary>
     /// A consent capture announced by a launch and not answered yet, and not stale at <paramref name="now"/>: the provider

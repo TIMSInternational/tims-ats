@@ -123,7 +123,8 @@
     "myOnboarding": "My Onboarding",
     "my360": "My 360",
     "evaluations360": "360 Evaluation",
-    "auditLog": "Audit Log"
+    "auditLog": "Audit Log",
+    "assessmentSecurity": "Assessment security"
   },
   "platformSidebar": {
     "platform": "Platform",
@@ -5377,6 +5378,26 @@
         "competencies": "Competencies",
         "noCompetencies": "TIMS returned no competencies for this result."
       }
+    },
+    "proctoring": {
+      "autoSubmittedTitle": "Submitted automatically for security",
+      "autoSubmitted": "The test closed on its own when it reached the security alert limit, with the answers the candidate had given. A person must review this result before it is used: the system never decides on its own.",
+      "voidedTitle": "Voided for security",
+      "voided": "The test was voided when it reached the security alert limit. That attempt is used: if you want the candidate to retake it, assign it again.",
+      "reasonsLabel": "Review reasons: {reasons}",
+      "reasons": {
+        "proctoring_flagged": "security alerts during the test",
+        "proctoring_void": "voided by the security alerts",
+        "identity_check_failed": "the identity check did not match",
+        "identity_unverified": "identity could not be verified",
+        "identity_check_withdrawn": "the candidate withdrew the biometric consent",
+        "incomplete": "incomplete test",
+        "human_review_required": "needs a person's review",
+        "ai_scoring_unavailable": "automatic scoring was unavailable",
+        "administrative_void": "voided by an administrator",
+        "consent_withdrawn": "the candidate withdrew consent",
+        "provider_error": "provider error"
+      }
     }
   },
   "assignProviderAssessments": {
@@ -5517,5 +5538,47 @@
       "http_403": "Only the platform owner can use this section.",
       "unknown": "An unexpected error occurred."
     }
+  },
+  "assessmentSecurity": {
+    "title": "Assessment security",
+    "subtitle": "Choose how the TIMS tests your candidates take from the ATS are protected. These are the same controls timssuite.com offers.",
+    "loading": "Loading the settings…",
+    "unavailable": "TIMS assessments are not active for your organization.",
+    "noPermission": "You don't have permission to change these settings. Ask an HR administrator.",
+    "lockdownLabel": "Lockdown mode",
+    "lockdownHelp": "The test opens full screen and blocks shortcuts such as copy and paste. If the candidate has a second screen connected, they can't start until they disconnect it.",
+    "antiCheatLabel": "Alert control",
+    "antiCheatHelp": "Counts the test's alerts: switching tabs, leaving the window or connecting another screen. The candidate sees a warning with each alert.",
+    "antiCheatOffHint": "Off: alerts are recorded, but they never change anything about the test.",
+    "thresholdLabel": "Alerts allowed",
+    "thresholdHelp": "When this number is reached, what you choose below happens. Between {min} and {max}.",
+    "thresholdDecrease": "One alert fewer",
+    "thresholdIncrease": "One alert more",
+    "consequenceLegend": "When the limit is reached",
+    "consequence": {
+      "warn": {
+        "label": "Only warn",
+        "help": "The candidate keeps going. The alerts are recorded."
+      },
+      "auto_submit": {
+        "label": "Submit the test",
+        "help": "The test closes with the answers given so far. The result goes to review: a person decides."
+      },
+      "void": {
+        "label": "Void the test",
+        "help": "The test is voided and the attempt counts as used. To retake it, assign it again."
+      }
+    },
+    "identityLabel": "Identity check",
+    "identityHelp": "Uses the camera: takes a photo of the candidate at the start and compares it with periodic photos during the test. It needs the candidate's biometric consent, which they are asked for before starting.",
+    "identityUnavailable": "Not available yet: it needs a biometric consent text approved by TIMS that describes the camera check. We'll turn it on when it's ready.",
+    "appliesNote": "Changes apply to the tests you assign from now on. Tests already assigned keep the settings they were sent with.",
+    "pcaNote": "The PCA is taken on its provider's site and doesn't use these controls.",
+    "updatedAt": "Last updated: {date}",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "saved": "Settings saved. They apply to the next tests you assign.",
+    "saveError": "The settings couldn't be saved. Try again.",
+    "identityRefused": "The identity check isn't available yet."
   }
 }

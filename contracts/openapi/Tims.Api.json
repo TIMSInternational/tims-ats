@@ -5367,6 +5367,72 @@
         }
       }
     },
+    "/assessments/provider-settings/proctoring": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderProctoringSettingsGet",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProctoringSettingsView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderProctoringSettingsPut",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProctoringSettingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProctoringSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/tenant/data-subject-requests": {
       "get": {
         "tags": [
@@ -9881,6 +9947,26 @@
           },
           "isActive": {
             "type": "boolean"
+          }
+        }
+      },
+      "AntiCheatPolicy": {
+        "required": [
+          "threshold",
+          "consequence"
+        ],
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "consequence": {
+            "type": "string"
           }
         }
       },
@@ -16711,6 +16797,80 @@
           }
         }
       },
+      "ProctoringAntiCheatBody": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "consequence": {
+            "type": "string"
+          }
+        }
+      },
+      "ProctoringSettingsBody": {
+        "type": "object",
+        "properties": {
+          "lockdown": {
+            "type": "boolean"
+          },
+          "antiCheat": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProctoringAntiCheatBody"
+              }
+            ]
+          },
+          "identityCheck": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProctoringSettingsView": {
+        "required": [
+          "lockdown",
+          "antiCheat",
+          "identityCheck",
+          "identityCheckAvailable",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "lockdown": {
+            "type": "boolean"
+          },
+          "antiCheat": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AntiCheatPolicy"
+              }
+            ]
+          },
+          "identityCheck": {
+            "type": "boolean"
+          },
+          "identityCheckAvailable": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "PromotionEquityView": {
         "required": [
           "year",
@@ -18624,6 +18784,12 @@
             ]
           },
           "speakingNotAssessed": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "proctoringOutcome": {
             "type": [
               "null",
               "string"

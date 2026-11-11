@@ -2116,6 +2116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assessments/provider-settings/proctoring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AssessmentProviderProctoringSettingsGet"];
+        put: operations["AssessmentProviderProctoringSettingsPut"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/data-subject-requests": {
         parameters: {
             query?: never;
@@ -3548,6 +3564,11 @@ export interface components {
             severity: string;
             message: string;
             isActive: boolean;
+        };
+        AntiCheatPolicy: {
+            /** Format: int32 */
+            threshold: number | string;
+            consequence: string;
         };
         ApproveAdjustmentBody: {
             approved: boolean;
@@ -5152,6 +5173,23 @@ export interface components {
         PortalWithdrawalAck: {
             received: boolean;
         };
+        ProctoringAntiCheatBody: {
+            /** Format: int32 */
+            threshold?: number | string;
+            consequence?: string;
+        };
+        ProctoringSettingsBody: {
+            lockdown?: boolean;
+            antiCheat?: null | components["schemas"]["ProctoringAntiCheatBody"];
+            identityCheck?: boolean;
+        };
+        ProctoringSettingsView: {
+            lockdown: boolean;
+            antiCheat: null | components["schemas"]["AntiCheatPolicy"];
+            identityCheck: boolean;
+            identityCheckAvailable: boolean;
+            updatedAt: null | string;
+        };
         PromotionEquityView: {
             /** Format: int32 */
             year: number | string;
@@ -5588,6 +5626,7 @@ export interface components {
             countsIn: string;
             result: null | components["schemas"]["StaffProviderResult"];
             speakingNotAssessed?: null | string;
+            proctoringOutcome?: null | string;
         };
         StaffProviderResult: {
             validity: string;
@@ -12283,6 +12322,92 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderProctoringSettingsGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSettingsView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AssessmentProviderProctoringSettingsPut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProctoringSettingsBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSettingsView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

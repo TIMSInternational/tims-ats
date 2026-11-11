@@ -1658,6 +1658,7 @@ try
         app.MapProviderSubjectRightsEndpoints();
         app.MapProviderBindingAdminEndpoints(); // round 12: the platform owner's binding state and safe unbind
         app.MapProviderStaffReadEndpoints(); // AS-7 / AS-14: the staff catalog and a candidate's attempts with results
+        app.MapProviderSettingsEndpoints(); // proctoring parity: the org's assessment security settings
     }
 
     // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service

@@ -255,6 +255,10 @@ public sealed record ProviderSubject(Guid SubjectId, string Status, bool HasName
 /// <c>age_attestation</c> (required by the amended contract), never an age or a date of birth.
 /// <see cref="InstrumentVersion"/> is the version the vacancy is already pinned to (design §6.3: every candidate of a
 /// vacancy sits the same version), sent as <c>instrument_version</c>; null for the vacancy's first assignment.
+/// <see cref="Proctoring"/> is the block stored on the attempt when it was reserved (the org's settings then), sent as
+/// <c>proctoring</c>; null sends none (the instrument's default policy) and is always null for a link-out instrument.
+/// Because it comes from the attempt row, every re-send of a create carries the same block, so a settings change can
+/// never turn an idempotent retry into a 409 <c>external_ref_conflict</c>.
 /// </summary>
 public sealed record ProviderAssignmentRequest(
     Guid TenantId,
@@ -268,11 +272,13 @@ public sealed record ProviderAssignmentRequest(
     DateTimeOffset? ExpiresAt,
     string ExternalRef,
     string AgeBand,
-    string? InstrumentVersion = null);
+    string? InstrumentVersion = null,
+    AssessmentProctoring? Proctoring = null);
 
 /// <summary>
 /// An assignment as the provider holds it. <see cref="ResultId"/> and the sitting timestamps are what the D17 poller
 /// reads to advance an attempt without a webhook (null until they happen, or when an older provider omits them).
+/// <see cref="VoidReason"/> is the contract's <c>void_reason</c> when the provider sent a known one.
 /// </summary>
 public sealed record ProviderAssignment(
     Guid AssignmentId,
@@ -289,7 +295,8 @@ public sealed record ProviderAssignment(
     Guid? ResultId = null,
     DateTimeOffset? StartedAt = null,
     DateTimeOffset? CompletedAt = null,
-    DateTimeOffset? VoidedAt = null);
+    DateTimeOffset? VoidedAt = null,
+    string? VoidReason = null);
 
 public sealed record ProviderConsentRequest(
     string Purpose, string TextVersion, string Locale, DateTimeOffset GrantedAt, string HostRecordRef,

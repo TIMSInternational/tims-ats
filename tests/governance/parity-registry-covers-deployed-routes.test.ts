@@ -573,7 +573,12 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'dark flag, 401/403, the vacancy scope 404 and omission, D6 redaction for a narrow reader, #312, the pinned version). ' +
       "The two round-12 platform-owner binding tools (read one organization's binding state; unbind, refused with " +
       'binding_has_open_work while attempts are open) are platform-owner only, like bindings: covered by the same ' +
-      'ProviderEndpointTests (round-12 section: 401/403, state, unbind, the open-work refusal).',
+      'ProviderEndpointTests (round-12 section: 401/403, state, unbind, the open-work refusal). ' +
+      "The org's assessment security settings (proctoring parity, 2026-11-11: GET and PUT) gate on assessment:read / " +
+      'assessment:update at ORG scope, and their only effect is the block the remote provider receives with each new ' +
+      'assignment: covered by ProviderEndpointTests.Settings (401/403 for the reader and the own-scope leader, strict ' +
+      'bodies, the identity check refused while its platform flag is off, tenant isolation, the next assignment carrying ' +
+      'the block) and Assessments/AssessmentProviderProctoringTests (RLS, grants, audit, the attempt snapshot).',
     routes: [
       'GET /assessments/provider-catalog',
       'GET /assessments/provider-attempts',
@@ -588,6 +593,8 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'POST /webhooks/tims-assessments',
       'GET /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export',
       'POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure',
+      'GET /assessments/provider-settings/proctoring',
+      'PUT /assessments/provider-settings/proctoring',
     ],
   },
 ];
@@ -685,7 +692,9 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         220 → 224 (release slice "atsux"): the two provider staff reads join the AS-5 group; the vacancy
     //         assessments editor's GET and PUT join the FIT v2 group.
     //         224 → 226 (round 12): the platform owner's binding state read and unbind join the AS-5 group.
-    expect(deployed.size).toBe(226);
+    //         226 → 228 (proctoring parity, 2026-11-11): the org's assessment security settings (GET + PUT) join
+    //         the AS-5 group.
+    expect(deployed.size).toBe(228);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -771,7 +780,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 123 → 124 (release slice "fit"): the candidate fit-scores read joins the FIT v2 group.
     // 124 → 128 (release slice "atsux"): two staff reads join the AS-5 group, the editor's two routes the FIT v2 group.
     // 128 → 130 (round 12): the binding state read and unbind join the AS-5 group.
-    expect(allowlistNormalised.length).toBe(130);
+    // 130 → 132 (proctoring parity, 2026-11-11): the org's assessment security settings join the AS-5 group.
+    expect(allowlistNormalised.length).toBe(132);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

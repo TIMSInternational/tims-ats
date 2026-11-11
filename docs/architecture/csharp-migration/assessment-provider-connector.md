@@ -323,6 +323,14 @@ cover new columns): `20261108224533_assessment_provider_consent_capture` (the co
 `ix_assessment_provider_attempts_poll`, and `age_band` with a CHECK against `18_plus`/`16_17`). Each has its own
 idempotent script in `db/manual`, applied in order.
 
+`20261111170159_assessment_provider_proctoring` (proctoring parity with tims-suite, owner decision 2026-11-11) adds
+one org-scoped table, `assessment_provider_settings` (HR's lockdown, anti-cheat threshold + consequence and identity
+check; ENABLE + FORCE RLS + `tenant_isolation`, `app_tenant` SELECT/INSERT/UPDATE only, nothing for
+`anon`/`authenticated`), and to `assessment_provider_attempts` the proctoring block sent with the assignment (a
+snapshot, so a re-sent create carries the same block), `completed_by` and `void_reason`. The identity check is held
+back by `Platform:AssessmentIdentityCheckEnabled` (default false) until TIMS approves a biometric consent text that
+describes the camera checks.
+
 ## Configuration
 
 `AssessmentProviders:*`, set out of band as App Runner env from Secrets Manager:
