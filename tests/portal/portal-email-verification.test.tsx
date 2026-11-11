@@ -66,10 +66,9 @@ describe('candidate dashboard requires a confirmed email', () => {
 
   it('passes the candidate\'s own details and the organization contact to the dashboard (C-33)', async () => {
     m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
-    const org = { id: 'org-1', name: 'Acme', isActive: true, settings: {}, billingEmail: 'rrhh@acme.test', companies: [] };
+    const org = { id: 'org-1', name: 'Acme', isActive: true, settings: { candidateContactEmail: ' Privacidad@Acme.test ' }, companies: [] };
     m.findOrg.mockResolvedValue(org);
     m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G', phone: '+506 8888 8888', location: null });
-    m.getContactEmail.mockReturnValue('rrhh@acme.test');
     const element = (await PortalDashboardPage({ params })) as {
       props: { profile: unknown; contactEmail: string | null };
     };
@@ -80,10 +79,26 @@ describe('candidate dashboard requires a confirmed email', () => {
       phone: '+506 8888 8888',
       location: null,
     });
-    expect(element.props.contactEmail).toBe('rrhh@acme.test');
-    expect(m.getContactEmail).toHaveBeenCalledWith(org);
-    // The contact is resolved from the org row, so billingEmail must be selected with it.
-    expect(m.findOrg.mock.calls[0]?.[0]).toMatchObject({ select: { settings: true, billingEmail: true } });
+    expect(element.props.contactEmail).toBe('privacidad@acme.test');
+    // The billing chain of the email Reply-To is never used for the privacy panel.
+    expect(m.getContactEmail).not.toHaveBeenCalled();
+    expect(m.findOrg.mock.calls[0]?.[0]).toMatchObject({ select: { settings: true } });
+    expect((m.findOrg.mock.calls[0]?.[0] as { select: Record<string, unknown> }).select).not.toHaveProperty('billingEmail');
+  });
+
+  it.each([
+    ['no candidate contact', {}],
+    ['a malformed one', { candidateContactEmail: 'Acme HR <hr@acme.test>' }],
+    ['a non-string one', { candidateContactEmail: 42 }],
+  ])('never shows the billing email in the privacy panel (%s): no contact instead', async (_label, settings) => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    // Even if a row still carried billingEmail, the page neither selects nor shows it.
+    m.findOrg.mockResolvedValue({ id: 'org-1', name: 'Acme', isActive: true, settings, billingEmail: 'billing@acme.test' });
+    m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G', phone: null, location: null });
+    m.getContactEmail.mockReturnValue('billing@acme.test');
+    const element = (await PortalDashboardPage({ params })) as { props: { contactEmail: string | null } };
+    expect(element.props.contactEmail).toBeNull();
+    expect(m.getContactEmail).not.toHaveBeenCalled();
   });
 
   it('has no profile without a candidate', async () => {

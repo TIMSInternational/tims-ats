@@ -7,6 +7,7 @@ import { PortalDashboardShell } from './dashboard-shell';
 import { DashboardVerifyEmail } from './dashboard-verify-email';
 import { findConsentWithdrawnAt } from './consent-status';
 import { orgSettingsTimeZone } from '../../../../../lib/candidate-format';
+import { candidatePrivacyContactEmail } from '../../../../../lib/candidate-privacy-contact';
 
 // Authenticated candidate landing. Server-resolves identity by (Supabase email) ×
 // (org from the route) → Candidate. No staff User / org-membership involved. The
@@ -24,7 +25,7 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
 
   const org = await db.organization.findUnique({
     where: { slug: orgSlug },
-    select: { id: true, name: true, isActive: true, settings: true, billingEmail: true },
+    select: { id: true, name: true, isActive: true, settings: true },
   });
   if (!org || !org.isActive) notFound();
 
@@ -55,8 +56,9 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
       // signing page) falls back to UTC.
       timeZone={orgSettingsTimeZone(org.settings)}
       profile={profile}
-      // Only a real candidate of this org gets the contact (it may be the billing email): never any signed-in visitor.
-      contactEmail={candidate ? candidatePortalService.getContactEmail(org) : null}
+      // Only a real candidate of this org gets the contact, never any signed-in visitor. Only the configured candidate
+      // contact: never the billing email (owner decision 2026-11-11); none configured = the "no contact" text.
+      contactEmail={candidate ? candidatePrivacyContactEmail(org.settings) : null}
     />
   );
 }
