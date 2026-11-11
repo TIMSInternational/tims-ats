@@ -217,26 +217,29 @@ public interface IAssessmentProviderRepository
 
     /// <summary>
     /// PRE-TENANT (only ids leave): the provider subjects that still hold a stored result in any organization, whatever
-    /// the result's age, and were never checked by the erasure sweep or last checked <paramref name="checkInterval"/> or
-    /// more ago (database clock), oldest-checked first (never-checked first of all), at most <paramref name="max"/>.
+    /// the result's age, that are due (never claimed, or <c>next_check_at</c> passed, by the database clock), least
+    /// recently ATTEMPTED first (never-attempted first of all), at most <paramref name="max"/>. Ordering by the last
+    /// attempt, not the last answer, sends a subject whose lookups keep failing to the back of the queue.
     /// </summary>
-    Task<IReadOnlyList<SubjectErasureCheck>> ListSubjectsDueForErasureCheckAsync(
-        TimeSpan checkInterval, int max, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SubjectErasureCheck>> ListSubjectsDueForErasureCheckAsync(int max, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Under the organization's tenant scope, CLAIMS one subject's check: one conditional upsert stamps
-    /// <c>last_checked_at</c> = now (database clock) only while the subject is still due, so two instances never check
-    /// the same subject in one interval. Returns the stamp it wrote, or null when the subject is not due any more.
+    /// Under the organization's tenant scope, CLAIMS one subject's check: one conditional upsert, only while the subject
+    /// is still due, stamps <c>last_attempted_at</c> = now and pushes <c>next_check_at</c> one claim lease ahead, so two
+    /// instances never check the same subject at once (a dead instance's claim simply lapses). Returns the attempt
+    /// stamp, or null when the subject is not due any more.
     /// </summary>
     Task<DateTimeOffset?> ClaimSubjectErasureCheckAsync(
-        Guid organizationId, Guid providerSubjectId, TimeSpan checkInterval, CancellationToken cancellationToken);
+        Guid organizationId, Guid providerSubjectId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Gives a claimed check back after an inconclusive lookup (an outage): <c>last_checked_at</c> returns to
-    /// <paramref name="previous"/>, only while it still holds <paramref name="claimedAt"/>, so the next run retries it.
+    /// Records a claimed check's outcome, only while the row still holds <paramref name="claimedAt"/>. Conclusive: the
+    /// subject is due again <paramref name="checkInterval"/> after the claim, failures reset. Inconclusive (an outage):
+    /// one more consecutive failure, due again after a bounded backoff
+    /// (<see cref="ProviderErasureSweepSettings.RetryBackoff"/> doubling per failure, at most the interval).
     /// </summary>
-    Task ReleaseSubjectErasureCheckAsync(
-        Guid organizationId, Guid providerSubjectId, DateTimeOffset claimedAt, DateTimeOffset? previous,
+    Task RecordSubjectErasureCheckAsync(
+        Guid organizationId, Guid providerSubjectId, DateTimeOffset claimedAt, bool conclusive, TimeSpan checkInterval,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ProviderFitRow>> GetFitRowsAsync(
@@ -491,8 +494,8 @@ public sealed record LockedLaunch(LockedLaunchOutcome Outcome, ProviderCall<Prov
 /// <summary>An attempt the D17 poller claimed, with the provider tenant its binding maps to.</summary>
 public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 
-/// <summary>A provider subject the erasure sweep should ask about, and when it was last asked (null: never).</summary>
-public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubjectId, DateTimeOffset? LastCheckedAt);
+/// <summary>A provider subject the erasure sweep should ask about, and when it was last attempted (null: never).</summary>
+public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubjectId, DateTimeOffset? LastAttemptedAt);
 
 /// <param name="ErasedSubjects">
 /// Subjects whose erasure the provider already confirmed (a recorded <c>subject.erased</c>): terminal, never exported,

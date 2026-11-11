@@ -50,7 +50,7 @@ public sealed class ProviderErasureSweepUseCaseTests
         Assert.Equal(attempt.ProviderSubjectId, Assert.Single(_repository.LocallyErasedSubjects));
         Assert.Equal("sweep", Assert.Single(_repository.EraseVia));
         Assert.Equal(ProviderAttemptStates.Erased, _repository.Attempts.Single().State);
-        Assert.Empty(_repository.ReleasedChecks);
+        Assert.True(Assert.Single(_repository.RecordedChecks).Conclusive);
         Assert.DoesNotContain("get_assignment", _provider.Calls); // the sweep never needs the assignment
     }
 
@@ -76,14 +76,16 @@ public sealed class ProviderErasureSweepUseCaseTests
 
         Assert.Equal(new ErasureSweep(1, 0, 0), outcome);
         Assert.Empty(_repository.LocallyErasedSubjects);
-        Assert.Empty(_repository.ReleasedChecks); // asked again only after the interval
+        // Conclusive: due again one interval after the claim.
+        Assert.Equal((FakeRepository.ClaimStamp, true, TimeSpan.FromDays(7)),
+            Assert.Single(_repository.RecordedChecks) is var r ? (r.ClaimedAt, r.Conclusive, r.Interval) : default);
         Assert.Equal(ProviderAttemptStates.ResultReady, _repository.Attempts.Single().State);
     }
 
     [Theory]
     [InlineData(503, ProviderFailure.Unavailable)]
     [InlineData(null, ProviderFailure.TokenUnavailable)]
-    public async Task An_inconclusive_lookup_gives_the_claim_back_so_the_next_run_asks_again(int? status, string code)
+    public async Task An_inconclusive_lookup_is_recorded_as_a_failure_for_the_backoff(int? status, string code)
     {
         var attempt = Due(lastChecked: Previous);
         _provider.OnGetSubject = _ => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(status, code, true, []));
@@ -92,8 +94,8 @@ public sealed class ProviderErasureSweepUseCaseTests
 
         Assert.Equal(new ErasureSweep(1, 0, 1), outcome);
         Assert.Empty(_repository.LocallyErasedSubjects);
-        Assert.Equal((attempt.ProviderSubjectId!.Value, FakeRepository.ClaimStamp, (DateTimeOffset?)Previous),
-            Assert.Single(_repository.ReleasedChecks));
+        Assert.Equal((attempt.ProviderSubjectId!.Value, FakeRepository.ClaimStamp, false),
+            Assert.Single(_repository.RecordedChecks) is var r ? (r.Subject, r.ClaimedAt, r.Conclusive) : default);
     }
 
     [Fact]
@@ -109,7 +111,8 @@ public sealed class ProviderErasureSweepUseCaseTests
 
         Assert.Equal(new ErasureSweep(2, 1, 1), outcome);
         Assert.Equal(second.ProviderSubjectId, Assert.Single(_repository.LocallyErasedSubjects));
-        Assert.Equal(first.ProviderSubjectId, Assert.Single(_repository.ReleasedChecks).Subject);
+        Assert.Equal([(first.ProviderSubjectId!.Value, false), (second.ProviderSubjectId!.Value, true)],
+            _repository.RecordedChecks.Select(r => (r.Subject, r.Conclusive)));
     }
 
     [Fact]
@@ -133,8 +136,9 @@ public sealed class ProviderErasureSweepUseCaseTests
 
         var outcome = await Run(new ProviderErasureSweepSettings(TimeSpan.FromDays(3), 2));
 
-        Assert.Equal((TimeSpan.FromDays(3), 2), _repository.ListedWith);
+        Assert.Equal(2, _repository.ListedWith);
         Assert.Equal(2, outcome.Checked);
+        Assert.All(_repository.RecordedChecks, r => Assert.Equal(TimeSpan.FromDays(3), r.Interval));
     }
 
     [Fact]

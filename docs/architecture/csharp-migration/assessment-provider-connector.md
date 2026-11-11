@@ -342,8 +342,10 @@ inside the 30-day revision window, so two repairs run in the poller's scheduled 
   `via: poll`);
 - the erasure sweep: every subject that still holds a stored result, whatever its age, is asked about at most once per
   `Platform:AssessmentProviderErasureCheckIntervalDays` (default 7), at most `Platform:AssessmentProviderErasureCheckMaxSubjects`
-  (default 200) per run, oldest-checked first, with the same confirmed-erasure rule (audited `via: sweep`). An outage gives
-  the claim back (asked again next tick); any other non-erasure answer keeps the stamp.
+  (default 200) per run, least-recently-attempted first, with the same confirmed-erasure rule (audited `via: sweep`). An
+  outage moves the subject to the back of the queue and makes it eligible again after a bounded backoff (15 minutes,
+  doubling, at most one interval), so a subject that always fails never starves the others; any other non-erasure answer
+  makes it due again after the interval.
 
 ## Configuration
 
@@ -556,10 +558,16 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    `20261109010328_assessment_provider_attempt_poll.sql`, `20261109011531_fit_v2_provider_recompute.sql`,
    `20261109030506_fit_v2_provider_erasure_recompute.sql`, `20261109055548_assessment_provider_queues.sql`, then
    `20261109233537_assessment_provider_round12.sql` (round 12: per-create fences, and the result trigger on DELETE), then
-   `20261110031301_assessment_provider_result_visibility.sql` (round 12: the hide fence, `result_visibility_generation`).
-2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be these
-   four tables, their policies, grants and indexes). Then run `/gate` checks 14, 16 and 17.
-   - Check 18 (`pre-flip-scan --flip-diff`) will list the four tables as "newly efcore-owned". They are new tables,
+   `20261110031301_assessment_provider_result_visibility.sql` (round 12: the hide fence, `result_visibility_generation`),
+   then `20261111170159_assessment_provider_proctoring.sql` (round 13: `assessment_provider_settings` and the attempt's
+   proctoring snapshot, `completed_by`, `void_reason`), then `20261111195336_assessment_provider_subject_checks.sql`
+   (round 13: the erasure sweep's `assessment_provider_subject_checks`). Every file is idempotent and records its
+   migration id, so re-running one is safe; skipping one is not: the code reads every table and column unconditionally.
+2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be the six
+   new tables — `assessment_provider_bindings`, `_attempts`, `_results`, `_webhook_inbox`, `_settings`,
+   `_subject_checks` — their columns, policies, grants, indexes and the FIT recompute triggers). Then run `/gate`
+   checks 14, 16 and 17.
+   - Check 18 (`pre-flip-scan --flip-diff`) will list the six tables as "newly efcore-owned". They are new tables,
      not flips.
 3. Register the ATS as an OAuth client at the provider. The provider refuses a token request for any scope the client
    was not granted (`invalid_scope`), and the ATS then gets no token at all, so grant every one:
@@ -577,7 +585,10 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    the provider signs with both secrets for 24 hours; keep the old one in `...Previous` meanwhile.
 5. Store the secrets: `AssessmentProviders__ClientSecret` and `AssessmentProviders__WebhookSigningSecret`. Watch
    for the placeholder trap. Set `AssessmentProviders__PortalBaseUrl` to the portal origin registered in step 3.
-6. Bind each org (platform owner), then set `Platform__AssessmentProvidersEnabled=true`.
+6. Bind each org (platform owner), then set `Platform__AssessmentProvidersEnabled=true`. Optional (defaults shown):
+   `Platform__AssessmentProviderErasureCheckIntervalDays=7` and `Platform__AssessmentProviderErasureCheckMaxSubjects=200`
+   (the erasure sweep's per-subject interval and per-run cap); `Platform__AssessmentIdentityCheckEnabled` stays false
+   until a biometric text describing the camera checks is approved.
 7. On Vercel, set `NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true` to show the portal section, and only if the player
    is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin). Both are build-time.
 8. Team leaders (owner default D6). The seeded `leader` role has no `assessment` grant, so a team leader sees no

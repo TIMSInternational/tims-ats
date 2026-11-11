@@ -762,26 +762,25 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     /// <summary>What the sweep's pre-tenant listing returns (the fake does not model the due predicate).</summary>
     public List<SubjectErasureCheck> DueSubjects { get; } = [];
 
-    public (TimeSpan Interval, int Max)? ListedWith { get; private set; }
+    public int? ListedWith { get; private set; }
 
     /// <summary>Subjects another instance claimed meanwhile: their claim returns null.</summary>
     public HashSet<Guid> ClaimedElsewhere { get; } = [];
 
     public List<Guid> ClaimedChecks { get; } = [];
 
-    public List<(Guid Subject, DateTimeOffset ClaimedAt, DateTimeOffset? Previous)> ReleasedChecks { get; } = [];
+    public List<(Guid Subject, DateTimeOffset ClaimedAt, bool Conclusive, TimeSpan Interval)> RecordedChecks { get; } = [];
 
     public static readonly DateTimeOffset ClaimStamp = new(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
 
-    public Task<IReadOnlyList<SubjectErasureCheck>> ListSubjectsDueForErasureCheckAsync(
-        TimeSpan checkInterval, int max, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<SubjectErasureCheck>> ListSubjectsDueForErasureCheckAsync(int max, CancellationToken cancellationToken)
     {
-        ListedWith = (checkInterval, max);
+        ListedWith = max;
         return Task.FromResult<IReadOnlyList<SubjectErasureCheck>>(DueSubjects.Take(max).ToList());
     }
 
     public Task<DateTimeOffset?> ClaimSubjectErasureCheckAsync(
-        Guid organizationId, Guid providerSubjectId, TimeSpan checkInterval, CancellationToken cancellationToken)
+        Guid organizationId, Guid providerSubjectId, CancellationToken cancellationToken)
     {
         if (ClaimedElsewhere.Contains(providerSubjectId))
         {
@@ -792,11 +791,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult<DateTimeOffset?>(ClaimStamp);
     }
 
-    public Task ReleaseSubjectErasureCheckAsync(
-        Guid organizationId, Guid providerSubjectId, DateTimeOffset claimedAt, DateTimeOffset? previous,
+    public Task RecordSubjectErasureCheckAsync(
+        Guid organizationId, Guid providerSubjectId, DateTimeOffset claimedAt, bool conclusive, TimeSpan checkInterval,
         CancellationToken cancellationToken)
     {
-        ReleasedChecks.Add((providerSubjectId, claimedAt, previous));
+        RecordedChecks.Add((providerSubjectId, claimedAt, conclusive, checkInterval));
         return Task.CompletedTask;
     }
 

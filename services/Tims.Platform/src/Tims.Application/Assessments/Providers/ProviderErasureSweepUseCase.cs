@@ -9,6 +9,12 @@ public sealed record ProviderErasureSweepSettings(TimeSpan CheckInterval, int Ma
     public const int DefaultCheckIntervalDays = 7;
     public const int DefaultMaxSubjectsPerRun = 200;
 
+    /// <summary>The first retry after an inconclusive lookup; it doubles per consecutive failure, up to the interval.</summary>
+    public static readonly TimeSpan RetryBackoff = TimeSpan.FromMinutes(15);
+
+    /// <summary>How long a claim holds a subject (a check is one provider read, bounded by the client's timeout).</summary>
+    public static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(10);
+
     public static ProviderErasureSweepSettings Default { get; } =
         new(TimeSpan.FromDays(DefaultCheckIntervalDays), DefaultMaxSubjectsPerRun);
 }
@@ -28,14 +34,16 @@ public interface IProviderErasureSweep
 /// attempts inside the 30-day revision window, so this sweep covers EVERY subject that still holds a stored result,
 /// whatever its age (an unbound binding's retained results included):
 /// <list type="number">
-/// <item>lists, pre-tenant, the subjects due for a check (never checked, or checked
-/// <see cref="ProviderErasureSweepSettings.CheckInterval"/> or more ago), oldest-checked first, at most
+/// <item>lists, pre-tenant, the subjects due for a check, least recently ATTEMPTED first, at most
 /// <see cref="ProviderErasureSweepSettings.MaxSubjectsPerRun"/>;</item>
-/// <item>per subject, under its organization's tenant scope, claims the check (a conditional stamp, so two instances never
-/// ask about one subject in one interval) and asks <c>GET /v1/subjects/{id}</c>;</item>
+/// <item>per subject, under its organization's tenant scope, claims the check (a conditional stamp with a short lease,
+/// so two instances never ask about one subject at once) and asks <c>GET /v1/subjects/{id}</c>;</item>
 /// <item>applies the confirmed-erasure rule of <see cref="ProviderSubjectErasure"/>: only a confirmed erasure runs the
-/// webhook's own local erasure (audited <c>via: sweep</c>). A definitive non-erasure keeps the stamp (asked again after
-/// the interval); an inconclusive lookup gives the claim back, so the next run (one poll tick later) asks again.</item>
+/// webhook's own local erasure (audited <c>via: sweep</c>). Any conclusive answer makes the subject due again after
+/// <see cref="ProviderErasureSweepSettings.CheckInterval"/>; an inconclusive one after a bounded backoff
+/// (<see cref="ProviderErasureSweepSettings.RetryBackoff"/>, doubling, at most the interval). Either way the claim moved
+/// the subject to the back of the queue (Codex r13 run 3: restoring a failed subject's old stamp kept it first, so a
+/// subject that always failed starved every subject behind it under the per-run cap).</item>
 /// </list>
 /// A failed subject never stops the others.
 /// </summary>
@@ -55,8 +63,7 @@ public sealed class ProviderErasureSweepUseCase(
             return new ErasureSweep(0, 0, 0);
         }
 
-        var due = await _repository.ListSubjectsDueForErasureCheckAsync(
-                _settings.CheckInterval, _settings.MaxSubjectsPerRun, cancellationToken)
+        var due = await _repository.ListSubjectsDueForErasureCheckAsync(_settings.MaxSubjectsPerRun, cancellationToken)
             .ConfigureAwait(false);
         int asked = 0, erased = 0, failed = 0;
         foreach (var subject in due)
@@ -66,7 +73,7 @@ public sealed class ProviderErasureSweepUseCase(
             try
             {
                 claimed = await _repository.ClaimSubjectErasureCheckAsync(
-                        subject.OrganizationId, subject.ProviderSubjectId, _settings.CheckInterval, cancellationToken)
+                        subject.OrganizationId, subject.ProviderSubjectId, cancellationToken)
                     .ConfigureAwait(false);
                 if (claimed is null)
                 {
@@ -76,26 +83,27 @@ public sealed class ProviderErasureSweepUseCase(
                 asked++;
                 var answer = await ProviderSubjectErasure.AskAsync(_provider, subject.ProviderSubjectId, cancellationToken)
                     .ConfigureAwait(false);
-                if (answer == SubjectErasureAnswer.Erased)
+                if (answer == SubjectErasureAnswer.Erased
+                    && await _repository.EraseSubjectAsync(subject.OrganizationId, subject.ProviderSubjectId, now,
+                        cancellationToken, via: "sweep").ConfigureAwait(false) > 0)
                 {
-                    if (await _repository.EraseSubjectAsync(subject.OrganizationId, subject.ProviderSubjectId, now,
-                            cancellationToken, via: "sweep").ConfigureAwait(false) > 0)
-                    {
-                        erased++;
-                    }
+                    erased++;
                 }
-                else if (answer == SubjectErasureAnswer.Inconclusive)
+
+                var conclusive = answer != SubjectErasureAnswer.Inconclusive;
+                if (!conclusive)
                 {
                     failed++;
-                    await ReleaseAsync(subject, claimed.Value, cancellationToken).ConfigureAwait(false);
                 }
+
+                await RecordAsync(subject, claimed.Value, conclusive, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 failed++;
                 if (claimed is { } stamp)
                 {
-                    await ReleaseAsync(subject, stamp, cancellationToken).ConfigureAwait(false);
+                    await RecordAsync(subject, stamp, conclusive: false, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -103,16 +111,17 @@ public sealed class ProviderErasureSweepUseCase(
         return new ErasureSweep(asked, erased, failed);
     }
 
-    private async Task ReleaseAsync(SubjectErasureCheck subject, DateTimeOffset claimed, CancellationToken cancellationToken)
+    private async Task RecordAsync(
+        SubjectErasureCheck subject, DateTimeOffset claimed, bool conclusive, CancellationToken cancellationToken)
     {
         try
         {
-            await _repository.ReleaseSubjectErasureCheckAsync(subject.OrganizationId, subject.ProviderSubjectId, claimed,
-                subject.LastCheckedAt, cancellationToken).ConfigureAwait(false);
+            await _repository.RecordSubjectErasureCheckAsync(subject.OrganizationId, subject.ProviderSubjectId, claimed,
+                conclusive, _settings.CheckInterval, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            // The stamp stays: the subject is asked about again after the interval instead of at the next run.
+            // The claim's lease lapses on its own (ClaimLease), and the claim already moved the subject to the back.
         }
     }
 }

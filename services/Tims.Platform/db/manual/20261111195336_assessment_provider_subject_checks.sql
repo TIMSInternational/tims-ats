@@ -7,8 +7,19 @@ BEGIN
         organization_id uuid NOT NULL,
         provider_subject_id uuid NOT NULL,
         last_checked_at timestamp with time zone,
-        CONSTRAINT "PK_assessment_provider_subject_checks" PRIMARY KEY (organization_id, provider_subject_id)
+        last_attempted_at timestamp with time zone NOT NULL,
+        next_check_at timestamp with time zone NOT NULL,
+        consecutive_failures integer NOT NULL DEFAULT 0,
+        CONSTRAINT "PK_assessment_provider_subject_checks" PRIMARY KEY (organization_id, provider_subject_id),
+        CONSTRAINT ck_assessment_provider_subject_checks_failures CHECK (consecutive_failures >= 0)
     );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261111195336_assessment_provider_subject_checks') THEN
+    CREATE INDEX ix_assessment_provider_subject_checks_next ON assessment_provider_subject_checks (next_check_at);
     END IF;
 END $EF$;
 

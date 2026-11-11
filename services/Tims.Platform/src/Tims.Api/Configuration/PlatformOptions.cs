@@ -465,7 +465,7 @@ public sealed class PlatformOptions
     public int AssessmentProviderErasureCheckIntervalDays { get; init; } = ProviderErasureSweepSettings.DefaultCheckIntervalDays;
 
     /// <summary>
-    /// The erasure sweep: the most subjects one run (one poller tick) asks about, oldest-checked first. DEFAULT 200
+    /// The erasure sweep: the most subjects one run (one poller tick) asks about, least recently attempted first. DEFAULT 200
     /// (<c>Platform__AssessmentProviderErasureCheckMaxSubjects</c>).
     /// </summary>
     [Range(1, 10_000)]

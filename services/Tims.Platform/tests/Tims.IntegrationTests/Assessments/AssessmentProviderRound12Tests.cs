@@ -393,9 +393,12 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
 
     /// <summary>A result_ready attempt with one stored result, stale enough for the revision poll to claim it.</summary>
     private async Task<(Guid Org, Guid Candidate, Guid Vacancy, Guid Attempt, Guid Subject, Guid Result)> PollableResultAsync(
-        int completedDaysAgo = 1)
+        int completedDaysAgo = 1) =>
+        await PollableResultInAsync(await OrgAsync(), completedDaysAgo);
+
+    private async Task<(Guid Org, Guid Candidate, Guid Vacancy, Guid Attempt, Guid Subject, Guid Result)> PollableResultInAsync(
+        Guid org, int completedDaysAgo)
     {
-        var org = await OrgAsync();
         var candidate = await CandidateAsync(org);
         var (attempt, subject, result, vacancy) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         await fixture.ExecuteAsync(
@@ -486,18 +489,22 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
     // ── 6. Codex r13 P1 (second pass): the erasure sweep covers results past the 30-day revision window ───────────
 
     /// <summary>
-    /// The fixture's database is shared, so every OTHER subject holding a result is stamped as just checked: the sweep's
-    /// listing then reaches exactly this test's subject, whatever else the collection stored.
+    /// The fixture's database is shared, so every OTHER subject holding a result is made not due (and recently attempted):
+    /// the sweep's listing then reaches exactly this test's subjects, whatever else the collection stored.
     /// </summary>
-    private Task OnlyThisSubjectIsDueAsync(Guid subject) =>
+    private Task OnlyTheseSubjectsAreDueAsync(IReadOnlyList<Guid> subjects) =>
         fixture.ExecuteAsync(
             $"""
-             INSERT INTO assessment_provider_subject_checks (organization_id, provider_subject_id, last_checked_at)
-             SELECT DISTINCT a.organization_id, a.provider_subject_id, now()
+             INSERT INTO assessment_provider_subject_checks (organization_id, provider_subject_id, last_attempted_at, next_check_at)
+             SELECT DISTINCT a.organization_id, a.provider_subject_id, now(), now() + interval '30 days'
                FROM assessment_provider_attempts a JOIN assessment_provider_results r ON r.attempt_id = a.id
-              WHERE a.provider_subject_id IS NOT NULL AND a.provider_subject_id <> '{subject}'
-             ON CONFLICT (organization_id, provider_subject_id) DO UPDATE SET last_checked_at = now();
+              WHERE a.provider_subject_id IS NOT NULL
+                AND a.provider_subject_id <> ALL (ARRAY[{string.Join(", ", subjects.Select(x => $"'{x}'::uuid"))}])
+             ON CONFLICT (organization_id, provider_subject_id) DO UPDATE
+                SET last_attempted_at = now(), next_check_at = now() + interval '30 days';
              """);
+
+    private Task OnlyThisSubjectIsDueAsync(Guid subject) => OnlyTheseSubjectsAreDueAsync([subject]);
 
     private Task<ErasureSweep> SweepAsync(IAssessmentProvider provider) =>
         WithRepository(r => new ProviderErasureSweepUseCase(r, provider, ProviderErasureSweepSettings.Default)
@@ -549,12 +556,15 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
                 : ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, "active")),
         };
 
-        // An outage: the claim is given back (never checked before, so the stamp returns to NULL); the next run asks again.
+        // An outage: recorded as a failure; not asked again until its backoff has passed.
         Assert.Equal(new ErasureSweep(1, 0, 1), await SweepAsync(provider));
         Assert.Equal(true, await fixture.ScalarAsync(
-            $"SELECT last_checked_at IS NULL FROM assessment_provider_subject_checks WHERE organization_id = '{org}' AND provider_subject_id = '{subject}'"));
+            $"SELECT last_checked_at IS NULL AND consecutive_failures = 1 FROM assessment_provider_subject_checks WHERE organization_id = '{org}' AND provider_subject_id = '{subject}'"));
+        Assert.Equal(new ErasureSweep(0, 0, 0), await SweepAsync(provider));
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_subject_checks SET next_check_at = now() - interval '1 second' WHERE provider_subject_id = '{subject}'");
 
-        // An active subject: the stamp stays, so the following run (well inside 7 days) does not ask again.
+        // An active subject: due again only after the interval, so the following run (well inside 7 days) does not ask.
         answer = "active";
         Assert.Equal(new ErasureSweep(1, 0, 0), await SweepAsync(provider));
         Assert.Equal(new ErasureSweep(0, 0, 0), await SweepAsync(provider));
@@ -563,8 +573,93 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
 
         // Once the interval has passed it is due again.
         await fixture.ExecuteAsync(
-            $"UPDATE assessment_provider_subject_checks SET last_checked_at = now() - interval '8 days' WHERE provider_subject_id = '{subject}'");
+            $"UPDATE assessment_provider_subject_checks SET next_check_at = now() - interval '1 second' WHERE provider_subject_id = '{subject}'");
         Assert.Equal(new ErasureSweep(1, 0, 0), await SweepAsync(provider));
+    }
+
+    [Fact]
+    public async Task A_subject_whose_lookup_always_fails_never_starves_the_others_across_capped_runs()
+    {
+        // Codex r13 run 3 P1: a failed check restored its old stamp, so under the per-run cap the same failing subject was
+        // listed first on every run and nobody behind it was ever asked. Now the claim sends it to the back of the queue.
+        var org = await OrgAsync();
+        var failing = (await PollableResultInAsync(org, completedDaysAgo: 60)).Subject;
+        var others = new List<Guid>();
+        for (var i = 0; i < 3; i++)
+        {
+            others.Add((await PollableResultInAsync(org, completedDaysAgo: 60)).Subject);
+        }
+
+        await OnlyTheseSubjectsAreDueAsync([failing, .. others]);
+        // All four are due; the failing subject is first in line (the oldest attempt of all), the others behind it.
+        await fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_subject_checks (organization_id, provider_subject_id, last_attempted_at, next_check_at)
+             VALUES ('{org}', '{failing}', now() - interval '1 year', now() - interval '1 day'),
+                    ('{org}', '{others[0]}', now() - interval '20 days', now() - interval '1 day'),
+                    ('{org}', '{others[1]}', now() - interval '19 days', now() - interval '1 day'),
+                    ('{org}', '{others[2]}', now() - interval '18 days', now() - interval '1 day');
+             """);
+        var asked = new List<Guid>();
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnGetSubject = id =>
+            {
+                asked.Add(id);
+                return id == failing
+                    ? ProviderCall<ProviderSubject>.Fail(new ProviderFailure(503, ProviderFailure.Unavailable, true, []))
+                    : ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, "active"));
+            },
+        };
+        var capOne = new ProviderErasureSweepSettings(TimeSpan.FromDays(7), 1);
+
+        for (var run = 0; run < 6; run++)
+        {
+            await WithRepository(r => new ProviderErasureSweepUseCase(r, provider, capOne).RunAsync(Now, CancellationToken.None));
+        }
+
+        Assert.Equal([failing, .. others], asked.Take(4)); // one per capped run: the failing one first, then every other
+        Assert.Equal(1, asked.Count(id => id == failing)); // and the failing one waits out its backoff meanwhile
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"""
+             SELECT count(*) FROM assessment_provider_subject_checks
+              WHERE provider_subject_id = '{failing}' AND consecutive_failures = 1 AND last_checked_at IS NULL
+                AND next_check_at BETWEEN last_attempted_at + interval '14 minutes' AND last_attempted_at + interval '16 minutes'
+             """));
+    }
+
+    [Fact]
+    public async Task The_backoff_doubles_per_consecutive_failure_and_never_exceeds_the_interval()
+    {
+        var org = await OrgAsync();
+        var subject = (await PollableResultInAsync(org, completedDaysAgo: 60)).Subject;
+        await OnlyTheseSubjectsAreDueAsync([subject]);
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnGetSubject = _ => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(503, ProviderFailure.Unavailable, true, [])),
+        };
+        var settings = new ProviderErasureSweepSettings(TimeSpan.FromHours(1), 10);
+        var waits = new List<double>();
+        for (var failure = 0; failure < 4; failure++)
+        {
+            await WithRepository(r => new ProviderErasureSweepUseCase(r, provider, settings).RunAsync(Now, CancellationToken.None));
+            waits.Add(Convert.ToDouble(await fixture.ScalarAsync(
+                $"SELECT extract(epoch FROM next_check_at - last_attempted_at) FROM assessment_provider_subject_checks WHERE provider_subject_id = '{subject}'")));
+            await fixture.ExecuteAsync(
+                $"UPDATE assessment_provider_subject_checks SET next_check_at = now() - interval '1 second' WHERE provider_subject_id = '{subject}'");
+        }
+
+        Assert.Equal([900d, 1800d, 3600d, 3600d], waits.Select(w => Math.Round(w))); // 15, 30, then capped at the 1-hour interval
+
+        // A conclusive answer resets the failures and makes it due one interval later.
+        provider.OnGetSubject = id => ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, "active"));
+        await WithRepository(r => new ProviderErasureSweepUseCase(r, provider, settings).RunAsync(Now, CancellationToken.None));
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"""
+             SELECT consecutive_failures = 0 AND last_checked_at = last_attempted_at
+                    AND next_check_at = last_attempted_at + interval '1 hour'
+               FROM assessment_provider_subject_checks WHERE provider_subject_id = '{subject}'
+             """));
     }
 
     [Fact]
@@ -587,8 +682,8 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
 
         // A claim under one org's scope writes that org's row only; another org's scope neither sees nor claims it.
         var (orgA, orgB, subject) = (await OrgAsync(), await OrgAsync(), Guid.NewGuid());
-        Assert.NotNull(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgA, subject, TimeSpan.FromDays(7), CancellationToken.None)));
-        Assert.Null(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgA, subject, TimeSpan.FromDays(7), CancellationToken.None)));
+        Assert.NotNull(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgA, subject, CancellationToken.None)));
+        Assert.Null(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgA, subject, CancellationToken.None)));
         await using (var db = fixture.NewContext())
         {
             await using var scope = await TenantScope.BeginAsync(db, orgB);
@@ -596,7 +691,7 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
             await scope.CommitAsync();
         }
 
-        Assert.NotNull(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgB, subject, TimeSpan.FromDays(7), CancellationToken.None)));
+        Assert.NotNull(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgB, subject, CancellationToken.None)));
         Assert.Equal(2L, await fixture.ScalarAsync($"SELECT count(*) FROM {table} WHERE provider_subject_id = '{subject}'"));
     }
 

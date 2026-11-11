@@ -258,12 +258,18 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
 
         modelBuilder.Entity<ProviderSubjectCheckEntity>(entity =>
         {
-            entity.ToTable(SubjectChecksTable);
+            entity.ToTable(SubjectChecksTable, t =>
+                t.HasCheckConstraint("ck_assessment_provider_subject_checks_failures", "consecutive_failures >= 0"));
             // The upsert's conflict target, led by the tenant column.
             entity.HasKey(x => new { x.OrganizationId, x.ProviderSubjectId });
             entity.Property(x => x.OrganizationId).HasColumnName("organization_id");
             entity.Property(x => x.ProviderSubjectId).HasColumnName("provider_subject_id");
             entity.Property(x => x.LastCheckedAt).HasColumnName("last_checked_at");
+            entity.Property(x => x.LastAttemptedAt).HasColumnName("last_attempted_at");
+            entity.Property(x => x.NextCheckAt).HasColumnName("next_check_at");
+            entity.Property(x => x.ConsecutiveFailures).HasColumnName("consecutive_failures").HasDefaultValue(0);
+            // The listing's due filter and order are judged per row; the table holds one row per subject ever checked.
+            entity.HasIndex(x => x.NextCheckAt).HasDatabaseName("ix_assessment_provider_subject_checks_next");
         });
 
         modelBuilder.Entity<ProviderResultEntity>(entity =>

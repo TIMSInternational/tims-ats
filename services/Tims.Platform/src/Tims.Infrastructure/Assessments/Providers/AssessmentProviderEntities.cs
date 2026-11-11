@@ -183,8 +183,17 @@ public sealed class ProviderSubjectCheckEntity
 
     public Guid ProviderSubjectId { get; set; }
 
-    /// <summary>Null only after a check was released (an inconclusive lookup on a never-checked subject).</summary>
+    /// <summary>When the provider last answered conclusively (null: never).</summary>
     public DateTime? LastCheckedAt { get; set; }
+
+    /// <summary>When the sweep last claimed the subject, whatever the answer: the queue's order (oldest first).</summary>
+    public DateTime LastAttemptedAt { get; set; }
+
+    /// <summary>When the subject is due again: the interval after an answer, a bounded backoff after an outage.</summary>
+    public DateTime NextCheckAt { get; set; }
+
+    /// <summary>Inconclusive lookups in a row (the backoff's exponent); zero after any conclusive answer.</summary>
+    public int ConsecutiveFailures { get; set; }
 }
 
 public sealed class ProviderSettingsEntity

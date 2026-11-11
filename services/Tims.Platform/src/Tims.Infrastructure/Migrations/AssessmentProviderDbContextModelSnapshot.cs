@@ -814,13 +814,33 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("provider_subject_id");
 
+                    b.Property<int>("ConsecutiveFailures")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("consecutive_failures");
+
+                    b.Property<DateTime>("LastAttemptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_attempted_at");
+
                     b.Property<DateTime?>("LastCheckedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_checked_at");
 
+                    b.Property<DateTime>("NextCheckAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_check_at");
+
                     b.HasKey("OrganizationId", "ProviderSubjectId");
 
-                    b.ToTable("assessment_provider_subject_checks", (string)null);
+                    b.HasIndex("NextCheckAt")
+                        .HasDatabaseName("ix_assessment_provider_subject_checks_next");
+
+                    b.ToTable("assessment_provider_subject_checks", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_assessment_provider_subject_checks_failures", "consecutive_failures >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Tims.Infrastructure.Assessments.Providers.ProviderVacancyRef", b =>
