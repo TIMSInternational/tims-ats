@@ -215,6 +215,30 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid providerSubjectId, DateTimeOffset now, CancellationToken cancellationToken,
         string? via = null);
 
+    /// <summary>
+    /// PRE-TENANT (only ids leave): the provider subjects that still hold a stored result in any organization, whatever
+    /// the result's age, and were never checked by the erasure sweep or last checked <paramref name="checkInterval"/> or
+    /// more ago (database clock), oldest-checked first (never-checked first of all), at most <paramref name="max"/>.
+    /// </summary>
+    Task<IReadOnlyList<SubjectErasureCheck>> ListSubjectsDueForErasureCheckAsync(
+        TimeSpan checkInterval, int max, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Under the organization's tenant scope, CLAIMS one subject's check: one conditional upsert stamps
+    /// <c>last_checked_at</c> = now (database clock) only while the subject is still due, so two instances never check
+    /// the same subject in one interval. Returns the stamp it wrote, or null when the subject is not due any more.
+    /// </summary>
+    Task<DateTimeOffset?> ClaimSubjectErasureCheckAsync(
+        Guid organizationId, Guid providerSubjectId, TimeSpan checkInterval, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gives a claimed check back after an inconclusive lookup (an outage): <c>last_checked_at</c> returns to
+    /// <paramref name="previous"/>, only while it still holds <paramref name="claimedAt"/>, so the next run retries it.
+    /// </summary>
+    Task ReleaseSubjectErasureCheckAsync(
+        Guid organizationId, Guid providerSubjectId, DateTimeOffset claimedAt, DateTimeOffset? previous,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ProviderFitRow>> GetFitRowsAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken);
 
@@ -466,6 +490,9 @@ public sealed record LockedLaunch(LockedLaunchOutcome Outcome, ProviderCall<Prov
 
 /// <summary>An attempt the D17 poller claimed, with the provider tenant its binding maps to.</summary>
 public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
+
+/// <summary>A provider subject the erasure sweep should ask about, and when it was last asked (null: never).</summary>
+public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubjectId, DateTimeOffset? LastCheckedAt);
 
 /// <param name="ErasedSubjects">
 /// Subjects whose erasure the provider already confirmed (a recorded <c>subject.erased</c>): terminal, never exported,

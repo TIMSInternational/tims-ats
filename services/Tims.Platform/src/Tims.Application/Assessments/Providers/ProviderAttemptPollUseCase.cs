@@ -211,22 +211,9 @@ public sealed class ProviderAttemptPollUseCase(
     /// audited). True when it erased something.
     /// </summary>
     private async Task<bool> ApplyConfirmedErasureAsync(
-        Guid organizationId, Guid subjectId, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var subject = await _provider.GetSubjectAsync(subjectId, cancellationToken).ConfigureAwait(false);
-        var erased = subject.Ok
-            ? subject.Value!.SubjectId == subjectId && subject.Value.Status is SubjectErasurePending or SubjectErased
-            : subject.Failure!.HttpStatus == 410 && subject.Failure.Code == SubjectErasedCode;
-        if (!erased)
-        {
-            return false;
-        }
-
-        return await _repository.EraseSubjectAsync(organizationId, subjectId, now, cancellationToken, via: "poll")
+        Guid organizationId, Guid subjectId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        await ProviderSubjectErasure.AskAsync(_provider, subjectId, cancellationToken).ConfigureAwait(false)
+            == SubjectErasureAnswer.Erased
+        && await _repository.EraseSubjectAsync(organizationId, subjectId, now, cancellationToken, via: "poll")
             .ConfigureAwait(false) > 0;
-    }
-
-    private const string SubjectErasedCode = "subject_erased";
-    private const string SubjectErasurePending = "erasure_pending";
-    private const string SubjectErased = "erased";
 }

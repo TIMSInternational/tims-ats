@@ -804,6 +804,25 @@ namespace Tims.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Tims.Infrastructure.Assessments.Providers.ProviderSubjectCheckEntity", b =>
+                {
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid>("ProviderSubjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("provider_subject_id");
+
+                    b.Property<DateTime?>("LastCheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_checked_at");
+
+                    b.HasKey("OrganizationId", "ProviderSubjectId");
+
+                    b.ToTable("assessment_provider_subject_checks", (string)null);
+                });
+
             modelBuilder.Entity("Tims.Infrastructure.Assessments.Providers.ProviderVacancyRef", b =>
                 {
                     b.Property<Guid>("Id")

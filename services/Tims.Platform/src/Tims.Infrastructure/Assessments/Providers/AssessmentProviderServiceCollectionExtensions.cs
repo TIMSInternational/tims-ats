@@ -56,6 +56,9 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddScoped<ProviderSubjectRightsUseCase>();
         services.AddScoped<IProviderWithdrawalSweep, ProviderWithdrawalSweepUseCase>();
         services.AddScoped<IProviderAttemptPoll, ProviderAttemptPollUseCase>();
+        // The documented defaults (7 days, 200 subjects); the API host replaces them with its validated Platform options.
+        services.TryAddSingleton(ProviderErasureSweepSettings.Default);
+        services.AddScoped<IProviderErasureSweep, ProviderErasureSweepUseCase>();
         services.AddScoped<IProviderAssessmentResultSource, ProviderAssessmentResultSource>();
         return services;
     }

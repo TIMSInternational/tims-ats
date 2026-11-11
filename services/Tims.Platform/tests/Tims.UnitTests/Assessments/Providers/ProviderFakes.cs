@@ -758,6 +758,48 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public List<Guid> LocallyErasedSubjects { get; } = [];
 
+    // ---- erasure sweep ------------------------------------------------------------------------------------------
+    /// <summary>What the sweep's pre-tenant listing returns (the fake does not model the due predicate).</summary>
+    public List<SubjectErasureCheck> DueSubjects { get; } = [];
+
+    public (TimeSpan Interval, int Max)? ListedWith { get; private set; }
+
+    /// <summary>Subjects another instance claimed meanwhile: their claim returns null.</summary>
+    public HashSet<Guid> ClaimedElsewhere { get; } = [];
+
+    public List<Guid> ClaimedChecks { get; } = [];
+
+    public List<(Guid Subject, DateTimeOffset ClaimedAt, DateTimeOffset? Previous)> ReleasedChecks { get; } = [];
+
+    public static readonly DateTimeOffset ClaimStamp = new(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
+
+    public Task<IReadOnlyList<SubjectErasureCheck>> ListSubjectsDueForErasureCheckAsync(
+        TimeSpan checkInterval, int max, CancellationToken cancellationToken)
+    {
+        ListedWith = (checkInterval, max);
+        return Task.FromResult<IReadOnlyList<SubjectErasureCheck>>(DueSubjects.Take(max).ToList());
+    }
+
+    public Task<DateTimeOffset?> ClaimSubjectErasureCheckAsync(
+        Guid organizationId, Guid providerSubjectId, TimeSpan checkInterval, CancellationToken cancellationToken)
+    {
+        if (ClaimedElsewhere.Contains(providerSubjectId))
+        {
+            return Task.FromResult<DateTimeOffset?>(null);
+        }
+
+        ClaimedChecks.Add(providerSubjectId);
+        return Task.FromResult<DateTimeOffset?>(ClaimStamp);
+    }
+
+    public Task ReleaseSubjectErasureCheckAsync(
+        Guid organizationId, Guid providerSubjectId, DateTimeOffset claimedAt, DateTimeOffset? previous,
+        CancellationToken cancellationToken)
+    {
+        ReleasedChecks.Add((providerSubjectId, claimedAt, previous));
+        return Task.CompletedTask;
+    }
+
     /// <summary>The <c>via</c> of every local erasure, in order (null: the webhook).</summary>
     public List<string?> EraseVia { get; } = [];
 

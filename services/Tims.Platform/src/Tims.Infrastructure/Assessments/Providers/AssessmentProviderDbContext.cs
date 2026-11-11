@@ -19,6 +19,9 @@ namespace Tims.Infrastructure.Assessments.Providers;
 /// of what each delivery did.</item>
 /// <item><c>assessment_provider_settings</c> — one per org: HR's assessment security settings (proctoring), migration
 /// <c>assessment_provider_proctoring</c>. <c>app_tenant</c> may SELECT, INSERT and UPDATE it (never DELETE).</item>
+/// <item><c>assessment_provider_subject_checks</c> — one per (org, provider subject): when the erasure sweep last asked
+/// the provider whether the subject was erased (migration <c>assessment_provider_subject_checks</c>). <c>app_tenant</c>
+/// may SELECT, INSERT and UPDATE it (never DELETE).</item>
 /// </list>
 /// It also maps Prisma-owned rows READ-ONLY (candidates, applications, vacancies, job_profiles, data_consents,
 /// organizations) and appends <c>audit_logs</c>; those are <c>ExcludeFromMigrations</c>, so the migration can never
@@ -31,6 +34,7 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
     public const string ResultsTable = "assessment_provider_results";
     public const string InboxTable = "assessment_provider_webhook_inbox";
     public const string SettingsTable = "assessment_provider_settings";
+    public const string SubjectChecksTable = "assessment_provider_subject_checks";
 
     public DbSet<ProviderBindingEntity> Bindings => Set<ProviderBindingEntity>();
 
@@ -41,6 +45,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
     public DbSet<ProviderWebhookInboxEntity> Inbox => Set<ProviderWebhookInboxEntity>();
 
     public DbSet<ProviderSettingsEntity> Settings => Set<ProviderSettingsEntity>();
+
+    public DbSet<ProviderSubjectCheckEntity> SubjectChecks => Set<ProviderSubjectCheckEntity>();
 
     public DbSet<ProviderCandidateRef> Candidates => Set<ProviderCandidateRef>();
 
@@ -248,6 +254,16 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("now()");
             // One row per organization: the upsert's conflict target, and its tenant-filter index.
             entity.HasIndex(x => x.OrganizationId).IsUnique().HasDatabaseName("ux_assessment_provider_settings_org");
+        });
+
+        modelBuilder.Entity<ProviderSubjectCheckEntity>(entity =>
+        {
+            entity.ToTable(SubjectChecksTable);
+            // The upsert's conflict target, led by the tenant column.
+            entity.HasKey(x => new { x.OrganizationId, x.ProviderSubjectId });
+            entity.Property(x => x.OrganizationId).HasColumnName("organization_id");
+            entity.Property(x => x.ProviderSubjectId).HasColumnName("provider_subject_id");
+            entity.Property(x => x.LastCheckedAt).HasColumnName("last_checked_at");
         });
 
         modelBuilder.Entity<ProviderResultEntity>(entity =>

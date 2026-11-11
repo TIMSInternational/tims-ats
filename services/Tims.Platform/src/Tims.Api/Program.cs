@@ -619,6 +619,15 @@ try
         // D17: the polling fallback. Webhooks stay the primary signal; stale attempts are re-read every 5 minutes under
         // a per-attempt lease, so two instances never poll the same attempt.
         builder.Services.AddHostedService<ProviderAttemptPollHostedService>();
+        // Codex r13 P1: the same job runs the erasure sweep after each poll (every subject holding a stored result is
+        // asked about at most once per interval), bounded by the validated Platform options.
+        builder.Services.AddSingleton(sp =>
+        {
+            var platform = sp.GetRequiredService<IOptions<PlatformOptions>>().Value;
+            return new ProviderErasureSweepSettings(
+                TimeSpan.FromDays(platform.AssessmentProviderErasureCheckIntervalDays),
+                platform.AssessmentProviderErasureCheckMaxSubjects);
+        });
         // Contract step 6: the webhook route only verifies and commits the inbox row (2xx fast); this worker applies
         // the events under per-row leases, with backoff retries, woken by the route.
         builder.Services.AddHostedService<ProviderInboxWorkerHostedService>();

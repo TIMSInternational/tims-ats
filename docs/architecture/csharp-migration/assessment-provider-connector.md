@@ -331,6 +331,20 @@ snapshot, so a re-sent create carries the same block), `completed_by` and `void_
 back by `Platform:AssessmentIdentityCheckEnabled` (default false) until TIMS approves a biometric consent text that
 describes the camera checks.
 
+`20261111195336_assessment_provider_subject_checks` (Codex r13 P1) adds one org-scoped table,
+`assessment_provider_subject_checks` (one row per org and provider subject: `last_checked_at`; ENABLE + FORCE RLS +
+`tenant_isolation`, `app_tenant` SELECT/INSERT/UPDATE only, nothing for `anon`/`authenticated`). A lost or exhausted
+`subject.erased` must not leave an erased subject's scores with staff and FIT, and the D17 poller only re-reads attempts
+inside the 30-day revision window, so two repairs run in the poller's scheduled job:
+
+- the poller: a definitive 404/410 on `getAssignment` is checked with `GET /v1/subjects/{id}`; a confirmed erasure (410
+  `subject_erased`, or the same subject reported `erasure_pending`/`erased`) runs the webhook's local erasure (audited
+  `via: poll`);
+- the erasure sweep: every subject that still holds a stored result, whatever its age, is asked about at most once per
+  `Platform:AssessmentProviderErasureCheckIntervalDays` (default 7), at most `Platform:AssessmentProviderErasureCheckMaxSubjects`
+  (default 200) per run, oldest-checked first, with the same confirmed-erasure rule (audited `via: sweep`). An outage gives
+  the claim back (asked again next tick); any other non-erasure answer keeps the stamp.
+
 ## Configuration
 
 `AssessmentProviders:*`, set out of band as App Runner env from Secrets Manager:

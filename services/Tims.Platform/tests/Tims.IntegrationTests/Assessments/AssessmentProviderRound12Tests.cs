@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 using Tims.Application.Assessments.Providers;
 using Tims.Domain.Assessments.Providers;
+using Tims.Infrastructure;
 using Tims.Infrastructure.Assessments.Providers;
 
 namespace Tims.IntegrationTests.Assessments;
@@ -390,7 +392,8 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
     // ── 5. Codex r13 P1: a provider erasure whose subject.erased never arrived is applied by the poller ──────────────
 
     /// <summary>A result_ready attempt with one stored result, stale enough for the revision poll to claim it.</summary>
-    private async Task<(Guid Org, Guid Candidate, Guid Vacancy, Guid Attempt, Guid Subject, Guid Result)> PollableResultAsync()
+    private async Task<(Guid Org, Guid Candidate, Guid Vacancy, Guid Attempt, Guid Subject, Guid Result)> PollableResultAsync(
+        int completedDaysAgo = 1)
     {
         var org = await OrgAsync();
         var candidate = await CandidateAsync(org);
@@ -402,7 +405,7 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
                  latest_result_id, assigned_by_id, age_band, completed_at, updated_at)
              VALUES ('{attempt}', '{org}', '{org}', '{candidate}', '{vacancy}', 'lia', 'result_ready',
                  'selection', 'Análisis de datos', 'es', 1, '{subject}', gen_random_uuid(), '{result}', gen_random_uuid(), '18_plus',
-                 now() - interval '1 day', now() - interval '7 hours');
+                 now() - make_interval(days => {completedDaysAgo}), now() - interval '7 hours');
              INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
                  result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version,
                  scoring_method, purpose, validity_status, completion, global_percentile, time_multiplier_applied,
@@ -478,6 +481,123 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
             await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None))).ProviderResultId);
         Assert.Equal(0L, await fixture.ScalarAsync(
             $"SELECT count(*) FROM audit_logs WHERE organization_id = '{org}' AND action = 'assessment_provider_subject_erased'"));
+    }
+
+    // ── 6. Codex r13 P1 (second pass): the erasure sweep covers results past the 30-day revision window ───────────
+
+    /// <summary>
+    /// The fixture's database is shared, so every OTHER subject holding a result is stamped as just checked: the sweep's
+    /// listing then reaches exactly this test's subject, whatever else the collection stored.
+    /// </summary>
+    private Task OnlyThisSubjectIsDueAsync(Guid subject) =>
+        fixture.ExecuteAsync(
+            $"""
+             INSERT INTO assessment_provider_subject_checks (organization_id, provider_subject_id, last_checked_at)
+             SELECT DISTINCT a.organization_id, a.provider_subject_id, now()
+               FROM assessment_provider_attempts a JOIN assessment_provider_results r ON r.attempt_id = a.id
+              WHERE a.provider_subject_id IS NOT NULL AND a.provider_subject_id <> '{subject}'
+             ON CONFLICT (organization_id, provider_subject_id) DO UPDATE SET last_checked_at = now();
+             """);
+
+    private Task<ErasureSweep> SweepAsync(IAssessmentProvider provider) =>
+        WithRepository(r => new ProviderErasureSweepUseCase(r, provider, ProviderErasureSweepSettings.Default)
+            .RunAsync(Now, CancellationToken.None));
+
+    [Fact]
+    public async Task A_lost_subject_erased_for_a_result_older_than_the_revision_window_is_erased_by_the_sweep()
+    {
+        var (org, candidate, vacancy, attempt, subject, result) = await PollableResultAsync(completedDaysAgo: 45);
+        await OnlyThisSubjectIsDueAsync(subject);
+        // The D17 poller cannot reach it: past the 30-day window the attempt is not claimable at all.
+        Assert.Empty(await WithRepository(r => r.ClaimPollableAttemptsAsync(org, Guid.NewGuid(), 5, CancellationToken.None)));
+        Assert.Equal(result, Assert.Single(
+            await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None))).ProviderResultId);
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnGetSubject = id => id == subject
+                ? ProviderCall<ProviderSubject>.Fail(new ProviderFailure(410, "subject_erased", false, []))
+                : ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, "active")),
+        };
+
+        var outcome = await SweepAsync(provider);
+
+        Assert.Equal((1, 1, 0), (outcome.Checked, outcome.Erased, outcome.Failed));
+        Assert.Equal(0L, await fixture.ScalarAsync($"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+        Assert.Equal("erased", await fixture.ScalarAsync($"SELECT state FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        var after = Assert.Single(await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None)));
+        Assert.Null(after.ProviderResultId);
+        Assert.Null(after.GlobalPercentile);
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"""
+             SELECT count(*) FROM audit_logs WHERE organization_id = '{org}' AND action = 'assessment_provider_subject_erased'
+                AND entity_id = '{attempt}' AND metadata::jsonb ->> 'via' = 'sweep'
+             """));
+        // With no stored result left, the subject is never listed again.
+        Assert.Equal(new ErasureSweep(0, 0, 0), await SweepAsync(provider));
+    }
+
+    [Fact]
+    public async Task The_sweep_asks_about_a_subject_once_per_interval_and_an_outage_gives_the_check_back()
+    {
+        var (org, candidate, vacancy, _, subject, result) = await PollableResultAsync(completedDaysAgo: 90);
+        await OnlyThisSubjectIsDueAsync(subject);
+        var answer = "503";
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnGetSubject = id => answer == "503"
+                ? ProviderCall<ProviderSubject>.Fail(new ProviderFailure(503, ProviderFailure.Unavailable, true, []))
+                : ProviderCall<ProviderSubject>.Success(new ProviderSubject(id, "active")),
+        };
+
+        // An outage: the claim is given back (never checked before, so the stamp returns to NULL); the next run asks again.
+        Assert.Equal(new ErasureSweep(1, 0, 1), await SweepAsync(provider));
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT last_checked_at IS NULL FROM assessment_provider_subject_checks WHERE organization_id = '{org}' AND provider_subject_id = '{subject}'"));
+
+        // An active subject: the stamp stays, so the following run (well inside 7 days) does not ask again.
+        answer = "active";
+        Assert.Equal(new ErasureSweep(1, 0, 0), await SweepAsync(provider));
+        Assert.Equal(new ErasureSweep(0, 0, 0), await SweepAsync(provider));
+        Assert.Equal(result, Assert.Single(
+            await WithRepository(r => r.GetFitRowsAsync(org, candidate, vacancy, CancellationToken.None))).ProviderResultId);
+
+        // Once the interval has passed it is due again.
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_subject_checks SET last_checked_at = now() - interval '8 days' WHERE provider_subject_id = '{subject}'");
+        Assert.Equal(new ErasureSweep(1, 0, 0), await SweepAsync(provider));
+    }
+
+    [Fact]
+    public async Task The_subject_checks_table_forces_rls_grants_no_delete_and_hides_other_orgs()
+    {
+        const string table = AssessmentProviderDbContext.SubjectChecksTable;
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname = '{table}' AND relkind = 'r'"));
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM pg_policies WHERE tablename = '{table}' AND policyname = 'tenant_isolation'"));
+        foreach (var role in new[] { "anon", "authenticated" })
+        {
+            foreach (var privilege in new[] { "SELECT", "INSERT", "UPDATE", "DELETE" })
+            {
+                Assert.Equal(false, await fixture.ScalarAsync($"SELECT has_table_privilege('{role}', '{table}', '{privilege}')"));
+            }
+        }
+
+        Assert.Equal(false, await fixture.ScalarAsync($"SELECT has_table_privilege('app_tenant', '{table}', 'DELETE')"));
+
+        // A claim under one org's scope writes that org's row only; another org's scope neither sees nor claims it.
+        var (orgA, orgB, subject) = (await OrgAsync(), await OrgAsync(), Guid.NewGuid());
+        Assert.NotNull(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgA, subject, TimeSpan.FromDays(7), CancellationToken.None)));
+        Assert.Null(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgA, subject, TimeSpan.FromDays(7), CancellationToken.None)));
+        await using (var db = fixture.NewContext())
+        {
+            await using var scope = await TenantScope.BeginAsync(db, orgB);
+            Assert.False(await db.SubjectChecks.AnyAsync(c => c.ProviderSubjectId == subject));
+            await scope.CommitAsync();
+        }
+
+        Assert.NotNull(await WithRepository(r => r.ClaimSubjectErasureCheckAsync(orgB, subject, TimeSpan.FromDays(7), CancellationToken.None)));
+        Assert.Equal(2L, await fixture.ScalarAsync($"SELECT count(*) FROM {table} WHERE provider_subject_id = '{subject}'"));
     }
 
     [Fact]

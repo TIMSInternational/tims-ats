@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Tims.Application.Assessments.Providers;
 
 namespace Tims.Api.Configuration;
 
@@ -453,6 +454,22 @@ public sealed class PlatformOptions
     /// anti-cheat do not depend on it. Enable with <c>Platform__AssessmentIdentityCheckEnabled=true</c>.
     /// </summary>
     public bool AssessmentIdentityCheckEnabled { get; init; }
+
+    /// <summary>
+    /// The erasure sweep (Codex r13 P1): how many days pass before the sweep asks the provider (<c>getSubject</c>) again
+    /// whether a subject that still holds stored results was erased, so a lost <c>subject.erased</c> never leaves the
+    /// scores with staff and FIT. Runs in the D17 poller's scheduled job (only when
+    /// <see cref="AssessmentProvidersEnabled"/> is on). DEFAULT 7 (<c>Platform__AssessmentProviderErasureCheckIntervalDays</c>).
+    /// </summary>
+    [Range(1, 365)]
+    public int AssessmentProviderErasureCheckIntervalDays { get; init; } = ProviderErasureSweepSettings.DefaultCheckIntervalDays;
+
+    /// <summary>
+    /// The erasure sweep: the most subjects one run (one poller tick) asks about, oldest-checked first. DEFAULT 200
+    /// (<c>Platform__AssessmentProviderErasureCheckMaxSubjects</c>).
+    /// </summary>
+    [Range(1, 10_000)]
+    public int AssessmentProviderErasureCheckMaxSubjects { get; init; } = ProviderErasureSweepSettings.DefaultMaxSubjectsPerRun;
 
     /// <summary>
     /// Phase-5 Slice 16 (efcoreStranglerWrite): when true, the C# engagement WRITE surface is mapped and live — the

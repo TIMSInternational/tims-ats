@@ -173,6 +173,20 @@ public sealed class ProviderAttemptEntity
 /// One organization's assessment security settings (tims-suite parity): lockdown, anti-cheat threshold and consequence
 /// (both null = not enforced) and the identity check. Written by HR through the tenant connection.
 /// </summary>
+/// <summary>
+/// When the erasure sweep last asked the provider (<c>getSubject</c>) whether one provider subject was erased. One row per
+/// (organization, subject); the subject's results live on its attempts.
+/// </summary>
+public sealed class ProviderSubjectCheckEntity
+{
+    public Guid OrganizationId { get; set; }
+
+    public Guid ProviderSubjectId { get; set; }
+
+    /// <summary>Null only after a check was released (an inconclusive lookup on a never-checked subject).</summary>
+    public DateTime? LastCheckedAt { get; set; }
+}
+
 public sealed class ProviderSettingsEntity
 {
     public Guid Id { get; set; }

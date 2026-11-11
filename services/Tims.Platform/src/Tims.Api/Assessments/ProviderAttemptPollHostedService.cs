@@ -12,6 +12,11 @@ namespace Tims.Api.Assessments;
 /// the database clock), so two instances never poll the same attempt at once. <see cref="Owner"/> is this process's lease
 /// owner id; an instance that dies mid-run frees its leases when they expire.</para>
 ///
+/// <para>Each tick then runs the <see cref="IProviderErasureSweep"/> (Codex r13 P1), in its own scope and its own catch, so
+/// a failed poll never skips it: every subject that still holds a stored result is asked about at most once per
+/// configured interval, whatever the result's age. Two instances never ask about one subject in one interval (each
+/// check is claimed with a conditional stamp).</para>
+///
 /// <para>As in <see cref="ProviderWithdrawalSweepHostedService"/>, the catch-all is load-bearing: an exception escaping
 /// <c>ExecuteAsync</c> stops the WHOLE host. A failed run is logged and retried at the next tick. The DI graph is resolved
 /// once at start, so a broken registration fails the deploy instead of every tick.</para>
@@ -41,6 +46,7 @@ public sealed class ProviderAttemptPollHostedService(
         await using (var scope = _scopeFactory.CreateAsyncScope())
         {
             _ = scope.ServiceProvider.GetRequiredService<IProviderAttemptPoll>();
+            _ = scope.ServiceProvider.GetRequiredService<IProviderErasureSweep>();
         }
 
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -84,6 +90,39 @@ public sealed class ProviderAttemptPollHostedService(
             {
                 // Leases expire on their own; the next tick retries. NEVER rethrow (see the class docblock).
                 _logger.LogError(ex, "assessment provider poll failed; retrying in {Interval}", Interval);
+            }
+
+            if (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var sweep = scope.ServiceProvider.GetRequiredService<IProviderErasureSweep>();
+                var outcome = await sweep.RunAsync(_timeProvider.GetUtcNow(), stoppingToken).ConfigureAwait(false);
+                if (outcome.Failed > 0)
+                {
+                    _logger.LogWarning(
+                        "assessment provider erasure sweep: {Checked} subject(s) checked, {Erased} erased, {Failed} failed",
+                        outcome.Checked, outcome.Erased, outcome.Failed);
+                }
+                else if (outcome.Erased > 0)
+                {
+                    _logger.LogInformation(
+                        "assessment provider erasure sweep: {Checked} subject(s) checked, {Erased} erased",
+                        outcome.Checked, outcome.Erased);
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                // A claimed check stays stamped; that subject is asked again after the interval. NEVER rethrow.
+                _logger.LogError(ex, "assessment provider erasure sweep failed; retrying in {Interval}", Interval);
             }
         }
     }

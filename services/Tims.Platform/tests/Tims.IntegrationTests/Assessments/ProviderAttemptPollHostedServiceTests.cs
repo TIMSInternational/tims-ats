@@ -33,6 +33,40 @@ public sealed class ProviderAttemptPollHostedServiceTests
         Assert.NotEqual(Guid.Empty, service.Owner);
     }
 
+    // Codex r13 P1: the same job runs the erasure sweep each tick, and a failing poll (or a failing sweep) never stops it.
+    [Fact]
+    public async Task Every_tick_runs_the_erasure_sweep_even_when_the_poll_fails()
+    {
+        var poll = new ScriptedPoll { FailFirstCalls = 100 };
+        var sweep = new ScriptedSweep { FailFirstCalls = 1 };
+        var service = Build(poll, TimeSpan.FromMilliseconds(30), sweep);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitUntilAsync(() => sweep.Calls >= 3, TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        Assert.True(sweep.Calls >= 3, $"the sweep ran {sweep.Calls} time(s)");
+    }
+
+    [Fact]
+    public async Task A_missing_erasure_sweep_registration_fails_the_start()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IProviderAttemptPoll>(_ => new ScriptedPoll());
+        var provider = services.BuildServiceProvider();
+        var service = new ProviderAttemptPollHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System,
+            NullLogger<ProviderAttemptPollHostedService>.Instance, TimeSpan.FromMilliseconds(10));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
+    }
+
     [Fact]
     public async Task No_poll_runs_before_the_first_tick()
     {
@@ -68,10 +102,11 @@ public sealed class ProviderAttemptPollHostedServiceTests
         Assert.NotEqual(a.Owner, b.Owner);
     }
 
-    private static ProviderAttemptPollHostedService Build(ScriptedPoll poll, TimeSpan tick)
+    private static ProviderAttemptPollHostedService Build(ScriptedPoll poll, TimeSpan tick, ScriptedSweep? sweep = null)
     {
         var services = new ServiceCollection();
         services.AddScoped<IProviderAttemptPoll>(_ => poll);
+        services.AddScoped<IProviderErasureSweep>(_ => sweep ?? new ScriptedSweep());
         var provider = services.BuildServiceProvider();
         return new ProviderAttemptPollHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System,
@@ -84,6 +119,23 @@ public sealed class ProviderAttemptPollHostedServiceTests
         while (!condition() && DateTime.UtcNow < deadline)
         {
             await Task.Delay(25);
+        }
+    }
+
+    private sealed class ScriptedSweep : IProviderErasureSweep
+    {
+        private int _calls;
+
+        public int FailFirstCalls { get; init; }
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<ErasureSweep> RunAsync(DateTimeOffset now, CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref _calls);
+            return call <= FailFirstCalls
+                ? throw new InvalidOperationException("provider down")
+                : Task.FromResult(new ErasureSweep(0, 0, 0));
         }
     }
 
