@@ -31,9 +31,37 @@ describe('chooseLaunchTarget', () => {
     expect(chooseLaunchTarget(launch, PORTAL, player)).toEqual({ kind: 'navigate', url: launch.hostedUrl });
   });
 
-  it('never frames a link-out provider page, even when everything else allows it', () => {
+  it('never frames a link-out provider page when no provider frame origin is configured', () => {
     const launch = { delivery: 'link_out' as const, hostedUrl: `${PLAYER}/pca/1`, frameAncestors: [PORTAL] };
     expect(chooseLaunchTarget(launch, PORTAL, PLAYER)).toEqual({ kind: 'navigate', url: launch.hostedUrl });
+  });
+
+  // PCA, framed the way timssuite.com frames it: the provider's own site, sandboxed, only on the configured origin.
+  const PROVIDER = 'https://timshr.example.test';
+  const linkOut = (hostedUrl: string) => ({ delivery: 'link_out' as const, hostedUrl, frameAncestors: [] });
+
+  it('frames a link-out page on the configured provider frame origin, sandboxed', () => {
+    expect(chooseLaunchTarget(linkOut(`${PROVIDER}/surveys/?SCId=1`), PORTAL, PLAYER, PROVIDER)).toEqual({
+      kind: 'iframe',
+      url: `${PROVIDER}/surveys/?SCId=1`,
+      sandboxed: true,
+    });
+  });
+
+  it.each([
+    ['the page is on another origin', linkOut('https://elsewhere.test/surveys/1'), PROVIDER],
+    ['the provider frame origin is http', linkOut(`${PROVIDER}/surveys/1`), 'http://timshr.example.test'],
+    ['the provider frame origin is not a URL', linkOut(`${PROVIDER}/surveys/1`), 'timshr'],
+    ['the player origin is the only one configured', linkOut(`${PLAYER}/pca/1`), undefined],
+  ])('links out of a provider page when %s', (_why, launch, provider) => {
+    expect(chooseLaunchTarget(launch, PORTAL, PLAYER, provider)).toEqual({ kind: 'navigate', url: launch.hostedUrl });
+  });
+
+  it('never frames a native launch on the provider frame origin', () => {
+    expect(chooseLaunchTarget(native(`${PROVIDER}/launch/c1`, [PORTAL]), PORTAL, PLAYER, PROVIDER)).toEqual({
+      kind: 'navigate',
+      url: `${PROVIDER}/launch/c1`,
+    });
   });
 
   it.each(['http://player.timssuite.test/launch/c1', 'javascript:alert(1)', 'not a url'])(
@@ -64,6 +92,19 @@ describe('framing the player is allowed only for the configured https origin', (
     expect(directive(withPlayer, 'frame-src').split(' ')).toContain(PLAYER);
     expect(directive(without, 'frame-src')).not.toContain('player');
     expect(withPlayer).toContain("frame-ancestors 'none'"); // the portal itself is never framed
+  });
+
+  it('adds the provider frame origin (PCA) to frame-src, and nothing when unset', () => {
+    const provider = 'https://timshr.example.test';
+    const withProvider = buildCsp(
+      'n',
+      '/careers/acme/dashboard',
+      { platformApi: '', cvUpload: '', assessmentProviderFrame: provider },
+      true,
+    );
+    expect(directive(withProvider, 'frame-src').split(' ')).toContain(provider);
+    expect(directive(withProvider, 'frame-src')).not.toContain('player');
+    expect(withProvider).toContain("frame-ancestors 'none'");
   });
 
   it('takes only an https origin from the env value', () => {

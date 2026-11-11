@@ -19,7 +19,8 @@ public sealed record StaffResultRecord(
     string? Cefr,
     int? Level,
     decimal TimeMultiplierApplied,
-    DateTimeOffset CompletedAt);
+    DateTimeOffset CompletedAt,
+    string? ScoresJson = null);
 
 public sealed record StaffAttemptRecord(
     AttemptRow Attempt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, StaffResultRecord? Result);
@@ -78,7 +79,9 @@ public sealed record StaffCatalogResult(StaffReadOutcome Outcome, StaffCatalog? 
 /// <summary>
 /// A result as staff see it. Owner default D6: a reader below company scope gets <see cref="Minimum"/> (met / not met /
 /// unknown) and never the level behind it (<see cref="GlobalPercentile"/>, <see cref="Cefr"/>, <see cref="Level"/> and
-/// <see cref="ValidityReasons"/> are null for them).
+/// <see cref="ValidityReasons"/> are null for them). <see cref="Profile"/> (the shape behind the result: LIA subtests,
+/// English skills, Personality dimensions, PCA's DISC graphs and competencies) is for company-scope readers and only on a
+/// valid result: a narrow reader, a result under review and a voided one get null.
 /// </summary>
 public sealed record StaffProviderResult(
     string Validity,
@@ -91,7 +94,8 @@ public sealed record StaffProviderResult(
     int? Level,
     string InstrumentVersion,
     string? NormVersion,
-    string CompletedAt);
+    string CompletedAt,
+    ProviderResultProfile? Profile = null);
 
 /// <summary>
 /// One attempt as staff see it: the status chip (<see cref="ProviderStaffStatuses"/>), how the vacancy counts the
@@ -257,7 +261,8 @@ public sealed class ProviderStaffReadUseCase(
                 hidesLevels ? null : result.Level,
                 result.InstrumentVersion,
                 result.NormVersion,
-                Format(result.CompletedAt));
+                Format(result.CompletedAt),
+                hidesLevels || valid != true ? null : ProviderResultProfiles.Parse(a.Instrument, result.ScoresJson));
         }
 
         return new StaffProviderAttempt(

@@ -12836,6 +12836,53 @@
           }
         }
       },
+      "DiscGraphScore": {
+        "required": [
+          "graph",
+          "d",
+          "i",
+          "s",
+          "c"
+        ],
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string"
+          },
+          "d": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "i": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "s": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "c": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "EmployeeDetailEvaluation": {
         "required": [
           "id",
@@ -13057,6 +13104,76 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "EnglishProfile": {
+        "required": [
+          "overallCefr",
+          "overallScorePct",
+          "skills"
+        ],
+        "type": "object",
+        "properties": {
+          "overallCefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "overallScorePct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnglishSkillScore"
+            }
+          }
+        }
+      },
+      "EnglishSkillScore": {
+        "required": [
+          "skill",
+          "assessed",
+          "cefr",
+          "scorePct",
+          "notAssessedReason"
+        ],
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string"
+          },
+          "assessed": {
+            "type": "boolean"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scorePct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "notAssessedReason": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -15114,6 +15231,79 @@
           }
         }
       },
+      "LiaProfile": {
+        "required": [
+          "globalPercentile",
+          "globalLevel",
+          "normStatus",
+          "subtests"
+        ],
+        "type": "object",
+        "properties": {
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "globalLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "normStatus": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "subtests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiaSubtestScore"
+            }
+          }
+        }
+      },
+      "LiaSubtestScore": {
+        "required": [
+          "subtest",
+          "percentile",
+          "level",
+          "completion"
+        ],
+        "type": "object",
+        "properties": {
+          "subtest": {
+            "type": "string"
+          },
+          "percentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "level": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "ListCriticalRoleRow": {
         "required": [
           "id",
@@ -16127,6 +16317,67 @@
           }
         }
       },
+      "PcaCompetencyScore": {
+        "required": [
+          "code",
+          "name",
+          "level",
+          "scaleMax"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scaleMax": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PcaProfile": {
+        "required": [
+          "primaryGraph",
+          "graphs",
+          "competencies"
+        ],
+        "type": "object",
+        "properties": {
+          "primaryGraph": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "graphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscGraphScore"
+            }
+          },
+          "competencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PcaCompetencyScore"
+            }
+          }
+        }
+      },
       "PendingEssay": {
         "required": [
           "questionId",
@@ -16193,6 +16444,84 @@
           },
           "endsAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "PersonalityDimensionScore": {
+        "required": [
+          "dimension",
+          "firstPole",
+          "secondPole",
+          "firstCount",
+          "secondCount",
+          "preferredPole",
+          "clarityPct",
+          "balanced"
+        ],
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string"
+          },
+          "firstPole": {
+            "type": "string"
+          },
+          "secondPole": {
+            "type": "string"
+          },
+          "firstCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "secondCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "preferredPole": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clarityPct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "balanced": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PersonalityProfile": {
+        "required": [
+          "variant",
+          "dimensions"
+        ],
+        "type": "object",
+        "properties": {
+          "variant": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalityDimensionScore"
+            }
           }
         }
       },
@@ -17081,6 +17410,51 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "ProviderResultProfile": {
+        "type": "object",
+        "properties": {
+          "lia": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LiaProfile"
+              }
+            ]
+          },
+          "english": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EnglishProfile"
+              }
+            ]
+          },
+          "personality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonalityProfile"
+              }
+            ]
+          },
+          "pca": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PcaProfile"
+              }
+            ]
           }
         }
       },
@@ -18332,6 +18706,16 @@
           },
           "completedAt": {
             "type": "string"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderResultProfile"
+              }
+            ]
           }
         }
       },

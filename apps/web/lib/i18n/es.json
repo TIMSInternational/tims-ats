@@ -1416,7 +1416,13 @@
     "phaseDay90": "Día 90+",
     "tasks": "tareas completadas",
     "tasksByResponsible": "Tareas por Responsable",
-    "ownerLabels": { "hr": "RRHH", "it": "TI", "manager": "Jefatura", "buddy": "Compañero guía", "employee": "Nuevo colaborador" },
+    "ownerLabels": {
+      "hr": "RRHH",
+      "it": "TI",
+      "manager": "Jefatura",
+      "buddy": "Compañero guía",
+      "employee": "Nuevo colaborador"
+    },
     "ownerUnassigned": "Sin responsable",
     "tasksDoneOfTotal": "{done}/{total} completadas",
     "lowestProgressAlert": "Alerta: {owner} tiene el menor avance ({pct}%).",
@@ -2122,7 +2128,12 @@
     "readOnlyNotice": "Vista de consulta: las postulaciones rechazadas o contratadas no se mueven ni se rechazan.",
     "noRejectedCandidates": "No hay candidatos rechazados en esta vacante",
     "rejectedOn": "Rechazado el {date}",
-    "applicationStatus": {"active": "Activo", "rejected": "Rechazado", "withdrawn": "Retirado", "hired": "Contratado"},
+    "applicationStatus": {
+      "active": "Activo",
+      "rejected": "Rechazado",
+      "withdrawn": "Retirado",
+      "hired": "Contratado"
+    },
     "advance": "Avanzar →",
     "viewProfile": "Ver perfil",
     "fitScore": "Puntuación FIT",
@@ -2345,14 +2356,38 @@
     "competencySuggestionsNone": "La IA no sugirió competencias nuevas.",
     "competencyLevelBadge": "Nivel {n}/{max}",
     "competencyCatalog": {
-      "leadership": { "name": "Liderazgo", "description": "Orienta y motiva al equipo hacia los objetivos y asume la responsabilidad de los resultados." },
-      "analytical": { "name": "Pensamiento analítico", "description": "Descompone problemas, usa datos y llega a conclusiones fundamentadas." },
-      "communication": { "name": "Comunicación", "description": "Se expresa con claridad, escucha y adapta el mensaje a su audiencia." },
-      "problem_solving": { "name": "Resolución de problemas", "description": "Identifica la causa de un problema y propone soluciones viables." },
-      "collaboration": { "name": "Colaboración", "description": "Trabaja con otros, comparte información y contribuye a metas comunes." },
-      "execution": { "name": "Ejecución", "description": "Planifica, prioriza y cumple lo comprometido con calidad y a tiempo." },
-      "adaptability": { "name": "Adaptabilidad", "description": "Se ajusta a cambios y nuevas situaciones manteniendo su desempeño." },
-      "integrity": { "name": "Integridad", "description": "Actúa con honestidad y coherencia, y cumple las normas y compromisos." }
+      "leadership": {
+        "name": "Liderazgo",
+        "description": "Orienta y motiva al equipo hacia los objetivos y asume la responsabilidad de los resultados."
+      },
+      "analytical": {
+        "name": "Pensamiento analítico",
+        "description": "Descompone problemas, usa datos y llega a conclusiones fundamentadas."
+      },
+      "communication": {
+        "name": "Comunicación",
+        "description": "Se expresa con claridad, escucha y adapta el mensaje a su audiencia."
+      },
+      "problem_solving": {
+        "name": "Resolución de problemas",
+        "description": "Identifica la causa de un problema y propone soluciones viables."
+      },
+      "collaboration": {
+        "name": "Colaboración",
+        "description": "Trabaja con otros, comparte información y contribuye a metas comunes."
+      },
+      "execution": {
+        "name": "Ejecución",
+        "description": "Planifica, prioriza y cumple lo comprometido con calidad y a tiempo."
+      },
+      "adaptability": {
+        "name": "Adaptabilidad",
+        "description": "Se ajusta a cambios y nuevas situaciones manteniendo su desempeño."
+      },
+      "integrity": {
+        "name": "Integridad",
+        "description": "Actúa con honestidad y coherencia, y cumple las normas y compromisos."
+      }
     },
     "requirements": "Requisitos y Descripción",
     "mandatoryReqs": "Requisitos Excluyentes",
@@ -3886,6 +3921,11 @@
     "providerInstrumentMi": "Inteligencias múltiples",
     "providerInstrumentPca": "Perfil conductual",
     "providerInstrumentOther": "Evaluación",
+    "providerDescriptionLia": "Habilidades cognitivas para el trabajo. Secciones con tiempo.",
+    "providerDescriptionEnglish": "Su nivel de inglés profesional (de A1 a C2).",
+    "providerDescriptionPersonality": "Su estilo de trabajo. No hay respuestas correctas ni incorrectas.",
+    "providerDescriptionPca": "Su perfil conductual (DISC), en el sitio de TIMS.",
+    "providerDescriptionOther": "Una evaluación en línea.",
     "providerStatusConsentNeeded": "Requiere su consentimiento",
     "providerStatusReady": "Lista para comenzar",
     "providerStatusInProgress": "En curso",
@@ -3987,6 +4027,7 @@
   },
   "assessments": {
     "assignAssessment": "Asignar evaluación",
+    "assignOwnQuiz": "Asignar un cuestionario propio",
     "title": "Autoría de Evaluaciones",
     "subtitle": "Crea y administra las preguntas que responderán los candidatos.",
     "selectType": "Tipo de evaluación",
@@ -4747,7 +4788,13 @@
     "noCheckIns": "No hay check-ins programados",
     "labels": {
       "phases": { "day1_30": "Día 1-30", "day31_60": "Día 31-60", "day61_90": "Día 61-90" },
-      "owners": { "hr": "Recursos Humanos", "it": "TI", "manager": "Jefatura", "buddy": "Compañero guía", "employee": "Tú" },
+      "owners": {
+        "hr": "Recursos Humanos",
+        "it": "TI",
+        "manager": "Jefatura",
+        "buddy": "Compañero guía",
+        "employee": "Tú"
+      },
       "checkInTypes": { "day1": "Día 1", "day30": "Día 30", "day60": "Día 60", "day90": "Día 90" },
       "statuses": {
         "pending": "Pendiente",
@@ -5186,6 +5233,7 @@
     "empty": "Aún no hay evaluaciones asignadas.",
     "withdrawn": "El candidato retiró su consentimiento: no se muestran datos de evaluaciones.",
     "assign": "Asignar las evaluaciones de la vacante",
+    "assignTims": "Asignar evaluaciones TIMS",
     "assignFor": "Asignar las evaluaciones de {vacancy}",
     "status": {
       "pending": "Enviando",
@@ -5240,7 +5288,108 @@
       "no_voice_consent": "Expresión oral no evaluada (sin consentimiento de voz).",
       "no_ai_scoring_consent": "Expresión oral no evaluada (sin consentimiento de calificación con IA)."
     },
-    "unknownVacancy": "Otra vacante"
+    "unknownVacancy": "Otra vacante",
+    "results": {
+      "minimum": "Mínimo de la vacante: {value}",
+      "heading": "Resultados",
+      "intro": "Cada resultado de TIMS en detalle. La decisión siempre es tuya.",
+      "seeDetails": "Ver los resultados en detalle",
+      "completedOn": "Completada el {date}",
+      "notReady": "Los resultados aparecen aquí cuando el candidato termina y TIMS califica la prueba.",
+      "underReview": "TIMS está revisando este resultado. No se muestra hasta que termine la revisión.",
+      "noProfile": "Este resultado no tiene detalle para mostrar.",
+      "advisoryNote": "Describe un estilo, no una capacidad. Ningún perfil es mejor que otro y nunca es motivo de rechazo.",
+      "levelOf": "Nivel {value} de {max}",
+      "lia": {
+        "title": "LIA · Inteligencia laboral aplicada",
+        "headline": "Percentil global",
+        "chartLabel": "Percentil por subprueba, de 0 a 100",
+        "subtestValue": "{name}: percentil {value}",
+        "notFinished": "Sin terminar",
+        "provisionalNorms": "Normas provisionales: lee los percentiles como indicativos.",
+        "levels": {
+          "insufficient": "Insuficiente",
+          "low": "Bajo",
+          "acceptable": "Aceptable",
+          "high": "Alto",
+          "outstanding": "Sobresaliente"
+        },
+        "subtests": {
+          "pattern_recognition": "Reconocimiento de patrones",
+          "verbal_reasoning": "Razonamiento verbal",
+          "numerical_speed": "Velocidad numérica",
+          "working_memory": "Memoria de trabajo",
+          "visual_rotation": "Orientación espacial"
+        }
+      },
+      "english": {
+        "title": "Inglés",
+        "headline": "Nivel general",
+        "scorePct": "{value}% de aciertos",
+        "chartLabel": "Nivel MCER por habilidad, de A1 a C2",
+        "skillValue": "{name}: {level}",
+        "notAssessed": {
+          "consent_not_given": "Sin evaluar: el candidato no dio el consentimiento de voz",
+          "ai_scoring_unavailable": "Sin evaluar: la calificación con IA no estuvo disponible",
+          "consent_withdrawn": "Sin evaluar: consentimiento retirado",
+          "other": "Sin evaluar"
+        },
+        "skills": {
+          "grammar": "Gramática",
+          "vocabulary": "Vocabulario",
+          "sentence_completion": "Completar oraciones",
+          "listening": "Comprensión auditiva",
+          "reading": "Comprensión de lectura",
+          "speaking": "Expresión oral"
+        }
+      },
+      "personality": {
+        "title": "Personalidad",
+        "headline": "Perfil de preferencias",
+        "chartLabel": "Preferencia en cada una de las cuatro dimensiones",
+        "balanced": "Equilibrado",
+        "clarity": "{pole}, claridad {value}%",
+        "variants": {
+          "laboral": "Cuestionario laboral",
+          "estudiantil": "Cuestionario estudiantil"
+        },
+        "dimensions": {
+          "ei": "Energía",
+          "sn": "Percepción",
+          "tf": "Decisión",
+          "jp": "Estilo de vida"
+        },
+        "poles": {
+          "E": "Extrovertido",
+          "I": "Introvertido",
+          "S": "Sensorial",
+          "N": "Intuitivo",
+          "T": "Racional",
+          "F": "Emocional",
+          "J": "Estructurado",
+          "P": "Perceptivo"
+        }
+      },
+      "pca": {
+        "title": "PCA · Perfil conductual (DISC)",
+        "headline": "Tres gráficas de un mismo cuestionario",
+        "primary": "Principal",
+        "graphLabel": "{graph}: Dominancia {d}, Influencia {i}, Solidez {s}, Control {c}, sobre 100",
+        "graphs": {
+          "work_adaptation": "Ajuste Laboral",
+          "under_pressure": "Conducta Bajo Presión",
+          "self_image": "Imagen Propia"
+        },
+        "factors": {
+          "d": "Dominancia",
+          "i": "Influencia",
+          "s": "Solidez",
+          "c": "Control"
+        },
+        "competencies": "Competencias",
+        "noCompetencies": "TIMS no devolvió competencias para este resultado."
+      }
+    }
   },
   "assignProviderAssessments": {
     "title": "Asignar evaluaciones",

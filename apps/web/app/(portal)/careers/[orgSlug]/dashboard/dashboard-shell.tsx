@@ -63,10 +63,7 @@ export function PortalDashboardShell({
           <Link href={`/careers/${orgSlug}`} className="text-[14px] font-semibold text-[#1F114C] truncate">
             {orgName}
           </Link>
-          <button
-            onClick={signOut}
-            className="text-[12px] text-muted hover:text-[#585858] hover:underline shrink-0"
-          >
+          <button onClick={signOut} className="text-[12px] text-muted hover:text-[#585858] hover:underline shrink-0">
             {t.portalDashboard.signOut}
           </button>
         </div>
@@ -82,9 +79,11 @@ export function PortalDashboardShell({
             <DashboardApplications orgSlug={orgSlug} orgName={orgName} timeZone={timeZone} />
             <DashboardInterviews orgSlug={orgSlug} timeZone={timeZone} />
             {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
-            {!pilot && <DashboardAssessments orgSlug={orgSlug} />}
+            {!pilot && <DashboardAssessments orgSlug={orgSlug} hideWhenEmpty={isProviderAssessmentsPortalEnabled()} />}
             {/* AS-5 / D16: provider assessments (C# only), dark unless NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP. */}
-            {!pilot && isProviderAssessmentsPortalEnabled() && <DashboardProviderAssessments orgSlug={orgSlug} orgName={orgName} />}
+            {!pilot && isProviderAssessmentsPortalEnabled() && (
+              <DashboardProviderAssessments orgSlug={orgSlug} orgName={orgName} />
+            )}
             <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
             {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
             {profile && <DashboardProfile orgSlug={orgSlug} profile={profile} />}

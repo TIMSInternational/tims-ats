@@ -73,7 +73,7 @@ public sealed partial class AssessmentProviderRepository : IProviderStaffReadRep
                     : new StaffResultRecord(
                         r.ProviderResultId, r.Purpose, r.InstrumentVersion, r.NormVersion, r.ValidityStatus,
                         r.ValidityReasons, r.RequiresHumanReview, r.GlobalPercentile, r.Cefr, r.Level,
-                        r.TimeMultiplierApplied, ToOffset(r.CompletedAt)!.Value)))
+                        r.TimeMultiplierApplied, ToOffset(r.CompletedAt)!.Value, r.Scores)))
             .ToList();
         return new StaffCandidateAttempts(false, attempts, byVacancy);
     }

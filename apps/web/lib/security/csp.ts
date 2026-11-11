@@ -14,6 +14,11 @@ export interface CspOrigins {
    * and otherwise links out to it.
    */
   assessmentPlayer?: string;
+  /**
+   * The https origin of a link-out provider's own site (PCA, NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN), or '' when
+   * unset. Added to `frame-src` only: the portal frames that provider's page in a sandboxed frame, as timssuite.com does.
+   */
+  assessmentProviderFrame?: string;
 }
 
 /** The https origin of an absolute URL, or '' when unset, invalid or not https. */
@@ -156,6 +161,7 @@ export function buildCsp(nonce: string, pathname: string, origins: CspOrigins, i
     [
       "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
       origins.assessmentPlayer ?? '',
+      origins.assessmentProviderFrame ?? '',
     ]
       .filter(Boolean)
       .join(' '),

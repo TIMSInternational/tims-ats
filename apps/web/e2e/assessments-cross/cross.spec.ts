@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Frame, type Page } from '@playwright/test';
 import {
   atsSql,
   callJson,
@@ -57,7 +57,9 @@ async function shot(page: Page, name: string): Promise<void> {
   if (!shotsDir) return;
   mkdirSync(shotsDir, { recursive: true });
   await page.waitForTimeout(400);
-  const body = await page.screenshot({ fullPage: true });
+  // The portal's assessment frame is a fixed full-screen dialog: a full-page capture would draw it mid-page.
+  const framed = (await page.getByRole('dialog', { name: 'Online assessment' }).count()) > 0;
+  const body = await page.screenshot({ fullPage: !framed });
   const file = `${String(++shotNo).padStart(2, '0')}-${name}.png`;
   writeFileSync(join(shotsDir, file), body);
   await test.info().attach(file, { body, contentType: 'image/png' });
@@ -254,6 +256,30 @@ function portalItem(page: Page, instrument: string) {
   return page.getByRole('listitem').filter({ has: page.getByText(PORTAL_NAME[instrument], { exact: true }) });
 }
 
+// The PCA stand-in provider's own site (stack/suite-up.ts PORTS.pcaSurvey).
+const PCA_SURVEY = 'https://localhost:57480';
+
+/** Embedded mode: the frame inside the portal's assessment dialog whose URL is on `origin`. */
+async function frameOn(page: Page, origin: string): Promise<Frame> {
+  const dialog = page.getByRole('dialog', { name: 'Online assessment' });
+  await expect(dialog.locator('iframe')).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => page.frames().some((f) => f.url().startsWith(origin)), { timeout: 60_000 }).toBe(true);
+  const frame = page.frames().find((f) => f.url().startsWith(origin));
+  if (!frame) throw new Error(`no frame on ${origin}`);
+  return frame;
+}
+
+/** Embedded mode: close the assessment dialog, back to the dashboard (which refreshes). */
+async function closeFrame(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Close the assessment' }).click();
+  await expect(page.getByRole('dialog', { name: 'Online assessment' })).toHaveCount(0);
+}
+
+/** Where the sitting runs: the portal's frame (embedded) or the page itself (link-out). */
+async function sittingSurface(page: Page, origin: string): Promise<Frame> {
+  return st.embedded ? frameOn(page, origin) : page.mainFrame();
+}
+
 /** Consent (required texts, optional ones ticked or not), launch, and land on the hosted player. */
 async function consentAndOpen(
   page: Page,
@@ -275,27 +301,36 @@ async function consentAndOpen(
       for (const box of await optionalSection.getByLabel('I agree (optional).').all()) await box.check();
   }
   await item.getByRole('button', { name: 'Accept and start' }).click();
-  // PCA is link-out: the candidate lands on the provider's own page (locally, the stand-in in stack/suite-up.ts).
-  if (instrument === 'pca') await page.waitForURL(/localhost:57480\/survey/, { timeout: 60_000 });
+  // Embedded: the portal frames the player (or PCA's provider page, sandboxed). Link-out: the page itself goes there.
+  if (st.embedded) await frameOn(page, instrument === 'pca' ? PCA_SURVEY : st.suite.playerOrigin);
+  else if (instrument === 'pca') await page.waitForURL(/localhost:57480\/survey/, { timeout: 60_000 });
   else await page.waitForURL((u) => u.origin === st.suite.playerOrigin, { timeout: 60_000 });
 }
 
 async function sitAndReturn(page: Page, instrument: string, shots = false): Promise<string> {
-  const start = page.getByTestId('start-sitting');
+  const surface = await sittingSurface(page, st.suite.playerOrigin);
+  const start = surface.getByTestId('start-sitting');
   await start.waitFor({ timeout: 60_000 });
   if (shots) await shot(page, `player-${instrument}-start`);
   await start.click();
   const seen = new Set<string>();
-  const report = await driveSitting(page.mainFrame(), {
+  const report = await driveSitting(surface, {
     timeoutMs: 15 * 60_000,
-    leftPlayer: () => page.url().startsWith(st.baseURL),
+    // Embedded, the player ends on its own screen (no return URL); link-out, it sends the candidate back.
+    leftPlayer: () => !st.embedded && page.url().startsWith(st.baseURL),
     onScreen: async (what) => {
       if (!shots || seen.has(what) || seen.size >= 6) return;
       seen.add(what);
       await shot(page, `player-${instrument}-${what.replace(/[^a-z0-9]+/gi, '-')}`);
     },
   });
-  await page.waitForURL((u) => u.href.startsWith(`${st.baseURL}/careers/${st.orgSlug}/dashboard`), { timeout: 60_000 });
+  if (st.embedded) {
+    if (shots) await shot(page, `player-${instrument}-end-in-portal`);
+    await closeFrame(page);
+  } else
+    await page.waitForURL((u) => u.href.startsWith(`${st.baseURL}/careers/${st.orgSlug}/dashboard`), {
+      timeout: 60_000,
+    });
   await expect(portalItem(page, instrument).getByText('Completed', { exact: true })).toBeVisible({ timeout: 60_000 });
   if (shots) await shot(page, `candidate-portal-after-${instrument}`);
   return JSON.stringify({ answers: report.answers, items: report.items });
@@ -320,9 +355,10 @@ test('H5 candidate A signs in (OTP), consents and completes LIA, Personality and
   // PCA: consent in the portal, then the provider's survey (link-out, same tab). The survey is created at the
   // provider on this launch (a billable AddSurvey in production), once per assignment.
   await consentAndOpen(page, 'pca', 'none', true);
+  const survey = await sittingSurface(page, PCA_SURVEY);
   await shot(page, 'pca-provider-survey');
-  await page.getByRole('button', { name: 'Completar el PCA' }).click();
-  await expect(page.getByText('PCA completado')).toBeVisible();
+  await survey.getByRole('button', { name: 'Completar el PCA' }).click();
+  await expect(survey.getByText('PCA completado')).toBeVisible();
   await shot(page, 'pca-provider-completed');
   const sitting = suiteSql(
     st,
@@ -335,10 +371,13 @@ test('H5 candidate A signs in (OTP), consents and completes LIA, Personality and
       `select count(*) from v1_provider_sittings where assignment_id=${sqlStr(providerAssignment(attemptsA.pca))}`,
     ),
   ).toBe('1');
-  await page.goto(`/careers/${st.orgSlug}/dashboard`);
+  if (st.embedded) await closeFrame(page);
+  else await page.goto(`/careers/${st.orgSlug}/dashboard`);
   await expect(portalItem(page, 'pca')).toBeVisible({ timeout: 60_000 });
   await shot(page, 'candidate-portal-after-pca');
-  seen.push(`pca: suite assignment ${sitting} after the provider page (one provider sitting)`);
+  seen.push(
+    `pca: suite assignment ${sitting} after the provider page (${st.embedded ? 'framed in the portal' : 'link-out'}; one provider sitting)`,
+  );
   const consents = suiteSql(
     st,
     `select string_agg(distinct c.purpose, ',' order by c.purpose) from v1_consents c join v1_subjects s on s.id=c.subject_id where s.external_ref=${sqlStr(candidateA)} and c.withdrawn_at is null`,
@@ -452,6 +491,16 @@ test('H8 HR reads each result on the candidate (exact levels; PCA advisory)', as
       .replace(/\s+/g, ' ')
       .slice(0, 800),
   );
+  // The results board (Assessments tab): every result drawn from the profile the C# read returns to HR.
+  await hr.goto(`/recruitment/candidates/${candidateA}?tab=tabAssessments`);
+  await expect(hr.getByRole('heading', { name: 'Results', level: 2 })).toBeVisible({ timeout: 60_000 });
+  const board = (name: RegExp) => hr.getByRole('region', { name });
+  await expect(board(/^LIA/).getByLabel(/^Pattern recognition: percentile/)).toBeVisible();
+  await expect(board(/^English/).getByText(/% correct$/)).toBeVisible();
+  await expect(board(/^Personality/).getByLabel(/^Energy: /)).toBeVisible();
+  await expect(board(/^PCA/).getByText('Primary')).toBeVisible();
+  await expect(board(/^PCA/).getByLabel(/^Behavior Under Pressure: Dominance \d+/)).toBeVisible();
+  await shot(hr, 'hr-candidate-results-board');
   if (shotsDir) {
     await hr.goto(`/recruitment/candidates/${candidateA}?tab=tabFitGaps`);
     await hr.waitForLoadState('networkidle').catch(() => undefined);
@@ -502,10 +551,11 @@ test('H10 candidate B gives the optional voice consents for English; the sitting
   const page = await persona(browser);
   await portalSignIn(page, candB.email);
   await consentAndOpen(page, 'english', 'accept');
-  await page.getByTestId('start-sitting').click({ timeout: 60_000 });
-  const report = await driveSitting(page.mainFrame(), {
+  const surface = await sittingSurface(page, st.suite.playerOrigin);
+  await surface.getByTestId('start-sitting').click({ timeout: 60_000 });
+  const report = await driveSitting(surface, {
     timeoutMs: 15 * 60_000,
-    leftPlayer: () => page.url().startsWith(st.baseURL),
+    leftPlayer: () => !st.embedded && page.url().startsWith(st.baseURL),
     stopWhen: (type) => type === 'audio_record',
   });
   const consents = suiteSql(

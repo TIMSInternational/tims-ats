@@ -18,6 +18,8 @@ export interface CrossState {
   orgSlug: string;
   /** CROSS_PREFIX of the bring-up; every container is named after it. */
   prefix: string;
+  /** The portal frames the hosted player and the PCA provider page (stack default; CROSS_LINK_OUT=1 turns it off). */
+  embedded?: boolean;
   suite: { dbContainer: string; apiUrl: string; playerOrigin: string; cronSecret: string };
 }
 

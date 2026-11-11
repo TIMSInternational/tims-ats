@@ -14,7 +14,7 @@ import {
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
 import { ProviderAssessmentFrame } from './provider-assessment-frame';
-import { ProviderAssessmentItem, type PortalMessages } from './provider-assessment-item';
+import { ProviderAssessmentItem, portalInstrumentName, type PortalMessages } from './provider-assessment-item';
 
 // "Online assessments": the candidate's assessments run by the TIMS Assessments provider (AS-5, D16), next to the
 // native quizzes of DashboardAssessments. Read from the C# portal routes, dark unless
@@ -23,6 +23,9 @@ import { ProviderAssessmentItem, type PortalMessages } from './provider-assessme
 // include this site and its origin is the configured player origin; otherwise a top-level link-out. The URL carries a
 // single-use launch code: it is opened at once and never stored, logged or shown.
 const PLAYER_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN;
+// PCA is answered on the provider's own site: framed (sandboxed) when that site is the configured provider frame origin,
+// as timssuite.com frames it; otherwise a top-level link-out.
+const PROVIDER_FRAME_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN;
 
 /** The message for a failed launch, from the route's stable code (or its status). */
 export function launchErrorKey(error: unknown): keyof PortalMessages {
@@ -44,7 +47,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   const [consentFor, setConsentFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ attemptId: string; key: keyof PortalMessages } | null>(null);
-  const [frameUrl, setFrameUrl] = useState<string | null>(null);
+  const [frame, setFrame] = useState<{ url: string; sandboxed: boolean; instrument: string } | null>(null);
 
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: providerAttemptsKey(orgSlug) }),
@@ -60,7 +63,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
       // a configured player origin. Whether THIS origin is a registered frame ancestor is known only from the launch.
       const embedded = attempt.delivery === 'native' && canEmbedPlayer(PLAYER_ORIGIN);
       let launch = await launchProviderAttempt(attemptId, decision, embedded);
-      let target = chooseLaunchTarget(launch, window.location.origin, PLAYER_ORIGIN);
+      let target = chooseLaunchTarget(launch, window.location.origin, PLAYER_ORIGIN, PROVIDER_FRAME_ORIGIN);
       if (embedded && target.kind === 'navigate') {
         // It cannot be framed after all: launch again for a top-level sitting, so the player returns the candidate to
         // this dashboard. A new launch revokes the first, unused launch code; consents (and declined optional purposes)
@@ -70,7 +73,8 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
         if (target.kind === 'iframe') target = { kind: 'navigate', url: target.url };
       }
       setConsentFor(null);
-      if (target.kind === 'iframe') setFrameUrl(target.url);
+      if (target.kind === 'iframe')
+        setFrame({ url: target.url, sandboxed: target.sandboxed === true, instrument: attempt.instrument });
       else if (target.kind === 'navigate') openTopLevel(target.url);
       else setFailure({ attemptId, key: 'providerLaunchError' });
     } catch (error) {
@@ -123,11 +127,13 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
           ))}
         </ul>
       )}
-      {frameUrl && (
+      {frame && (
         <ProviderAssessmentFrame
-          url={frameUrl}
+          url={frame.url}
+          sandboxed={frame.sandboxed}
+          name={portalInstrumentName(t.portalDashboard, frame.instrument)}
           onClose={() => {
-            setFrameUrl(null);
+            setFrame(null);
             void refresh();
           }}
         />

@@ -234,6 +234,11 @@ docker run -d --name "$P-ats-api" --network "$NET" --add-host host.docker.intern
 until curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$API_PORT/health"; do sleep 2; done
 
 # ── apps/web: next build with the provider + FIT v2 + candidate-consent flags, served over TLS ──────────────────
+# CROSS_EMBED=1: the portal frames the hosted player (this origin is the partner's registered frame ancestor) and the
+# PCA provider's page (the local stand-in, sandboxed), as timssuite.com does. Off by default: in the frame, an English
+# reading question that shares its passage with the one before does not advance (open, 2026-11-10).
+if [ "${CROSS_EMBED:-0}" = 1 ]; then EMBED_PLAYER="$PLAYER"; EMBED_PROVIDER="https://localhost:57480"; else
+  EMBED_PLAYER=""; EMBED_PROVIDER=""; fi
 cat >"$STATE/web.env" <<EOF
 NODE_ENV=production
 NEXT_TELEMETRY_DISABLED=1
@@ -261,6 +266,8 @@ TIMS_E2E_STACK=1
 NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true
 NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP=true
 NEXT_PUBLIC_CANDIDATE_CONSENT_VIA_CSHARP=true
+NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN=$EMBED_PLAYER
+NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN=$EMBED_PROVIDER
 $(grep -v '^#' "$ROOT/scripts/e2e/web-flags.env" | grep -v '^$')
 BEDROCK_AWS_ACCESS_KEY_ID=
 BEDROCK_AWS_SECRET_ACCESS_KEY=
@@ -297,6 +304,6 @@ const fs=require("fs"),s=process.argv[1],r=(f)=>fs.readFileSync(s+"/"+f,"utf8").
 fs.writeFileSync(s+"/cross.json",JSON.stringify({
   baseURL:"https://localhost:'$WEB_PORT'", apiURL:"https://localhost:'$API_TLS_PORT'", authURL:"http://127.0.0.1:'$AUTH_PROXY_PORT'/auth/v1",
   anonKey:r("anon.key"), caFile:s+"/tls/ca.pem", atsDatabaseUrl:"'$DB'", mailpitURL:"http://127.0.0.1:'$MAIL_PORT'",
-  owner:{email:"federico@nexadev.ai",password:r("owner.pw")}, staffPassword:"Pw-"+r("seed-user.pw"), orgSlug:"tims-international", prefix:"'$P'",
+  owner:{email:"federico@nexadev.ai",password:r("owner.pw")}, staffPassword:"Pw-"+r("seed-user.pw"), orgSlug:"tims-international", prefix:"'$P'", embedded:"'"$EMBED_PLAYER"'"!=="",
   suite:{dbContainer:suite.dbContainer,apiUrl:suite.apiUrl,playerOrigin:suite.playerOrigin,cronSecret:suite.cronSecret}},null,2),{mode:0o600});' "$STATE"
 log "both stacks are up. Run the spec with ASSESSMENTS_CROSS_STATE=$STATE/cross.json (README.md)"

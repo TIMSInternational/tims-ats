@@ -4258,6 +4258,17 @@ export interface components {
             percentage: null | number | string;
             suppressed: boolean;
         };
+        DiscGraphScore: {
+            graph: string;
+            /** Format: int32 */
+            d: number | string;
+            /** Format: int32 */
+            i: number | string;
+            /** Format: int32 */
+            s: number | string;
+            /** Format: int32 */
+            c: number | string;
+        };
         EmployeeDetailEvaluation: {
             id: string;
             organizationId: string;
@@ -4309,6 +4320,20 @@ export interface components {
             actionPlansOpen: number | string;
             /** Format: int32 */
             highRiskCount: number | string;
+        };
+        EnglishProfile: {
+            overallCefr: null | string;
+            /** Format: double */
+            overallScorePct: null | number | string;
+            skills: components["schemas"]["EnglishSkillScore"][];
+        };
+        EnglishSkillScore: {
+            skill: string;
+            assessed: boolean;
+            cefr: null | string;
+            /** Format: double */
+            scorePct: null | number | string;
+            notAssessedReason: null | string;
         };
         EnpsResult: {
             /** Format: int32 */
@@ -4781,6 +4806,20 @@ export interface components {
             byGender: components["schemas"]["LeaderGroup"][];
             suppressed: boolean;
         };
+        LiaProfile: {
+            /** Format: double */
+            globalPercentile: null | number | string;
+            globalLevel: null | string;
+            normStatus: null | string;
+            subtests: components["schemas"]["LiaSubtestScore"][];
+        };
+        LiaSubtestScore: {
+            subtest: string;
+            /** Format: double */
+            percentile: null | number | string;
+            level: null | string;
+            completion: null | string;
+        };
         ListCriticalRoleRow: {
             id: string;
             organizationId: string;
@@ -5021,6 +5060,19 @@ export interface components {
             suppressed: boolean;
             currency: string;
         };
+        PcaCompetencyScore: {
+            code: string;
+            name: string;
+            /** Format: int32 */
+            level: number | string;
+            /** Format: int32 */
+            scaleMax: number | string;
+        };
+        PcaProfile: {
+            primaryGraph: null | string;
+            graphs: components["schemas"]["DiscGraphScore"][];
+            competencies: components["schemas"]["PcaCompetencyScore"][];
+        };
         PendingEssay: {
             questionId: string;
             prompt: string;
@@ -5039,6 +5091,23 @@ export interface components {
             startsAt: unknown;
             /** Format: date-time */
             endsAt: unknown;
+        };
+        PersonalityDimensionScore: {
+            dimension: string;
+            firstPole: string;
+            secondPole: string;
+            /** Format: int32 */
+            firstCount: number | string;
+            /** Format: int32 */
+            secondCount: number | string;
+            preferredPole: null | string;
+            /** Format: int32 */
+            clarityPct: number | string;
+            balanced: boolean;
+        };
+        PersonalityProfile: {
+            variant: null | string;
+            dimensions: components["schemas"]["PersonalityDimensionScore"][];
         };
         PlatformOrganizationRow: {
             id: string;
@@ -5248,6 +5317,12 @@ export interface components {
             cancelPending: number | string;
             /** Format: int32 */
             createsInFlight: number | string;
+        };
+        ProviderResultProfile: {
+            lia?: null | components["schemas"]["LiaProfile"];
+            english?: null | components["schemas"]["EnglishProfile"];
+            personality?: null | components["schemas"]["PersonalityProfile"];
+            pca?: null | components["schemas"]["PcaProfile"];
         };
         ProviderSubjectExport: {
             attempts: components["schemas"]["ProviderExportAttempt"][];
@@ -5528,6 +5603,7 @@ export interface components {
             instrumentVersion: string;
             normVersion: null | string;
             completedAt: string;
+            profile?: null | components["schemas"]["ProviderResultProfile"];
         };
         StaffValidationRow: {
             id: string;

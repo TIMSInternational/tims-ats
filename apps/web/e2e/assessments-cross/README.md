@@ -23,6 +23,15 @@ bash ../apps/web/e2e/assessments-cross/stack/down.sh          # --purge also del
 containers (default `assessments-cross-*`), `CROSS_STATE_DIR` moves the state directory, and
 `CROSS_SKIP_API_BUILD=1` / `CROSS_SKIP_WEB_BUILD=1` reuse the previous builds.
 
+`CROSS_EMBED=1` builds the portal **embedded**, as timssuite.com does it: it frames the hosted player
+(`NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN`; the local ATS origin is the partner's registered frame ancestor) and the PCA
+provider's page in a sandboxed frame (`NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN`, the local stand-in). The spec
+reads the mode from `cross.json` (`embedded`). Open (2026-11-10): framed, an English reading question that shares its
+passage with the previous one does not advance, so the default build links out.
+
+`ASSESSMENTS_CROSS_RECORD=<dir>` records a walkthrough: video and a trace of every test, an HTML report in
+`<dir>/html`, and numbered screenshots in story order in `<dir>/shots`.
+
 ## What `stack/up.sh` builds
 
 | Side  | Piece                                                                                                                                                                                                                                                                                             |
@@ -42,11 +51,14 @@ Two local-only allowances, both outside the products' code:
 
 ## What the spec drives (one serial story)
 
-H1 bind the org (token, catalog, tenant) · H2 HR sets LIA (scored), English (gate) and Personality (advisory) on a
-vacancy · H3 two candidates apply on the careers page · H4 HR assigns (age band, notice) and the ATS creates the
+H1 bind the org (token, catalog, tenant) · H2 HR sets LIA (scored), English (gate), Personality and PCA (advisory) on
+a vacancy · H3 two candidates apply on the careers page · H4 HR assigns (age band, notice) and the ATS creates the
 subject and one `/v1` assignment per test · H5 candidate A signs in with the mailed code, consents and completes the
-three sittings in the hosted player (link-out, back to the portal) · H6 signed events reach the ATS inbox and every
-result is fetched · H7 the provider results create the candidate's FIT v2 row, with no HR compute · H8 HR sees each result · H9 a
+three sittings in the hosted player (framed in the portal, or link-out) and PCA on the provider's page (the local
+stand-in, framed or link-out) · H6 signed events reach the ATS inbox and every result is fetched (PCA: the scheduled
+run polls the provider) · H7 the provider results create the candidate's FIT v2 row, with no HR compute · H8 HR sees
+each result, and the Assessments tab's results board draws every profile (LIA subtests, English skills, Personality
+dimensions, PCA's DISC graphs and competencies) · H9 a
 team leader sees only "below minimum" (D6) · H10 candidate B accepts the optional voice consents and the English
 sitting serves its speaking item · H11 HR cancels B's English · H12 B's Personality expires (time travel in the
 suite database, then the scheduled run) · H13 B withdraws consent in the portal and the ATS cascades to the provider ·
@@ -58,5 +70,5 @@ Local fixtures the spec sets itself: the vacancy is moved to the team the seeded
 would see no card at all).
 
 **Not covered locally:** anything that needs AWS — the English speaking upload (S3) and its AI scoring (Bedrock), and
-the ITC-IA judge. ITC-IA, MI and PCA are not assignable from the ATS (selection is refused, or PCA is not listed).
-The framed (iframe) player is not driven: `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` is unset, so the portal links out.
+the ITC-IA judge — and the real TIMS PCA site (a stand-in answers its API; every real survey is billable). ITC-IA and MI
+are not assignable from the ATS (the catalog marks them not for selection).

@@ -76,6 +76,106 @@ export function useProviderCatalog(vacancyId?: string, enabled = true) {
 
 // ── a candidate's attempts ──
 
+// The shape behind a result (C# ProviderResultProfile): company-scope readers, valid results only. Exactly one member is
+// set; every list and string is bounded, and nothing interpretive is part of it.
+const profileKey = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/);
+const percent = z.number().min(0).max(100);
+const cefrCode = z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
+const pole = z.string().regex(/^[A-Z]$/);
+const disc = z.number().int().min(0).max(100);
+
+const profileSchema = z
+  .object({
+    lia: z
+      .object({
+        globalPercentile: percent.nullable(),
+        globalLevel: profileKey.nullable(),
+        normStatus: profileKey.nullable(),
+        subtests: z
+          .array(
+            z
+              .object({
+                subtest: profileKey,
+                percentile: percent.nullable(),
+                level: profileKey.nullable(),
+                completion: profileKey.nullable(),
+              })
+              .strict(),
+          )
+          .max(10),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    english: z
+      .object({
+        overallCefr: cefrCode.nullable(),
+        overallScorePct: percent.nullable(),
+        skills: z
+          .array(
+            z
+              .object({
+                skill: profileKey,
+                assessed: z.boolean(),
+                cefr: cefrCode.nullable(),
+                scorePct: percent.nullable(),
+                notAssessedReason: profileKey.nullable(),
+              })
+              .strict(),
+          )
+          .max(10),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    personality: z
+      .object({
+        variant: profileKey.nullable(),
+        dimensions: z
+          .array(
+            z
+              .object({
+                dimension: profileKey,
+                firstPole: pole,
+                secondPole: pole,
+                firstCount: z.number().int().min(0).max(1000),
+                secondCount: z.number().int().min(0).max(1000),
+                preferredPole: pole.nullable(),
+                clarityPct: z.number().int().min(0).max(100),
+                balanced: z.boolean(),
+              })
+              .strict(),
+          )
+          .max(8),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    pca: z
+      .object({
+        primaryGraph: profileKey.nullable(),
+        graphs: z.array(z.object({ graph: profileKey, d: disc, i: disc, s: disc, c: disc }).strict()).max(3),
+        competencies: z
+          .array(
+            z
+              .object({
+                code: z.string().regex(/^[a-z0-9][a-z0-9:_-]{0,79}$/),
+                name: z.string().min(1).max(120),
+                level: z.number().int().min(1).max(4),
+                scaleMax: z.number().int().min(1).max(4),
+              })
+              .strict(),
+          )
+          .max(40),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+  })
+  .strict();
+
+export type StaffResultProfile = z.infer<typeof profileSchema>;
+
 const resultSchema = z
   .object({
     validity: z.enum(['valid', 'voided', 'needs_review']),
@@ -89,6 +189,7 @@ const resultSchema = z
     instrumentVersion: z.string().max(7),
     normVersion: z.string().max(64).nullable(),
     completedAt: z.string().max(40).datetime({ offset: true }),
+    profile: profileSchema.nullable().optional(),
   })
   .strict();
 

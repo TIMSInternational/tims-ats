@@ -165,7 +165,7 @@ function fakePcaServers(): Server[] {
       switch (req.url) {
         case '/login/authenticate':
           res.writeHead(200, { 'Content-Type': 'text/plain' });
-          return void res.end(`"${token}"`);
+          return void res.end(JSON.stringify(token));
         case '/Pca/AddSurvey': {
           n += 1;
           const code = `LOCAL-${Date.now().toString(36)}-${n}`;

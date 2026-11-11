@@ -2122,7 +2122,7 @@
     "readOnlyNotice": "Read-only view: rejected or hired applications cannot be moved or rejected.",
     "noRejectedCandidates": "No rejected candidates for this vacancy",
     "rejectedOn": "Rejected on {date}",
-    "applicationStatus": {"active": "Active", "rejected": "Rejected", "withdrawn": "Withdrawn", "hired": "Hired"},
+    "applicationStatus": { "active": "Active", "rejected": "Rejected", "withdrawn": "Withdrawn", "hired": "Hired" },
     "advance": "Advance →",
     "viewProfile": "View profile",
     "fitScore": "FIT score",
@@ -2345,14 +2345,38 @@
     "competencySuggestionsNone": "The AI suggested no new competencies.",
     "competencyLevelBadge": "Level {n}/{max}",
     "competencyCatalog": {
-      "leadership": { "name": "Leadership", "description": "Guides and motivates the team toward its goals and owns the results." },
-      "analytical": { "name": "Analytical thinking", "description": "Breaks problems down, uses data and reaches well-founded conclusions." },
-      "communication": { "name": "Communication", "description": "Expresses ideas clearly, listens and adapts the message to the audience." },
-      "problem_solving": { "name": "Problem solving", "description": "Finds the root cause of a problem and proposes workable solutions." },
-      "collaboration": { "name": "Collaboration", "description": "Works with others, shares information and contributes to shared goals." },
-      "execution": { "name": "Execution", "description": "Plans, prioritizes and delivers on commitments with quality and on time." },
-      "adaptability": { "name": "Adaptability", "description": "Adjusts to change and new situations while keeping performance up." },
-      "integrity": { "name": "Integrity", "description": "Acts honestly and consistently, and keeps to rules and commitments." }
+      "leadership": {
+        "name": "Leadership",
+        "description": "Guides and motivates the team toward its goals and owns the results."
+      },
+      "analytical": {
+        "name": "Analytical thinking",
+        "description": "Breaks problems down, uses data and reaches well-founded conclusions."
+      },
+      "communication": {
+        "name": "Communication",
+        "description": "Expresses ideas clearly, listens and adapts the message to the audience."
+      },
+      "problem_solving": {
+        "name": "Problem solving",
+        "description": "Finds the root cause of a problem and proposes workable solutions."
+      },
+      "collaboration": {
+        "name": "Collaboration",
+        "description": "Works with others, shares information and contributes to shared goals."
+      },
+      "execution": {
+        "name": "Execution",
+        "description": "Plans, prioritizes and delivers on commitments with quality and on time."
+      },
+      "adaptability": {
+        "name": "Adaptability",
+        "description": "Adjusts to change and new situations while keeping performance up."
+      },
+      "integrity": {
+        "name": "Integrity",
+        "description": "Acts honestly and consistently, and keeps to rules and commitments."
+      }
     },
     "requirements": "Requirements & Description",
     "mandatoryReqs": "Mandatory Requirements",
@@ -3886,6 +3910,11 @@
     "providerInstrumentMi": "Multiple intelligences",
     "providerInstrumentPca": "Behavioral profile",
     "providerInstrumentOther": "Assessment",
+    "providerDescriptionLia": "Cognitive skills for work. Timed sections.",
+    "providerDescriptionEnglish": "Your professional English level (A1 to C2).",
+    "providerDescriptionPersonality": "Your working style. No right or wrong answers.",
+    "providerDescriptionPca": "Your behavioral profile (DISC), on the TIMS site.",
+    "providerDescriptionOther": "An online assessment.",
     "providerStatusConsentNeeded": "Consent needed",
     "providerStatusReady": "Ready to start",
     "providerStatusInProgress": "In progress",
@@ -3987,6 +4016,7 @@
   },
   "assessments": {
     "assignAssessment": "Assign assessment",
+    "assignOwnQuiz": "Assign a company quiz",
     "title": "Assessment Authoring",
     "subtitle": "Create and manage the questions candidates will answer.",
     "selectType": "Assessment type",
@@ -5186,6 +5216,7 @@
     "empty": "No assessments assigned yet.",
     "withdrawn": "The candidate withdrew consent: no assessment data is shown.",
     "assign": "Assign the vacancy's assessments",
+    "assignTims": "Assign TIMS assessments",
     "assignFor": "Assign the assessments of {vacancy}",
     "status": {
       "pending": "Sending",
@@ -5240,7 +5271,108 @@
       "no_voice_consent": "Speaking not assessed (no voice consent).",
       "no_ai_scoring_consent": "Speaking not assessed (no AI-scoring consent)."
     },
-    "unknownVacancy": "Another vacancy"
+    "unknownVacancy": "Another vacancy",
+    "results": {
+      "minimum": "Vacancy minimum: {value}",
+      "heading": "Results",
+      "intro": "Each TIMS result in detail. The decision is always yours.",
+      "seeDetails": "See results in detail",
+      "completedOn": "Completed {date}",
+      "notReady": "Results appear here once the candidate finishes and TIMS scores the test.",
+      "underReview": "TIMS is reviewing this result. It is not shown until the review ends.",
+      "noProfile": "This result has no detail to show.",
+      "advisoryNote": "Describes style, not ability. No profile is better than another, and it is never a reason to reject.",
+      "levelOf": "Level {value} of {max}",
+      "lia": {
+        "title": "LIA · Applied work intelligence",
+        "headline": "Global percentile",
+        "chartLabel": "Percentile by subtest, from 0 to 100",
+        "subtestValue": "{name}: percentile {value}",
+        "notFinished": "Not finished",
+        "provisionalNorms": "Provisional norms: read the percentiles as indicative.",
+        "levels": {
+          "insufficient": "Insufficient",
+          "low": "Low",
+          "acceptable": "Acceptable",
+          "high": "High",
+          "outstanding": "Outstanding"
+        },
+        "subtests": {
+          "pattern_recognition": "Pattern recognition",
+          "verbal_reasoning": "Verbal reasoning",
+          "numerical_speed": "Numerical speed",
+          "working_memory": "Working memory",
+          "visual_rotation": "Spatial orientation"
+        }
+      },
+      "english": {
+        "title": "English",
+        "headline": "Overall level",
+        "scorePct": "{value}% correct",
+        "chartLabel": "CEFR level by skill, from A1 to C2",
+        "skillValue": "{name}: {level}",
+        "notAssessed": {
+          "consent_not_given": "Not assessed: the candidate gave no voice consent",
+          "ai_scoring_unavailable": "Not assessed: AI scoring was unavailable",
+          "consent_withdrawn": "Not assessed: consent withdrawn",
+          "other": "Not assessed"
+        },
+        "skills": {
+          "grammar": "Grammar",
+          "vocabulary": "Vocabulary",
+          "sentence_completion": "Sentence completion",
+          "listening": "Listening",
+          "reading": "Reading",
+          "speaking": "Speaking"
+        }
+      },
+      "personality": {
+        "title": "Personality",
+        "headline": "Preference profile",
+        "chartLabel": "Preference on each of the four dimensions",
+        "balanced": "Balanced",
+        "clarity": "{pole}, clarity {value}%",
+        "variants": {
+          "laboral": "Work questionnaire",
+          "estudiantil": "Student questionnaire"
+        },
+        "dimensions": {
+          "ei": "Energy",
+          "sn": "Perception",
+          "tf": "Decision",
+          "jp": "Lifestyle"
+        },
+        "poles": {
+          "E": "Extroverted",
+          "I": "Introverted",
+          "S": "Sensory",
+          "N": "Intuitive",
+          "T": "Rational",
+          "F": "Emotional",
+          "J": "Structured",
+          "P": "Perceptive"
+        }
+      },
+      "pca": {
+        "title": "PCA · Behavioral profile (DISC)",
+        "headline": "Three graphs from one questionnaire",
+        "primary": "Primary",
+        "graphLabel": "{graph}: Dominance {d}, Influence {i}, Steadiness {s}, Compliance {c}, out of 100",
+        "graphs": {
+          "work_adaptation": "Work Adjustment",
+          "under_pressure": "Behavior Under Pressure",
+          "self_image": "Own Image"
+        },
+        "factors": {
+          "d": "Dominance",
+          "i": "Influence",
+          "s": "Steadiness",
+          "c": "Compliance"
+        },
+        "competencies": "Competencies",
+        "noCompetencies": "TIMS returned no competencies for this result."
+      }
+    }
   },
   "assignProviderAssessments": {
     "title": "Assign assessments",

@@ -54,6 +54,12 @@ public sealed partial class ProviderEndpointTests
         return (candidate, vacancy);
     }
 
+    /// <summary>The result's stored full projection: what the HR results board draws (ProviderResultProfile).</summary>
+    private const string LiaScores =
+        "{\"global\":{\"percentile\":30,\"level\":{\"code\":\"low\",\"ordinal\":2}},\"norm_status\":\"provisional\"," +
+        "\"subtests\":[{\"subtest\":\"pattern_recognition\",\"percentile\":35,\"completion\":\"finished\"}," +
+        "{\"subtest\":\"verbal_reasoning\",\"percentile\":25,\"completion\":\"finished\"}]}";
+
     private Task ResultAttemptAsync(Guid candidate, Guid vacancy)
     {
         var attempt = Guid.NewGuid();
@@ -71,10 +77,10 @@ public sealed partial class ProviderEndpointTests
              INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
                  result_schema, instrument, instrument_version, content_version, content_sha256, scoring_version,
                  scoring_method, purpose, validity_status, validity_reasons, completion, global_percentile,
-                 time_multiplier_applied, rendered_for, rendered_level, completed_at, scored_at)
+                 time_multiplier_applied, rendered_for, rendered_level, completed_at, scored_at, scores)
                VALUES (gen_random_uuid(), '{ProviderEndpointFixture.OrgA}', '{attempt}', '{result}', 1, 'LiaResultV1', 'lia',
                  '1.0', 'content-1', repeat('a', 64), 's-1', 'deterministic', 'selection', 'valid', ARRAY[]::text[], 'complete', 30,
-                 1.25, 'tenant_hr', 'full', now() - interval '1 hour', now() - interval '1 hour');
+                 1.25, 'tenant_hr', 'full', now() - interval '1 hour', now() - interval '1 hour', '{LiaScores}'::jsonb);
              """);
     }
 
@@ -161,6 +167,13 @@ public sealed partial class ProviderEndpointTests
         Assert.Equal(30, hrOwn.GetProperty("result").GetProperty("globalPercentile").GetDouble());
         Assert.Equal("not_met", hrOwn.GetProperty("result").GetProperty("minimum").GetString());
         Assert.Equal(1.25m, hrOwn.GetProperty("timeMultiplier").GetDecimal());
+        // The results board's profile, from the stored scores: company scope only.
+        var lia = hrOwn.GetProperty("result").GetProperty("profile").GetProperty("lia");
+        Assert.Equal(30, lia.GetProperty("globalPercentile").GetDouble());
+        Assert.Equal("low", lia.GetProperty("globalLevel").GetString());
+        Assert.Equal(
+            ["pattern_recognition", "verbal_reasoning"],
+            lia.GetProperty("subtests").EnumerateArray().Select(t => t.GetProperty("subtest").GetString()));
 
         // D6: the leader sees only its own-scope vacancy, and there only "below minimum", never the level.
         var leaderAttempt = Assert.Single(leader.GetProperty("attempts").EnumerateArray().ToList());
@@ -169,6 +182,7 @@ public sealed partial class ProviderEndpointTests
         Assert.Equal(JsonValueKind.Null, leaderAttempt.GetProperty("result").GetProperty("globalPercentile").ValueKind);
         Assert.Equal(JsonValueKind.Null, leaderAttempt.GetProperty("timeMultiplier").ValueKind);
         Assert.Equal(JsonValueKind.Null, leaderAttempt.GetProperty("aids").ValueKind);
+        Assert.Equal(JsonValueKind.Null, leaderAttempt.GetProperty("result").GetProperty("profile").ValueKind);
     }
 
     [Fact]

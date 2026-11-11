@@ -32,7 +32,7 @@ async function signature(f: Frame): Promise<string> {
     const items = [...document.querySelectorAll('[data-tims="item"]')]
       .map(
         (i) =>
-          `${i.getAttribute('aria-labelledby')}:${i.getAttribute('data-status')}:${(i.textContent ?? '').slice(0, 60)}`,
+          `${i.getAttribute('aria-labelledby')}:${i.getAttribute('data-status')}:${(i.textContent ?? '').slice(-120)}`,
       )
       .join('|');
     return `${step?.getAttribute('data-kind')}#${(step?.textContent ?? '').slice(0, 80)}#${items}`;
@@ -201,7 +201,8 @@ export async function driveSitting(
     const type = (await item.getAttribute('data-tims-item')) ?? '?';
     await opts.onScreen?.(type);
     if (opts.stopWhen?.(type)) return { ...report, stoppedAt: type };
-    const key = `${type}:${await item.getAttribute('aria-labelledby')}:${((await item.textContent()) ?? '').slice(0, 160)}`;
+    // The tail, not the head: several reading questions share one passage, and only the question at the end differs.
+    const key = `${type}:${await item.getAttribute('aria-labelledby')}:${((await item.textContent()) ?? '').slice(-200)}`;
     const n = attempts.get(key) ?? 0;
     attempts.set(key, n + 1);
     report.items[type] = (report.items[type] ?? 0) + 1;
@@ -212,7 +213,7 @@ export async function driveSitting(
         (k) => {
           const el = document.querySelector('[data-tims="step"] [data-tims="item"]');
           if (!el) return true;
-          const now = `${el.getAttribute('data-tims-item')}:${el.getAttribute('aria-labelledby')}:${(el.textContent ?? '').slice(0, 160)}`;
+          const now = `${el.getAttribute('data-tims-item')}:${el.getAttribute('aria-labelledby')}:${(el.textContent ?? '').slice(-200)}`;
           return now !== k || el.getAttribute('data-status') !== 'idle';
         },
         key,

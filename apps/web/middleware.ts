@@ -47,6 +47,8 @@ const CSP_ORIGINS: CspOrigins = {
   cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
   // D16: the TIMS hosted assessment player, framed by the candidate portal only when configured (https only).
   assessmentPlayer: httpsOriginOf(process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN),
+  // PCA: the provider's own survey site, framed (sandboxed) by the candidate portal only when configured (https only).
+  assessmentProviderFrame: httpsOriginOf(process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN),
 };
 
 // Pages whose URL carries a bearer credential (?token= or a path token): never

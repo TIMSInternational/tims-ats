@@ -20,9 +20,11 @@ import type { ProviderCardApplication } from './provider-assessments-card';
 export function ProviderAssessmentsPanel({
   candidateId,
   applications,
+  onSeeDetails,
 }: {
   candidateId: string;
   applications: ProviderCardApplication[];
+  onSeeDetails?: () => void;
 }) {
   const { t, locale } = useI18n();
   const pa = t.providerAssessments;
@@ -92,6 +94,15 @@ export function ProviderAssessmentsPanel({
         {pa.title}
       </h3>
       {content()}
+      {onSeeDetails && attempts.data?.attempts.some((a) => a.result?.profile) && (
+        <button
+          type="button"
+          onClick={onSeeDetails}
+          className="mt-3 text-[12px] font-semibold text-[#1F114C] hover:underline"
+        >
+          {pa.results.seeDetails}
+        </button>
+      )}
       {!attempts.data?.consentWithdrawn && assignable.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {assignable.map((application) => (

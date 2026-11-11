@@ -13,7 +13,12 @@ export interface ProviderCardApplication {
 // the C# read returns them for this reader: D6 for a team leader) and, for each active application, assigning the
 // vacancy's tests (all of them, same versions, after the consent notice). Dark unless the provider connector and FIT v2
 // are both on in this build (the vacancy's tests are read from FIT v2's requirements).
-export function ProviderAssessmentsCard(props: { candidateId: string; applications: ProviderCardApplication[] }) {
+export function ProviderAssessmentsCard(props: {
+  candidateId: string;
+  applications: ProviderCardApplication[];
+  /** Where the results are read in detail (the Assessments tab); absent on that tab itself. */
+  onSeeDetails?: () => void;
+}) {
   // Dark: render nothing and run no query (the page may have no QueryClient for C# reads).
   if (!isProviderAssessmentsStaffEnabled() || !isFitEngineV2Enabled()) return null;
   return <ProviderAssessmentsPanel {...props} />;
