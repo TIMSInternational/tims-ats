@@ -32,6 +32,7 @@ export const PCA_POLL_MS = 15_000;
 /** After a sitting ends, re-read every 2 s for at most 60 s until its result has arrived. */
 export const SETTLE_POLL_MS = 2_000;
 const SETTLE_MAX_MS = 60_000;
+const INSTRUMENT_ORDER: Record<string, number> = { lia: 0, english: 1, personality: 2, pca: 3 };
 const FINISHED_STATUSES = new Set<PortalStatus>(['completed', 'needs_review', 'expired']);
 
 /** The message for a failed launch, from the route's stable code (or its status). */
@@ -150,7 +151,10 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   if (isLoading) return section(<p className="text-[12px] text-muted">{t.portalDashboard.providerLoading}</p>);
   if (isError) return section(<p className="text-[12px] text-[#B42318]">{t.portalDashboard.providerError}</p>);
 
-  const attempts = data ?? [];
+  // The same order everywhere the TIMS tests appear (HR's results board, the vacancy setup): LIA, English, Personality, PCA.
+  const attempts = [...(data ?? [])].sort(
+    (a, b) => (INSTRUMENT_ORDER[a.instrument] ?? 99) - (INSTRUMENT_ORDER[b.instrument] ?? 99),
+  );
   const dateFormat = new Intl.DateTimeFormat(locale === 'EN' ? 'en' : 'es', {
     dateStyle: 'medium',
     timeStyle: 'short',

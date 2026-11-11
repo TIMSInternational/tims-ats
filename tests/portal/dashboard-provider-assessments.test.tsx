@@ -291,6 +291,28 @@ describe('DashboardProviderAssessments', () => {
     expect(await screen.findByText(m.providerStatusCompleted)).toBeInTheDocument();
   });
 
+  it('lists the tests in the same order as everywhere else: LIA, English, Personality, PCA', async () => {
+    const at = (id: string, instrument: string) => ({ ...attempt('ready', { instrument }), attemptId: id });
+    respond({
+      '/portal/assessment-attempts': () =>
+        json({
+          attempts: [
+            { ...at('33333333-3333-4333-8333-333333333301', 'pca'), delivery: 'link_out' },
+            at('33333333-3333-4333-8333-333333333302', 'personality'),
+            at('33333333-3333-4333-8333-333333333303', 'lia'),
+            at('33333333-3333-4333-8333-333333333304', 'english'),
+          ],
+        }),
+    });
+    renderSection();
+    await screen.findByText(portalInstrumentName(m, 'lia'));
+    const names = ['lia', 'english', 'personality', 'pca'].map((i) => portalInstrumentName(m, i));
+    const text = document.body.textContent ?? '';
+    const positions = names.map((n) => text.indexOf(n));
+    expect(positions.every((p) => p >= 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  });
+
   it('shows each consent text as plain text and launches only once every one is accepted, with its text version', async () => {
     const launchBodies: unknown[] = [];
     respond({
