@@ -126,9 +126,11 @@ public sealed class ProviderAttemptPollUseCase(
             {
                 using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 limit.CancelAfter(_maxPollDuration);
+                var confirmed = false;
                 try
                 {
-                    if (await ConfirmCancelAsync(pending, now, limit.Token).ConfigureAwait(false))
+                    confirmed = await ConfirmCancelAsync(pending, now, limit.Token).ConfigureAwait(false);
+                    if (confirmed)
                     {
                         cancelsConfirmed++;
                     }
@@ -136,6 +138,13 @@ public sealed class ProviderAttemptPollUseCase(
                 catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     failed++;
+                }
+                finally
+                {
+                    if (!confirmed)
+                    {
+                        await StampUnconfirmedAsync(pending, cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 if (cancellationToken.IsCancellationRequested)
@@ -148,7 +157,30 @@ public sealed class ProviderAttemptPollUseCase(
         return new AttemptPoll(organizations.Count, polled, changed, failed, failedOrganizations, cancelsConfirmed);
     }
 
-    /// <summary>Confirms one unconfirmed staff cancel; true when it is confirmed now. One still pending is stamped.</summary>
+    /// <summary>
+    /// Codex ATS r4 P2: EVERY confirmation that did not confirm — a returned failure, a throw, or one cut off by its time
+    /// limit — is stamped, so it goes to the back of the oldest-first queue and failing cancels can never keep the
+    /// healthy ones behind them from running. On a cleanup token of its own (the confirmation's may be spent); a failed
+    /// stamp never hides the run's outcome.
+    /// </summary>
+    private async Task StampUnconfirmedAsync(UnconfirmedCancel pending, CancellationToken cancellationToken)
+    {
+        using var cleanup = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cleanup.CancelAfter(StampTimeout);
+        try
+        {
+            await _repository.TouchUnconfirmedCancelAsync(pending.OrganizationId, pending.AttemptId, cleanup.Token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Left in order; the next run retries it.
+        }
+    }
+
+    private static readonly TimeSpan StampTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Confirms one unconfirmed staff cancel; true when it is confirmed now (the caller stamps the rest).</summary>
     private async Task<bool> ConfirmCancelAsync(UnconfirmedCancel pending, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var attempt = await _repository.FindAttemptAsync(pending.OrganizationId, pending.AttemptId, cancellationToken)
@@ -161,12 +193,6 @@ public sealed class ProviderAttemptPollUseCase(
 
         var confirmation = await ProviderCancelConfirmation.ConfirmAsync(
             _repository, _provider, pending.OrganizationId, attempt, now, cancellationToken).ConfigureAwait(false);
-        if (!confirmation.Confirmed)
-        {
-            await _repository.TouchUnconfirmedCancelAsync(pending.OrganizationId, pending.AttemptId, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
         return confirmation.Confirmed;
     }
 

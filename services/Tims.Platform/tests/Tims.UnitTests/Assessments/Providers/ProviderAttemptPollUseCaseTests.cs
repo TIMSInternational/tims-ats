@@ -467,4 +467,29 @@ public sealed class ProviderAttemptPollUseCaseTests
         Assert.Contains("cancel_touched", _repository.Writes);
         Assert.True(ProviderCleanup.IsCancelUnconfirmed(_repository.Attempts.Single(a => a.Id == row.Id)));
     }
+
+    [Fact]
+    public async Task Fifty_unconfirmed_cancels_whose_confirmation_throws_never_starve_a_healthy_one_behind_them()
+    {
+        // Codex ATS r4 P2: a confirmation that throws (or is cut off by its time limit) was never stamped, so the same
+        // oldest 50 filled every run and a healthy cancel behind them never ran.
+        var failing = new HashSet<string>();
+        for (var i = 0; i < ProviderAttemptPollUseCase.MaxUnconfirmedCancels; i++)
+        {
+            failing.Add(AddUnconfirmedCancel().Id.ToString());
+        }
+
+        var healthy = AddUnconfirmedCancel();
+        _provider.OnLookup = externalRef => failing.Contains(externalRef)
+            ? throw new HttpRequestException("provider connection reset")
+            : ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(null));
+
+        var first = await Run();
+        var second = await Run();
+
+        Assert.Equal((0, ProviderAttemptPollUseCase.MaxUnconfirmedCancels), (first.CancelsConfirmed, first.Failed));
+        Assert.Equal(1, second.CancelsConfirmed);
+        Assert.Null(_repository.Attempts.Single(a => a.Id == healthy.Id).LastErrorCode);
+        Assert.All(failing, id => Assert.True(ProviderCleanup.IsCancelUnconfirmed(_repository.Attempts.Single(a => a.Id.ToString() == id))));
+    }
 }
