@@ -139,6 +139,44 @@ public sealed class ProviderRound13Tests
         Assert.Empty(_repository.StoredResults);
     }
 
+    [Theory]
+    [InlineData(ProviderAttemptStates.Voided)]
+    [InlineData(ProviderAttemptStates.Expired)]
+    public async Task After_an_unbind_a_revision_of_a_result_kept_on_a_voided_or_expired_attempt_is_applied(string state)
+    {
+        // Codex ATS P1: a revision moves an attempt between result_ready and voided (or restores an expired one), so a
+        // kept result also sits on those states. Its next revision (a staff review overturning the void, a new void)
+        // must still reach the retained copy after the unbind, or staff and FIT keep stale scores.
+        var resultId = Guid.NewGuid();
+        var attempt = _repository.AddCreatedAttempt("lia", state);
+        _repository.SetState(attempt.Id, state, resultId);
+        attempt = _repository.Attempts.Single();
+        _repository.BindingInactive = true;
+        _provider.OnGetResult = id => ProviderCall<ParsedProviderResult>.Success(Revision(attempt, id, 2));
+
+        var processed = await Process(ProviderEventTypes.ResultReady, new JsonObject
+        {
+            ["assignment_id"] = attempt.ProviderAssignmentId!.Value.ToString(),
+            ["result_id"] = resultId.ToString(),
+            ["result_revision"] = 2,
+        });
+
+        Assert.Equal(InboxStatuses.Processed, processed.Status);
+        Assert.Equal(2, Assert.Single(_repository.StoredResults).ResultRevision);
+    }
+
+    private static ParsedProviderResult Revision(AttemptRow attempt, Guid resultId, int revision)
+    {
+        var json = ProviderResultParserTests.Result("lia", "LiaResultV1", ProviderResultParserTests.LiaScores("full", 46.2),
+            ProviderResultParserTests.Summary());
+        json["result_id"] = resultId.ToString();
+        json["result_revision"] = revision;
+        json["assignment_id"] = attempt.ProviderAssignmentId.ToString();
+        json["subject_id"] = attempt.ProviderSubjectId.ToString();
+        json["vacancy"]!["external_vacancy_ref"] = attempt.VacancyId.ToString();
+        return ProviderResultParserTests.Parse(json);
+    }
+
     // ── 2. The capture fence ends together with the recorded decision ──────────────────────────────────────────────
 
     [Fact]

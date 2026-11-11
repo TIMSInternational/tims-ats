@@ -137,9 +137,11 @@ public sealed class ProviderInboxProcessor(IAssessmentProviderRepository reposit
         }
 
         if (!bindingActive && envelope.EventType == ProviderEventTypes.ResultReady
-            && attempt.State != ProviderAttemptStates.ResultReady)
+            && !(ProviderAttemptPolling.RevisionStates.Contains(attempt.State) && attempt.LatestResultId is not null))
         {
-            // No retained result to revise: a first result after the unbind would ADD scores, so it is not fetched.
+            // No retained result to revise: a first result after the unbind would ADD scores, so it is not fetched. A
+            // HELD result is revised whatever state its last revision left (Codex ATS P1: a kept result also sits on a
+            // voided or expired attempt) — the same rule the poller uses to re-read revisions.
             return (InboxStatuses.Ignored, "binding_inactive", false);
         }
 
