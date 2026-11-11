@@ -425,7 +425,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     // Mirrors the real repository: cancels only a cancellable attempt still mapped to the expected provider assignment.
     public Task<string?> MarkCancelledAsync(
         Guid organizationId, Guid attemptId, Guid? expectedProviderAssignmentId, Guid actorId, bool cancelledAtProvider,
-        DateTimeOffset now, CancellationToken cancellationToken)
+        DateTimeOffset now, CancellationToken cancellationToken, bool providerCancelUnconfirmed = false)
     {
         var before = BeforeNextMarkCancelled;
         BeforeNextMarkCancelled = null;
@@ -435,8 +435,13 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             && ProviderAttemptStates.CanStaffCancelOver(current.State, cancelledAtProvider, current.LatestResultId is not null)
             && current.ProviderAssignmentId == expectedProviderAssignmentId)
         {
-            Writes.Add(cancelledAtProvider ? "staff_cancel:provider" : "staff_cancel:local");
-            Replace(attemptId, a => a with { State = ProviderAttemptStates.Cancelled });
+            var unconfirmed = providerCancelUnconfirmed && current.ProviderAssignmentId is null;
+            Writes.Add(cancelledAtProvider ? "staff_cancel:provider" : unconfirmed ? "staff_cancel:unconfirmed" : "staff_cancel:local");
+            Replace(attemptId, a => a with
+            {
+                State = ProviderAttemptStates.Cancelled,
+                LastErrorCode = unconfirmed ? ProviderCleanup.CancelPending : a.LastErrorCode,
+            });
         }
 
         return Task.FromResult(Attempts.FirstOrDefault(a => a.Id == attemptId)?.State);
@@ -485,6 +490,32 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     {
         Writes.Add("orphan_cancelled");
         Replace(attemptId, a => a.LastErrorCode == ProviderCleanup.CancelPending ? a with { LastErrorCode = null } : a);
+        return Task.CompletedTask;
+    }
+
+    // Mirrors the real repository: only a cancelled attempt with the marker and still no ids.
+    public Task ConfirmCancelAbsentAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Writes.Add("cancel_confirmed_absent");
+        Replace(attemptId, a => ProviderCleanup.IsCancelUnconfirmed(a) ? a with { LastErrorCode = null } : a);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<UnconfirmedCancel>> ListUnconfirmedCancelsAsync(int max, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<UnconfirmedCancel>>(Attempts
+            .Where(a => a.State == ProviderAttemptStates.Cancelled && a.LastErrorCode == ProviderCleanup.CancelPending
+                && a.WithdrawalState != ProviderWithdrawalStates.Pending && !TouchedCancels.Contains(a.Id))
+            .Take(max)
+            .Select(a => new UnconfirmedCancel(a.OrganizationId, a.Id))
+            .ToList());
+
+    /// <summary>Unconfirmed cancels the poller stamped (the fake leaves them out of the next listing).</summary>
+    public HashSet<Guid> TouchedCancels { get; } = [];
+
+    public Task TouchUnconfirmedCancelAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    {
+        Writes.Add("cancel_touched");
+        TouchedCancels.Add(attemptId);
         return Task.CompletedTask;
     }
 
@@ -868,7 +899,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Attempts.Count(a => ProviderAttemptStates.IsCancellable(a.State)),
         Attempts.Count(a => a.State == ProviderAttemptStates.Completed),
         Attempts.Count(a => a.WithdrawalState == ProviderWithdrawalStates.Pending),
-        Attempts.Count(ProviderCleanup.IsCancelPending),
+        Attempts.Count(a => a.State == ProviderAttemptStates.Cancelled && a.LastErrorCode == ProviderCleanup.CancelPending),
         Attempts.Count(a => HasLiveCreateFence(a.Id)));
 
     public Task<IReadOnlyList<ProviderFitRow>> GetFitRowsAsync(

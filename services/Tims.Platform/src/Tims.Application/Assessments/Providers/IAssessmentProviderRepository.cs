@@ -73,9 +73,30 @@ public interface IAssessmentProviderRepository
     /// set first; or a still-cancellable state when the attempt was mapped to a provider assignment meanwhile (the
     /// caller must cancel that one at the provider and try again). Null when not found.
     /// </summary>
+    /// <remarks><paramref name="providerCancelUnconfirmed"/>: an unmapped attempt whose create may have reached the
+    /// provider and could not be ruled out (<see cref="ProviderCancelConfirmation"/>) is cancelled with the
+    /// <see cref="ProviderCleanup.CancelPending"/> marker and no ids, which blocks the unbind until it is confirmed.</remarks>
     Task<string?> MarkCancelledAsync(
         Guid organizationId, Guid attemptId, Guid? expectedProviderAssignmentId, Guid actorId, bool cancelledAtProvider,
-        DateTimeOffset now, CancellationToken cancellationToken);
+        DateTimeOffset now, CancellationToken cancellationToken, bool providerCancelUnconfirmed = false);
+
+    /// <summary>
+    /// A definitive lookup found nothing at the provider for a cancelled attempt that carries
+    /// <see cref="ProviderCleanup.CancelPending"/> with NO provider ids: clears the marker under the attempt lock, with an
+    /// audit row. No-op otherwise (in particular once a create landed and recorded its ids).
+    /// </summary>
+    Task ConfirmCancelAbsentAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// PRE-TENANT (privileged connection): cancelled attempts whose cancel at the provider is not confirmed yet
+    /// (<see cref="ProviderCleanup.CancelPending"/>, with or without ids; never one in a #312 cascade, which its sweep
+    /// owns), untouched for <see cref="Domain.Assessments.Providers.ProviderAttemptPolling.StaleAfter"/>, oldest first,
+    /// at most <paramref name="max"/>. Only the org and attempt ids leave.
+    /// </summary>
+    Task<IReadOnlyList<UnconfirmedCancel>> ListUnconfirmedCancelsAsync(int max, CancellationToken cancellationToken);
+
+    /// <summary>Stamps <c>last_polled_at</c> on an unconfirmed cancel the poller could not confirm (back of the queue).</summary>
+    Task TouchUnconfirmedCancelAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken);
 
     /// <summary>
     /// The provider confirmed the cancel of a cancelled attempt's orphaned assignment: clears
@@ -494,6 +515,9 @@ public sealed record LockedLaunch(LockedLaunchOutcome Outcome, ProviderCall<Prov
 /// <summary>An attempt the D17 poller claimed, with the provider tenant its binding maps to.</summary>
 public sealed record PolledAttempt(AttemptRow Attempt, Guid ProviderTenantId);
 
+/// <summary>A cancelled attempt whose cancel at the provider is not confirmed yet (D17 poller work).</summary>
+public sealed record UnconfirmedCancel(Guid OrganizationId, Guid AttemptId);
+
 /// <summary>A provider subject the erasure sweep should ask about, and when it was last attempted (null: never).</summary>
 public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubjectId, DateTimeOffset? LastAttemptedAt);
 
@@ -580,6 +604,14 @@ public static class ProviderCleanup
     public static bool IsCancelPending(AttemptRow attempt) =>
         attempt is not null && attempt.State == Domain.Assessments.Providers.ProviderAttemptStates.Cancelled
         && attempt.ProviderAssignmentId is not null && attempt.LastErrorCode == CancelPending;
+
+    /// <summary>
+    /// A cancelled attempt with NO provider ids whose create may still exist at the provider (its lookup could not rule it
+    /// out when it was cancelled): confirmed by <see cref="ProviderCancelConfirmation.ConfirmAsync"/>.
+    /// </summary>
+    public static bool IsCancelUnconfirmed(AttemptRow attempt) =>
+        attempt is not null && attempt.State == Domain.Assessments.Providers.ProviderAttemptStates.Cancelled
+        && attempt.ProviderAssignmentId is null && attempt.LastErrorCode == CancelPending;
 
     /// <summary>
     /// After this long, a consent capture announced by a launch and never ended can no longer be in flight at the

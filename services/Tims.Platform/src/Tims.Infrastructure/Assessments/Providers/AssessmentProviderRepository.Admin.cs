@@ -142,7 +142,7 @@ public sealed partial class AssessmentProviderRepository
                  SELECT count(*) FILTER (WHERE state IN ('pending_create', 'created', 'launched', 'in_progress'))::int AS "Cancellable",
                         count(*) FILTER (WHERE state = 'completed')::int AS "AwaitingResult",
                         count(*) FILTER (WHERE withdrawal_state = 'pending')::int AS "PendingWithdrawals",
-                        count(*) FILTER (WHERE state = 'cancelled' AND provider_assignment_id IS NOT NULL
+                        count(*) FILTER (WHERE state = 'cancelled'
                                            AND last_error_code = 'provider_cancel_pending')::int AS "CancelPending",
                         count(*) FILTER (WHERE EXISTS (
                             SELECT 1 FROM unnest(create_fences) AS f

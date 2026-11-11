@@ -414,4 +414,57 @@ public sealed class ProviderAttemptPollUseCaseTests
     [InlineData("expired", ProviderAttemptStates.Expired)]
     public void A_provider_status_maps_to_at_most_one_ats_state(string providerStatus, string? state) =>
         Assert.Equal(state, ProviderAttemptPolling.StateFor(providerStatus));
+
+    // Codex ATS P1: a staff cancel left without ids (its lost create could not be ruled out) blocks the unbind; the poller
+    // must finish it, or the binding could never be removed.
+    private AttemptRow AddUnconfirmedCancel()
+    {
+        var row = new AttemptRow(Guid.NewGuid(), FakeRepository.Org, FakeRepository.Candidate, FakeRepository.Vacancy, "lia",
+            ProviderAttemptStates.Cancelled, "Razón válida", "es", 1m, [], null, null, null, "1.0", null, [], null,
+            ProviderCleanup.CancelPending, false);
+        _repository.Attempts.Add(row);
+        return row;
+    }
+
+    [Fact]
+    public async Task An_unconfirmed_cancel_whose_create_never_landed_is_confirmed_by_the_poller()
+    {
+        var row = AddUnconfirmedCancel();
+
+        var poll = await Run();
+
+        Assert.Equal(1, poll.CancelsConfirmed);
+        Assert.Equal(["lookup"], _provider.Calls);
+        Assert.Null(_repository.Attempts.Single(a => a.Id == row.Id).LastErrorCode);
+    }
+
+    [Fact]
+    public async Task An_unconfirmed_cancel_whose_create_landed_is_cancelled_at_the_provider_by_the_poller()
+    {
+        var row = AddUnconfirmedCancel();
+        var assignment = new ProviderAssignment(Guid.NewGuid(), _repository.Binding!.ProviderTenantId, Guid.NewGuid(), "lia",
+            "1.0", "content-1", "created", ["assessment"], [], Now.AddDays(7), row.Id.ToString());
+        _provider.ByExternalRef[row.Id.ToString()] = assignment;
+
+        var poll = await Run();
+
+        Assert.Equal(1, poll.CancelsConfirmed);
+        Assert.Equal([assignment.AssignmentId], _provider.Cancelled);
+        var after = _repository.Attempts.Single(a => a.Id == row.Id);
+        Assert.Equal(assignment.AssignmentId, after.ProviderAssignmentId);
+        Assert.Null(after.LastErrorCode);
+    }
+
+    [Fact]
+    public async Task An_unconfirmed_cancel_the_poller_cannot_confirm_stays_pending_and_goes_to_the_back()
+    {
+        var row = AddUnconfirmedCancel();
+        _provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+
+        var poll = await Run();
+
+        Assert.Equal(0, poll.CancelsConfirmed);
+        Assert.Contains("cancel_touched", _repository.Writes);
+        Assert.True(ProviderCleanup.IsCancelUnconfirmed(_repository.Attempts.Single(a => a.Id == row.Id)));
+    }
 }

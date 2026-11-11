@@ -124,6 +124,15 @@ public sealed class ProviderConsentWithdrawalUseCase(
                     attempt = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken)
                         .ConfigureAwait(false) ?? attempt;
                 }
+                else if (lookup.Value.Assignment is null && ProviderCleanup.IsCancelUnconfirmed(attempt)
+                         && fences.FirstOrDefault(f => f.AttemptId == attempt.Id) is not { CreateAllowsCompletion: false })
+                {
+                    // A staff cancel left without ids while its create could not be ruled out: this definitive lookup
+                    // (no create in flight at the fence read) confirms it, or its marker would hold the cascade forever.
+                    await _repository.ConfirmCancelAbsentAsync(organizationId, attempt.Id, now, cancellationToken)
+                        .ConfigureAwait(false);
+                    attempt = attempt with { LastErrorCode = null };
+                }
             }
 
             if (ProviderCleanup.IsCancelPending(attempt))

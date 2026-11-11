@@ -829,11 +829,15 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
             return Task.FromResult(ProviderCall<ProviderConsentRecord>.Success(new ProviderConsentRecord(consentId, "assessment", "withdrawn")));
         }
 
+        /// <summary>Lookup by external_ref; by default the provider holds nothing for it.</summary>
+        public Func<string, ProviderCall<ProviderAssignmentLookup>>? OnLookup { get; set; }
+
         public Task<ProviderCall<ProviderAssignmentLookup>> FindAssignmentByExternalRefAsync(
             Guid tenantId, string externalRef, CancellationToken cancellationToken)
         {
             Calls.Enqueue("lookup");
-            return Task.FromResult(ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(null)));
+            return Task.FromResult(OnLookup?.Invoke(externalRef)
+                ?? ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(null)));
         }
 
         public Task<ProviderCall<ProviderAssignment>> CreateAssignmentAsync(

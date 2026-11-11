@@ -273,6 +273,85 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
     }
 
     [Fact]
+    public async Task A_cancel_whose_lost_create_cannot_be_ruled_out_blocks_the_unbind_until_it_is_confirmed()
+    {
+        // Codex ATS P1: the create reached the provider, its answer was lost, and the lookup at cancel time failed. The
+        // attempt is cancelled here with the cleanup marker and NO ids, and that alone must keep the binding in place:
+        // after an unbind every event for the assignment would be ignored.
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var attempt = await PendingAttemptAsync(org, candidate);
+        var provider = new ProviderEndpointTests.FakeProvider
+        {
+            OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true)),
+        };
+        var row = await WithRepository(r => r.FindAttemptAsync(org, attempt, CancellationToken.None));
+        var cancel = await WithRepository(r => new CancelProviderAttemptUseCase(r, provider)
+            .CancelAsync(org, Guid.NewGuid(), row!, Now, CancellationToken.None));
+        Assert.Equal(ProviderCancelOutcome.Cancelled, cancel.Outcome);
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT state = 'cancelled' AND provider_assignment_id IS NULL AND last_error_code = 'provider_cancel_pending' FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+
+        var blocked = await WithRepository(r => r.DeactivateBindingAsync(org, Guid.NewGuid(), Now, CancellationToken.None));
+        Assert.Equal(0, blocked!.Cancellable);
+        Assert.Equal(1, blocked.CancelPending);
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT is_active FROM assessment_provider_bindings WHERE organization_id = '{org}'"));
+
+        // Once untouched for the poll interval it is on the poller's queue (pre-tenant listing).
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET updated_at = now() - interval '1 hour' WHERE id = '{attempt}'");
+        var queue = await WithRepository(r => r.ListUnconfirmedCancelsAsync(500, CancellationToken.None));
+        Assert.Contains(new UnconfirmedCancel(org, attempt), queue);
+
+        // The provider answers now: the landed create is recorded and cancelled there, and the marker is cleared.
+        var tenant = (await WithRepository(r => r.GetBindingAsync(org, CancellationToken.None)))!.ProviderTenantId;
+        var landed = Assignment(attempt, Guid.NewGuid()) with { TenantId = tenant };
+        provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Success(new ProviderAssignmentLookup(landed));
+        var current = await WithRepository(r => r.FindAttemptAsync(org, attempt, CancellationToken.None));
+        var confirmation = await WithRepository(r => ProviderCancelConfirmation.ConfirmAsync(
+            r, provider, org, current!, Now, CancellationToken.None));
+        Assert.True(confirmation.Confirmed);
+        Assert.Equal([landed.AssignmentId], provider.CancelledAssignments);
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT state = 'cancelled' AND provider_assignment_id = '{landed.AssignmentId}' AND last_error_code IS NULL FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+        Assert.DoesNotContain(new UnconfirmedCancel(org, attempt),
+            await WithRepository(r => r.ListUnconfirmedCancelsAsync(500, CancellationToken.None)));
+
+        var done = await WithRepository(r => r.DeactivateBindingAsync(org, Guid.NewGuid(), Now, CancellationToken.None));
+        Assert.False(done!.Any);
+    }
+
+    [Fact]
+    public async Task A_definitive_empty_lookup_confirms_an_unconfirmed_cancel_but_never_over_recorded_ids()
+    {
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var absent = await PendingAttemptAsync(org, candidate);
+        var mapped = await PendingAttemptAsync(org, candidate);
+        await fixture.ExecuteAsync(
+            $"""
+             UPDATE assessment_provider_attempts SET state = 'cancelled', last_error_code = 'provider_cancel_pending'
+              WHERE id IN ('{absent}', '{mapped}');
+             UPDATE assessment_provider_attempts SET provider_assignment_id = gen_random_uuid() WHERE id = '{mapped}';
+             """);
+
+        await WithRepository(async r =>
+        {
+            await r.ConfirmCancelAbsentAsync(org, absent, Now, CancellationToken.None);
+            await r.ConfirmCancelAbsentAsync(org, mapped, Now, CancellationToken.None);
+            return 0;
+        });
+
+        Assert.Equal(DBNull.Value, await fixture.ScalarAsync(
+            $"SELECT last_error_code FROM assessment_provider_attempts WHERE id = '{absent}'") ?? DBNull.Value);
+        Assert.Equal("provider_cancel_pending", await fixture.ScalarAsync(
+            $"SELECT last_error_code FROM assessment_provider_attempts WHERE id = '{mapped}'"));
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM audit_logs WHERE organization_id = '{org}' AND action = 'assessment_provider_cancel_confirmed_absent'"));
+    }
+
+    [Fact]
     public async Task An_unbind_waits_for_a_reserve_in_flight_counts_its_attempt_and_a_later_reserve_writes_nothing()
     {
         var org = await OrgAsync();

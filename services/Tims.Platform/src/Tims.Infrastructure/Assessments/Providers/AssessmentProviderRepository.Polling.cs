@@ -117,6 +117,46 @@ public sealed partial class AssessmentProviderRepository
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<UnconfirmedCancel>> ListUnconfirmedCancelsAsync(int max, CancellationToken cancellationToken)
+    {
+        // PRE-TENANT on the privileged connection, like the org listing above: only ids leave; each attempt is then read
+        // and confirmed under its own tenant scope. Oldest first, so one that keeps failing (stamped by
+        // TouchUnconfirmedCancelAsync) never starves the rest.
+        var stale = ProviderAttemptPolling.StaleAfter.TotalSeconds;
+        var rows = await _db.Database.SqlQuery<UnconfirmedCancelRow>(
+                $"""
+                 SELECT p.organization_id AS "OrganizationId", p.id AS "AttemptId"
+                   FROM assessment_provider_attempts p
+                  WHERE p.state = 'cancelled' AND p.last_error_code = {ProviderCleanup.CancelPending}
+                    AND p.withdrawal_state IS DISTINCT FROM 'pending'
+                    AND GREATEST(p.updated_at, COALESCE(p.last_polled_at, '-infinity'))
+                        < clock_timestamp() - make_interval(secs => {stale})
+                  ORDER BY GREATEST(p.updated_at, COALESCE(p.last_polled_at, '-infinity')), p.id
+                  LIMIT {max}
+                 """)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Select(r => new UnconfirmedCancel(r.OrganizationId, r.AttemptId)).ToList();
+    }
+
+    public async Task TouchUnconfirmedCancelAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts SET last_polled_at = clock_timestamp()
+              WHERE organization_id = {organizationId} AND id = {attemptId} AND state = 'cancelled'
+                AND last_error_code = {ProviderCleanup.CancelPending}
+             """, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed class UnconfirmedCancelRow
+    {
+        public Guid OrganizationId { get; init; }
+
+        public Guid AttemptId { get; init; }
+    }
+
     public async Task SetMissingConsentsAsync(
         Guid organizationId, Guid attemptId, IReadOnlyList<string> missingConsents, CancellationToken cancellationToken)
     {

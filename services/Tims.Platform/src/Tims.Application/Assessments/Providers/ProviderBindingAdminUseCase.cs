@@ -7,7 +7,8 @@ namespace Tims.Application.Assessments.Providers;
 /// The provider work of one organization that an unbind must not strand: sittings that have not finished
 /// (<see cref="Cancellable"/>), finished sittings still waiting for their result (<see cref="AwaitingResult"/>), #312
 /// withdrawals not yet confirmed at the provider (<see cref="PendingWithdrawals"/>), orphaned provider assignments not
-/// yet confirmed cancelled (<see cref="CancelPending"/>) and creates announced and still live
+/// yet confirmed cancelled, including staff cancels whose lost create could not be ruled out yet and that therefore
+/// carry no provider ids (<see cref="CancelPending"/>), and creates announced and still live
 /// (<see cref="CreatesInFlight"/>). After an unbind the ATS no longer receives the provider's events for the org, so
 /// each would be left behind.
 /// </summary>

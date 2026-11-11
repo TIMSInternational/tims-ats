@@ -27,9 +27,12 @@ public sealed record ProviderCancelResult(ProviderCancelOutcome Outcome, Provide
 /// <item>An attempt the provider holds is cancelled THERE first (idempotent; it voids an in-progress session and
 /// releases the reserved use). An outage changes nothing locally; a provider that no longer knows the assignment
 /// (404/410) is not an obstacle.</item>
-/// <item>Then the attempt is cancelled under its lock with an audit row. A <c>pending_create</c> attempt has nothing
-/// at the provider to cancel yet: if its create was in flight, the assign request (or a later webhook, on
-/// reconciliation) cancels the provider's assignment when it finds the attempt cancelled.</item>
+/// <item>Then the attempt is cancelled under its lock with an audit row. A <c>pending_create</c> attempt is first looked
+/// up at the provider by <c>external_ref</c> (its create may have landed with the answer lost): found → its ids are
+/// recorded and that assignment is cancelled there first; definitive absence → a local cancel (a create still in
+/// flight is cancelled by the assign request when it finds the attempt cancelled); a failed or inconclusive lookup →
+/// cancelled with the <see cref="ProviderCleanup.CancelPending"/> marker and no ids, which blocks the unbind until it
+/// is confirmed (<see cref="ProviderCancelConfirmation"/>).</item>
 /// </list>
 /// Nothing here rejects a candidate.
 /// </summary>
@@ -49,8 +52,29 @@ public sealed class CancelProviderAttemptUseCase(IAssessmentProviderRepository r
         if (attempt.State == ProviderAttemptStates.Cancelled)
         {
             // Idempotent — except that a cancelled attempt whose orphaned provider assignment is not yet confirmed
-            // cancelled there (its create landed after the cancel) retries that cancel first.
-            if (ProviderCleanup.IsCancelPending(attempt))
+            // cancelled there (its create landed after the cancel) retries that cancel first, and one cancelled without
+            // ids while its create could not be ruled out asks the provider again (found: cancelled there; absent: done).
+            if (ProviderCleanup.IsCancelUnconfirmed(attempt))
+            {
+                if (!_provider.IsConfigured)
+                {
+                    return new ProviderCancelResult(ProviderCancelOutcome.ProviderUnconfigured, null, null);
+                }
+
+                var confirmation = await ProviderCancelConfirmation.ConfirmAsync(
+                    _repository, _provider, organizationId, attempt, now, cancellationToken).ConfigureAwait(false);
+                if (!confirmation.Confirmed)
+                {
+                    var failure = confirmation.Failure;
+                    return new ProviderCancelResult(
+                        failure is null || failure.Transient ? ProviderCancelOutcome.ProviderUnavailable : ProviderCancelOutcome.ProviderRefused,
+                        null, failure?.Code);
+                }
+
+                attempt = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken).ConfigureAwait(false)
+                    ?? attempt with { LastErrorCode = null };
+            }
+            else if (ProviderCleanup.IsCancelPending(attempt))
             {
                 if (!_provider.IsConfigured)
                 {
@@ -83,7 +107,27 @@ public sealed class CancelProviderAttemptUseCase(IAssessmentProviderRepository r
             }
 
             var cancelledAtProvider = false;
-            if (attempt.ProviderAssignmentId is { } assignmentId)
+            var unconfirmed = false;
+            if (attempt.ProviderAssignmentId is null && attempt.State == ProviderAttemptStates.PendingCreate)
+            {
+                // Codex ATS P1: a create whose answer was lost may exist at the provider. Ask (D11 lookup) before any
+                // local cancel: found → record its ids and cancel THAT assignment next round; definitive absence → a
+                // plain local cancel; unknown → cancelled here with the cleanup marker, which blocks the unbind until the
+                // poller or a retry of this route confirms it.
+                var probe = await ProviderCancelConfirmation.ProbeCreateAsync(
+                    _repository, _provider, organizationId, attempt, cancellationToken).ConfigureAwait(false);
+                if (probe.Outcome == CreateProbeOutcome.Found)
+                {
+                    await _repository.MarkCreatedAsync(organizationId, attempt.Id, probe.Assignment!, now, cancellationToken)
+                        .ConfigureAwait(false);
+                    attempt = await _repository.FindAttemptAsync(organizationId, attempt.Id, cancellationToken)
+                        .ConfigureAwait(false) ?? attempt;
+                    continue;
+                }
+
+                unconfirmed = probe.Outcome == CreateProbeOutcome.Unknown;
+            }
+            else if (attempt.ProviderAssignmentId is { } assignmentId)
             {
                 if (!_provider.IsConfigured)
                 {
@@ -116,8 +160,8 @@ public sealed class CancelProviderAttemptUseCase(IAssessmentProviderRepository r
             }
 
             var state = await _repository.MarkCancelledAsync(
-                organizationId, attempt.Id, attempt.ProviderAssignmentId, actorId, cancelledAtProvider, now, cancellationToken)
-                .ConfigureAwait(false);
+                organizationId, attempt.Id, attempt.ProviderAssignmentId, actorId, cancelledAtProvider, now, cancellationToken,
+                providerCancelUnconfirmed: unconfirmed).ConfigureAwait(false);
             if (state is null)
             {
                 return new ProviderCancelResult(ProviderCancelOutcome.NotFound, null, null);

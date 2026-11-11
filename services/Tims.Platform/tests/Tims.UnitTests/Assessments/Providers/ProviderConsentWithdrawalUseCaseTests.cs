@@ -393,4 +393,22 @@ public sealed class ProviderConsentWithdrawalUseCaseTests
         Assert.Equal(ProviderErasureOutcome.CandidateNotFound, result.Outcome);
         Assert.Empty(_provider.Calls);
     }
+
+    [Fact]
+    public async Task A_staff_cancel_left_unconfirmed_is_confirmed_by_the_cascade_and_never_holds_it_forever()
+    {
+        // Codex ATS P1: a staff cancel whose lookup failed carries the cleanup marker with no ids. The cascade's own
+        // definitive lookup (no create in flight) confirms it; otherwise the marker would keep the withdrawal pending.
+        var row = new AttemptRow(Guid.NewGuid(), FakeRepository.Org, FakeRepository.Candidate, FakeRepository.Vacancy, "lia",
+            ProviderAttemptStates.Cancelled, "Razón válida", "es", 1m, [], null, null, null, "1.0", null, [], null,
+            ProviderCleanup.CancelPending, false, WithdrawalState: ProviderWithdrawalStates.Pending);
+        _repository.Attempts.Add(row);
+
+        var outcome = await UseCase.PropagateAsync(FakeRepository.Org, Now, CancellationToken.None);
+
+        Assert.Equal(1, outcome.Confirmed);
+        var after = _repository.Attempts.Single();
+        Assert.Null(after.LastErrorCode);
+        Assert.Equal(ProviderWithdrawalStates.Done, after.WithdrawalState);
+    }
 }

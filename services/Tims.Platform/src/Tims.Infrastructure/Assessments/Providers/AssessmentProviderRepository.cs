@@ -280,6 +280,29 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task ConfirmCancelAbsentAsync(
+        Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        await LockAttemptAsync(attemptId, cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
+        var attempt = await _db.Attempts
+            .FirstOrDefaultAsync(a => a.Id == attemptId && a.OrganizationId == organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        // Never once a create recorded ids meanwhile: that orphan must be cancelled at the provider first.
+        if (attempt is not null && attempt.State == ProviderAttemptStates.Cancelled && attempt.ProviderAssignmentId is null
+            && attempt.LastErrorCode == ProviderCleanup.CancelPending)
+        {
+            attempt.LastErrorCode = null;
+            attempt.UpdatedAt = now.UtcDateTime;
+            AddAudit(organizationId, null, "assessment_provider_cancel_confirmed_absent", attempt.Id,
+                new Dictionary<string, object?> { ["instrument"] = attempt.Instrument });
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task MarkCreateFailedAsync(
         Guid organizationId, Guid attemptId, string errorCode, bool cancel, DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -317,7 +340,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
 
     public async Task<string?> MarkCancelledAsync(
         Guid organizationId, Guid attemptId, Guid? expectedProviderAssignmentId, Guid actorId, bool cancelledAtProvider,
-        DateTimeOffset now, CancellationToken cancellationToken)
+        DateTimeOffset now, CancellationToken cancellationToken, bool providerCancelUnconfirmed = false)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         // The attempt lock every webhook transition, launch and create mapping takes, then a fresh read: a sitting a
@@ -335,6 +358,14 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
         {
             var from = attempt.State;
             attempt.State = ProviderAttemptStates.Cancelled;
+            // An unmapped attempt whose create could not be ruled out: the marker without ids keeps the cancel pending
+            // (and the binding in place) until a lookup confirms it.
+            var unconfirmed = providerCancelUnconfirmed && attempt.ProviderAssignmentId is null;
+            if (unconfirmed)
+            {
+                attempt.LastErrorCode = ProviderCleanup.CancelPending;
+            }
+
             attempt.UpdatedAt = now.UtcDateTime;
             AddAudit(organizationId, actorId, "assessment_provider_attempt_cancelled", attempt.Id, new Dictionary<string, object?>
             {
@@ -342,6 +373,7 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 ["from"] = from,
                 ["to"] = attempt.State,
                 ["cancelledAtProvider"] = cancelledAtProvider,
+                ["providerCancelUnconfirmed"] = unconfirmed,
             });
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }

@@ -35,17 +35,116 @@ public sealed class CancelProviderAttemptUseCaseTests
     }
 
     [Fact]
-    public async Task A_pending_attempt_has_nothing_at_the_provider_yet_and_is_cancelled_here()
+    public async Task A_pending_attempt_the_provider_confirms_it_never_created_is_cancelled_here()
     {
-        var reserved = await _repository.ReserveAttemptsAsync(FakeRepository.Org, Actor, _repository.Binding!, FakeRepository.Candidate,
-            FakeRepository.Vacancy, [new NewAttempt("lia", "Análisis de datos", "es", 1m, [], null)], Now, CancellationToken.None);
-        var pending = Assert.Single(reserved.Attempts);
+        var pending = await ReservePending();
 
         var result = await Cancel(pending);
 
         Assert.Equal(ProviderCancelOutcome.Cancelled, result.Outcome);
-        Assert.Empty(_provider.Calls);
+        Assert.Equal(["lookup"], _provider.Calls);
         Assert.Contains("staff_cancel:local", _repository.Writes);
+        Assert.Null(State(pending.Id).LastErrorCode);
+    }
+
+    [Fact]
+    public async Task A_lost_create_response_is_found_by_lookup_and_that_assignment_is_cancelled_at_the_provider()
+    {
+        // Codex ATS P1: the create reached the provider but its answer was lost, so the attempt has no ids. A local-only
+        // cancel would strand a live assignment the ATS no longer tracks.
+        var pending = await ReservePending();
+        var assignment = LandedCreate(pending);
+
+        var result = await Cancel(pending);
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, result.Outcome);
+        Assert.Equal([assignment.AssignmentId], _provider.Cancelled);
+        Assert.Equal(["reserve", "created", "staff_cancel:provider"], _repository.Writes);
+        Assert.Equal(ProviderAttemptStates.Cancelled, State(pending.Id).State);
+        Assert.Equal(assignment.AssignmentId, State(pending.Id).ProviderAssignmentId);
+        Assert.Null(State(pending.Id).LastErrorCode);
+    }
+
+    [Fact]
+    public async Task A_failed_lookup_cancels_here_but_keeps_the_cancel_pending_and_the_unbind_refused()
+    {
+        var pending = await ReservePending();
+        _provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+
+        var result = await Cancel(pending);
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, result.Outcome);
+        Assert.Contains("staff_cancel:unconfirmed", _repository.Writes);
+        var row = State(pending.Id);
+        Assert.Equal(ProviderAttemptStates.Cancelled, row.State);
+        Assert.Null(row.ProviderAssignmentId);
+        Assert.Equal(ProviderCleanup.CancelPending, row.LastErrorCode);
+        Assert.True(ProviderCleanup.IsCancelUnconfirmed(row));
+
+        var unbind = await new ProviderBindingAdminUseCase(_repository, new CancelProviderAttemptUseCase(_repository, _provider))
+            .UnbindAsync(FakeRepository.Org, Actor, cancelOpenAttempts: false, Now, CancellationToken.None);
+        Assert.Equal(ProviderUnbindOutcome.Blocked, unbind.Outcome);
+        Assert.Equal(1, unbind.OpenWork.CancelPending);
+        Assert.DoesNotContain("binding_unset", _repository.Writes);
+    }
+
+    [Fact]
+    public async Task An_empty_lookup_while_a_create_is_still_in_flight_is_not_conclusive()
+    {
+        var pending = await ReservePending();
+        _repository.CreateFences[pending.Id] = [_repository.DbNow];
+
+        var result = await Cancel(pending);
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, result.Outcome);
+        Assert.True(ProviderCleanup.IsCancelUnconfirmed(State(pending.Id)));
+    }
+
+    [Fact]
+    public async Task Retrying_an_unconfirmed_cancel_finds_the_landed_create_and_cancels_it_at_the_provider()
+    {
+        var pending = await ReservePending();
+        _provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        await Cancel(pending);
+        _provider.OnLookup = null;
+        var assignment = LandedCreate(pending);
+
+        var retry = await Cancel(State(pending.Id));
+
+        Assert.Equal(ProviderCancelOutcome.Cancelled, retry.Outcome);
+        Assert.Equal([assignment.AssignmentId], _provider.Cancelled);
+        var row = State(pending.Id);
+        Assert.Equal(assignment.AssignmentId, row.ProviderAssignmentId);
+        Assert.Null(row.LastErrorCode);
+    }
+
+    [Fact]
+    public async Task Retrying_an_unconfirmed_cancel_whose_lookup_still_fails_reports_the_outage()
+    {
+        var pending = await ReservePending();
+        _provider.OnLookup = _ => ProviderCall<ProviderAssignmentLookup>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
+        await Cancel(pending);
+
+        var retry = await Cancel(State(pending.Id));
+
+        Assert.Equal(ProviderCancelOutcome.ProviderUnavailable, retry.Outcome);
+        Assert.True(ProviderCleanup.IsCancelUnconfirmed(State(pending.Id)));
+    }
+
+    private async Task<AttemptRow> ReservePending()
+    {
+        var reserved = await _repository.ReserveAttemptsAsync(FakeRepository.Org, Actor, _repository.Binding!, FakeRepository.Candidate,
+            FakeRepository.Vacancy, [new NewAttempt("lia", "Análisis de datos", "es", 1m, [], null)], Now, CancellationToken.None);
+        return Assert.Single(reserved.Attempts) with { IsNew = false };
+    }
+
+    // What the provider holds for an attempt whose create landed while the answer never reached the ATS.
+    private ProviderAssignment LandedCreate(AttemptRow attempt)
+    {
+        var assignment = new ProviderAssignment(Guid.NewGuid(), _repository.Binding!.ProviderTenantId, Guid.NewGuid(),
+            attempt.Instrument, "1.0", "content-1", "created", ["assessment"], [], Now.AddDays(7), attempt.Id.ToString());
+        _provider.ByExternalRef[attempt.Id.ToString()] = assignment;
+        return assignment;
     }
 
     [Fact]

@@ -3,7 +3,9 @@ using Tims.Domain.Assessments.Providers;
 namespace Tims.Application.Assessments.Providers;
 
 /// <summary>What one poll did: organizations visited, attempts polled, attempts changed, attempts that failed.</summary>
-public sealed record AttemptPoll(int Organizations, int Polled, int Changed, int Failed, int FailedOrganizations);
+/// <param name="CancelsConfirmed">Unconfirmed staff cancels this run confirmed (nothing left at the provider).</param>
+public sealed record AttemptPoll(
+    int Organizations, int Polled, int Changed, int Failed, int FailedOrganizations, int CancelsConfirmed = 0);
 
 /// <summary>One run of the D17 polling fallback over every organization.</summary>
 public interface IProviderAttemptPoll
@@ -26,7 +28,11 @@ public interface IProviderAttemptPoll
 /// external ref); the consent purposes it still lacks are recorded; its status advances the attempt through the same
 /// forward-only, locked write a lifecycle webhook uses; a <c>result_id</c> is fetched and stored through the same
 /// guarded, revision-ordered write as <c>result.ready</c> (a later revision, such as a void, replaces an older one);</item>
-/// <item>releases each lease (conditional on the owner), stamping <c>last_polled_at</c>.</item>
+/// <item>releases each lease (conditional on the owner), stamping <c>last_polled_at</c>;</item>
+/// <item>then confirms up to <see cref="MaxUnconfirmedCancels"/> staff cancels still marked
+/// <see cref="ProviderCleanup.CancelPending"/> (<see cref="ProviderCancelConfirmation.ConfirmAsync"/>), oldest first, so
+/// a cancel whose create could not be ruled out (Codex ATS P1) never blocks the unbind forever. One that still cannot be
+/// confirmed is stamped and goes to the back of that queue.</item>
 /// </list>
 /// A candidate whose #312 withdrawal had not reached the attempt is staged first, and nothing is fetched for it (the
 /// cascade and its sweep own it from then on). A failed attempt never stops the others; it is polled again once stale.
@@ -43,6 +49,7 @@ public sealed class ProviderAttemptPollUseCase(
 {
     public const int MaxOrganizations = 200;
     public const int MaxAttemptsPerOrganization = 25;
+    public const int MaxUnconfirmedCancels = 50;
 
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
@@ -110,7 +117,57 @@ public sealed class ProviderAttemptPollUseCase(
             }
         }
 
-        return new AttemptPoll(organizations.Count, polled, changed, failed, failedOrganizations);
+        var cancelsConfirmed = 0;
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            var unconfirmed = await _repository.ListUnconfirmedCancelsAsync(MaxUnconfirmedCancels, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var pending in unconfirmed)
+            {
+                using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                limit.CancelAfter(_maxPollDuration);
+                try
+                {
+                    if (await ConfirmCancelAsync(pending, now, limit.Token).ConfigureAwait(false))
+                    {
+                        cancelsConfirmed++;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    failed++;
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+        }
+
+        return new AttemptPoll(organizations.Count, polled, changed, failed, failedOrganizations, cancelsConfirmed);
+    }
+
+    /// <summary>Confirms one unconfirmed staff cancel; true when it is confirmed now. One still pending is stamped.</summary>
+    private async Task<bool> ConfirmCancelAsync(UnconfirmedCancel pending, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var attempt = await _repository.FindAttemptAsync(pending.OrganizationId, pending.AttemptId, cancellationToken)
+            .ConfigureAwait(false);
+        if (attempt is null || attempt.State != ProviderAttemptStates.Cancelled
+            || attempt.LastErrorCode != ProviderCleanup.CancelPending)
+        {
+            return false;
+        }
+
+        var confirmation = await ProviderCancelConfirmation.ConfirmAsync(
+            _repository, _provider, pending.OrganizationId, attempt, now, cancellationToken).ConfigureAwait(false);
+        if (!confirmation.Confirmed)
+        {
+            await _repository.TouchUnconfirmedCancelAsync(pending.OrganizationId, pending.AttemptId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return confirmation.Confirmed;
     }
 
     /// <summary>Polls one claimed attempt. True when it changed something (state, result or missing consents).</summary>
