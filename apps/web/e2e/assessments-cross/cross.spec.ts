@@ -681,8 +681,6 @@ test('H8 HR reads each result on the candidate (exact levels; PCA advisory)', as
   await expect(lia.getByTestId('provider-status-chip')).toHaveText(/Result ready|Needs review/, { timeout: 60_000 });
   await expect(pca.getByTestId('provider-status-chip')).toHaveText('Result ready', { timeout: 60_000 });
   await expect(pca.getByTestId('provider-result')).toBeVisible();
-  await expect(pca.getByRole('region', { name: 'Fit to the position (TIMS)' })).toContainText('78%');
-  await expect(pca.getByRole('region', { name: 'Fit to the position (TIMS)' })).toContainText('Position code 194225');
   await expect(lia.getByText(/Global percentile \d+/)).toBeVisible();
   await expect(english.getByText('Speaking not assessed (no voice consent).')).toBeVisible();
   await expect(english.getByTestId('provider-result-minimum')).toHaveText(/Below minimum|Minimum met|Minimum: unknown/);
@@ -708,6 +706,10 @@ test('H8 HR reads each result on the candidate (exact levels; PCA advisory)', as
   else await expect(board(/^English/).getByText(/% correct$/)).toBeVisible();
   await expect(board(/^Personality/).getByLabel(/^Energy: /)).toBeVisible();
   await expect(board(/^PCA/).getByText('Primary')).toBeVisible();
+  // TIMS 2026-11-12: TIMS's fit to the vacancy's position (the stand-in answers 78 for 194225).
+  const jobFit = board(/^PCA/).getByRole('region', { name: 'Fit to the position (TIMS)' });
+  await expect(jobFit).toContainText('78%');
+  await expect(jobFit).toContainText('Position code 194225');
   await expect(board(/^PCA/).getByLabel(/^Behavior Under Pressure: Dominance \d+/)).toBeVisible();
   await shot(hr, 'hr-candidate-results-board');
   if (shotsDir) {
