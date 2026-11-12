@@ -71,26 +71,19 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             }
         }
 
-        // An access export is a read: it resolves (tenant, candidate id) by POST /v1/subjects only where that POST cannot
-        // create a subject for a person the provider erased (Codex ats round 13, runs 1 to 3). The provider keeps one
-        // subject per (tenant, external_ref = candidate id) and forgets the external_ref when it erases the subject (from
-        // the erasure REQUEST on, while it may still hold the data), so past the 24 h idempotency window the POST then
-        // creates a NEW subject, also when the ATS never learned of that erasure (a lost subject.erased; the recorded
-        // subject then answers 410 above). A subject no attempt records exists only behind an unanswered create (a create
-        // records the subject it resolved before anything can end its fence). So the POST is needed only while a create
-        // is unanswered and no subject of a LIVE attempt is held (one that is held IS the external_ref's subject), and is
-        // made only for a live attempt that records no subject yet: its assignment needs a subject at the provider anyway.
+        // An access export is a read: it never POSTs /v1/subjects (Codex ats round 13, runs 1 to 4). The provider keeps
+        // one subject per (tenant, external_ref = candidate id) and forgets the external_ref when it erases the subject
+        // (from the erasure REQUEST on, while it may still hold the data), so past the 24 h idempotency window that POST
+        // creates a NEW subject, also when the ATS never learned of the erasure (a lost subject.erased; a recorded subject
+        // then answers 410 above), and there is no read-only lookup by external_ref. A subject no attempt records exists
+        // only behind an unanswered create (a create records the subject it resolved before anything can end its fence,
+        // and a refusal ends it only when the attempt records that subject). So while a create is unanswered the export
+        // is complete only when a subject recorded on a LIVE attempt is held: that one IS the external_ref's subject, so
+        // the create could not have made another. Otherwise it is Incomplete (an erasure run resolves and erases it).
         if (subjects.ExportFacts is { } facts
             && !held.Any(h => h.Status == "exported" && (facts.LiveSubjects ?? []).Contains(h.SubjectId)))
         {
-            if (!facts.LiveAttemptWithoutSubject
-                || await EnsureSubjectByExternalRefAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false)
-                    is not { } resolved
-                || (!subjects.Subjects.Contains(resolved)
-                    && !await AddHeldAsync(held, resolved, false, cancellationToken).ConfigureAwait(false)))
-            {
-                return new ProviderSubjectExportResult(ProviderExportOutcome.Incomplete, null);
-            }
+            return new ProviderSubjectExportResult(ProviderExportOutcome.Incomplete, null);
         }
 
         var export = await _repository.ExportCandidateAsync(
@@ -166,7 +159,8 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     /// <param name="mayCreate">
     /// False for an access export: nothing is resolved here, since a <c>POST /v1/subjects</c> may CREATE a fresh subject
     /// for an erased person. The recorded subjects are returned with <see cref="ResolvedSubjects.ExportFacts"/>, and the
-    /// export decides once it has read them; it is Incomplete at once when a create is unanswered and no attempt is live.
+    /// export decides once it has read them; it is Incomplete at once when a create is unanswered and no subject is
+    /// recorded on a live attempt.
     /// </param>
     private async Task<ResolvedSubjects> ResolveSubjectsAsync(
         Guid organizationId, Guid candidateId, bool mayCreate, CancellationToken cancellationToken)
@@ -193,14 +187,13 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         if (!mayCreate)
         {
             // The access export (see ExportAsync). No unanswered create: no subject can exist that the attempts do not
-            // record. One, with no live attempt (every attempt erased, under an erasure request, or on a subject the
-            // provider confirmed erased): only an erasure may resolve it (Codex ats round 13 [P2]).
+            // record. One, with no subject recorded on a live attempt: Incomplete at once, only an erasure may resolve it.
             if (!known.HasAttempts || !known.UnansweredCreates)
             {
                 return new ResolvedSubjects(subjects, erased, null, known.ReadAt);
             }
 
-            return (known.LiveSubjects ?? []).Count == 0 && !known.LiveAttemptWithoutSubject
+            return (known.LiveSubjects ?? []).Count == 0
                 ? new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt)
                 : new ResolvedSubjects(subjects, erased, null, known.ReadAt) { ExportFacts = known };
         }

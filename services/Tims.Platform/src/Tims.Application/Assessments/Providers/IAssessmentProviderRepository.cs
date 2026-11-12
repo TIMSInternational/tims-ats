@@ -354,11 +354,14 @@ public interface IAssessmentProviderRepository
     /// attempt with no erasure (requested or done). In every other case the token stays until it is stale: such a create
     /// may have made a provider subject the attempt does not name (for example one created after an erasure made the
     /// provider forget the recorded subject's external_ref), and an unanswered token keeps the candidate's subject
-    /// resolved by external_ref on every later export or erasure.
+    /// resolved by external_ref on every later export or erasure. A refusal ends it only when the attempt records the
+    /// subject that create resolved (<paramref name="resolvedSubjectId"/>, null when it resolved none): a retry whose
+    /// first subject the provider erased resolves a NEW one that the attempt (which keeps its first) does not record, and
+    /// that subject must keep the candidate's export Incomplete and reachable by the erasure (Codex ats round 13 run 4).
     /// </summary>
     Task EndCreateAsync(
         Guid organizationId, Guid attemptId, DateTimeOffset fence, ProviderAssignment? assignment,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, Guid? resolvedSubjectId = null);
 
     /// <summary>
     /// Records the provider subject a create resolved on an attempt that has none yet (conditional, no other change), so
@@ -563,7 +566,6 @@ public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubje
 /// subject whose <c>subject.erased</c> is in the inbox. The provider keeps one subject per (tenant, external_ref =
 /// candidate id), so one of these that the provider still holds IS the candidate's subject there.
 /// </param>
-/// <param name="LiveAttemptWithoutSubject">Whether some live attempt records no subject yet.</param>
 /// <param name="CreatesInFlight">
 /// Whether some attempt of the candidate holds a create announced by
 /// <see cref="IAssessmentProviderRepository.BeginCreateAsync"/> that is neither answered nor stale (database clock): it may
@@ -572,7 +574,7 @@ public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubje
 public sealed record ProviderCandidateSubjects(
     IReadOnlyList<Guid> Subjects, bool HasAttempts, IReadOnlyList<Guid>? ErasedSubjects = null, bool NeedsResolution = true,
     bool CreatesInFlight = false, bool OnlyUnansweredCreatesNeedResolution = false, DateTimeOffset? ReadAt = null,
-    bool UnansweredCreates = true, IReadOnlyList<Guid>? LiveSubjects = null, bool LiveAttemptWithoutSubject = false);
+    bool UnansweredCreates = true, IReadOnlyList<Guid>? LiveSubjects = null);
 
 /// <summary>
 /// The DSAR access export: the ATS's own provider tables (<see cref="Attempts"/>, <see cref="Results"/>) and what the

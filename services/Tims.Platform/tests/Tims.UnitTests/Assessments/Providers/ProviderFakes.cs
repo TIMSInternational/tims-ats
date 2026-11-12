@@ -1062,12 +1062,13 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
     /// <summary>Mirrors the real repository's conditions for ending one create's fence.</summary>
     public Task EndCreateAsync(
         Guid organizationId, Guid attemptId, DateTimeOffset fence, ProviderAssignment? assignment,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? resolvedSubjectId = null)
     {
         var attempt = Attempts.FirstOrDefault(a => a.Id == attemptId);
         var ends = attempt is not null && (assignment is not null
             ? attempt.ProviderAssignmentId == assignment.AssignmentId && attempt.ProviderSubjectId == assignment.SubjectId
-            : attempt.State != ProviderAttemptStates.Erased && attempt.ErasureRequestedAt is null);
+            : attempt.State != ProviderAttemptStates.Erased && attempt.ErasureRequestedAt is null
+                && (resolvedSubjectId is null || attempt.ProviderSubjectId == resolvedSubjectId));
         if (ends && CreateFences.TryGetValue(attemptId, out var tokens))
         {
             tokens.Remove(fence);
@@ -1245,8 +1246,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             unanswered && !liveAttempt,
             DbNow,
             unanswered,
-            live.Where(a => a.ProviderSubjectId is not null).Select(a => a.ProviderSubjectId!.Value).Distinct().ToList(),
-            live.Any(a => a.ProviderSubjectId is null)));
+            live.Where(a => a.ProviderSubjectId is not null).Select(a => a.ProviderSubjectId!.Value).Distinct().ToList()));
     }
 
     /// <summary>Mirrors the real repository: drops fences stale at <paramref name="staleAsOf"/> on erasure-touched attempts.</summary>

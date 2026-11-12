@@ -266,7 +266,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             if (SubjectUpdateFor(context) is not { } update)
             {
                 return await FailAsync(organizationId, attempt, fence,
-                    ProviderFailure.Local(ProviderFailure.SubjectDataRequired, transient: false), now, cancellationToken)
+                    ProviderFailure.Local(ProviderFailure.SubjectDataRequired, transient: false), now, cancellationToken,
+                    subject.Value.SubjectId)
                     .ConfigureAwait(false);
             }
 
@@ -303,7 +304,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 
         if (existing is not null)
         {
-            return await RecordAsync(organizationId, binding, attempt, fence, existing, now, cancellationToken).ConfigureAwait(false);
+            return await RecordAsync(organizationId, binding, attempt, fence, existing, now, cancellationToken,
+                subject.Value!.SubjectId).ConfigureAwait(false);
         }
 
         if (!ProviderAgeBands.IsKnown(attempt.AgeBand))
@@ -311,7 +313,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             // An attempt reserved without an attested age band (none can be since the band became required on assign):
             // the contract refuses a create without one, so refuse it here, before anything is sent.
             return await FailAsync(organizationId, attempt, fence,
-                ProviderFailure.Local(ProviderFailure.AgeAttestationRequired, transient: false), now, cancellationToken)
+                ProviderFailure.Local(ProviderFailure.AgeAttestationRequired, transient: false), now, cancellationToken,
+                subject.Value!.SubjectId)
                 .ConfigureAwait(false);
         }
 
@@ -335,20 +338,23 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             .ConfigureAwait(false);
         if (!created.Ok)
         {
-            return await FailAsync(organizationId, attempt, fence, created.Failure!, now, cancellationToken).ConfigureAwait(false);
+            return await FailAsync(organizationId, attempt, fence, created.Failure!, now, cancellationToken,
+                subject.Value!.SubjectId).ConfigureAwait(false);
         }
 
-        return await RecordAsync(organizationId, binding, attempt, fence, created.Value!, now, cancellationToken).ConfigureAwait(false);
+        return await RecordAsync(organizationId, binding, attempt, fence, created.Value!, now, cancellationToken,
+            subject.Value!.SubjectId).ConfigureAwait(false);
     }
 
     private async Task<ProviderAssignItem> RecordAsync(
         Guid organizationId, ProviderBindingRow binding, AttemptRow attempt, DateTimeOffset fence, ProviderAssignment assignment,
-        DateTimeOffset now, CancellationToken cancellationToken)
+        DateTimeOffset now, CancellationToken cancellationToken, Guid resolvedSubjectId)
     {
         if (assignment.Instrument != attempt.Instrument || assignment.TenantId != binding.ProviderTenantId)
         {
             return await FailAsync(organizationId, attempt, fence,
-                ProviderFailure.Local(ProviderFailure.ContractViolation, transient: false), now, cancellationToken)
+                ProviderFailure.Local(ProviderFailure.ContractViolation, transient: false), now, cancellationToken,
+                resolvedSubjectId)
                 .ConfigureAwait(false);
         }
 
@@ -380,7 +386,7 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 
     private async Task<ProviderAssignItem> FailAsync(
         Guid organizationId, AttemptRow attempt, DateTimeOffset fence, ProviderFailure failure, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? resolvedSubjectId = null)
     {
         // Only a refusal that proves the provider created nothing cancels the attempt, so a corrected request can create
         // a fresh one. Anything else (an outage, a timeout, a concurrent request still creating it under the same key,
@@ -393,7 +399,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         {
             // A definitive refusal proves the provider created no assignment: this create's fence ends at once (any other
             // failure leaves it until it is stale: the provider may still create the assignment).
-            await _repository.EndCreateAsync(organizationId, attempt.Id, fence, null, cancellationToken).ConfigureAwait(false);
+            await _repository.EndCreateAsync(organizationId, attempt.Id, fence, null, cancellationToken, resolvedSubjectId)
+                .ConfigureAwait(false);
         }
         var state = cancel ? ProviderAttemptStates.Cancelled : ProviderAttemptStates.PendingCreate;
         return new ProviderAssignItem(attempt.Id.ToString(), attempt.Instrument, state, null, [], null, failure.Code,

@@ -156,7 +156,7 @@ public sealed partial class AssessmentProviderRepository
 
     public async Task EndCreateAsync(
         Guid organizationId, Guid attemptId, DateTimeOffset fence, ProviderAssignment? assignment,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? resolvedSubjectId = null)
     {
         var token = fence.UtcDateTime;
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
@@ -171,6 +171,18 @@ public sealed partial class AssessmentProviderRepository
                  UPDATE assessment_provider_attempts SET create_fences = array_remove(create_fences, {token})
                   WHERE organization_id = {organizationId} AND id = {attemptId}
                     AND provider_assignment_id = {assignment.AssignmentId} AND provider_subject_id = {assignment.SubjectId}
+                 """, cancellationToken).ConfigureAwait(false);
+        }
+        else if (resolvedSubjectId is { } subject)
+        {
+            // A refusal after the create resolved a subject: only when the attempt records THAT subject (Codex ats
+            // round 13 run 4), else the subject stays reachable through the unanswered fence.
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                 UPDATE assessment_provider_attempts SET create_fences = array_remove(create_fences, {token})
+                  WHERE organization_id = {organizationId} AND id = {attemptId}
+                    AND state <> 'erased' AND provider_erasure_requested_at IS NULL
+                    AND provider_subject_id = {subject}
                  """, cancellationToken).ConfigureAwait(false);
         }
         else
@@ -485,8 +497,7 @@ public sealed partial class AssessmentProviderRepository
                 OnlyUnansweredCreatesNeedResolution: fences.Unanswered && !liveAttemptNeedsResolution,
                 ReadAt: new DateTimeOffset(DateTime.SpecifyKind(fences.ReadAt, DateTimeKind.Utc)),
                 UnansweredCreates: fences.Unanswered,
-                LiveSubjects: [.. liveRecorded.Where(id => id is not null).Select(id => id!.Value).Order()],
-                LiveAttemptWithoutSubject: liveRecorded.Any(id => id is null));
+                LiveSubjects: [.. liveRecorded.Where(id => id is not null).Select(id => id!.Value).Order()]);
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);

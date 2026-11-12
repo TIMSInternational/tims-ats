@@ -212,6 +212,35 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
             $"SELECT cardinality(create_fences) FROM assessment_provider_attempts WHERE id = '{attempt}'"));
     }
 
+    // Codex ats round 13 run 4 [P1]: a refusal ends its create's fence only when the attempt records the subject that
+    // create resolved. A retry whose first subject the provider erased resolved a new one the attempt does not record (it
+    // keeps the first): its fence stays, so the candidate's export stays Incomplete and the erasure still finds it.
+    [Fact]
+    public async Task A_refusal_ends_its_fence_only_when_the_attempt_records_the_subject_it_resolved()
+    {
+        var org = await OrgAsync();
+        var attempt = await AttemptAsync(org, "pending_create", mapped: false);
+        var recorded = Guid.NewGuid();
+        await WithRepository(async r => { await r.RecordSubjectAsync(org, attempt, recorded, CancellationToken.None); return 0; });
+        var fence = (await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)))!.Value;
+        async Task<int> FencesAsync() => (int)(await fixture.ScalarAsync(
+            $"SELECT cardinality(create_fences) FROM assessment_provider_attempts WHERE id = '{attempt}'"))!;
+
+        await WithRepository(async r =>
+        {
+            await r.EndCreateAsync(org, attempt, fence, null, CancellationToken.None, resolvedSubjectId: Guid.NewGuid());
+            return 0;
+        });
+        Assert.Equal(1, await FencesAsync()); // resolved another subject: kept
+
+        await WithRepository(async r =>
+        {
+            await r.EndCreateAsync(org, attempt, fence, null, CancellationToken.None, resolvedSubjectId: recorded);
+            return 0;
+        });
+        Assert.Equal(0, await FencesAsync()); // resolved the recorded one: ended
+    }
+
     [Fact]
     public async Task A_resolved_subject_is_recorded_on_an_unmapped_attempt_only()
     {
@@ -429,7 +458,6 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         Assert.True(before!.NeedsResolution); // live: the erasure resolves by (tenant, candidate id)
         Assert.False(before.UnansweredCreates); // no create unanswered: the export reads the recorded subject alone
         Assert.Equal(subject, Assert.Single(before.LiveSubjects!));
-        Assert.False(before.LiveAttemptWithoutSubject);
 
         await fixture.ExecuteAsync(
             $$"""
@@ -446,7 +474,6 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         await AttemptAsync(org, "pending_create", candidate, mapped: false); // a later, live assignment
         var mixed = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
         Assert.True(mixed!.NeedsResolution);
-        Assert.True(mixed.LiveAttemptWithoutSubject);
         Assert.Empty(mixed.LiveSubjects!);
     }
 }
