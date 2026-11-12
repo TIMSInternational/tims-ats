@@ -654,7 +654,7 @@ test('H7 FIT v2 scores the candidate from the provider results, with no HR compu
   // TIMS's job fit for 194225 (the stand-in answers Res 78), sent with the assignment and copied by the suite.
   const pcaEntry = atsSql(
     st,
-    `select e->>'use'||'|'||e->>'status'||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
+    `select (e->>'use')||'|'||(e->>'status')||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
   );
   expect(pcaEntry).toBe('scored|completed|78|194225');
   const suiteFit = suiteSql(
