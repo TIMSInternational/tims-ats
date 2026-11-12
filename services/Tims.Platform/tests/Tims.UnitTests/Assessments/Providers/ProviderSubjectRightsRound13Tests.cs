@@ -29,7 +29,9 @@ public sealed class ProviderSubjectRightsRound13Tests
         var attempt = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
         _repository.Replace(attempt.Id, a => a with
         {
-            State = ProviderAttemptStates.Erased, ErasureRequestedAt = Now.AddDays(-3), ProviderSubjectId = recorded,
+            State = ProviderAttemptStates.Erased,
+            ErasureRequestedAt = Now.AddDays(-3),
+            ProviderSubjectId = recorded,
             ProviderAssignmentId = null,
         });
         _repository.CreateFences[attempt.Id] = [_repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromMinutes(1)];
