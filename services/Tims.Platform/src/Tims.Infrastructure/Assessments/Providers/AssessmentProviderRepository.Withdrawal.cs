@@ -557,7 +557,7 @@ public sealed partial class AssessmentProviderRepository
 
     public async Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool recordOnUnmapped = false)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
         await LockSubjectAsync(providerSubjectId, cancellationToken).ConfigureAwait(false);
@@ -566,6 +566,10 @@ public sealed partial class AssessmentProviderRepository
             $"""
              UPDATE assessment_provider_attempts
                 SET provider_erasure_requested_at = COALESCE(provider_erasure_requested_at, {timestamp}),
+                    provider_subject_id = CASE
+                      WHEN {recordOnUnmapped} AND provider_subject_id IS NULL AND provider_assignment_id IS NULL
+                        THEN {providerSubjectId}
+                      ELSE provider_subject_id END,
                     updated_at = {timestamp}
               WHERE organization_id = {organizationId} AND candidate_id = {candidateId}
                 AND (provider_subject_id = {providerSubjectId} OR provider_subject_id IS NULL)

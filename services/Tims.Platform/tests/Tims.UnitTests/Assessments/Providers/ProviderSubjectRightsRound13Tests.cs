@@ -20,11 +20,18 @@ public sealed class ProviderSubjectRightsRound13Tests
 
     private ProviderSubjectRightsUseCase Rights => new(_repository, _provider);
 
-    /// <summary>An erased attempt whose create never answered, with its fence gone stale.</summary>
-    private AttemptRow ErasedAttemptWithStaleFence()
+    /// <summary>
+    /// An erased attempt whose create never answered (it died before recording a subject), with its fence gone stale.
+    /// <paramref name="recorded"/> gives it a recorded subject instead (an earlier create's).
+    /// </summary>
+    private AttemptRow ErasedAttemptWithStaleFence(Guid? recorded = null)
     {
         var attempt = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
-        _repository.Replace(attempt.Id, a => a with { State = ProviderAttemptStates.Erased, ErasureRequestedAt = Now.AddDays(-3) });
+        _repository.Replace(attempt.Id, a => a with
+        {
+            State = ProviderAttemptStates.Erased, ErasureRequestedAt = Now.AddDays(-3), ProviderSubjectId = recorded,
+            ProviderAssignmentId = null,
+        });
         _repository.CreateFences[attempt.Id] = [_repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromMinutes(1)];
         return attempt;
     }
@@ -49,10 +56,12 @@ public sealed class ProviderSubjectRightsRound13Tests
 
         var erase = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 
-        // The dead create's possible subject is resolved once and erased, then its fence is retired.
+        // The dead create's possible subject is resolved once and erased, recorded on the attempt (Codex ats round 13
+        // run 6: a later export must still list it while the provider holds its data), then its fence is retired.
         Assert.Equal(ProviderErasureOutcome.Requested, erase.Outcome);
         Assert.Equal(1, _provider.Calls.Count(c => c == "subject"));
         Assert.Contains(_provider.SubjectId, _provider.ErasedSubjects);
+        Assert.Equal(_provider.SubjectId, _repository.Attempts.Single().ProviderSubjectId);
         Assert.Empty(_repository.CreateFences[attempt.Id]);
         Assert.Contains("fences_retired:1", _repository.Writes);
 
@@ -63,8 +72,45 @@ public sealed class ProviderSubjectRightsRound13Tests
         var again = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 
         Assert.Equal(ProviderExportOutcome.Exported, export.Outcome);
+        Assert.Contains(_provider.SubjectId, _provider.ExportedSubjects); // still listed while the provider holds it
         Assert.Equal(ProviderErasureOutcome.Requested, again.Outcome);
         Assert.DoesNotContain("subject", _provider.Calls);
+    }
+
+    // Codex ats round 13 run 6 [P1]: every attempt already names another subject, so the subject the erasure resolved
+    // cannot be recorded. Its erasure only ACCEPTED, the provider may still hold its data: retiring the fence would let a
+    // later export report complete without it. The fence stays; the export stays Incomplete.
+    [Fact]
+    public async Task An_erasure_keeps_the_fence_while_the_resolved_subject_is_unrecordable_and_only_accepted()
+    {
+        var attempt = ErasedAttemptWithStaleFence(recorded: Guid.NewGuid());
+
+        var erase = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Requested, erase.Outcome);
+        Assert.Contains(_provider.SubjectId, _provider.ErasedSubjects);
+        Assert.NotEqual(_provider.SubjectId, _repository.Attempts.Single().ProviderSubjectId);
+        Assert.Single(_repository.CreateFences[attempt.Id]);
+        Assert.DoesNotContain(_repository.Writes, w => w.StartsWith("fences_retired", StringComparison.Ordinal));
+        var export = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+        Assert.Equal(ProviderExportOutcome.Incomplete, export.Outcome);
+    }
+
+    // The same, but the provider confirms it holds nothing for the resolved subject (410): nothing is left to list, so the
+    // fence is retired.
+    [Fact]
+    public async Task An_erasure_retires_the_fence_once_the_provider_confirms_the_unrecordable_subject_gone()
+    {
+        var attempt = ErasedAttemptWithStaleFence(recorded: Guid.NewGuid());
+        _provider.OnEraseSubject = subject => subject == _provider.SubjectId
+            ? ProviderCall<ProviderErasureReceipt>.Fail(new ProviderFailure(410, "subject_erased", false, []))
+            : null;
+
+        var erase = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Requested, erase.Outcome);
+        Assert.Empty(_repository.CreateFences[attempt.Id]);
+        Assert.Contains("fences_retired:1", _repository.Writes);
     }
 
     [Fact]

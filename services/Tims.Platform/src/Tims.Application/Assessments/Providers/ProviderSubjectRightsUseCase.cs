@@ -71,7 +71,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             }
         }
 
-        // An access export is a read: it never POSTs /v1/subjects (Codex ats round 13, runs 1 to 4). The provider keeps
+        // An access export is a read: it never POSTs /v1/subjects (Codex ats round 13, runs 1 to 5). The provider keeps
         // one subject per (tenant, external_ref = candidate id) and forgets the external_ref when it erases the subject
         // (from the erasure REQUEST on, while it may still hold the data), so past the 24 h idempotency window that POST
         // creates a NEW subject, also when the ATS never learned of the erasure (a lost subject.erased; a recorded subject
@@ -173,9 +173,9 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     }
 
     /// <summary>
-    /// The candidate's provider subjects: those recorded on its attempts, plus the one the provider resolves for
-    /// (tenant, candidate id) whenever the candidate has attempts (a failed or crashed create can leave a subject no
-    /// attempt names). <see cref="ResolvedSubjects.Outcome"/> is set when they cannot be resolved.
+    /// The candidate's provider subjects: those recorded on its attempts, plus, for an erasure, the one the provider
+    /// resolves for (tenant, candidate id) whenever resolution is needed (a failed or crashed create can leave a subject
+    /// no attempt names). <see cref="ResolvedSubjects.Outcome"/> is set when they cannot be resolved.
     /// </summary>
     /// <param name="mayCreate">
     /// False for an access export: nothing is resolved here, since a <c>POST /v1/subjects</c> may CREATE a fresh subject
@@ -234,6 +234,11 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             {
                 subjects.Add(resolved);
             }
+
+            return new ResolvedSubjects(subjects, erased, null, known.ReadAt, known.OnlyUnansweredCreatesNeedResolution)
+            {
+                ResolvedSubject = resolved,
+            };
         }
 
         return new ResolvedSubjects(subjects, erased, null, known.ReadAt, known.NeedsResolution && known.OnlyUnansweredCreatesNeedResolution);
@@ -247,6 +252,9 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     {
         /// <summary>Export only: the subject facts when an unanswered create may call for a resolution, else null.</summary>
         public ProviderCandidateSubjects? ExportFacts { get; init; }
+
+        /// <summary>Erasure only: the subject the provider resolved for (tenant, candidate id), when resolved.</summary>
+        public Guid? ResolvedSubject { get; init; }
     }
 
     public async Task<ProviderErasureResult> EraseAsync(
@@ -278,6 +286,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
 
         var subjects = resolved.Subjects;
         var requested = 0;
+        var resolvedGone = false;
         foreach (var subject in subjects)
         {
             if (resolved.Erased.Contains(subject))
@@ -299,6 +308,12 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
                 continue;
             }
 
+            if (subject == resolved.ResolvedSubject)
+            {
+                // The provider holds nothing for it any more (not merely a request accepted, while the data may remain).
+                resolvedGone = status is "already_erased" or "not_found" or "erased";
+            }
+
             // The ATS's own copy is erased NOW, for an accepted request as for a confirmed 410/404: it never depends on
             // the provider's subject.erased event, which may never arrive (a delivery that exhausts its retries, or no
             // event at all for a subject already gone) and which the D17 poller cannot replace (it skips attempts under
@@ -307,7 +322,11 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             // attempts erased, which refuses any later result) with the marker missing, so this run is not counted as
             // requested and a retry, safe at any point, records it. The reverse order could strand the results.
             await _repository.EraseSubjectAsync(organizationId, subject, now, cancellationToken).ConfigureAwait(false);
-            await _repository.MarkErasureRequestedAsync(organizationId, candidateId, subject, status, actorId, now, cancellationToken)
+            // The subject resolved by (tenant, candidate id) is recorded on the attempts with none (Codex ats round 13
+            // run 6): a crashed create's subject is otherwise named by no attempt, and once its fence is retired below a
+            // later export would no longer list it while the provider still holds its data (erasure_pending).
+            await _repository.MarkErasureRequestedAsync(organizationId, candidateId, subject, status, actorId, now, cancellationToken,
+                    recordOnUnmapped: subject == resolved.ResolvedSubject)
                 .ConfigureAwait(false);
 
             requested++;
@@ -327,7 +346,14 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
                 return new ProviderErasureResult(ProviderErasureOutcome.Incomplete, subjects.Count, requested);
             }
 
-            if (resolved.ResolvedForUnansweredCreates && resolved.ReadAt is { } readAt)
+            // Only once a later export can still account for the resolved subject (Codex ats round 13 run 6): it is
+            // recorded on an attempt (it is the subject those fences stood for), or the provider confirmed it holds nothing
+            // for it. When no attempt could take it (each already names another) and its erasure is only accepted, the
+            // provider may still hold its data, so the fences stay and the export stays Incomplete; a run after the
+            // provider confirms the erasure (within its 24 h idempotency window, which resolves the same subject) retires them.
+            if (resolved.ResolvedForUnansweredCreates && resolved.ReadAt is { } readAt
+                && resolved.ResolvedSubject is { } resolvedSubject
+                && (after.Subjects.Contains(resolvedSubject) || resolvedGone))
             {
                 // Codex ats round 13 [P2]: the fences that were stale BEFORE this run resolved (tenant, candidate id) belong
                 // to creates that were dead by then, so any subject they made was the one resolved and erased above. Left in

@@ -294,10 +294,11 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
     }
 
     // Round 12 (Codex round 11 P1): a result the provider no longer lets tenant_hr see (result_not_visible) is deleted
-    // from the ATS (HideResultAsync's writes, as app_tenant), and the deletion itself enqueues the recompute: the drain
-    // rewrites the candidate's FIT row without it. Own vacancy and candidate.
+    // from the ATS (HideResultAsync's writes, as app_tenant). Codex ats round 13 run 6 [P1]: the FIT row named that result
+    // until the drain rewrote it, and for good with the worker off (FIT flags off). The deletion itself now deletes the
+    // row (20261112170426), and neither drain brings it back: no provider result remains. Own vacancy and candidate.
     [Fact]
-    public async Task A_result_no_longer_visible_leaves_fit_through_the_recompute_queue()
+    public async Task A_result_no_longer_visible_leaves_fit_at_once_whatever_the_recompute_worker()
     {
         const string Seed =
             """
@@ -341,14 +342,47 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
             + $"DELETE FROM assessment_provider_results WHERE provider_result_id = '{resultId}'; "
             + $"UPDATE assessment_provider_attempts SET latest_result_id = NULL WHERE id = '{attemptId}'; COMMIT;");
 
-        Assert.NotNull(await _fixture.Fit.GetRecomputeRequestAsync(candidate, vacancy)); // the DELETE enqueued it
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy)); // gone in the hide's own transaction
+        Assert.NotNull(await _fixture.Fit.GetRecomputeRequestAsync(candidate, vacancy)); // the DELETE still enqueues
+        await DrainAsync(factory, candidate, vacancy, fitV2Enabled: false);
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy));
+        await _fixture.Fit.ExecuteScalarAsync(
+            "SELECT public.fit_v2_request_recompute('11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000d9', '7ac00000-0000-0000-0000-0000000000d9')");
         await DrainAsync(factory, candidate, vacancy);
-        var after = await _fixture.Fit.GetFitScoreAsync(candidate, vacancy);
-        Assert.NotNull(after);
-        var english = Entry(JsonNode.Parse(after.Breakdown)!, "english");
-        Assert.Equal("no_result", english["status"]!.GetValue<string>());
-        Assert.Equal("unknown", english["gate"]!.GetValue<string>());
-        Assert.Null(english["resultId"]);
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy));
+    }
+
+    // The result trigger deletes only the row that names the deleted result: deleting another result of the same
+    // attempt's candidate and vacancy (an older revision's id the row does not name) leaves it. Rolled back.
+    [Fact]
+    public async Task Deleting_a_result_the_fit_row_does_not_name_leaves_the_row()
+    {
+        await ComputeAsync(providers: true);
+        Assert.NotNull(await _fixture.Fit.GetFitScoreAsync(FitV2ProviderFixture.CandScored, FitV2ProviderFixture.VacProvider));
+        await using var connection = new NpgsqlConnection(_fixture.Fit.ConnectionString);
+        await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
+        async Task<long> RunAsync(string sql)
+        {
+            await using var command = new NpgsqlCommand(sql, connection, tx);
+            return Convert.ToInt64(await command.ExecuteScalarAsync() ?? 0L, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        await RunAsync(
+            "INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision, "
+            + "result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version, "
+            + "scoring_method, purpose, validity_status, completion, global_percentile, cefr, level, time_multiplier_applied, "
+            + "rendered_for, rendered_level, completed_at, scored_at) VALUES (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', "
+            + "'e0000000-0000-4000-8000-0000000000a2', 'd0000000-0000-4000-8000-0000000000a9', 1, 'ItciaResultV1', 'itcia', '1.0', "
+            + "'itcia-2026.11.1', repeat('9', 64), NULL, 'scoring-1', 'deterministic', 'selection', 'valid', 'complete', NULL, NULL, 2, 1, "
+            + "'tenant_hr', 'full', '2026-11-02 10:00:00+00', '2026-11-02 10:00:05+00')");
+        await RunAsync("DELETE FROM assessment_provider_results WHERE provider_result_id = 'd0000000-0000-4000-8000-0000000000a9'");
+        Assert.Equal(1, await RunAsync(
+            $"SELECT count(*) FROM fit_scores WHERE candidate_id = '{FitV2ProviderFixture.CandScored}' AND vacancy_id = '{FitV2ProviderFixture.VacProvider}'"));
+        await RunAsync("DELETE FROM assessment_provider_results WHERE provider_result_id = 'd0000000-0000-4000-8000-0000000000a2'");
+        Assert.Equal(0, await RunAsync(
+            $"SELECT count(*) FROM fit_scores WHERE candidate_id = '{FitV2ProviderFixture.CandScored}' AND vacancy_id = '{FitV2ProviderFixture.VacProvider}'"));
+        await tx.RollbackAsync();
     }
 
     // Codex ats round 13 [P1] (migration 20261112170426_fit_v2_provider_erasure_removes_fit_rows): an accepted erasure

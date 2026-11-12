@@ -400,8 +400,10 @@ the attempt's instrument. Before, the erased result's score, id and versions (an
 in that row until the recompute queue drained, and for good with FIT v2 off, because the drain then completes the request
 without writing. A FIT row is derived data: the queued recompute re-creates it at once only when another provider
 result for a listed instrument remains (the round-11 rule above); otherwise HR's next Compute Rankings scores the
-candidate again from what remains. A result the provider merely hides (`result_not_visible`) still leaves FIT through
-the recompute queue.
+candidate again from what remains. The same holds for a deleted provider RESULT (Codex ats round 13 run 6): when the
+provider hides a result (`result_not_visible`) or the subject is erased, the result trigger deletes, under the same lock,
+the FIT row whose breakdown names that result id, whatever the FIT flags (the recompute worker runs only with them on,
+so before, a hidden result stayed in FIT for good with a flag off).
 
 ## Unconfirmed 404s
 
@@ -529,8 +531,13 @@ it too. A present non-boolean value is off contract and the result is refused.
     on a live attempt.
 
   A live fence clears when its create is answered; a fence on an erasure-touched attempt only an erasure clears: the
-  erasure resolves (tenant, candidate id), erases what it finds and, when the run completes, retires the fences that were
-  already stale at its first read (`RetireStaleCreateFencesAsync`, audited `assessment_provider_create_fences_retired`).
+  erasure resolves (tenant, candidate id), erases what it finds, records the subject it resolved on the candidate's
+  attempts that name none (Codex ats round 13 run 6: a crashed create's subject is otherwise named by nothing while the
+  provider may still hold its data), and, when the run completes, retires the fences that were already stale at its first
+  read (`RetireStaleCreateFencesAsync`, audited `assessment_provider_create_fences_retired`), but only when that subject
+  is now recorded or the provider confirmed it gone (410 or 404). When every attempt already names another subject and
+  the erasure was only accepted, the fences stay and the export stays Incomplete; an erasure run after the provider
+  confirms (within its 24 h idempotency window, which resolves the same subject) retires them.
   Operator remedy for an Incomplete export: retry once a live create is answered, or run the erasure first when the
   candidate is being erased anyway; for a candidate who is not, ask TIMS for the provider-side export.
 - The provider-held export must fit the client's 256 KiB response cap; a larger one fails the export closed (503).

@@ -133,7 +133,7 @@ internal sealed class FakeProvider : IAssessmentProvider
 
     public List<Guid> ErasedSubjects { get; } = [];
 
-    public Func<Guid, ProviderCall<ProviderErasureReceipt>>? OnEraseSubject { get; set; }
+    public Func<Guid, ProviderCall<ProviderErasureReceipt>?>? OnEraseSubject { get; set; }
 
     public Task<ProviderCall<ProviderErasureReceipt>> EraseSubjectAsync(Guid subjectId, CancellationToken cancellationToken)
     {
@@ -1282,7 +1282,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool recordOnUnmapped = false)
     {
         if (MarkErasureRequestedFails)
         {
@@ -1292,7 +1292,13 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         Writes.Add("erasure_requested:" + receiptStatus);
         foreach (var attempt in Attempts.Where(a => a.ProviderSubjectId == providerSubjectId || a.ProviderSubjectId is null).ToList())
         {
-            Replace(attempt.Id, a => a with { ErasureRequestedAt = now });
+            Replace(attempt.Id, a => a with
+            {
+                ErasureRequestedAt = now,
+                ProviderSubjectId = recordOnUnmapped && a.ProviderSubjectId is null && a.ProviderAssignmentId is null
+                    ? providerSubjectId
+                    : a.ProviderSubjectId,
+            });
         }
 
         return Task.CompletedTask;

@@ -241,6 +241,43 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         Assert.Equal(0, await FencesAsync()); // resolved the recorded one: ended
     }
 
+    // Codex ats round 13 run 6 [P1]: the erasure's marker records the subject it resolved by (tenant, candidate id) on the
+    // candidate's attempts with no subject and no assignment (a crashed create's), so a later export still lists it.
+    // Other subjects' markers record nothing, and an attempt that names a subject keeps it.
+    [Fact]
+    public async Task The_erasure_marker_records_the_resolved_subject_on_unmapped_attempts_only()
+    {
+        var org = await OrgAsync();
+        var candidate = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES ('{candidate}', '{org}', 'M', 'K', 'r13m@r10.example')");
+        var unmapped = await AttemptAsync(org, "pending_create", candidate, mapped: false);
+        var mapped = await AttemptAsync(org, "created", candidate, instrument: "english");
+        var named = (Guid)(await fixture.ScalarAsync($"SELECT provider_subject_id FROM assessment_provider_attempts WHERE id = '{mapped}'"))!;
+        var (other, resolved) = (Guid.NewGuid(), Guid.NewGuid());
+        async Task<object?> SubjectOf(Guid attempt) =>
+            await fixture.ScalarAsync($"SELECT provider_subject_id FROM assessment_provider_attempts WHERE id = '{attempt}'");
+
+        await WithRepository(async r =>
+        {
+            await r.MarkErasureRequestedAsync(org, candidate, other, "accepted", Guid.NewGuid(), Now, CancellationToken.None);
+            return 0;
+        });
+        Assert.IsType<DBNull>(await SubjectOf(unmapped)); // marked, nothing recorded
+
+        await WithRepository(async r =>
+        {
+            await r.MarkErasureRequestedAsync(org, candidate, resolved, "accepted", Guid.NewGuid(), Now, CancellationToken.None,
+                recordOnUnmapped: true);
+            return 0;
+        });
+        Assert.Equal(resolved, await SubjectOf(unmapped));
+        Assert.Equal(named, await SubjectOf(mapped));
+        // Neither marker reached the attempt that names another subject.
+        Assert.Equal(1L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND provider_erasure_requested_at IS NOT NULL"));
+    }
+
     [Fact]
     public async Task A_resolved_subject_is_recorded_on_an_unmapped_attempt_only()
     {

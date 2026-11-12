@@ -455,11 +455,13 @@ public interface IAssessmentProviderRepository
 
     /// <summary>
     /// Records an accepted ATS-initiated erasure of one provider subject on the candidate's attempts that carry it or
-    /// no subject at all, with an audit row.
+    /// no subject at all, with an audit row. With <paramref name="recordOnUnmapped"/> (the subject the erasure resolved by
+    /// (tenant, candidate id)), it is also recorded on those attempts that carry no subject and no assignment, so a later
+    /// export still lists it while the provider holds its data (Codex ats round 13 run 6).
     /// </summary>
     Task MarkErasureRequestedAsync(
         Guid organizationId, Guid candidateId, Guid providerSubjectId, string receiptStatus, Guid actorId, DateTimeOffset now,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, bool recordOnUnmapped = false);
 
     /// <summary>
     /// PRE-TENANT (privileged connection): the organizations holding at least one attempt the D17 poller could claim now
