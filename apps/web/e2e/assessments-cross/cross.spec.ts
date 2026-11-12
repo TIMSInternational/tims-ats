@@ -652,11 +652,13 @@ test('H7 FIT v2 scores the candidate from the provider results, with no HR compu
     `select coalesce(overall_score::text,'null')||' restricted='||coalesce(restricted_overall_score::text,'null')||' partial='||is_partial from fit_scores where candidate_id=${sqlStr(candidateA)} and vacancy_id=${sqlStr(vacancy.id)}`,
   );
   // TIMS's job fit for 194225 (the stand-in answers Res 78), sent with the assignment and copied by the suite.
-  const pcaEntry = atsSql(
+  // The PCA result is the last to arrive (the scheduled poll, H6); its recompute drains asynchronously.
+  const pcaQuery = () => atsSql(
     st,
     `select (e->>'use')||'|'||(e->>'status')||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
   );
-  expect(pcaEntry).toBe('scored|completed|78|194225');
+  await expect.poll(pcaQuery, { timeout: 120_000, intervals: [2_000] }).toBe('scored|completed|78|194225');
+  const pcaEntry = pcaQuery();
   const suiteFit = suiteSql(
     st,
     `select a.vacancy_job_code||'|'||(p.job_fit->>'status')||'|'||(p.job_fit->>'fit') from v1_assignments a join v1_pca_results p on p.assignment_id=a.id where a.external_ref=${sqlStr(attemptsA.pca)}`,
