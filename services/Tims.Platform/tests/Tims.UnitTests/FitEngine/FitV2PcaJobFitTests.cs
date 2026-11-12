@@ -176,6 +176,21 @@ public sealed class FitV2PcaJobFitTests
         Assert.Null(ProviderFitResultSource.ToInstrumentResult(review).JobFit);
     }
 
+    // Codex ats run 1 [P2]: the staff results view judges a PCA minimum the way FIT does.
+    [Fact]
+    public void The_staff_view_judges_a_pca_minimum_on_tims_fit_for_the_vacancys_code()
+    {
+        var gate = new AssessmentRequirement("pca", "gate", new InstrumentMinimum(null, null, null, null, 70), null, "ajuste", "194225");
+        var fit = new PcaJobFit("194225", PcaJobFits.Computed, 78, new DiscFactors(62, 40, 55, 70));
+
+        Assert.Equal(ProviderMinimumStatus.Met, ProviderMinimumStatus.Evaluate(gate, true, null, null, null, fit));
+        Assert.Equal(ProviderMinimumStatus.NotMet, ProviderMinimumStatus.Evaluate(gate, true, null, null, null, fit with { Fit = 60 }));
+        Assert.Equal(ProviderMinimumStatus.Unknown, ProviderMinimumStatus.Evaluate(gate, true, null, null, null, fit with { JobCode = "GC001" }));
+        Assert.Equal(ProviderMinimumStatus.Unknown, ProviderMinimumStatus.Evaluate(gate, true, null, null, null,
+            new PcaJobFit("194225", PcaJobFits.JobNotFound, null, null)));
+        Assert.Equal(ProviderMinimumStatus.Unknown, ProviderMinimumStatus.Evaluate(gate, false, null, null, null, fit));
+    }
+
     // ── the assignment ─────────────────────────────────────────────────────────────────────────
 
     [Fact]

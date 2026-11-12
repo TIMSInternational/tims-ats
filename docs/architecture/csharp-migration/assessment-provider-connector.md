@@ -426,6 +426,10 @@ answered by someone who knows the job) and TIMS compares each candidate's PCA wi
   `computed` fit is a value. A scored PCA's fit is TIMS's percentage (or the meet-or-exceed curve on `min.jobFit`); a
   gate compares it with `min.jobFit`. A fit computed for another code than the vacancy's current one (HR re-coded the
   vacancy) is `no_value`, never a low score. The breakdown entry names the code (`jobCode`).
+- **Known gap (Codex ats run 1 [P1], not fixed):** saving the vacancy's requirements does not queue a recompute (the
+  editor's role cannot call `fit_v2_request_recompute`; every requirement edit behaves this way). After re-coding a
+  vacancy, stored FIT rows keep the old PCA score until HR runs Compute Rankings or another result arrives. Fix: a
+  SECURITY DEFINER trigger on `job_profiles.fit_requirements` that enqueues each existing row of the vacancy.
 - **Weights.** HR sets each scored test's relative weight in the vacancy editor (the per-instrument `weight` FIT v2
   always read; the editor now exposes it). The five dimension weights stay on the role family (Settings → FIT weights).
   TIMS is to supply the percentages; nothing is defaulted on its behalf.

@@ -132,7 +132,8 @@ public static class ProviderMinimumStatus
     /// the vacancy sets no minimum for the instrument (advisory, or not listed).
     /// </summary>
     public static string? Evaluate(
-        AssessmentRequirement? requirement, bool resultValid, double? globalPercentile, string? cefr, int? level)
+        AssessmentRequirement? requirement, bool resultValid, double? globalPercentile, string? cefr, int? level,
+        PcaJobFit? jobFit = null)
     {
         if (requirement?.Min is not { } min)
         {
@@ -159,6 +160,15 @@ public static class ProviderMinimumStatus
         if (min.Level is { } minimumLevel)
         {
             return level is { } l ? (l >= minimumLevel ? Met : NotMet) : Unknown;
+        }
+
+        // PCA (TIMS 2026-11-12): TIMS's computed fit, and only for the vacancy's current position code, as FIT judges it.
+        if (min.JobFit is { } minimumFit)
+        {
+            return jobFit is { Status: PcaJobFits.Computed, Fit: { } fit }
+                && string.Equals(jobFit.JobCode, requirement.JobCode, StringComparison.Ordinal)
+                    ? (fit >= minimumFit ? Met : NotMet)
+                    : Unknown;
         }
 
         return Unknown;
