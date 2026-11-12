@@ -50,7 +50,8 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     public async Task<ProviderSubjectExportResult> ExportAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var subjects = await ResolveSubjectsAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false);
+        var subjects = await ResolveSubjectsAsync(organizationId, candidateId, mayCreate: false, cancellationToken)
+            .ConfigureAwait(false);
         if (subjects.Outcome is not null)
         {
             return new ProviderSubjectExportResult(subjects.Outcome.Value switch
@@ -108,8 +109,13 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     /// (tenant, candidate id) whenever the candidate has attempts (a failed or crashed create can leave a subject no
     /// attempt names). <see cref="ResolvedSubjects.Outcome"/> is set when they cannot be resolved.
     /// </summary>
+    /// <param name="mayCreate">
+    /// False for an access export: when only unanswered creates on erased attempts call for resolution, resolving may
+    /// CREATE a fresh subject for an erased person, so the export answers Incomplete instead (an erasure run resolves,
+    /// erases and retires those fences; the export then succeeds).
+    /// </param>
     private async Task<ResolvedSubjects> ResolveSubjectsAsync(
-        Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
+        Guid organizationId, Guid candidateId, bool mayCreate, CancellationToken cancellationToken)
     {
         var known = await _repository.ListProviderSubjectsAsync(organizationId, candidateId, cancellationToken)
             .ConfigureAwait(false);
@@ -130,6 +136,14 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         // request, the subject is NOT resolved again. The provider forgets the subject's external_ref when its erasure is
         // requested, so a re-POST of (tenant, candidate id) after the 24 h idempotency window would create a fresh, empty
         // provider subject, and the export or erasure would then run against that new subject.
+        if (known.HasAttempts && known.NeedsResolution && known.OnlyUnansweredCreatesNeedResolution && !mayCreate)
+        {
+            // Codex ats round 13 [P2]: an export is a read. Every attempt is erased or under an erasure request, so the
+            // provider forgot the external_ref; past its 24 h idempotency window a POST /v1/subjects would create a NEW
+            // subject for an erased person, and the export would then report that subject as held data.
+            return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt);
+        }
+
         if (known.HasAttempts && known.NeedsResolution)
         {
             // The subject is created BEFORE its assignment and recorded only with it, so a failed or crashed create can
@@ -140,7 +154,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             var binding = await _repository.GetBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
             if (binding is null)
             {
-                return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete);
+                return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt);
             }
 
             var request = new ProviderSubjectRequest(binding.ProviderTenantId, candidateId.ToString(), null, null, null, null);
@@ -148,7 +162,7 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
                 request, IdempotencyKeys.Subject(organizationId, request), cancellationToken).ConfigureAwait(false);
             if (!resolved.Ok)
             {
-                return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete);
+                return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt);
             }
 
             if (!subjects.Contains(resolved.Value!.SubjectId))
@@ -157,11 +171,14 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             }
         }
 
-        return new ResolvedSubjects(subjects, erased, null);
+        return new ResolvedSubjects(subjects, erased, null, known.ReadAt, known.NeedsResolution && known.OnlyUnansweredCreatesNeedResolution);
     }
 
+    /// <param name="ReadAt">The database clock of the subject facts read (null from a store that does not report it).</param>
+    /// <param name="ResolvedForUnansweredCreates">The subject was resolved only because of unanswered creates on erased attempts.</param>
     private sealed record ResolvedSubjects(
-        IReadOnlyList<Guid> Subjects, IReadOnlyList<Guid> Erased, ProviderErasureOutcome? Outcome);
+        IReadOnlyList<Guid> Subjects, IReadOnlyList<Guid> Erased, ProviderErasureOutcome? Outcome,
+        DateTimeOffset? ReadAt = null, bool ResolvedForUnansweredCreates = false);
 
     public async Task<ProviderErasureResult> EraseAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -183,7 +200,8 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     private async Task<ProviderErasureResult> EraseSubjectsAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var resolved = await ResolveSubjectsAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false);
+        var resolved = await ResolveSubjectsAsync(organizationId, candidateId, mayCreate: true, cancellationToken)
+            .ConfigureAwait(false);
         if (resolved.Outcome is { } failed)
         {
             return new ProviderErasureResult(failed, resolved.Subjects.Count, 0);
@@ -238,6 +256,16 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             if (after is null || after.CreatesInFlight || after.Subjects.Except(subjects).Any())
             {
                 return new ProviderErasureResult(ProviderErasureOutcome.Incomplete, subjects.Count, requested);
+            }
+
+            if (resolved.ResolvedForUnansweredCreates && resolved.ReadAt is { } readAt)
+            {
+                // Codex ats round 13 [P2]: the fences that were stale BEFORE this run resolved (tenant, candidate id) belong
+                // to creates that were dead by then, so any subject they made was the one resolved and erased above. Left in
+                // place, they would make every later export or erasure POST /v1/subjects again, which creates a fresh
+                // subject once the provider's 24 h idempotency window has passed. Younger fences stay.
+                await _repository.RetireStaleCreateFencesAsync(organizationId, candidateId, readAt, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 

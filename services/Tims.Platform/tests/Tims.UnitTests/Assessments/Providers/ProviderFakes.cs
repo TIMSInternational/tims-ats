@@ -1222,18 +1222,45 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         return Task.FromResult<ProviderSubjectExport?>(new ProviderSubjectExport([], []));
     }
 
-    public Task<ProviderCandidateSubjects?> ListProviderSubjectsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
-        Task.FromResult(candidateId != Candidate
-            ? null
-            : new ProviderCandidateSubjects(
-                Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)
-                    .Select(a => a.ProviderSubjectId!.Value).Distinct().ToList(),
-                Attempts.Any(a => a.CandidateId == candidateId),
-                ErasedSubjects.ToList(),
-                Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
-                    && a.ErasureRequestedAt is null)
-                    || Attempts.Any(a => a.CandidateId == candidateId && HasCreateFence(a.Id)),
-                Attempts.Any(a => a.CandidateId == candidateId && HasLiveCreateFence(a.Id))));
+    public Task<ProviderCandidateSubjects?> ListProviderSubjectsAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
+    {
+        if (candidateId != Candidate)
+        {
+            return Task.FromResult<ProviderCandidateSubjects?>(null);
+        }
+
+        var liveAttempt = Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
+            && a.ErasureRequestedAt is null);
+        var unanswered = Attempts.Any(a => a.CandidateId == candidateId && HasCreateFence(a.Id));
+        return Task.FromResult<ProviderCandidateSubjects?>(new ProviderCandidateSubjects(
+            Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)
+                .Select(a => a.ProviderSubjectId!.Value).Distinct().ToList(),
+            Attempts.Any(a => a.CandidateId == candidateId),
+            ErasedSubjects.ToList(),
+            liveAttempt || unanswered,
+            Attempts.Any(a => a.CandidateId == candidateId && HasLiveCreateFence(a.Id)),
+            unanswered && !liveAttempt,
+            DbNow));
+    }
+
+    /// <summary>Mirrors the real repository: drops fences stale at <paramref name="staleAsOf"/> on erasure-touched attempts.</summary>
+    public Task<int> RetireStaleCreateFencesAsync(
+        Guid organizationId, Guid candidateId, DateTimeOffset staleAsOf, CancellationToken cancellationToken)
+    {
+        var retired = 0;
+        foreach (var attempt in Attempts.Where(a => a.CandidateId == candidateId
+                     && (a.State == ProviderAttemptStates.Erased || a.ErasureRequestedAt is not null)).ToList())
+        {
+            if (CreateFences.TryGetValue(attempt.Id, out var tokens)
+                && tokens.RemoveAll(t => t < staleAsOf - ProviderCreateFence.StaleAfter) > 0)
+            {
+                retired++;
+            }
+        }
+
+        Writes.Add("fences_retired:" + retired);
+        return Task.FromResult(retired);
+    }
 
     /// <summary>Failure injection: the erasure marker's transaction throws (a crash or database failure at that point).</summary>
     public bool MarkErasureRequestedFails { get; set; }

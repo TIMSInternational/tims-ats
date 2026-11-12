@@ -439,7 +439,7 @@ public sealed partial class AssessmentProviderRepository
                 .ConfigureAwait(false);
             // A stored erasure is terminal: an attempt erased, or under an accepted erasure request, needs no subject
             // resolution (the provider forgot its external_ref, so resolving would create a fresh, empty subject).
-            var needsResolution = await _db.Attempts.AsNoTracking()
+            var liveAttemptNeedsResolution = await _db.Attempts.AsNoTracking()
                 .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId
                     && a.State != ProviderAttemptStates.Erased && a.ProviderErasureRequestedAt == null, cancellationToken)
                 .ConfigureAwait(false);
@@ -452,7 +452,7 @@ public sealed partial class AssessmentProviderRepository
             var createStaleSeconds = ProviderCreateFence.StaleAfter.TotalSeconds;
             var fences = await _db.Database.SqlQuery<CreateFenceFacts>(
                     $"""
-                     SELECT count(*) > 0 AS "Unanswered",
+                     SELECT count(*) > 0 AS "Unanswered", clock_timestamp() AS "ReadAt",
                             COALESCE(bool_or(EXISTS (
                                 SELECT 1 FROM unnest(create_fences) AS f
                                  WHERE f >= clock_timestamp() - make_interval(secs => {createStaleSeconds}))), false) AS "Live"
@@ -461,7 +461,7 @@ public sealed partial class AssessmentProviderRepository
                         AND cardinality(create_fences) > 0
                      """)
                 .SingleAsync(cancellationToken).ConfigureAwait(false);
-            needsResolution |= fences.Unanswered;
+            var needsResolution = liveAttemptNeedsResolution || fences.Unanswered;
             var erased = new List<Guid>();
             foreach (var subject in subjects)
             {
@@ -471,11 +471,45 @@ public sealed partial class AssessmentProviderRepository
                 }
             }
 
-            result = new ProviderCandidateSubjects(subjects, hasAttempts, erased, needsResolution, fences.Live);
+            result = new ProviderCandidateSubjects(
+                subjects, hasAttempts, erased, needsResolution, fences.Live,
+                OnlyUnansweredCreatesNeedResolution: fences.Unanswered && !liveAttemptNeedsResolution,
+                ReadAt: new DateTimeOffset(DateTime.SpecifyKind(fences.ReadAt, DateTimeKind.Utc)));
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return result;
+    }
+
+    public async Task<int> RetireStaleCreateFencesAsync(
+        Guid organizationId, Guid candidateId, DateTimeOffset staleAsOf, CancellationToken cancellationToken)
+    {
+        // Codex ats round 13 [P2]: only fences already stale at staleAsOf (their create was dead before the erasure
+        // resolved the candidate's subject by external_ref and erased it), and only on attempts an erasure touched: a
+        // fence on any other attempt, or one younger than that, keeps forcing resolution. One atomic write per row, so a
+        // concurrent create's append (refused anyway under an erasure request) is never lost.
+        var staleSeconds = ProviderCreateFence.StaleAfter.TotalSeconds;
+        var cutoff = staleAsOf.UtcDateTime;
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        var retired = await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+             UPDATE assessment_provider_attempts
+                SET create_fences = ARRAY(SELECT f FROM unnest(create_fences) AS f
+                                           WHERE f >= {cutoff} - make_interval(secs => {staleSeconds}) ORDER BY f)
+              WHERE organization_id = {organizationId} AND candidate_id = {candidateId}
+                AND (state = 'erased' OR provider_erasure_requested_at IS NOT NULL)
+                AND EXISTS (SELECT 1 FROM unnest(create_fences) AS f
+                             WHERE f < {cutoff} - make_interval(secs => {staleSeconds}))
+             """, cancellationToken).ConfigureAwait(false);
+        if (retired > 0)
+        {
+            AddAudit(organizationId, null, "assessment_provider_create_fences_retired", candidateId,
+                new Dictionary<string, object?> { ["attempts"] = retired });
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return retired;
     }
 
     public async Task ReopenWithdrawalAsync(Guid organizationId, Guid attemptId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -526,5 +560,7 @@ public sealed partial class AssessmentProviderRepository
         public bool Unanswered { get; init; }
 
         public bool Live { get; init; }
+
+        public DateTime ReadAt { get; init; }
     }
 }

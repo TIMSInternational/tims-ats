@@ -376,4 +376,37 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         Assert.False(answered!.CreatesInFlight);
         Assert.False(answered.NeedsResolution);
     }
+
+    // Codex ats round 13 [P2]: after a complete erasure, only fences already stale at the read that preceded its
+    // resolution are retired, and only on erasure-touched attempts; a younger fence, or one on a live attempt, stays.
+    [Fact]
+    public async Task Retiring_fences_drops_only_those_stale_before_the_read_on_erasure_touched_attempts()
+    {
+        var org = await OrgAsync();
+        var candidate = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES ('{candidate}', '{org}', 'B', 'C', 'r13@r10.example')");
+        var erased = await AttemptAsync(org, "pending_create", candidate, mapped: false);
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now(), create_fences = ARRAY[now() - interval '1 day', now() - interval '30 seconds'] WHERE id = '{erased}'");
+
+        var facts = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.True(facts!.NeedsResolution);
+        Assert.True(facts.OnlyUnansweredCreatesNeedResolution);
+        Assert.True(facts.CreatesInFlight); // the 30-second-old fence is still live
+        Assert.NotNull(facts.ReadAt);
+
+        Assert.Equal(1, await WithRepository(r => r.RetireStaleCreateFencesAsync(org, candidate, facts.ReadAt!.Value, CancellationToken.None)));
+        var left = (int)(await fixture.ScalarAsync(
+            $"SELECT cardinality(create_fences) FROM assessment_provider_attempts WHERE id = '{erased}'"))!;
+        Assert.Equal(1, left); // the live fence survives
+
+        // A live attempt is never touched, and its presence clears the "only unanswered creates" fact.
+        var live = await AttemptAsync(org, "pending_create", candidate, mapped: false);
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET create_fences = ARRAY[now() - interval '1 day'] WHERE id = '{live}'");
+        var mixed = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.False(mixed!.OnlyUnansweredCreatesNeedResolution);
+        Assert.Equal(0, await WithRepository(r => r.RetireStaleCreateFencesAsync(org, candidate, mixed.ReadAt!.Value, CancellationToken.None)));
+    }
 }

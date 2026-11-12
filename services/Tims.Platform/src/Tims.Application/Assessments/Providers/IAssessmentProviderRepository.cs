@@ -434,6 +434,17 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid candidateId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// After an erasure that resolved the candidate's subject by (tenant, candidate id) and erased everything it found,
+    /// removes the create fences that were ALREADY stale at <paramref name="staleAsOf"/> (the database clock of the
+    /// <see cref="ListProviderSubjectsAsync"/> read that preceded the resolution) from the candidate's erased or
+    /// erasure-requested attempts. Their creates were dead before the resolution, so whatever subject they made was found
+    /// and erased; left in place they would force a fresh resolution on every later export or erasure, which creates a new
+    /// subject once the provider's idempotency window has passed (Codex ats round 13 [P2]). Returns the attempts changed.
+    /// </summary>
+    Task<int> RetireStaleCreateFencesAsync(
+        Guid organizationId, Guid candidateId, DateTimeOffset staleAsOf, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Re-opens the withdrawal cascade of one attempt (<c>done</c> back to <c>pending</c>, conditional): a consent was
     /// recorded at the provider by a launch that raced the withdrawal, after the cascade had withdrawn the others.
     /// </summary>
@@ -535,6 +546,13 @@ public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubje
 /// have made a provider subject no attempt names, including one created after an erasure made the provider forget the
 /// recorded subject's external_ref.
 /// </param>
+/// <param name="OnlyUnansweredCreatesNeedResolution">
+/// <see cref="NeedsResolution"/> holds ONLY because of unanswered create fences: every attempt is erased or under an
+/// accepted erasure request. Resolving (tenant, candidate id) then may CREATE a fresh subject for an erased person (the
+/// provider forgot the external_ref and the 24 h idempotency window may have passed), so only an erasure may do it (it
+/// erases what it resolves); an access export refuses instead (Codex ats round 13 [P2]).
+/// </param>
+/// <param name="ReadAt">The database clock when the fences were read (see <see cref="IAssessmentProviderRepository.RetireStaleCreateFencesAsync"/>).</param>
 /// <param name="CreatesInFlight">
 /// Whether some attempt of the candidate holds a create announced by
 /// <see cref="IAssessmentProviderRepository.BeginCreateAsync"/> that is neither answered nor stale (database clock): it may
@@ -542,7 +560,7 @@ public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubje
 /// </param>
 public sealed record ProviderCandidateSubjects(
     IReadOnlyList<Guid> Subjects, bool HasAttempts, IReadOnlyList<Guid>? ErasedSubjects = null, bool NeedsResolution = true,
-    bool CreatesInFlight = false);
+    bool CreatesInFlight = false, bool OnlyUnansweredCreatesNeedResolution = false, DateTimeOffset? ReadAt = null);
 
 /// <summary>
 /// The DSAR access export: the ATS's own provider tables (<see cref="Attempts"/>, <see cref="Results"/>) and what the

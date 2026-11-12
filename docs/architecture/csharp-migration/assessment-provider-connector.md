@@ -495,6 +495,12 @@ it too. A present non-boolean value is off contract and the result is refused.
   candidate is erased or under an accepted erasure request, the subject is NOT resolved again (the provider forgets its
   external_ref when erasure is requested, so resolving would create a fresh, empty subject), and a subject whose
   `subject.erased` is recorded is listed as `erased` without calling the provider.
+- An unanswered create fence is the one exception, and only an ERASURE may act on it (Codex ats round 13 [P2]). When
+  every attempt is erasure-touched and only such fences call for resolution, the export answers Incomplete (503) without
+  calling the provider: past the 24 h idempotency window, `POST /v1/subjects` would create a fresh subject for an erased
+  person. The erasure resolves and erases what it finds. When the run completes, it retires the fences that were already
+  stale at its first read (`RetireStaleCreateFencesAsync`, audited `assessment_provider_create_fences_retired`), so later
+  exports and erasures never resolve again. Operator remedy for an Incomplete export: run the erasure, then export.
 - The provider-held export must fit the client's 256 KiB response cap; a larger one fails the export closed (503).
 - D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
 
@@ -590,7 +596,10 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    (the erasure sweep's per-subject interval and per-run cap); `Platform__AssessmentIdentityCheckEnabled` stays false
    until a biometric text describing the camera checks is approved.
 7. On Vercel, set `NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true` to show the portal section, and only if the player
-   is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin). Both are build-time.
+   is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin), and only if PCA is to be
+   framed as timssuite.com frames it, `NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN` (the PCA provider's own https
+   origin, the one timssuite.com's `frame-src` names). Each is added to the portal's CSP `frame-src` only; unset, that
+   instrument links out top-level. All three are build-time: a change needs a new Vercel build.
 8. Team leaders (owner default D6). The seeded `leader` role has no `assessment` grant, so a team leader sees no
    assessments card at all, which is stricter than D6. To give the pilot organization's leaders the D6 view (only
    "below minimum", never the level or CEFR, for vacancies of the teams they lead), review and run, once per
