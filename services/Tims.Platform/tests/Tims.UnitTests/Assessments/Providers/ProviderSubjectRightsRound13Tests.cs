@@ -111,15 +111,82 @@ public sealed class ProviderSubjectRightsRound13Tests
         Assert.DoesNotContain("subject", _provider.Calls);
     }
 
+    // Codex ats round 13 run 3 [P1]: the provider erased the subject itself and its subject.erased was lost, so the ATS
+    // still reads the attempt as live. The export used to POST /v1/subjects, which past the idempotency window creates a
+    // new subject for the erased person. It now reads the recorded subject, which answers for itself (410: erased).
     [Fact]
-    public async Task An_export_still_resolves_while_the_candidate_has_an_attempt_no_erasure_touched()
+    public async Task An_export_of_a_live_attempt_never_posts_a_subject_and_lists_one_erased_at_the_provider_as_erased()
     {
-        ErasedAttemptWithStaleFence();
-        _repository.AddCreatedAttempt("lia"); // a later, live assignment: its subject is the candidate's current one
+        var attempt = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.ResultReady);
+        _provider.OnExportSubject = _ =>
+            ProviderCall<ProviderHeldExport>.Fail(new ProviderFailure(410, "subject_erased", false, []));
 
         var result = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
 
         Assert.Equal(ProviderExportOutcome.Exported, result.Outcome);
+        var held = Assert.Single(result.Export!.ProviderExports);
+        Assert.Equal((attempt.ProviderSubjectId!.Value, "erased"), (held.SubjectId, held.Status));
+        Assert.DoesNotContain("subject", _provider.Calls);
+    }
+
+    // An unanswered create beside a live attempt whose subject the provider still holds: that subject IS the candidate's
+    // one for (tenant, external_ref), so no other can exist and nothing is POSTed.
+    [Fact]
+    public async Task An_unanswered_create_beside_a_held_live_subject_needs_no_post()
+    {
+        var live = _repository.AddCreatedAttempt("lia");
+        var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
+        Assert.NotNull(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+
+        var result = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderExportOutcome.Exported, result.Outcome);
+        Assert.Contains(live.ProviderSubjectId!.Value, _provider.ExportedSubjects);
+        Assert.DoesNotContain("subject", _provider.Calls);
+    }
+
+    // The provider erased the live attempt's subject (410; its webhook lost) and a create is unanswered: a POST could
+    // create a new subject for the erased person, and only a POST could find another, so the export is Incomplete.
+    [Fact]
+    public async Task An_unanswered_create_after_the_provider_erased_the_live_subject_makes_the_export_incomplete()
+    {
+        var attempt = _repository.AddCreatedAttempt("lia");
+        _repository.CreateFences[attempt.Id] = [_repository.DbNow];
+        _provider.OnExportSubject = _ =>
+            ProviderCall<ProviderHeldExport>.Fail(new ProviderFailure(410, "subject_erased", false, []));
+
+        var result = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderExportOutcome.Incomplete, result.Outcome);
+        Assert.DoesNotContain("subject", _provider.Calls);
+    }
+
+    // A create that crashed before recording any subject: a live attempt with none, and no subject was ever recorded for
+    // the candidate. The POST is the only way to find what the provider may hold (possibly names and email), and the
+    // assignment needs that subject anyway, so the export resolves and exports it.
+    [Fact]
+    public async Task A_create_that_crashed_before_recording_a_subject_is_resolved_and_exported()
+    {
+        var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
+        _repository.Replace(pending.Id, a => a with { ProviderSubjectId = null });
+        _repository.CreateFences[pending.Id] = [_repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromMinutes(1)];
+
+        var result = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderExportOutcome.Exported, result.Outcome);
+        Assert.Contains("subject", _provider.Calls);
+        Assert.Equal([_provider.SubjectId], _provider.ExportedSubjects);
+    }
+
+    // The erasure still resolves by (tenant, candidate id) while a live attempt exists: it erases whatever it finds.
+    [Fact]
+    public async Task An_erasure_still_resolves_while_the_candidate_has_a_live_attempt()
+    {
+        _repository.AddCreatedAttempt("lia");
+
+        var erase = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderErasureOutcome.Requested, erase.Outcome);
         Assert.Contains("subject", _provider.Calls);
     }
 }

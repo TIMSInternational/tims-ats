@@ -393,6 +393,7 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         var facts = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
         Assert.True(facts!.NeedsResolution);
         Assert.True(facts.OnlyUnansweredCreatesNeedResolution);
+        Assert.True(facts.UnansweredCreates); // the export is Incomplete while it holds
         Assert.True(facts.CreatesInFlight); // the 30-second-old fence is still live
         Assert.NotNull(facts.ReadAt);
 
@@ -425,7 +426,10 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
             $"SELECT provider_subject_id FROM assessment_provider_attempts WHERE id = '{attempt}'"))!;
 
         var before = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
-        Assert.True(before!.NeedsResolution); // live: a subject no attempt names may exist
+        Assert.True(before!.NeedsResolution); // live: the erasure resolves by (tenant, candidate id)
+        Assert.False(before.UnansweredCreates); // no create unanswered: the export reads the recorded subject alone
+        Assert.Equal(subject, Assert.Single(before.LiveSubjects!));
+        Assert.False(before.LiveAttemptWithoutSubject);
 
         await fixture.ExecuteAsync(
             $$"""
@@ -437,9 +441,12 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         var tombstoned = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
         Assert.Equal(subject, Assert.Single(tombstoned!.ErasedSubjects!));
         Assert.False(tombstoned.NeedsResolution);
+        Assert.Empty(tombstoned.LiveSubjects!); // the attempt is no longer live
 
         await AttemptAsync(org, "pending_create", candidate, mapped: false); // a later, live assignment
         var mixed = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
         Assert.True(mixed!.NeedsResolution);
+        Assert.True(mixed.LiveAttemptWithoutSubject);
+        Assert.Empty(mixed.LiveSubjects!);
     }
 }

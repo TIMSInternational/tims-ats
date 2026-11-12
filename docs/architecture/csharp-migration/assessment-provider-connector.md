@@ -500,18 +500,37 @@ it too. A present non-boolean value is off contract and the result is refused.
 - The poller handles at most 200 organizations and 25 attempts per organization per run; more waits for the next run.
   A provider that answers 404 forever for an assignment keeps that attempt polled every 15 minutes (until a week past
   its start deadline for one that never started).
-- Erasure and export resolve the candidate's provider subject through the provider's idempotent (tenant, candidate id)
+- The ERASURE resolves the candidate's provider subject through the provider's idempotent (tenant, candidate id)
   subject key, so a subject created by a failed or crashed assignment is covered too. If the candidate never had a
-  subject, that call creates an empty one (no names or email). A stored erasure is terminal: once every attempt of the
-  candidate is erased or under an accepted erasure request, the subject is NOT resolved again (the provider forgets its
-  external_ref when erasure is requested, so resolving would create a fresh, empty subject), and a subject whose
-  `subject.erased` is recorded is listed as `erased` without calling the provider.
-- An unanswered create fence is the one exception, and only an ERASURE may act on it (Codex ats round 13 [P2]). When
-  every attempt is erasure-touched and only such fences call for resolution, the export answers Incomplete (503) without
-  calling the provider: past the 24 h idempotency window, `POST /v1/subjects` would create a fresh subject for an erased
-  person. The erasure resolves and erases what it finds. When the run completes, it retires the fences that were already
-  stale at its first read (`RetireStaleCreateFencesAsync`, audited `assessment_provider_create_fences_retired`), so later
-  exports and erasures never resolve again. Operator remedy for an Incomplete export: run the erasure, then export.
+  subject, that call creates an empty one (no names or email), which it then erases. A stored erasure is terminal: an
+  attempt erased, under an accepted erasure request, or recorded against a subject whose `subject.erased` is in the inbox
+  (even before its worker erased the attempt) calls for no resolution (the provider forgets an erased subject's
+  external_ref, so resolving would create a fresh subject), and a subject whose `subject.erased` is recorded is listed as
+  `erased` without calling the provider.
+- The access EXPORT calls `POST /v1/subjects` only where that call cannot create a subject for a person the provider
+  erased (Codex ats round 13, runs 1 to 3). The provider keeps one subject per (tenant, external_ref = candidate id) and
+  forgets the external_ref from the erasure request on, so past the 24 h idempotency window that POST creates a fresh
+  subject, also when the ATS never learned of the erasure (an erasure made at the provider whose `subject.erased` was
+  lost). The export first reads the subjects the attempts record; each answers for itself (410, or a 404 the subject
+  lookup confirms, is listed as gone). A subject no attempt records can exist only behind an unanswered create fence (a
+  create records the subject it resolved before anything can end its fence). So:
+  - no unanswered fence: nothing is POSTed;
+  - an unanswered fence and no live attempt (every attempt erased, under an erasure request, or on a subject whose
+    `subject.erased` is recorded): Incomplete (503) at once, without calling the provider;
+  - an unanswered fence and a live attempt whose recorded subject the provider still holds: nothing is POSTed (that
+    subject IS the external_ref's subject);
+  - an unanswered fence, no held live subject, and a live attempt that records no subject (a create that crashed before
+    recording one): the POST resolves it (its assignment needs that subject anyway) and its export is included;
+  - otherwise (the live attempts' subjects are gone at the provider): Incomplete.
+
+  On an erasure-touched attempt only an erasure clears a fence: the erasure resolves and erases what it finds and, when
+  the run completes, retires the fences that were already stale at its first read (`RetireStaleCreateFencesAsync`,
+  audited `assessment_provider_create_fences_retired`). Operator remedy for an Incomplete export: retry later (a live
+  create is answered or goes stale), or run the erasure first when the candidate is being erased anyway.
+- Known limit (not built): a retried create whose FIRST subject the provider erased behind the ATS's back resolves a new
+  subject that the attempt does not record (it keeps the first), and a definitive refusal of that create then ends its
+  fence. The export would miss that new subject; the erasure still finds it. It needs a provider-side erasure with a lost
+  webhook, a create retried past the 24 h window, and a refused assignment.
 - The provider-held export must fit the client's 256 KiB response cap; a larger one fails the export closed (503).
 - D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
 
@@ -566,7 +585,7 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
   Stored attempts and results are kept. Audit: `assessment_provider_binding_unset`. Re-binding re-activates the row.
 - **DSAR for one candidate.** The export downloads as JSON (to deliver to the data subject); the erasure asks for a
   confirmation and reports `requested` of `subjects` (incomplete runs can be retried). Both work after an unbind: the
-  subject is resolved through the binding whether or not it is in force.
+  erasure resolves the subject through the binding whether or not it is in force.
 
 ## Owner steps, in order
 

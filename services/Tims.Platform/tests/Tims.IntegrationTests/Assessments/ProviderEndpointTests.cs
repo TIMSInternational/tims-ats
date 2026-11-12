@@ -385,9 +385,11 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
         Assert.Equal("no-store", export.Headers.CacheControl?.ToString());
         var exported = await ReadJson(export);
         Assert.Equal("lia", exported.GetProperty("attempts")[0].GetProperty("instrument").GetString());
-        // D15 access includes what the provider holds: its own export for the recorded subject and the resolved one.
+        // D15 access includes what the provider holds: its own export for the recorded subject. The export never
+        // resolves by POST /v1/subjects (which may create a subject; Codex ats round 13 run 3), so this fake's freshly
+        // minted id is not exported; the erasure below still resolves and erases it.
         var held = exported.GetProperty("providerExports");
-        Assert.Equal(2, held.GetArrayLength());
+        Assert.Equal(1, held.GetArrayLength());
         Assert.Contains(held.EnumerateArray(), h => h.GetProperty("subjectId").GetGuid() == subject
             && h.GetProperty("status").GetString() == "exported"
             && h.GetProperty("export").GetProperty("subject").GetProperty("subject_id").GetGuid() == subject);

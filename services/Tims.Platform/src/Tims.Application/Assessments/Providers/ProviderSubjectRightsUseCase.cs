@@ -65,35 +65,32 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         var held = new List<ProviderHeldSubjectExport>();
         foreach (var subject in subjects.Subjects)
         {
-            if (subjects.Erased.Contains(subject))
-            {
-                // The provider confirmed this subject's erasure (subject.erased): terminal, nothing left to read there.
-                held.Add(new ProviderHeldSubjectExport(subject, "erased", null));
-                continue;
-            }
-
-            var exported = await _provider.ExportSubjectAsync(subject, cancellationToken).ConfigureAwait(false);
-            if (exported.Ok)
-            {
-                using var document = System.Text.Json.JsonDocument.Parse(exported.Value!.Json);
-                held.Add(new ProviderHeldSubjectExport(subject, "exported", document.RootElement.Clone()));
-                continue;
-            }
-
-            // Only a CONFIRMED absence is an answer (the client confirms a 404 with the subject lookup); anything else
-            // means the provider may still hold data the export would omit.
-            var status = exported.Failure!.HttpStatus switch
-            {
-                410 => "erased",
-                404 => "not_found",
-                _ => null,
-            };
-            if (status is null)
+            if (!await AddHeldAsync(held, subject, subjects.Erased.Contains(subject), cancellationToken).ConfigureAwait(false))
             {
                 return new ProviderSubjectExportResult(ProviderExportOutcome.Incomplete, null);
             }
+        }
 
-            held.Add(new ProviderHeldSubjectExport(subject, status, null));
+        // An access export is a read: it resolves (tenant, candidate id) by POST /v1/subjects only where that POST cannot
+        // create a subject for a person the provider erased (Codex ats round 13, runs 1 to 3). The provider keeps one
+        // subject per (tenant, external_ref = candidate id) and forgets the external_ref when it erases the subject (from
+        // the erasure REQUEST on, while it may still hold the data), so past the 24 h idempotency window the POST then
+        // creates a NEW subject, also when the ATS never learned of that erasure (a lost subject.erased; the recorded
+        // subject then answers 410 above). A subject no attempt records exists only behind an unanswered create (a create
+        // records the subject it resolved before anything can end its fence). So the POST is needed only while a create
+        // is unanswered and no subject of a LIVE attempt is held (one that is held IS the external_ref's subject), and is
+        // made only for a live attempt that records no subject yet: its assignment needs a subject at the provider anyway.
+        if (subjects.ExportFacts is { } facts
+            && !held.Any(h => h.Status == "exported" && (facts.LiveSubjects ?? []).Contains(h.SubjectId)))
+        {
+            if (!facts.LiveAttemptWithoutSubject
+                || await EnsureSubjectByExternalRefAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false)
+                    is not { } resolved
+                || (!subjects.Subjects.Contains(resolved)
+                    && !await AddHeldAsync(held, resolved, false, cancellationToken).ConfigureAwait(false)))
+            {
+                return new ProviderSubjectExportResult(ProviderExportOutcome.Incomplete, null);
+            }
         }
 
         var export = await _repository.ExportCandidateAsync(
@@ -105,14 +102,71 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     }
 
     /// <summary>
+    /// Adds what the provider holds for one subject: its own export, or a confirmed absence (410, or a 404 the client's
+    /// subject lookup confirmed). False on any other failure: the provider may still hold data the export would omit.
+    /// </summary>
+    private async Task<bool> AddHeldAsync(
+        List<ProviderHeldSubjectExport> held, Guid subject, bool erasedLocally, CancellationToken cancellationToken)
+    {
+        if (erasedLocally)
+        {
+            // The provider confirmed this subject's erasure (subject.erased): terminal, nothing left to read there.
+            held.Add(new ProviderHeldSubjectExport(subject, "erased", null));
+            return true;
+        }
+
+        var exported = await _provider.ExportSubjectAsync(subject, cancellationToken).ConfigureAwait(false);
+        if (exported.Ok)
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(exported.Value!.Json);
+            held.Add(new ProviderHeldSubjectExport(subject, "exported", document.RootElement.Clone()));
+            return true;
+        }
+
+        var status = exported.Failure!.HttpStatus switch
+        {
+            410 => "erased",
+            404 => "not_found",
+            _ => null,
+        };
+        if (status is null)
+        {
+            return false;
+        }
+
+        held.Add(new ProviderHeldSubjectExport(subject, status, null));
+        return true;
+    }
+
+    /// <summary>
+    /// The provider subject for (tenant, external_ref = candidate id), by the idempotent <c>POST /v1/subjects</c>, or
+    /// null when it cannot be resolved (no binding, or the call failed). In force or not (round 12): an org the platform
+    /// owner unbound keeps its provider tenant, and its candidates' data must still be exportable and erasable.
+    /// </summary>
+    private async Task<Guid?> EnsureSubjectByExternalRefAsync(
+        Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
+    {
+        var binding = await _repository.GetBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
+        if (binding is null)
+        {
+            return null;
+        }
+
+        var request = new ProviderSubjectRequest(binding.ProviderTenantId, candidateId.ToString(), null, null, null, null);
+        var resolved = await _provider.EnsureSubjectAsync(
+            request, IdempotencyKeys.Subject(organizationId, request), cancellationToken).ConfigureAwait(false);
+        return resolved.Ok ? resolved.Value!.SubjectId : null;
+    }
+
+    /// <summary>
     /// The candidate's provider subjects: those recorded on its attempts, plus the one the provider resolves for
     /// (tenant, candidate id) whenever the candidate has attempts (a failed or crashed create can leave a subject no
     /// attempt names). <see cref="ResolvedSubjects.Outcome"/> is set when they cannot be resolved.
     /// </summary>
     /// <param name="mayCreate">
-    /// False for an access export: when only unanswered creates on erased attempts call for resolution, resolving may
-    /// CREATE a fresh subject for an erased person, so the export answers Incomplete instead (an erasure run resolves,
-    /// erases and retires those fences; the export then succeeds).
+    /// False for an access export: nothing is resolved here, since a <c>POST /v1/subjects</c> may CREATE a fresh subject
+    /// for an erased person. The recorded subjects are returned with <see cref="ResolvedSubjects.ExportFacts"/>, and the
+    /// export decides once it has read them; it is Incomplete at once when a create is unanswered and no attempt is live.
     /// </param>
     private async Task<ResolvedSubjects> ResolveSubjectsAsync(
         Guid organizationId, Guid candidateId, bool mayCreate, CancellationToken cancellationToken)
@@ -136,12 +190,19 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         // request, the subject is NOT resolved again. The provider forgets the subject's external_ref when its erasure is
         // requested, so a re-POST of (tenant, candidate id) after the 24 h idempotency window would create a fresh, empty
         // provider subject, and the export or erasure would then run against that new subject.
-        if (known.HasAttempts && known.NeedsResolution && known.OnlyUnansweredCreatesNeedResolution && !mayCreate)
+        if (!mayCreate)
         {
-            // Codex ats round 13 [P2]: an export is a read. Every attempt is erased or under an erasure request, so the
-            // provider forgot the external_ref; past its 24 h idempotency window a POST /v1/subjects would create a NEW
-            // subject for an erased person, and the export would then report that subject as held data.
-            return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt);
+            // The access export (see ExportAsync). No unanswered create: no subject can exist that the attempts do not
+            // record. One, with no live attempt (every attempt erased, under an erasure request, or on a subject the
+            // provider confirmed erased): only an erasure may resolve it (Codex ats round 13 [P2]).
+            if (!known.HasAttempts || !known.UnansweredCreates)
+            {
+                return new ResolvedSubjects(subjects, erased, null, known.ReadAt);
+            }
+
+            return (known.LiveSubjects ?? []).Count == 0 && !known.LiveAttemptWithoutSubject
+                ? new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt)
+                : new ResolvedSubjects(subjects, erased, null, known.ReadAt) { ExportFacts = known };
         }
 
         if (known.HasAttempts && known.NeedsResolution)
@@ -149,25 +210,15 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
             // The subject is created BEFORE its assignment and recorded only with it, so a failed or crashed create can
             // leave a provider subject (possibly with names and email) no attempt names. Subjects are idempotent on
             // (tenant, external_ref = candidate id): resolve it that way, never trusting the local record alone.
-            // In force or not (round 12): an org the platform owner unbound keeps its provider tenant, and its
-            // candidates' data must still be exportable and erasable.
-            var binding = await _repository.GetBindingAsync(organizationId, cancellationToken).ConfigureAwait(false);
-            if (binding is null)
+            if (await EnsureSubjectByExternalRefAsync(organizationId, candidateId, cancellationToken).ConfigureAwait(false)
+                is not { } resolved)
             {
                 return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt);
             }
 
-            var request = new ProviderSubjectRequest(binding.ProviderTenantId, candidateId.ToString(), null, null, null, null);
-            var resolved = await _provider.EnsureSubjectAsync(
-                request, IdempotencyKeys.Subject(organizationId, request), cancellationToken).ConfigureAwait(false);
-            if (!resolved.Ok)
+            if (!subjects.Contains(resolved))
             {
-                return new ResolvedSubjects(subjects, erased, ProviderErasureOutcome.Incomplete, known.ReadAt);
-            }
-
-            if (!subjects.Contains(resolved.Value!.SubjectId))
-            {
-                subjects.Add(resolved.Value.SubjectId);
+                subjects.Add(resolved);
             }
         }
 
@@ -178,7 +229,11 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
     /// <param name="ResolvedForUnansweredCreates">The subject was resolved only because of unanswered creates on erased attempts.</param>
     private sealed record ResolvedSubjects(
         IReadOnlyList<Guid> Subjects, IReadOnlyList<Guid> Erased, ProviderErasureOutcome? Outcome,
-        DateTimeOffset? ReadAt = null, bool ResolvedForUnansweredCreates = false);
+        DateTimeOffset? ReadAt = null, bool ResolvedForUnansweredCreates = false)
+    {
+        /// <summary>Export only: the subject facts when an unanswered create may call for a resolution, else null.</summary>
+        public ProviderCandidateSubjects? ExportFacts { get; init; }
+    }
 
     public async Task<ProviderErasureResult> EraseAsync(
         Guid organizationId, Guid candidateId, Guid actorId, DateTimeOffset now, CancellationToken cancellationToken)

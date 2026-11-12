@@ -26,14 +26,16 @@ public sealed class ProviderSubjectExportUseCaseTests
         var result = await Export();
 
         Assert.Equal(ProviderExportOutcome.Exported, result.Outcome);
-        // The two recorded subjects plus the one the provider resolves for (tenant, candidate id).
-        Assert.Equal([first.ProviderSubjectId!.Value, second.ProviderSubjectId!.Value, _provider.SubjectId], _provider.ExportedSubjects);
+        // The two recorded subjects, and no POST /v1/subjects: an access export never resolves by (tenant, candidate id),
+        // which may create a subject (Codex ats round 13 run 3). With no unanswered create, no other subject can exist.
+        Assert.Equal([first.ProviderSubjectId!.Value, second.ProviderSubjectId!.Value], _provider.ExportedSubjects);
+        Assert.DoesNotContain("subject", _provider.Calls);
         Assert.All(result.Export!.ProviderExports, held =>
         {
             Assert.Equal("exported", held.Status);
             Assert.Equal(held.SubjectId.ToString(), held.Export!.Value.GetProperty("subject").GetProperty("subject_id").GetString());
         });
-        Assert.Equal([3], _repository.ExportAudits);
+        Assert.Equal([2], _repository.ExportAudits);
     }
 
     [Theory]
@@ -68,7 +70,10 @@ public sealed class ProviderSubjectExportUseCaseTests
         Assert.Equal(ProviderExportOutcome.Exported, result.Outcome);
         var held = Assert.Single(result.Export!.ProviderExports, h => h.SubjectId == attempt.ProviderSubjectId);
         Assert.Equal((expected, (System.Text.Json.JsonElement?)null), (held.Status, held.Export));
-        Assert.Equal([1], _repository.ExportAudits); // only the resolved subject was exported
+        // Nothing exported: the one recorded subject is gone, and the export never POSTs /v1/subjects for another
+        // (Codex ats round 13 run 3).
+        Assert.Equal([0], _repository.ExportAudits);
+        Assert.DoesNotContain("subject", _provider.Calls);
     }
 
     [Fact]

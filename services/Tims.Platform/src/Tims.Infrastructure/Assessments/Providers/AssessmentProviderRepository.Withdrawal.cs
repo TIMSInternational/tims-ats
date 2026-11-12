@@ -452,11 +452,14 @@ public sealed partial class AssessmentProviderRepository
             // subject the provider confirmed erased (Codex ats round 13 run 2 [P2]: between subject.erased landing in the
             // inbox and its worker erasing the attempts) needs no subject resolution. The provider forgot that subject's
             // external_ref, so resolving would create a fresh subject for an erased person.
-            var liveAttemptNeedsResolution = await _db.Attempts.AsNoTracking()
-                .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId
+            var liveRecorded = await _db.Attempts.AsNoTracking()
+                .Where(a => a.OrganizationId == organizationId && a.CandidateId == candidateId
                     && a.State != ProviderAttemptStates.Erased && a.ProviderErasureRequestedAt == null
-                    && (a.ProviderSubjectId == null || !erased.Contains(a.ProviderSubjectId.Value)), cancellationToken)
-                .ConfigureAwait(false);
+                    && (a.ProviderSubjectId == null || !erased.Contains(a.ProviderSubjectId.Value)))
+                .Select(a => a.ProviderSubjectId)
+                .Distinct()
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+            var liveAttemptNeedsResolution = liveRecorded.Count > 0;
             // A create announced (BeginCreateAsync) and never answered: its EnsureSubject may have created a provider
             // subject no attempt records (Codex ats-final runs 2 and 3) - before the subject was recorded, or AFTER an
             // erasure made the provider forget the recorded one's external_ref (RecordSubjectAsync never replaces a
@@ -480,7 +483,10 @@ public sealed partial class AssessmentProviderRepository
             result = new ProviderCandidateSubjects(
                 subjects, hasAttempts, erased, needsResolution, fences.Live,
                 OnlyUnansweredCreatesNeedResolution: fences.Unanswered && !liveAttemptNeedsResolution,
-                ReadAt: new DateTimeOffset(DateTime.SpecifyKind(fences.ReadAt, DateTimeKind.Utc)));
+                ReadAt: new DateTimeOffset(DateTime.SpecifyKind(fences.ReadAt, DateTimeKind.Utc)),
+                UnansweredCreates: fences.Unanswered,
+                LiveSubjects: [.. liveRecorded.Where(id => id is not null).Select(id => id!.Value).Order()],
+                LiveAttemptWithoutSubject: liveRecorded.Any(id => id is null));
         }
 
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);

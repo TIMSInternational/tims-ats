@@ -1231,8 +1231,9 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
         // Mirrors the real repository: an attempt recorded against a subject the provider confirmed erased is no
         // longer live, even before the inbox worker erases it (Codex ats round 13 run 2 [P2]).
-        var liveAttempt = Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
-            && a.ErasureRequestedAt is null && (a.ProviderSubjectId is not { } subject || !ErasedSubjects.Contains(subject)));
+        var live = Attempts.Where(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
+            && a.ErasureRequestedAt is null && (a.ProviderSubjectId is not { } subject || !ErasedSubjects.Contains(subject))).ToList();
+        var liveAttempt = live.Count > 0;
         var unanswered = Attempts.Any(a => a.CandidateId == candidateId && HasCreateFence(a.Id));
         return Task.FromResult<ProviderCandidateSubjects?>(new ProviderCandidateSubjects(
             Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)
@@ -1242,7 +1243,10 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             liveAttempt || unanswered,
             Attempts.Any(a => a.CandidateId == candidateId && HasLiveCreateFence(a.Id)),
             unanswered && !liveAttempt,
-            DbNow));
+            DbNow,
+            unanswered,
+            live.Where(a => a.ProviderSubjectId is not null).Select(a => a.ProviderSubjectId!.Value).Distinct().ToList(),
+            live.Any(a => a.ProviderSubjectId is null)));
     }
 
     /// <summary>Mirrors the real repository: drops fences stale at <paramref name="staleAsOf"/> on erasure-touched attempts.</summary>

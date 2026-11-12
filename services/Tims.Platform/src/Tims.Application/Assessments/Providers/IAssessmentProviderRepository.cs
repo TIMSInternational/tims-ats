@@ -553,6 +553,17 @@ public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubje
 /// erases what it resolves); an access export refuses instead (Codex ats round 13 [P2]).
 /// </param>
 /// <param name="ReadAt">The database clock when the fences were read (see <see cref="IAssessmentProviderRepository.RetireStaleCreateFencesAsync"/>).</param>
+/// <param name="UnansweredCreates">
+/// Whether some attempt of the candidate holds an unanswered create fence, live or stale: the only way a provider
+/// subject no attempt records can exist (a create records the subject it resolved on the attempt before anything can end
+/// its fence). Defaults to true, so a store that does not report it fails closed.
+/// </param>
+/// <param name="LiveSubjects">
+/// The subjects recorded on LIVE attempts: neither erased, nor under an accepted erasure request, nor recorded against a
+/// subject whose <c>subject.erased</c> is in the inbox. The provider keeps one subject per (tenant, external_ref =
+/// candidate id), so one of these that the provider still holds IS the candidate's subject there.
+/// </param>
+/// <param name="LiveAttemptWithoutSubject">Whether some live attempt records no subject yet.</param>
 /// <param name="CreatesInFlight">
 /// Whether some attempt of the candidate holds a create announced by
 /// <see cref="IAssessmentProviderRepository.BeginCreateAsync"/> that is neither answered nor stale (database clock): it may
@@ -560,7 +571,8 @@ public sealed record SubjectErasureCheck(Guid OrganizationId, Guid ProviderSubje
 /// </param>
 public sealed record ProviderCandidateSubjects(
     IReadOnlyList<Guid> Subjects, bool HasAttempts, IReadOnlyList<Guid>? ErasedSubjects = null, bool NeedsResolution = true,
-    bool CreatesInFlight = false, bool OnlyUnansweredCreatesNeedResolution = false, DateTimeOffset? ReadAt = null);
+    bool CreatesInFlight = false, bool OnlyUnansweredCreatesNeedResolution = false, DateTimeOffset? ReadAt = null,
+    bool UnansweredCreates = true, IReadOnlyList<Guid>? LiveSubjects = null, bool LiveAttemptWithoutSubject = false);
 
 /// <summary>
 /// The DSAR access export: the ATS's own provider tables (<see cref="Attempts"/>, <see cref="Results"/>) and what the
