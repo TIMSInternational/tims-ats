@@ -351,14 +351,153 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Null(english["resultId"]);
     }
 
-    private async Task DrainAsync(WebApplicationFactory<Program> factory, Guid candidate, Guid vacancy)
+    // Codex ats round 13 [P1] (migration 20261112170426_fit_v2_provider_erasure_removes_fit_rows): an accepted erasure
+    // used to leave the erased result's score, id and versions in the stored FIT row until the queue drained, and for
+    // good with FIT v2 off (the drain completes the request without a write). The marker's own transaction now deletes
+    // the row, written here as the C# writes it (app_tenant under the org); neither drain brings it back, since no
+    // provider result remains. Own vacancy and candidate.
+    [Fact]
+    public async Task An_accepted_erasure_removes_the_fit_row_built_from_the_result_at_once_even_with_fit_v2_off()
+    {
+        const string Seed =
+            """
+            INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+              ('7ac00000-0000-0000-0000-0000000000d8', '11111111-1111-1111-1111-111111111111', 'FIT v2 erased', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
+              ('9f000000-0000-0000-0000-0000000000d8', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-0000000000d8',
+               '{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"},"reason":"clientes"}]}');
+            INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+              ('ca000000-0000-0000-0000-0000000000d8', '11111111-1111-1111-1111-111111111111', 'prov-erased@fit.test', 'Elsa', 'Erased', 4, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
+              ('ab000000-0000-0000-0000-0000000000d8', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000d8', '7ac00000-0000-0000-0000-0000000000d8', 'active');
+            INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                instrument_version, content_version, latest_result_id, assigned_by_id, created_at) VALUES
+              ('e0000000-0000-4000-8000-0000000000d8', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-4000-8000-0000000000a0', 'ca000000-0000-0000-0000-0000000000d8', '7ac00000-0000-0000-0000-0000000000d8', 'english', 'result_ready',
+               'selection', 'clientes', 'es', 1, 'f0000000-0000-4000-8000-0000000000d8', 'aa000000-0000-4000-8000-0000000000d8', '1.0', 'english-2026.11.1', 'd0000000-0000-4000-8000-0000000000d8', 'c0000000-0000-0000-0000-000000000001', '2026-11-01 09:00:00+00');
+            INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
+                result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version,
+                scoring_method, purpose, validity_status, completion, global_percentile, cefr, level, time_multiplier_applied,
+                rendered_for, rendered_level, completed_at, scored_at) VALUES
+              (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'e0000000-0000-4000-8000-0000000000d8', 'd0000000-0000-4000-8000-0000000000d8', 1,
+               'EnglishResultV1', 'english', '1.0', 'english-2026.11.1', repeat('8', 64), NULL, 'scoring-1', 'deterministic', 'selection', 'valid', 'complete', NULL, 'C1', NULL, 1,
+               'tenant_hr', 'full', '2026-11-02 10:00:00+00', '2026-11-02 10:00:05+00');
+            """;
+        var candidate = Guid.Parse("ca000000-0000-0000-0000-0000000000d8");
+        var vacancy = Guid.Parse("7ac00000-0000-0000-0000-0000000000d8");
+        await _fixture.Fit.ExecuteScalarAsync(Seed);
+        await using var factory = Factory(providers: true);
+        await DrainAsync(factory, candidate, vacancy); // round 11: the provider result creates the pipeline row
+        var before = await _fixture.Fit.GetFitScoreAsync(candidate, vacancy);
+        Assert.NotNull(before);
+        var english = Entry(JsonNode.Parse(before.Breakdown)!, "english");
+        Assert.Equal("provider", english["source"]!.GetValue<string>());
+        Assert.Equal("d0000000-0000-4000-8000-0000000000d8", english["resultId"]!.GetValue<string>());
+
+        // MarkErasureRequestedAsync's write, as app_tenant under the org (this fixture has no audit_logs table).
+        await _fixture.Fit.ExecuteScalarAsync(
+            "BEGIN; SET LOCAL ROLE app_tenant; SELECT set_config('app.current_org_id', '11111111-1111-1111-1111-111111111111', true); "
+            + "UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now() WHERE id = 'e0000000-0000-4000-8000-0000000000d8'; COMMIT;");
+
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy)); // gone in the erasure's transaction
+        await DrainAsync(factory, candidate, vacancy, fitV2Enabled: false);
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy));
+        await _fixture.Fit.ExecuteScalarAsync(
+            "SELECT public.fit_v2_request_recompute('11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000d8', '7ac00000-0000-0000-0000-0000000000d8')");
+        await DrainAsync(factory, candidate, vacancy);
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy)); // no provider result remains to recreate it
+    }
+
+    // The same trigger, pinned row by row in one rolled-back transaction: only an erasure (the accepted marker, or the
+    // provider's subject.erased setting state 'erased') deletes, and only the row of the attempt's own candidate and
+    // vacancy whose breakdown holds a PROVIDER entry for the attempt's instrument. The attempt writes run as app_tenant.
+    [Fact]
+    public async Task Only_an_erasure_removes_a_fit_row_and_only_the_one_holding_that_attempts_provider_entry()
+    {
+        const string Org = "11111111-1111-1111-1111-111111111111";
+        const string V1 = "7ac00000-0000-0000-0000-0000000000e1";
+        const string V2 = "7ac00000-0000-0000-0000-0000000000e2";
+        static string Candidate(int n) => $"ca000000-0000-0000-0000-0000000000e{n}";
+        static string Breakdown(string entries) => $$"""{"fitVersion":2,"assessment":70,"assessments":[{{entries}}]}""";
+        const string ProviderEnglish = """{"instrument":"english","source":"provider","resultId":"d0000000-0000-4000-8000-0000000000e0","score":null,"gate":"met"}""";
+        const string ProviderLia = """{"instrument":"lia","source":"provider","resultId":"d0000000-0000-4000-8000-0000000000e9","score":70,"gate":null}""";
+        const string NativeEnglish = """{"instrument":"english","source":"ats","resultId":"d0000000-0000-4000-8000-0000000000e8","score":null,"gate":"met"}""";
+
+        // (row, its breakdown, the attempt write on (candidate, V1, english), whether the row must survive)
+        var cases = new (string Candidate, string Vacancy, string Breakdown, string Write, bool Kept)[]
+        {
+            (Candidate(1), V1, Breakdown(ProviderEnglish), "provider_erasure_requested_at = now()", false),
+            (Candidate(1), V2, Breakdown(ProviderEnglish), "", true), // same candidate, another vacancy
+            (Candidate(2), V1, Breakdown(ProviderEnglish), "", true), // another candidate, same vacancy
+            (Candidate(3), V1, Breakdown(ProviderLia), "provider_erasure_requested_at = now()", true), // no english entry
+            (Candidate(4), V1, Breakdown(NativeEnglish), "provider_erasure_requested_at = now()", true), // not the provider's
+            (Candidate(5), V1, """{"assessment":70,"interview":null}""", "provider_erasure_requested_at = now()", true), // v1 row
+            (Candidate(6), V1, Breakdown(ProviderEnglish), "state = 'voided'", true), // a state change that is no erasure
+            (Candidate(7), V1, Breakdown(ProviderEnglish), "state = 'erased', latest_result_id = NULL", false), // subject.erased
+        };
+
+        await using var connection = new NpgsqlConnection(_fixture.Fit.ConnectionString);
+        await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
+        async Task RunAsync(string sql)
+        {
+            await using var command = new NpgsqlCommand(sql, connection, tx);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        for (var i = 0; i < cases.Length; i++)
+        {
+            var c = cases[i];
+            await RunAsync(
+                "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, weights, "
+                + "is_partial, calculated_at, created_at, updated_at) VALUES "
+                + $"(gen_random_uuid(), '{Org}', '{c.Candidate}', '{c.Vacancy}', 70, '{c.Breakdown}', '{{}}', false, now(), now(), now())");
+            if (c.Write.Length > 0)
+            {
+                await RunAsync(
+                    "INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state, "
+                    + "purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id, "
+                    + "instrument_version, content_version, latest_result_id, assigned_by_id, created_at) VALUES "
+                    + $"('e0000000-0000-4000-8000-0000000000e{i}', '{Org}', 'b0000000-0000-4000-8000-0000000000a0', '{c.Candidate}', '{V1}', 'english', 'result_ready', "
+                    + $"'selection', 'clientes', 'es', 1, 'f0000000-0000-4000-8000-0000000000e{i}', 'aa000000-0000-4000-8000-0000000000e{i}', '1.0', 'english-2026.11.1', "
+                    + $"'d0000000-0000-4000-8000-0000000000e0', 'c0000000-0000-0000-0000-000000000001', '2026-11-01 09:00:00+00')");
+            }
+        }
+
+        // The writes as the C# repository makes them: app_tenant, the org in the GUC.
+        await RunAsync($"SET LOCAL ROLE app_tenant; SELECT set_config('app.current_org_id', '{Org}', true)");
+        for (var i = 0; i < cases.Length; i++)
+        {
+            if (cases[i].Write.Length > 0)
+            {
+                await RunAsync(
+                    $"UPDATE assessment_provider_attempts SET {cases[i].Write} WHERE id = 'e0000000-0000-4000-8000-0000000000e{i}'");
+            }
+        }
+
+        await RunAsync("RESET ROLE");
+        for (var i = 0; i < cases.Length; i++)
+        {
+            await using var read = new NpgsqlCommand(
+                "SELECT count(*)::int FROM fit_scores WHERE candidate_id = @c AND vacancy_id = @v", connection, tx);
+            read.Parameters.AddWithValue("c", Guid.Parse(cases[i].Candidate));
+            read.Parameters.AddWithValue("v", Guid.Parse(cases[i].Vacancy));
+            var count = (int)(await read.ExecuteScalarAsync())!;
+            Assert.True(count == (cases[i].Kept ? 1 : 0), $"case {i}: expected the row {(cases[i].Kept ? "kept" : "deleted")}");
+        }
+
+        await tx.RollbackAsync();
+    }
+
+    private async Task DrainAsync(
+        WebApplicationFactory<Program> factory, Guid candidate, Guid vacancy, bool fitV2Enabled = true)
     {
         // The registered drain may race this one; either way the request ends completed.
         for (var pass = 0; pass < 20; pass++)
         {
             using var scope = factory.Services.CreateScope();
             await scope.ServiceProvider.GetRequiredService<Tims.Application.FitEngine.FitRecomputeUseCase>()
-                .RunAsync(DateTimeOffset.UtcNow, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);
+                .RunAsync(DateTimeOffset.UtcNow, fitV2Enabled, liaScoredAllowed: false, CancellationToken.None);
             if (await _fixture.Fit.GetRecomputeRequestAsync(candidate, vacancy) is null)
             {
                 return;

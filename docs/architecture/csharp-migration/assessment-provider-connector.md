@@ -392,6 +392,17 @@ provider result for an instrument the vacancy lists. So HR no longer has to pres
 shows in the ranking. Any other change to a pair without a row (an ATS quiz, a proctoring flag) still writes nothing;
 HR's compute decides those.
 
+An erasure removes the stored FIT row at once (Codex ats round 13 [P1], migration
+`20261112170426_fit_v2_provider_erasure_removes_fit_rows`). When an attempt's erasure is accepted
+(`provider_erasure_requested_at` set) or the provider confirms it (state `erased`), the attempt trigger deletes, in that
+same transaction, the candidate's `fit_scores` row for the attempt's vacancy if its breakdown holds a `provider` entry for
+the attempt's instrument. Before, the erased result's score, id and versions (and the numbers derived from them) stayed
+in that row until the recompute queue drained, and for good with FIT v2 off, because the drain then completes the request
+without writing. A FIT row is derived data: the queued recompute re-creates it at once only when another provider
+result for a listed instrument remains (the round-11 rule above); otherwise HR's next Compute Rankings scores the
+candidate again from what remains. A result the provider merely hides (`result_not_visible`) still leaves FIT through
+the recompute queue.
+
 ## Unconfirmed 404s
 
 A provider that does not serve a route answers its catch-all 404 with the same `not_found` code as "no such
@@ -567,7 +578,9 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    `20261110031301_assessment_provider_result_visibility.sql` (round 12: the hide fence, `result_visibility_generation`),
    then `20261111170159_assessment_provider_proctoring.sql` (round 13: `assessment_provider_settings` and the attempt's
    proctoring snapshot, `completed_by`, `void_reason`), then `20261111195336_assessment_provider_subject_checks.sql`
-   (round 13: the erasure sweep's `assessment_provider_subject_checks`). Every file is idempotent and records its
+   (round 13: the erasure sweep's `assessment_provider_subject_checks`), then
+   `20261112170426_fit_v2_provider_erasure_removes_fit_rows.sql` (round 13: an erasure deletes the FIT row built from the
+   erased result; function only, no table change). Every file is idempotent and records its
    migration id, so re-running one is safe; skipping one is not: the code reads every table and column unconditionally.
 2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be the six
    new tables — `assessment_provider_bindings`, `_attempts`, `_results`, `_webhook_inbox`, `_settings`,
@@ -591,7 +604,9 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    the provider signs with both secrets for 24 hours; keep the old one in `...Previous` meanwhile.
 5. Store the secrets: `AssessmentProviders__ClientSecret` and `AssessmentProviders__WebhookSigningSecret`. Watch
    for the placeholder trap. Set `AssessmentProviders__PortalBaseUrl` to the portal origin registered in step 3.
-6. Bind each org (platform owner), then set `Platform__AssessmentProvidersEnabled=true`. Optional (defaults shown):
+6. Set `Platform__AssessmentProvidersEnabled=true` first: every connector route, the platform owner's binding routes
+   included, is mapped only with it on. Then bind each org (platform owner, the assessment provider section of the
+   org's page under Platform → Organizations, shown once step 7's build is live). Optional (defaults shown):
    `Platform__AssessmentProviderErasureCheckIntervalDays=7` and `Platform__AssessmentProviderErasureCheckMaxSubjects=200`
    (the erasure sweep's per-subject interval and per-run cap); `Platform__AssessmentIdentityCheckEnabled` stays false
    until a biometric text describing the camera checks is approved.
