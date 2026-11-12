@@ -18,6 +18,12 @@ BEGIN
       -- in lax mode is false (never an error) on a v1 row or a breakdown without an assessments array.
       IF (NEW.provider_erasure_requested_at IS NOT NULL OR NEW.state = 'erased')
          AND to_regclass('public.fit_scores') IS NOT NULL THEN
+        -- FIT v2's lock for this (organization, candidate, vacancy), the key of
+        -- FitEngineWriteRepository.FitV2LockKey: a compute that read the result before this erasure finishes
+        -- its write first, and that write is deleted below; one that starts later waits for this transaction
+        -- and reads the erasure.
+        PERFORM pg_advisory_xact_lock(hashtextextended(
+          'fit_v2:' || NEW.organization_id::text || ':' || NEW.candidate_id::text || ':' || NEW.vacancy_id::text, 0));
         DELETE FROM public.fit_scores f
          WHERE f.organization_id = NEW.organization_id
            AND f.candidate_id = NEW.candidate_id

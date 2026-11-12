@@ -409,4 +409,37 @@ public sealed class AssessmentProviderRound10Tests(AssessmentProviderSchemaFixtu
         Assert.False(mixed!.OnlyUnansweredCreatesNeedResolution);
         Assert.Equal(0, await WithRepository(r => r.RetireStaleCreateFencesAsync(org, candidate, mixed.ReadAt!.Value, CancellationToken.None)));
     }
+
+    // Codex ats round 13 run 2 [P2]: subject.erased is recorded in the inbox before its worker erases the attempts. An
+    // attempt recorded against that subject is already a stored erasure: it no longer calls for a resolution (whose POST
+    // could create a fresh subject for the erased person). A live attempt with no subject still does.
+    [Fact]
+    public async Task An_attempt_whose_subject_the_provider_confirmed_erased_needs_no_resolution()
+    {
+        var org = await OrgAsync();
+        var candidate = Guid.NewGuid();
+        await fixture.ExecuteAsync(
+            $"INSERT INTO candidates (id, organization_id, first_name, last_name, email) VALUES ('{candidate}', '{org}', 'E', 'S', 'r13s@r10.example')");
+        var attempt = await AttemptAsync(org, "result_ready", candidate);
+        var subject = (Guid)(await fixture.ScalarAsync(
+            $"SELECT provider_subject_id FROM assessment_provider_attempts WHERE id = '{attempt}'"))!;
+
+        var before = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.True(before!.NeedsResolution); // live: a subject no attempt names may exist
+
+        await fixture.ExecuteAsync(
+            $$"""
+             INSERT INTO assessment_provider_webhook_inbox (id, organization_id, event_id, event_type, event_version,
+                 provider_tenant_id, occurred_at, status, data)
+             VALUES (gen_random_uuid(), '{{org}}', gen_random_uuid(), 'subject.erased', 1, gen_random_uuid(),
+                 now(), 'received', '{"subject_id":"{{subject}}"}');
+             """);
+        var tombstoned = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.Equal(subject, Assert.Single(tombstoned!.ErasedSubjects!));
+        Assert.False(tombstoned.NeedsResolution);
+
+        await AttemptAsync(org, "pending_create", candidate, mapped: false); // a later, live assignment
+        var mixed = await WithRepository(r => r.ListProviderSubjectsAsync(org, candidate, CancellationToken.None));
+        Assert.True(mixed!.NeedsResolution);
+    }
 }

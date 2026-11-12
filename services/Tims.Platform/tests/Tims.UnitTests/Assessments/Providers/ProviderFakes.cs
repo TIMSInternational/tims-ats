@@ -1229,8 +1229,10 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             return Task.FromResult<ProviderCandidateSubjects?>(null);
         }
 
+        // Mirrors the real repository: an attempt recorded against a subject the provider confirmed erased is no
+        // longer live, even before the inbox worker erases it (Codex ats round 13 run 2 [P2]).
         var liveAttempt = Attempts.Any(a => a.CandidateId == candidateId && a.State != ProviderAttemptStates.Erased
-            && a.ErasureRequestedAt is null);
+            && a.ErasureRequestedAt is null && (a.ProviderSubjectId is not { } subject || !ErasedSubjects.Contains(subject)));
         var unanswered = Attempts.Any(a => a.CandidateId == candidateId && HasCreateFence(a.Id));
         return Task.FromResult<ProviderCandidateSubjects?>(new ProviderCandidateSubjects(
             Attempts.Where(a => a.CandidateId == candidateId && a.ProviderSubjectId is not null)

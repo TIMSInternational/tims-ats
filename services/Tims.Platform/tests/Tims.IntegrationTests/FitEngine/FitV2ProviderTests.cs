@@ -408,6 +408,60 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy)); // no provider result remains to recreate it
     }
 
+    // Codex ats round 13 run 2 [P1]: a FIT compute reads the provider results under FIT v2's advisory lock and writes the
+    // row before it lets go. Without that lock in the erasure trigger, a compute that read the result just before the
+    // erasure could write it back after the delete. Session A plays the compute (the lock under the production key, then
+    // the stale write); session B is the erasure, as app_tenant. B must wait for A, then delete A's write.
+    [Fact]
+    public async Task An_erasure_waits_for_a_compute_in_flight_and_then_deletes_what_it_wrote()
+    {
+        var org = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var candidate = Guid.Parse("ca000000-0000-0000-0000-0000000000d7");
+        var vacancy = Guid.Parse("7ac00000-0000-0000-0000-0000000000d7");
+        const string Attempt = "e0000000-0000-4000-8000-0000000000d7";
+        await _fixture.Fit.ExecuteScalarAsync(
+            "INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state, "
+            + "purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id, "
+            + "instrument_version, content_version, latest_result_id, assigned_by_id, created_at) VALUES "
+            + $"('{Attempt}', '{org}', 'b0000000-0000-4000-8000-0000000000a0', '{candidate}', '{vacancy}', 'english', 'result_ready', "
+            + "'selection', 'clientes', 'es', 1, 'f0000000-0000-4000-8000-0000000000d7', 'aa000000-0000-4000-8000-0000000000d7', '1.0', "
+            + "'english-2026.11.1', 'd0000000-0000-4000-8000-0000000000d7', 'c0000000-0000-0000-0000-000000000001', '2026-11-01 09:00:00+00')");
+
+        await using var compute = new NpgsqlConnection(_fixture.Fit.ConnectionString);
+        await compute.OpenAsync();
+        await using var computeTx = await compute.BeginTransactionAsync();
+        await using (var lockCommand = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))", compute, computeTx))
+        {
+            lockCommand.Parameters.AddWithValue("key",
+                Tims.Infrastructure.FitEngine.FitEngineWriteRepository.FitV2LockKey(org, candidate, vacancy));
+            await lockCommand.ExecuteNonQueryAsync();
+        }
+
+        var erasure = Task.Run(() => _fixture.Fit.ExecuteScalarAsync(
+            "BEGIN; SET LOCAL ROLE app_tenant; SELECT set_config('app.current_org_id', '11111111-1111-1111-1111-111111111111', true); "
+            + $"UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now() WHERE id = '{Attempt}'; COMMIT;"));
+        var finishedFirst = await Task.WhenAny(erasure, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.NotSame(erasure, finishedFirst); // the erasure waits for the compute's lock
+
+        // The compute's write, from the result it read before the erasure.
+        await using (var write = new NpgsqlCommand(
+            "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, weights, is_partial, "
+            + "calculated_at, created_at, updated_at) VALUES (gen_random_uuid(), @org, @cand, @vac, 70, "
+            + """'{"fitVersion":2,"assessments":[{"instrument":"english","source":"provider","resultId":"d0000000-0000-4000-8000-0000000000d7"}]}', """
+            + "'{}', false, now(), now(), now())", compute, computeTx))
+        {
+            write.Parameters.AddWithValue("org", org);
+            write.Parameters.AddWithValue("cand", candidate);
+            write.Parameters.AddWithValue("vac", vacancy);
+            await write.ExecuteNonQueryAsync();
+        }
+
+        await computeTx.CommitAsync();
+        await erasure.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy)); // the compute's write did not survive
+    }
+
     // The same trigger, pinned row by row in one rolled-back transaction: only an erasure (the accepted marker, or the
     // provider's subject.erased setting state 'erased') deletes, and only the row of the attempt's own candidate and
     // vacancy whose breakdown holds a PROVIDER entry for the attempt's instrument. The attempt writes run as app_tenant.

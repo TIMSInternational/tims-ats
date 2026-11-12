@@ -93,6 +93,24 @@ public sealed class ProviderSubjectRightsRound13Tests
         Assert.Single(_repository.CreateFences[pending.Id]);
     }
 
+    // Codex ats round 13 run 2 [P2]: subject.erased is in the inbox but its worker has not erased the attempt yet. The
+    // attempt still reads as live, so the export used to POST /v1/subjects, which past the idempotency window creates a
+    // NEW subject for the erased person. A subject the provider confirmed erased is a stored erasure: no resolution.
+    [Fact]
+    public async Task An_export_or_erasure_never_posts_a_subject_for_an_attempt_whose_subject_the_provider_erased()
+    {
+        var attempt = _repository.AddCreatedAttempt("english", ProviderAttemptStates.ResultReady);
+        _repository.ErasedSubjects.Add(attempt.ProviderSubjectId!.Value); // the tombstone, the attempt untouched
+
+        var export = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+        var erase = await Rights.EraseAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderExportOutcome.Exported, export.Outcome);
+        Assert.Empty(_provider.ExportedSubjects); // an erased subject is never exported
+        Assert.Equal(ProviderErasureOutcome.Requested, erase.Outcome);
+        Assert.DoesNotContain("subject", _provider.Calls);
+    }
+
     [Fact]
     public async Task An_export_still_resolves_while_the_candidate_has_an_attempt_no_erasure_touched()
     {

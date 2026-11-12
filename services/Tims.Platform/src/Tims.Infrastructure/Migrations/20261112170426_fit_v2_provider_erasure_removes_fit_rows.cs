@@ -10,7 +10,9 @@ namespace Tims.Infrastructure.Migrations
     /// result id and the versions in <c>breakdown.assessments[]</c> (and the numbers derived from them) until the
     /// recompute queue drained, and for good when FIT v2 is off (the drain then completes the request without a write).
     /// The attempt trigger function now also deletes, in the erasure's own transaction, the candidate's FIT row for the
-    /// attempt's vacancy when its breakdown holds a provider entry for the attempt's instrument. A FIT row is derived
+    /// attempt's vacancy when its breakdown holds a provider entry for the attempt's instrument, under FIT v2's own
+    /// per-(organization, candidate, vacancy) advisory lock, so a compute in flight cannot write the erased value back
+    /// after the delete (Codex ats round 13 run 2 [P1]). A FIT row is derived
     /// data: the next compute for the vacancy scores the candidate again from what remains, and the queued recompute
     /// re-creates it at once when another provider result for a listed instrument remains. Raw SQL only: no model
     /// change; the trigger itself (20261109030506) already fires on both columns. Down restores that definition.
@@ -37,6 +39,12 @@ namespace Tims.Infrastructure.Migrations
                   -- in lax mode is false (never an error) on a v1 row or a breakdown without an assessments array.
                   IF (NEW.provider_erasure_requested_at IS NOT NULL OR NEW.state = 'erased')
                      AND to_regclass('public.fit_scores') IS NOT NULL THEN
+                    -- FIT v2's lock for this (organization, candidate, vacancy), the key of
+                    -- FitEngineWriteRepository.FitV2LockKey: a compute that read the result before this erasure finishes
+                    -- its write first, and that write is deleted below; one that starts later waits for this transaction
+                    -- and reads the erasure.
+                    PERFORM pg_advisory_xact_lock(hashtextextended(
+                      'fit_v2:' || NEW.organization_id::text || ':' || NEW.candidate_id::text || ':' || NEW.vacancy_id::text, 0));
                     DELETE FROM public.fit_scores f
                      WHERE f.organization_id = NEW.organization_id
                        AND f.candidate_id = NEW.candidate_id

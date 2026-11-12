@@ -437,11 +437,25 @@ public sealed partial class AssessmentProviderRepository
             var hasAttempts = await _db.Attempts.AsNoTracking()
                 .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId, cancellationToken)
                 .ConfigureAwait(false);
-            // A stored erasure is terminal: an attempt erased, or under an accepted erasure request, needs no subject
-            // resolution (the provider forgot its external_ref, so resolving would create a fresh, empty subject).
+            // The subjects whose erasure the provider confirmed (subject.erased is in the inbox), whether or not the inbox
+            // worker has erased their attempts yet.
+            var erased = new List<Guid>();
+            foreach (var subject in subjects)
+            {
+                if (await IsSubjectErasedAsync(organizationId, subject, cancellationToken).ConfigureAwait(false))
+                {
+                    erased.Add(subject);
+                }
+            }
+
+            // A stored erasure is terminal: an attempt erased, under an accepted erasure request, or recorded against a
+            // subject the provider confirmed erased (Codex ats round 13 run 2 [P2]: between subject.erased landing in the
+            // inbox and its worker erasing the attempts) needs no subject resolution. The provider forgot that subject's
+            // external_ref, so resolving would create a fresh subject for an erased person.
             var liveAttemptNeedsResolution = await _db.Attempts.AsNoTracking()
                 .AnyAsync(a => a.OrganizationId == organizationId && a.CandidateId == candidateId
-                    && a.State != ProviderAttemptStates.Erased && a.ProviderErasureRequestedAt == null, cancellationToken)
+                    && a.State != ProviderAttemptStates.Erased && a.ProviderErasureRequestedAt == null
+                    && (a.ProviderSubjectId == null || !erased.Contains(a.ProviderSubjectId.Value)), cancellationToken)
                 .ConfigureAwait(false);
             // A create announced (BeginCreateAsync) and never answered: its EnsureSubject may have created a provider
             // subject no attempt records (Codex ats-final runs 2 and 3) - before the subject was recorded, or AFTER an
@@ -462,14 +476,6 @@ public sealed partial class AssessmentProviderRepository
                      """)
                 .SingleAsync(cancellationToken).ConfigureAwait(false);
             var needsResolution = liveAttemptNeedsResolution || fences.Unanswered;
-            var erased = new List<Guid>();
-            foreach (var subject in subjects)
-            {
-                if (await IsSubjectErasedAsync(organizationId, subject, cancellationToken).ConfigureAwait(false))
-                {
-                    erased.Add(subject);
-                }
-            }
 
             result = new ProviderCandidateSubjects(
                 subjects, hasAttempts, erased, needsResolution, fences.Live,
