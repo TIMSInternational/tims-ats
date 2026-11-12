@@ -236,6 +236,26 @@ public sealed class ProviderResultParserTests
         Assert.Null(parsed.Level);
     }
 
+    // TIMS 2026-11-12 (contract f009729): a PCA result names the position code it was assigned with and carries TIMS's
+    // job fit in its scores; the parser stores both untouched, and FIT reads the fit from the stored scores.
+    [Fact]
+    public void A_pca_result_with_a_job_fit_and_a_position_code_is_stored_whole_and_its_fit_read_back()
+    {
+        var scores = JsonNode.Parse("""
+            {"competencies":[],"disc":{"primary_graph":"under_pressure","graphs":[]},
+             "job_fit":{"job_code":"194225","analysis":"fit","status":"computed","fit":78,"job_profile":{"d":62,"i":40,"s":55,"c":70},"computed_at":"2026-11-09T14:38:03Z"}}
+            """)!.AsObject();
+        var json = Result("pca", "PcaResultV1", scores, Summary());
+        json["vacancy"]!["job_code"] = "194225";
+
+        var parsed = Parse(json);
+
+        Assert.Null(parsed.GlobalPercentile);
+        Assert.Equal(
+            new PcaJobFit("194225", PcaJobFits.Computed, 78, new DiscFactors(62, 40, 55, 70)),
+            PcaJobFits.FromScoresJson(parsed.ScoresJson));
+    }
+
     [Fact]
     public void A_result_schema_that_does_not_match_the_instrument_is_refused()
     {

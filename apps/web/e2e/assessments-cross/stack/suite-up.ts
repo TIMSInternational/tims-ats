@@ -162,6 +162,20 @@ function fakePcaServers(): Server[] {
         }
       })();
       const cod = String(body.PcaCod ?? '');
+      // TIMS manual 2025 "Obtener Resultado PCA Vs JCA" (GET, bearer): the stand-in knows ONE coded position, 194225;
+      // any other code is refused the way TIMS refuses an eval-level request (HTTP 400 + a message).
+      if ((req.url ?? '').startsWith('/results/analysisjca')) {
+        const q = new URL(req.url ?? '/', 'http://localhost').searchParams;
+        if (q.get('tipAns') !== 'a' || q.get('jcaCod') !== '194225') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return void res.end(JSON.stringify({ message: 'JCA no encontrado' }));
+        }
+        return json(res, {
+          status: 200,
+          data: { D1: 62, I1: 48, S1: 35, C1: 55, D2: 70, I2: 40, S2: 30, C2: 52, D3: 55, I3: 50, S3: 42, C3: 49,
+            JcaD: 62, JcaI: 40, JcaS: 55, JcaC: 70, Res: 78 },
+        });
+      }
       switch (req.url) {
         case '/login/authenticate':
           res.writeHead(200, { 'Content-Type': 'text/plain' });

@@ -155,7 +155,10 @@ test('H2 HR sets LIA (scored), English (gate), Personality and PCA (advisory) on
   await english.getByLabel('Minimum CEFR level').selectOption('C2');
   await english.getByLabel('Why this test is job-related').fill('Serves customers in English');
   await personality.getByLabel('Why this test is job-related').fill('Interview guide');
-  await pca.getByLabel('Why this test is job-related').fill('Behavioural profile (DISC) for the interview');
+  // TIMS 2026-11-12: PCA is scored on TIMS's own fit to the vacancy's TIMS position code (the stand-in knows 194225).
+  await pca.getByLabel('How FIT uses it').selectOption('scored');
+  await pca.getByLabel('TIMS position code (JCA)').fill('194225');
+  await pca.getByLabel('Why this test is job-related').fill('Fit to the position as TIMS computes it (PCA vs JCA)');
   const save = card.getByRole('button', { name: 'Save assessments' });
   // A rerun that re-enters the saved list leaves nothing to save.
   if (await save.isEnabled()) {
@@ -168,6 +171,7 @@ test('H2 HR sets LIA (scored), English (gate), Personality and PCA (advisory) on
   expect(stored).toContain('"lia"');
   expect(stored).toContain('"gate"');
   expect(stored).toContain('"pca"');
+  expect(stored).toMatch(/"jobCode": ?"194225"/);
   record('H2 vacancy assessments', `saved through the UI; job_profiles.fit_requirements = ${stored.slice(0, 300)}`);
 });
 
@@ -647,9 +651,20 @@ test('H7 FIT v2 scores the candidate from the provider results, with no HR compu
     st,
     `select coalesce(overall_score::text,'null')||' restricted='||coalesce(restricted_overall_score::text,'null')||' partial='||is_partial from fit_scores where candidate_id=${sqlStr(candidateA)} and vacancy_id=${sqlStr(vacancy.id)}`,
   );
+  // TIMS's job fit for 194225 (the stand-in answers Res 78), sent with the assignment and copied by the suite.
+  const pcaEntry = atsSql(
+    st,
+    `select e->>'use'||'|'||e->>'status'||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
+  );
+  expect(pcaEntry).toBe('scored|completed|78|194225');
+  const suiteFit = suiteSql(
+    st,
+    `select a.vacancy_job_code||'|'||(p.job_fit->>'status')||'|'||(p.job_fit->>'fit') from v1_assignments a join v1_pca_results p on p.assignment_id=a.id where a.external_ref=${sqlStr(attemptsA.pca)}`,
+  );
+  expect(suiteFit).toBe('194225|computed|78');
   record(
     'H7 FIT v2',
-    `${overall}; PCA in the breakdown: ${breakdown.includes('pca') ? 'yes (advisory)' : 'no'}; breakdown (first 700 chars): ${breakdown.slice(0, 700)}`,
+    `${overall}; PCA (scored on TIMS's job fit) in the breakdown: ${pcaEntry}; at the suite: ${suiteFit}; breakdown (first 700 chars): ${breakdown.slice(0, 700)}`,
   );
 });
 
@@ -664,6 +679,8 @@ test('H8 HR reads each result on the candidate (exact levels; PCA advisory)', as
   await expect(lia.getByTestId('provider-status-chip')).toHaveText(/Result ready|Needs review/, { timeout: 60_000 });
   await expect(pca.getByTestId('provider-status-chip')).toHaveText('Result ready', { timeout: 60_000 });
   await expect(pca.getByTestId('provider-result')).toBeVisible();
+  await expect(pca.getByRole('region', { name: 'Fit to the position (TIMS)' })).toContainText('78%');
+  await expect(pca.getByRole('region', { name: 'Fit to the position (TIMS)' })).toContainText('Position code 194225');
   await expect(lia.getByText(/Global percentile \d+/)).toBeVisible();
   await expect(english.getByText('Speaking not assessed (no voice consent).')).toBeVisible();
   await expect(english.getByTestId('provider-result-minimum')).toHaveText(/Below minimum|Minimum met|Minimum: unknown/);
