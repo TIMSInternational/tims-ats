@@ -178,6 +178,24 @@ public sealed class ProviderSubjectRightsRound13Tests
         Assert.Equal([_provider.SubjectId], _provider.ExportedSubjects);
     }
 
+    // A subject the provider still holds under an erasure REQUEST no longer stands for (tenant, external_ref): the
+    // provider forgot that link at the request. So it does not stop the resolution a crashed live create calls for.
+    [Fact]
+    public async Task A_held_subject_under_an_erasure_request_does_not_stand_for_the_candidates_current_subject()
+    {
+        var old = _repository.AddCreatedAttempt("lia");
+        _repository.Replace(old.Id, a => a with { ErasureRequestedAt = Now.AddDays(-3) });
+        var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
+        _repository.Replace(pending.Id, a => a with { ProviderSubjectId = null });
+        _repository.CreateFences[pending.Id] = [_repository.DbNow];
+
+        var result = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderExportOutcome.Exported, result.Outcome);
+        Assert.Contains("subject", _provider.Calls);
+        Assert.Equal([old.ProviderSubjectId!.Value, _provider.SubjectId], _provider.ExportedSubjects);
+    }
+
     // The erasure still resolves by (tenant, candidate id) while a live attempt exists: it erases whatever it finds.
     [Fact]
     public async Task An_erasure_still_resolves_while_the_candidate_has_a_live_attempt()
