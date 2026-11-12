@@ -145,6 +145,41 @@ public sealed class AssessmentProviderProctoringTests(AssessmentProviderSchemaFi
             $"SELECT proctoring_lockdown IS NULL AND proctoring_identity_check IS NULL FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND instrument = 'pca'"));
     }
 
+    // TIMS 2026-11-12 (migration 20261112225624): a PCA attempt stores the vacancy's TIMS position code at reserve, so every
+    // create of it sends the same vacancy.job_code; another instrument stores none even if one is passed.
+    [Fact]
+    public async Task A_reserved_pca_attempt_stores_its_position_code_and_another_instrument_stores_none()
+    {
+        var candidate = await NewCandidateAsync();
+        var binding = new ProviderBindingRow(AssessmentProviderSchemaFixture.BindingA, AssessmentProviderSchemaFixture.OrgA,
+            AssessmentProviderSchemaFixture.TenantA, ["lia", "pca"], "es");
+        NewAttempt[] attempts =
+        [
+            new("lia", "Análisis de datos", "es", 1m, [], null, ProviderAgeBands.Adult, null, "194225"),
+            new("pca", "Ajuste al puesto según TIMS", "es", 1m, [], null, ProviderAgeBands.Adult, null, "194225"),
+        ];
+
+        await using (var db = fixture.NewContext())
+        {
+            var reserved = await new AssessmentProviderRepository(db).ReserveAttemptsAsync(AssessmentProviderSchemaFixture.OrgA,
+                Guid.NewGuid(), binding, candidate, AssessmentProviderSchemaFixture.VacancyA, attempts, DateTimeOffset.UtcNow,
+                CancellationToken.None);
+            Assert.Equal("194225", reserved.Attempts.Single(a => a.Instrument == "pca").JobCode);
+            Assert.Null(reserved.Attempts.Single(a => a.Instrument == "lia").JobCode);
+        }
+
+        await using (var db = fixture.NewContext())
+        {
+            var pca = await db.Attempts.AsNoTracking().IgnoreQueryFilters()
+                .Where(a => a.CandidateId == candidate && a.Instrument == "pca").Select(a => a.Id).SingleAsync();
+            var row = await new AssessmentProviderRepository(db).FindAttemptAsync(AssessmentProviderSchemaFixture.OrgA, pca, CancellationToken.None);
+            Assert.Equal("194225", row!.JobCode);
+        }
+
+        Assert.Equal(true, await fixture.ScalarAsync(
+            $"SELECT job_code IS NULL FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND instrument = 'lia'"));
+    }
+
     [Fact]
     public async Task A_half_written_proctoring_snapshot_is_refused_by_the_table()
     {
