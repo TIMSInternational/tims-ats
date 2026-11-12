@@ -71,6 +71,9 @@ internal sealed class FakeProvider : IAssessmentProvider
     /// <summary>Per external_ref, whether the subject the provider holds has names and email (first create wins).</summary>
     public Dictionary<string, bool> SubjectHasNames { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>Failure injection for <see cref="EnsureSubjectAsync"/> (null: the default success).</summary>
+    public Func<ProviderSubjectRequest, ProviderCall<ProviderSubject>?>? OnEnsureSubject { get; set; }
+
     // Like the real provider: idempotent on (tenant, external_ref), and an existing subject comes back UNCHANGED
     // whatever the new request carries (the contract has no subject update).
     public Task<ProviderCall<ProviderSubject>> EnsureSubjectAsync(
@@ -78,6 +81,11 @@ internal sealed class FakeProvider : IAssessmentProvider
     {
         Calls.Add("subject");
         Subjects.Add((request, idempotencyKey));
+        if (OnEnsureSubject?.Invoke(request) is { } injected)
+        {
+            return Task.FromResult(injected);
+        }
+
         if (!SubjectHasNames.TryGetValue(request.ExternalRef, out var hasNames))
         {
             hasNames = request.GivenName is not null && request.FamilyName is not null && request.Email is not null;
@@ -1045,10 +1053,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             return Task.FromResult<DateTimeOffset?>(null);
         }
 
-        // Mirrors the real repository: stale tokens are pruned, and the new token is unique on the attempt.
-        var tokens = CreateFences.TryGetValue(attemptId, out var existing)
-            ? existing.Where(t => t >= DbNow - ProviderCreateFence.StaleAfter).ToList()
-            : [];
+        // Mirrors the real repository: stale tokens are kept, and the new token is unique on the attempt.
+        var tokens = CreateFences.TryGetValue(attemptId, out var existing) ? existing.ToList() : [];
         var token = tokens.Count > 0 && tokens.Max() >= DbNow ? tokens.Max().AddTicks(10) : DbNow;
         tokens.Add(token);
         CreateFences[attemptId] = tokens;

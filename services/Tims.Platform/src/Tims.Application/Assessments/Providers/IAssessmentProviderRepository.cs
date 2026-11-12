@@ -339,7 +339,7 @@ public interface IAssessmentProviderRepository
     /// The create fence, ONE PER CREATE: announces, durably and BEFORE anything of the create is sent (the subject, its
     /// enrichment, the lookup and <c>POST /v1/assignments</c>), that THIS create of the <c>pending_create</c> attempt is in
     /// flight, by appending its own token (the database clock, unique per attempt) to <c>create_fences</c>; stale tokens
-    /// are pruned at the same time. Returns the token, or null (nothing written) for an attempt already in a #312
+    /// are kept (Codex ats round 13 run 5: the evidence of an unrecorded subject). Returns the token, or null (nothing written) for an attempt already in a #312
     /// withdrawal, erased-requested, or no longer pending: row locking orders it against the withdrawal's staging write.
     /// Only <see cref="EndCreateAsync"/> with the same token removes it, so two overlapping creates of one attempt each
     /// keep the attempt fenced until their OWN answer is recorded (Codex round 11 P1); a create that ends without an

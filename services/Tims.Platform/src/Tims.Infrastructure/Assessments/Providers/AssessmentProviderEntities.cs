@@ -127,8 +127,9 @@ public sealed class ProviderAttemptEntity
     /// The create fences, ONE PER CREATE: each create of this attempt appends its own token (the database clock when it
     /// was announced, unique per attempt) BEFORE anything is sent, and only that create's recorded answer removes it. A
     /// create that ends without an answer leaves its token until it is stale
-    /// (<see cref="Domain.Assessments.Providers.ProviderCreateFence.StaleAfter"/>); stale tokens are pruned when the next
-    /// create is announced. A #312 withdrawal or an erasure waits while any token is live.
+    /// (<see cref="Domain.Assessments.Providers.ProviderCreateFence.StaleAfter"/>), and a stale token is kept (Codex ats
+    /// round 13 run 5: it is the evidence that the create may have made a subject no attempt records) until a complete
+    /// erasure retires it. A #312 withdrawal or an erasure waits while any token is live.
     /// </summary>
     public DateTime[] CreateFences { get; set; } = [];
 

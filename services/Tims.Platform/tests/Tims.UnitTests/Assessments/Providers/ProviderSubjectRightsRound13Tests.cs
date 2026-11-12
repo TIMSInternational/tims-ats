@@ -142,7 +142,58 @@ public sealed class ProviderSubjectRightsRound13Tests
 
         Assert.Equal(ProviderExportOutcome.Exported, result.Outcome);
         Assert.Contains(live.ProviderSubjectId!.Value, _provider.ExportedSubjects);
+        Assert.Contains(live.ProviderSubjectId!.Value, _provider.SubjectLookups); // confirmed active by the lookup
         Assert.DoesNotContain("subject", _provider.Calls);
+    }
+
+    // Codex ats round 13 run 5 [P1]: an erasure requested directly at the provider releases the external_ref while the
+    // subject's export may still be served. The lookup says erasure_pending, so the held subject is not proof that an
+    // unanswered create made no other subject: Incomplete.
+    [Fact]
+    public async Task A_held_live_subject_the_provider_reports_erasure_pending_does_not_complete_the_export()
+    {
+        var live = _repository.AddCreatedAttempt("lia");
+        var pending = _repository.AddCreatedAttempt("english", ProviderAttemptStates.PendingCreate);
+        Assert.NotNull(await _repository.BeginCreateAsync(FakeRepository.Org, pending.Id, CancellationToken.None));
+        _provider.OnGetSubject = subject => ProviderCall<ProviderSubject>.Success(new ProviderSubject(subject, "erasure_pending"));
+
+        var result = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+
+        Assert.Equal(ProviderExportOutcome.Incomplete, result.Outcome);
+        Assert.Contains(live.ProviderSubjectId!.Value, _provider.SubjectLookups);
+        Assert.DoesNotContain("subject", _provider.Calls);
+    }
+
+    // Codex ats round 13 run 5 [P1]: a create died before recording its subject (its token went stale); a retry is then
+    // refused before it resolves any subject. The retry used to prune the stale token and its refusal to end its own,
+    // leaving no evidence of the first create's subject, so the export reported complete. The stale token is now kept.
+    [Fact]
+    public async Task A_stale_retry_refused_before_resolving_a_subject_keeps_the_crashed_creates_evidence()
+    {
+        var crashed = DateTimeOffset.MinValue;
+        _repository.AfterReserve = () =>
+        {
+            var attempt = _repository.Attempts.Single();
+            crashed = _repository.DbNow - ProviderCreateFence.StaleAfter - TimeSpan.FromMinutes(5);
+            _repository.CreateFences[attempt.Id] = [crashed];
+        };
+        _provider.OnEnsureSubject = _ =>
+            ProviderCall<ProviderSubject>.Fail(new ProviderFailure(403, "insufficient_scope", false, []));
+        var input = new AssignProviderInstrumentsInput(FakeRepository.Candidate, FakeRepository.Vacancy,
+            [new AssignInstrumentItem("lia", null)], null, 1m, [], null, ProviderAgeBands.Adult);
+
+        await new AssignProviderInstrumentsUseCase(_repository, _provider)
+            .AssignAsync(FakeRepository.Org, Guid.NewGuid(), input, Now, CancellationToken.None);
+
+        var attempt = _repository.Attempts.Single();
+        Assert.Equal(ProviderAttemptStates.Cancelled, attempt.State);
+        Assert.Null(attempt.ProviderSubjectId);
+        Assert.Equal([crashed], _repository.CreateFences[attempt.Id]); // the retry's own token ended; the evidence stays
+
+        _provider.Calls.Clear();
+        var export = await Rights.ExportAsync(FakeRepository.Org, FakeRepository.Candidate, Guid.NewGuid(), Now, CancellationToken.None);
+        Assert.Equal(ProviderExportOutcome.Incomplete, export.Outcome);
+        Assert.Empty(_provider.Calls);
     }
 
     // The provider erased the live attempt's subject (410; its webhook lost) and a create is unanswered: a POST could

@@ -130,19 +130,21 @@ public sealed partial class AssessmentProviderRepository
     public async Task<DateTimeOffset?> BeginCreateAsync(Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
-        var staleSeconds = ProviderCreateFence.StaleAfter.TotalSeconds;
         // Refused (0 rows) once the attempt is in a withdrawal, under an erasure request, or no longer pending. Against the
         // withdrawal's staging UPDATE of the same row, row locking decides the order: the loser re-evaluates its WHERE on
         // the winner's row version, so either the staging sees the announcement or the announcement sees the staging.
-        // The token is THIS create's own (database clock, bumped past every token already on the row so it is unique);
-        // tokens already stale are pruned. One read of the clock: the CTE is evaluated once.
+        // The token is THIS create's own (database clock, bumped past every token already on the row so it is unique).
+        // Stale tokens are KEPT (Codex ats round 13 run 5): a stale token is the only evidence that a create which died
+        // before recording its subject may have made one, and a later create that ends without resolving a subject must
+        // not erase that evidence. A stale token blocks nothing (withdrawals and unbinds wait only for live ones); it
+        // keeps the candidate's export Incomplete until a current subject is recorded, and an erasure retires it.
+        // One read of the clock: the CTE is evaluated once.
         var tokens = await _db.Database.SqlQuery<DateTime>(
                 $"""
                  WITH clock AS (SELECT clock_timestamp() AS ts)
                  UPDATE assessment_provider_attempts a
                     SET create_fences = array_append(
-                          ARRAY(SELECT f FROM unnest(a.create_fences) AS f
-                                 WHERE f >= clock.ts - make_interval(secs => {staleSeconds}) ORDER BY f),
+                          a.create_fences,
                           GREATEST(clock.ts, (SELECT max(f) + interval '1 microsecond' FROM unnest(a.create_fences) AS f)))
                    FROM clock
                   WHERE a.organization_id = {organizationId} AND a.id = {attemptId} AND a.state = 'pending_create'

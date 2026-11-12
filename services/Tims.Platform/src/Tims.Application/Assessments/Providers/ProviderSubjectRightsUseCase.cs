@@ -79,9 +79,11 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         // only behind an unanswered create (a create records the subject it resolved before anything can end its fence,
         // and a refusal ends it only when the attempt records that subject). So while a create is unanswered the export
         // is complete only when a subject recorded on a LIVE attempt is held: that one IS the external_ref's subject, so
-        // the create could not have made another. Otherwise it is Incomplete (an erasure run resolves and erases it).
+        // the create could not have made another, provided the provider still reports it active (Codex ats round 13 run
+        // 5): an erasure requested directly at the provider releases the external_ref while the export may still be
+        // served (erasure_pending). Otherwise it is Incomplete (an erasure run resolves and erases it).
         if (subjects.ExportFacts is { } facts
-            && !held.Any(h => h.Status == "exported" && (facts.LiveSubjects ?? []).Contains(h.SubjectId)))
+            && !await HoldsACurrentLiveSubjectAsync(held, facts.LiveSubjects ?? [], cancellationToken).ConfigureAwait(false))
         {
             return new ProviderSubjectExportResult(ProviderExportOutcome.Incomplete, null);
         }
@@ -92,6 +94,25 @@ public sealed class ProviderSubjectRightsUseCase(IAssessmentProviderRepository r
         return export is null
             ? new ProviderSubjectExportResult(ProviderExportOutcome.CandidateNotFound, null)
             : new ProviderSubjectExportResult(ProviderExportOutcome.Exported, export with { ProviderExports = held });
+    }
+
+    /// <summary>
+    /// Whether some exported subject recorded on a live attempt is, by the provider's own subject lookup, still the
+    /// active subject (status <c>active</c>): then it is the candidate's subject for (tenant, external_ref).
+    /// </summary>
+    private async Task<bool> HoldsACurrentLiveSubjectAsync(
+        IReadOnlyList<ProviderHeldSubjectExport> held, IReadOnlyList<Guid> liveSubjects, CancellationToken cancellationToken)
+    {
+        foreach (var subject in held.Where(h => h.Status == "exported" && liveSubjects.Contains(h.SubjectId)).Select(h => h.SubjectId))
+        {
+            var current = await _provider.GetSubjectAsync(subject, cancellationToken).ConfigureAwait(false);
+            if (current.Ok && current.Value!.SubjectId == subject && current.Value.Status == "active")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

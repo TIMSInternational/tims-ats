@@ -141,25 +141,27 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
         Assert.Equal(0, await Fences(attempt));
     }
 
+    // Codex ats round 13 run 5 [P1]: a new create KEEPS stale tokens (they are the evidence that a create which died may
+    // have made a subject no attempt records); its own token goes last and is unique. A refused announcement writes nothing.
     [Fact]
-    public async Task A_new_create_prunes_stale_fences_and_a_refused_one_writes_nothing()
+    public async Task A_new_create_keeps_stale_fences_and_a_refused_one_writes_nothing()
     {
         var org = await OrgAsync();
         var candidate = await CandidateAsync(org);
         var attempt = await PendingAttemptAsync(org, candidate);
         await fixture.ExecuteAsync(
-            $"UPDATE assessment_provider_attempts SET create_fences = ARRAY[now() - interval '11 minutes', now() - interval '20 minutes'] WHERE id = '{attempt}'");
+            $"UPDATE assessment_provider_attempts SET create_fences = ARRAY[now() - interval '20 minutes', now() - interval '11 minutes'] WHERE id = '{attempt}'");
 
         var fence = await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None));
         Assert.NotNull(fence);
-        Assert.Equal(1, await Fences(attempt));
+        Assert.Equal(3, await Fences(attempt));
         Assert.Equal(true, await fixture.ScalarAsync(
-            $"SELECT create_fences[1] > now() - interval '1 minute' FROM assessment_provider_attempts WHERE id = '{attempt}'"));
+            $"SELECT create_fences[3] > now() - interval '1 minute' AND create_fences[1] < now() - interval '15 minutes' FROM assessment_provider_attempts WHERE id = '{attempt}'"));
 
         await fixture.ExecuteAsync(
             $"UPDATE assessment_provider_attempts SET provider_erasure_requested_at = now() WHERE id = '{attempt}'");
         Assert.Null(await WithRepository(r => r.BeginCreateAsync(org, attempt, CancellationToken.None)));
-        Assert.Equal(1, await Fences(attempt));
+        Assert.Equal(3, await Fences(attempt));
     }
 
     // ── 2. A result that is no longer visible ──────────────────────────────────────────────────────────────────────
