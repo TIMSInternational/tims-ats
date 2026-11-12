@@ -167,6 +167,17 @@ const profileSchema = z
               .strict(),
           )
           .max(40),
+        // TIMS's PCA-vs-JCA fit to the vacancy's position, when the PCA was assigned with its code.
+        jobFit: z
+          .object({
+            jobCode: z.string().regex(/^[A-Za-z0-9_-]{2,30}$/),
+            status: z.enum(['computed', 'job_not_found', 'unavailable']),
+            fit: z.number().min(0).max(100).nullable(),
+            jobProfile: z.object({ d: disc, i: disc, s: disc, c: disc }).strict().nullable(),
+          })
+          .strict()
+          .nullable()
+          .optional(),
       })
       .strict()
       .nullable()

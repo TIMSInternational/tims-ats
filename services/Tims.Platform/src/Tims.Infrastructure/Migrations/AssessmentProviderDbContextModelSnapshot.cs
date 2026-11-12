@@ -155,6 +155,10 @@ namespace Tims.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("instrument_version");
 
+                    b.Property<string>("JobCode")
+                        .HasColumnType("text")
+                        .HasColumnName("job_code");
+
                     b.Property<string>("JobRelatednessReason")
                         .IsRequired()
                         .HasColumnType("text")
@@ -336,6 +340,8 @@ namespace Tims.Infrastructure.Migrations
                             t.HasCheckConstraint("ck_assessment_provider_attempts_instrument", "instrument IN ('lia', 'english', 'itcia', 'personality', 'mi', 'pca')");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_instrument_version", "instrument_version IS NULL OR instrument_version ~ '^[0-9]{1,3}\\.[0-9]{1,3}$'");
+
+                            t.HasCheckConstraint("ck_assessment_provider_attempts_job_code", "job_code IS NULL OR (instrument = 'pca' AND job_code ~ '^[A-Za-z0-9_-]{2,30}$')");
 
                             t.HasCheckConstraint("ck_assessment_provider_attempts_locale", "locale ~ '^[a-z]{2}(-[A-Z]{2})?$'");
 

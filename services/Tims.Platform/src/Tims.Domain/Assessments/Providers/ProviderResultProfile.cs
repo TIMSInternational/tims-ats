@@ -40,9 +40,15 @@ public sealed record PersonalityDimensionScore(
     int ClarityPct,
     bool Balanced);
 
-/// <summary>PCA (DISC): the three graphs (0–100 per factor), which one is primary, and the competency levels (1–4).</summary>
+/// <summary>
+/// PCA (DISC): the three graphs (0–100 per factor), which one is primary, the competency levels (1–4), and the
+/// provider's fit to the vacancy's position when the PCA was assigned with its code (<see cref="PcaJobFit"/>).
+/// </summary>
 public sealed record PcaProfile(
-    string? PrimaryGraph, IReadOnlyList<DiscGraphScore> Graphs, IReadOnlyList<PcaCompetencyScore> Competencies);
+    string? PrimaryGraph,
+    IReadOnlyList<DiscGraphScore> Graphs,
+    IReadOnlyList<PcaCompetencyScore> Competencies,
+    PcaJobFit? JobFit = null);
 
 public sealed record DiscGraphScore(string Graph, int D, int I, int S, int C);
 
@@ -192,7 +198,8 @@ public static partial class ProviderResultProfiles
         }
 
         var primary = KeyOf(disc?["primary_graph"]);
-        return new PcaProfile(graphs.Any(g => g.Graph == primary) ? primary : null, graphs, competencies);
+        return new PcaProfile(
+            graphs.Any(g => g.Graph == primary) ? primary : null, graphs, competencies, PcaJobFits.FromScores(root));
     }
 
     // ── bounded readers ─────────────────────────────────────────────────────────────────────

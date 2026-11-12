@@ -2055,6 +2055,7 @@
     "fitInstrumentBelowMinimum": "Below minimum",
     "fitInstrumentNoResult": "No result",
     "fitInstrumentNoValue": "No value",
+    "fitInstrumentJobCode": "position {code}",
     "fitInstrumentAdvisory": "Advisory only",
     "fitInstrumentGateMet": "Minimum met",
     "fitInstrumentGateNotMet": "Minimum not met",
@@ -5213,7 +5214,15 @@
     "discard": "Discard changes",
     "errorReasonRequired": "Explain why this test is job-related (3 to 500 characters).",
     "errorMinimumInvalid": "Enter a valid minimum for this test.",
-    "errorUseNotAllowed": "This test can only be advisory."
+    "errorUseNotAllowed": "This test can only be advisory.",
+    "minimumJobFit": "Minimum fit to the position (0–100)",
+    "jobCodeLabel": "TIMS position code (JCA)",
+    "jobCodeHint": "The code TIMS gave this position when it coded its JCA, for example 194225. Required to score PCA or use it as a minimum.",
+    "weightLabel": "Weight in the assessment score",
+    "weightHint": "Relative weight (0–100). It applies only when every scored test has one; otherwise every scored test weighs the same.",
+    "notePcaJobFit": "PCA is judged only on TIMS's fit of the candidate's PCA to this position's JCA, computed by TIMS. Its DISC values are never scored.",
+    "errorJobCodeInvalid": "Enter the TIMS position code: 2 to 30 letters, digits, - or _.",
+    "errorWeightInvalid": "Enter a weight greater than 0 and at most 100."
   },
   "providerAssessments": {
     "title": "TIMS Assessments",
@@ -5377,7 +5386,18 @@
           "c": "Compliance"
         },
         "competencies": "Competencies",
-        "noCompetencies": "TIMS returned no competencies for this result."
+        "noCompetencies": "TIMS returned no competencies for this result.",
+        "jobFit": {
+          "title": "Fit to the position (TIMS)",
+          "code": "Position code {code}",
+          "value": "{fit}%",
+          "valueLabel": "Fit to the position: {fit} percent",
+          "profile": "Position profile (JCA)",
+          "profileLabel": "Position profile: Dominance {d}, Influence {i}, Steadiness {s}, Compliance {c}, out of 100",
+          "notFound": "TIMS has no completed JCA for this position code, so it could not compute the fit.",
+          "unavailable": "TIMS did not return the fit for this position. It is not a low score.",
+          "note": "Computed by TIMS: the candidate's PCA compared with the position's JCA. The ATS does not calculate it."
+        }
       }
     },
     "proctoring": {

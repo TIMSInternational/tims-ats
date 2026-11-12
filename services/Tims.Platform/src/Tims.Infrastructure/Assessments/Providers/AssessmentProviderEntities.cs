@@ -151,6 +151,12 @@ public sealed class ProviderAttemptEntity
     /// </summary>
     public bool? ProctoringLockdown { get; set; }
 
+    /// <summary>
+    /// PCA only: the vacancy's TIMS position code as of the reserve (contract <c>vacancy.job_code</c>), never re-read, so
+    /// every re-send of the create carries the same body. Null: no code (or another instrument).
+    /// </summary>
+    public string? JobCode { get; set; }
+
     public int? ProctoringAntiCheatThreshold { get; set; }
 
     public string? ProctoringAntiCheatConsequence { get; set; }

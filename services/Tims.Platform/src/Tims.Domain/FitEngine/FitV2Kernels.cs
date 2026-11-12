@@ -17,8 +17,11 @@ namespace Tims.Domain.FitEngine;
 /// experience curve). english — the CEFR ladder A1..C2: 100 at or above the requirement, else
 /// <c>round((achieved + 1) / 6 × 100)</c> (the education ladder). itcia — the 1..5 level ladder: 100 at or above
 /// the requirement, else <c>round(level / 5 × 100)</c>. native_quiz — the normalized score as stored (v1
-/// semantics), or the meet-or-exceed curve when the vacancy sets <c>min.score</c>. Personality, MI and PCA are
-/// advisory only and never get a score. <c>round</c> is <see cref="FitEngineKernels.JsRound"/>.</para>
+/// semantics), or the meet-or-exceed curve when the vacancy sets <c>min.score</c>. pca — the provider's own
+/// PCA-vs-JCA fit (0..100) for the vacancy's TIMS position code (<c>jobCode</c>), copied as the provider computed
+/// it, or the meet-or-exceed curve when the vacancy sets <c>min.jobFit</c>; a fit computed for another code is no
+/// value (TIMS, 2026-11-12: the fit is TIMS's formula). Personality and MI are advisory only and never get a score.
+/// <c>round</c> is <see cref="FitEngineKernels.JsRound"/>.</para>
 ///
 /// <para><b>Gates</b> evaluate the same minimum: met / not_met, or unknown when there is no usable result. A gate
 /// never feeds the score and never rejects or zeroes a candidate.</para>
@@ -89,6 +92,13 @@ public static class FitV2Kernels
 
     private static readonly HashSet<string> EnglishNames = new(StringComparer.Ordinal) { "english", "inglés", "ingles" };
 
+    /// <summary>
+    /// A TIMS position code (the contract's <c>JobCode</c>): 2 to 30 letters, digits, <c>_</c> or <c>-</c>. Matched by
+    /// the provider exactly as given, so it is never case-folded here.
+    /// </summary>
+    public static bool IsJobCode(string? value) =>
+        value is { Length: >= 2 and <= 30 } && value.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-');
+
     // ───────────────────────────── requirements ─────────────────────────────
 
     /// <summary>
@@ -100,12 +110,14 @@ public static class FitV2Kernels
     /// <item>not an object, or <c>instrument</c> not one of <see cref="FitInstruments.All"/> (trimmed,
     /// case-insensitive) → dropped;</item>
     /// <item><c>use</c> absent or null → the instrument default (lia/itcia/native_quiz scored, english gate,
-    /// personality/mi/pca advisory); present but not scored|gate|advisory → dropped; personality/mi/pca are
-    /// coerced to advisory whatever was configured;</item>
+    /// personality/mi/pca advisory); present but not scored|gate|advisory → dropped; personality/mi are coerced to
+    /// advisory whatever was configured;</item>
+    /// <item><c>jobCode</c> (pca only) must match <see cref="IsJobCode"/> after trimming, else the entry is dropped;
+    /// a scored or gated pca without one is dropped; on any other instrument it is ignored;</item>
     /// <item>lia/english/itcia used as scored or gate need a valid <c>min</c> (globalPercentile 0..100 / cefr
-    /// A1..C2 / integer level 1..5), else dropped; native_quiz used as a gate needs <c>min.score</c> 0..100, as
-    /// scored it is optional, but one that is supplied and invalid drops the entry; advisory entries keep no
-    /// minimum;</item>
+    /// A1..C2 / integer level 1..5), else dropped; native_quiz used as a gate needs <c>min.score</c> 0..100 and pca
+    /// <c>min.jobFit</c> 0..100, as scored either is optional, but one that is supplied and invalid drops the entry;
+    /// advisory entries keep no minimum;</item>
     /// <item><c>weight</c> is kept only on scored entries and only as a JSON number in (0, 100];
     /// <c>reason</c> only as a string of 1..500 characters after trimming;</item>
     /// <item>a second entry for an instrument already kept is dropped (the first valid entry wins).</item>
@@ -218,12 +230,41 @@ public static class FitV2Kernels
             use = FitInstrumentUses.Advisory;
         }
 
+        // A position code is PCA's alone: the provider compares the PCA with that position's JCA.
+        string? jobCode = null;
+        if (e.TryGetPropertyValue("jobCode", out var jobCodeNode) && jobCodeNode is not null)
+        {
+            if (instrument != FitInstruments.Pca)
+            {
+                issues?.Add(FitRequirementIssueCodes.JobCodeIgnored);
+            }
+            else if (jobCodeNode is JsonValue jobCodeValue
+                && jobCodeValue.TryGetValue<string>(out var rawJobCode)
+                && IsJobCode(rawJobCode.Trim()))
+            {
+                jobCode = rawJobCode.Trim();
+            }
+            else
+            {
+                issues?.Add(FitRequirementIssueCodes.InvalidJobCode);
+                return null;
+            }
+        }
+
+        // A PCA is judged only on the provider's fit to a position: scored or gated, it needs that position.
+        if (instrument == FitInstruments.Pca && use != FitInstrumentUses.Advisory && jobCode is null)
+        {
+            issues?.Add(FitRequirementIssueCodes.JobCodeRequired);
+            return null;
+        }
+
         InstrumentMinimum? min = null;
         if (use != FitInstrumentUses.Advisory)
         {
             var minSupplied = e.TryGetPropertyValue("min", out var minNode) && minNode is not null;
             min = ParseMinimum(instrument, minSupplied ? minNode : null);
-            var minRequired = instrument != FitInstruments.NativeQuiz || use == FitInstrumentUses.Gate;
+            var minRequired = instrument is not (FitInstruments.NativeQuiz or FitInstruments.Pca)
+                || use == FitInstrumentUses.Gate;
 
             // A minimum that was SUPPLIED but is invalid drops the entry even where a minimum is optional (a scored
             // native quiz): silently scoring it on the raw score would ignore what the vacancy asked for.
@@ -272,7 +313,7 @@ public static class FitV2Kernels
             }
         }
 
-        return new AssessmentRequirement(instrument, use, min, weight, reason);
+        return new AssessmentRequirement(instrument, use, min, weight, reason, jobCode);
     }
 
     private static string DefaultUse(string instrument) => instrument switch
@@ -310,6 +351,11 @@ public static class FitV2Kernels
                 return min.TryGetPropertyValue("score", out var s) && s is JsonValue sv
                     && TryGetFiniteNumber(sv, out var score) && score is >= 0 and <= 100
                     ? new InstrumentMinimum(null, null, null, score)
+                    : null;
+            case FitInstruments.Pca:
+                return min.TryGetPropertyValue("jobFit", out var f) && f is JsonValue fv
+                    && TryGetFiniteNumber(fv, out var jobFit) && jobFit is >= 0 and <= 100
+                    ? new InstrumentMinimum(null, null, null, null, jobFit)
                     : null;
             default:
                 return null;
@@ -485,7 +531,8 @@ public static class FitV2Kernels
                 shownResult?.ContentVersion,
                 shownResult?.NormVersion,
                 languagesEvidence,
-                shownIds));
+                shownIds,
+                requirement.JobCode));
         }
 
         return new FitV2Evaluation(assessment, languages, entries, reviewPending);
@@ -563,7 +610,7 @@ public static class FitV2Kernels
 
     /// <summary>
     /// One entry as stored: every key always present, nulls explicit, plus <c>resultIds</c> on an entry that judged
-    /// several results (several native quizzes).
+    /// several results (several native quizzes) and <c>jobCode</c> on a pca entry with a position code.
     /// </summary>
     public static JsonObject EntryToJson(InstrumentFitEntry entry)
     {
@@ -571,6 +618,12 @@ public static class FitV2Kernels
         if (entry.ResultIds is { Count: > 1 } ids)
         {
             json["resultIds"] = new JsonArray(ids.Select(id => (JsonNode)JsonValue.Create(id)).ToArray());
+        }
+
+        // pca only: the position code the entry is judged against (absent elsewhere, so other entries keep their shape).
+        if (entry.JobCode is { } jobCode)
+        {
+            json["jobCode"] = jobCode;
         }
 
         return json;
@@ -624,6 +677,11 @@ public static class FitV2Kernels
             json["score"] = score;
         }
 
+        if (min.JobFit is { } jobFit)
+        {
+            json["jobFit"] = jobFit;
+        }
+
         return json;
     }
 
@@ -643,7 +701,7 @@ public static class FitV2Kernels
         {
             status = FitInstrumentStatuses.NeedsReview;
         }
-        else if (requirement.Use != FitInstrumentUses.Advisory && !HasUsableValue(requirement.Instrument, result))
+        else if (requirement.Use != FitInstrumentUses.Advisory && !HasUsableValue(requirement, result))
         {
             status = FitInstrumentStatuses.NoValue;
         }
@@ -670,14 +728,20 @@ public static class FitV2Kernels
         return new Draft(requirement, result, status, score, gate);
     }
 
-    private static bool HasUsableValue(string instrument, InstrumentResult result) => instrument switch
-    {
-        FitInstruments.Lia => result.GlobalPercentile is { } p && double.IsFinite(p) && p is >= 0 and <= 100,
-        FitInstruments.English => CefrOrdinal(result.Cefr) is not null,
-        FitInstruments.Itcia => result.Level is >= 1 and <= ItciaMaxLevel,
-        FitInstruments.NativeQuiz => result.NormalizedScore is { } s && double.IsFinite(s),
-        _ => false,
-    };
+    private static bool HasUsableValue(AssessmentRequirement requirement, InstrumentResult result) =>
+        requirement.Instrument switch
+        {
+            FitInstruments.Lia => result.GlobalPercentile is { } p && double.IsFinite(p) && p is >= 0 and <= 100,
+            FitInstruments.English => CefrOrdinal(result.Cefr) is not null,
+            FitInstruments.Itcia => result.Level is >= 1 and <= ItciaMaxLevel,
+            FitInstruments.NativeQuiz => result.NormalizedScore is { } s && double.IsFinite(s),
+            // The provider's fit FOR THIS VACANCY'S position: a fit computed against another code (the vacancy's code
+            // changed after the PCA was assigned) judges nothing here.
+            FitInstruments.Pca => result.JobFit is { } f && double.IsFinite(f) && f is >= 0 and <= 100
+                && requirement.JobCode is not null
+                && string.Equals(result.JobCode, requirement.JobCode, StringComparison.Ordinal),
+            _ => false,
+        };
 
     // Only called for a scored entry whose result is Completed (so the value is present and valid).
     private static double Fit(AssessmentRequirement requirement, InstrumentResult result) =>
@@ -689,6 +753,9 @@ public static class FitV2Kernels
             FitInstruments.NativeQuiz => requirement.Min?.Score is { } minScore
                 ? MeetOrExceed(result.NormalizedScore!.Value, minScore)
                 : result.NormalizedScore!.Value,
+            FitInstruments.Pca => requirement.Min?.JobFit is { } minJobFit
+                ? MeetOrExceed(result.JobFit!.Value, minJobFit)
+                : result.JobFit!.Value,
             _ => throw new InvalidOperationException($"instrument {requirement.Instrument} is never scored"),
         };
 
@@ -701,6 +768,7 @@ public static class FitV2Kernels
             FitInstruments.English => CefrOrdinal(result.Cefr)!.Value >= CefrOrdinal(requirement.Min!.Cefr)!.Value,
             FitInstruments.Itcia => result.Level!.Value >= requirement.Min!.Level!.Value,
             FitInstruments.NativeQuiz => result.NormalizedScore!.Value >= requirement.Min!.Score!.Value,
+            FitInstruments.Pca => result.JobFit!.Value >= requirement.Min!.JobFit!.Value,
             _ => throw new InvalidOperationException($"instrument {requirement.Instrument} is never a gate"),
         };
 

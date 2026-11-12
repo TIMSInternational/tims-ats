@@ -119,7 +119,8 @@ public sealed record FitAssessmentRequirementBody(
     [property: MaxLength(16)] string? Use,
     FitAssessmentMinimumBody? Min,
     double? Weight,
-    [property: MaxLength(500)] string? Reason);
+    [property: MaxLength(500)] string? Reason,
+    [property: MaxLength(30)] string? JobCode = null);
 
-/// <summary>The minimum: exactly one field, by instrument.</summary>
-public sealed record FitAssessmentMinimumBody(double? GlobalPercentile, string? Cefr, int? Level, double? Score);
+/// <summary>The minimum: exactly one field, by instrument (<c>jobFit</c> is PCA's, 0..100 on the provider's job fit).</summary>
+public sealed record FitAssessmentMinimumBody(double? GlobalPercentile, string? Cefr, int? Level, double? Score, double? JobFit = null);

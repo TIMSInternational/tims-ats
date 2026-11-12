@@ -2061,6 +2061,7 @@
     "fitInstrumentBelowMinimum": "Por debajo del mínimo",
     "fitInstrumentNoResult": "Sin resultado",
     "fitInstrumentNoValue": "Sin valor",
+    "fitInstrumentJobCode": "puesto {code}",
     "fitInstrumentAdvisory": "Solo orientativo",
     "fitInstrumentGateMet": "Mínimo cumplido",
     "fitInstrumentGateNotMet": "Mínimo no cumplido",
@@ -5230,7 +5231,15 @@
     "discard": "Descartar cambios",
     "errorReasonRequired": "Explique por qué esta prueba se relaciona con el puesto (de 3 a 500 caracteres).",
     "errorMinimumInvalid": "Ingrese un mínimo válido para esta prueba.",
-    "errorUseNotAllowed": "Esta prueba solo puede ser informativa."
+    "errorUseNotAllowed": "Esta prueba solo puede ser informativa.",
+    "minimumJobFit": "Ajuste mínimo al puesto (0–100)",
+    "jobCodeLabel": "Código del puesto en TIMS (JCA)",
+    "jobCodeHint": "El código que TIMS asignó a este puesto al codificar su JCA, por ejemplo 194225. Obligatorio para puntuar el PCA o usarlo como mínimo.",
+    "weightLabel": "Peso en la puntuación de evaluaciones",
+    "weightHint": "Peso relativo (0–100). Solo se aplica cuando todas las pruebas puntuadas tienen uno; si no, todas pesan lo mismo.",
+    "notePcaJobFit": "El PCA se juzga solo por el ajuste que TIMS calcula entre el PCA del candidato y el JCA de este puesto. Sus valores DISC nunca se puntúan.",
+    "errorJobCodeInvalid": "Ingrese el código del puesto en TIMS: de 2 a 30 letras, dígitos, - o _.",
+    "errorWeightInvalid": "Ingrese un peso mayor que 0 y como máximo 100."
   },
   "providerAssessments": {
     "title": "TIMS Assessments",
@@ -5394,7 +5403,18 @@
           "c": "Control"
         },
         "competencies": "Competencias",
-        "noCompetencies": "TIMS no devolvió competencias para este resultado."
+        "noCompetencies": "TIMS no devolvió competencias para este resultado.",
+        "jobFit": {
+          "title": "Ajuste al puesto (TIMS)",
+          "code": "Código del puesto {code}",
+          "value": "{fit}%",
+          "valueLabel": "Ajuste al puesto: {fit} por ciento",
+          "profile": "Perfil del puesto (JCA)",
+          "profileLabel": "Perfil del puesto: Dominancia {d}, Influencia {i}, Solidez {s}, Control {c}, sobre 100",
+          "notFound": "TIMS no tiene un JCA completado para este código de puesto, así que no pudo calcular el ajuste.",
+          "unavailable": "TIMS no devolvió el ajuste para este puesto. No es una puntuación baja.",
+          "note": "Calculado por TIMS: el PCA del candidato comparado con el JCA del puesto. El ATS no lo calcula."
+        }
       }
     },
     "proctoring": {

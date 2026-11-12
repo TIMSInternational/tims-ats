@@ -17,6 +17,15 @@ public static class FitRequirementIssueCodes
     public const string WeightIgnored = "weight_ignored";
     public const string ReasonDropped = "reason_dropped";
 
+    /// <summary>A scored or gated pca entry without a position code: dropped (a PCA is judged only on its job fit).</summary>
+    public const string JobCodeRequired = "job_code_required";
+
+    /// <summary>A pca <c>jobCode</c> that is not a TIMS position code (<see cref="FitV2Kernels.IsJobCode"/>): dropped.</summary>
+    public const string InvalidJobCode = "invalid_job_code";
+
+    /// <summary>A <c>jobCode</c> on an instrument other than pca: ignored, the entry kept.</summary>
+    public const string JobCodeIgnored = "job_code_ignored";
+
     /// <summary>
     /// Informational, never a drop: a scored LIA entry is stored as configured but evaluated as a gate on its minimum
     /// while the LIA norms are unconfirmed (owner default D20, <see cref="FitV2Kernels.ApplyLiaThresholdPolicy"/>).
@@ -225,6 +234,11 @@ public static class FitRequirementsInput
         if (requirement.Reason is { } reason)
         {
             json["reason"] = reason;
+        }
+
+        if (requirement.JobCode is { } jobCode)
+        {
+            json["jobCode"] = jobCode;
         }
 
         return json;

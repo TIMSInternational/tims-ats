@@ -110,6 +110,8 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
                 t.HasCheckConstraint("ck_assessment_provider_attempts_instrument", $"instrument IN ({instruments})");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_state", $"state IN ({InList(ProviderAttemptStates.All)})");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_purpose", "purpose = 'selection'");
+                t.HasCheckConstraint("ck_assessment_provider_attempts_job_code",
+                    "job_code IS NULL OR (instrument = 'pca' AND job_code ~ '^[A-Za-z0-9_-]{2,30}$')");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_reason",
                     $"char_length(job_relatedness_reason) BETWEEN {ProviderFormats.MinReasonLength} AND {ProviderFormats.MaxReasonLength}");
                 t.HasCheckConstraint("ck_assessment_provider_attempts_locale", $"locale {localeCheck}");
@@ -200,6 +202,7 @@ public sealed class AssessmentProviderDbContext(DbContextOptions<AssessmentProvi
             entity.Property(a => a.DeclinedOptionalConsents).HasColumnName("declined_optional_consents")
                 .HasDefaultValueSql("'{}'::text[]");
             entity.Property(a => a.ProctoringLockdown).HasColumnName("proctoring_lockdown");
+            entity.Property(a => a.JobCode).HasColumnName("job_code");
             entity.Property(a => a.ProctoringAntiCheatThreshold).HasColumnName("proctoring_anti_cheat_threshold");
             entity.Property(a => a.ProctoringAntiCheatConsequence).HasColumnName("proctoring_anti_cheat_consequence");
             entity.Property(a => a.ProctoringIdentityCheck).HasColumnName("proctoring_identity_check");

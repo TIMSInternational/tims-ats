@@ -27,7 +27,9 @@ public sealed record ProviderInstrumentResult(
     string? Cefr,
     int? Level,
     string? ContentVersion,
-    string? NormVersion);
+    string? NormVersion,
+    double? JobFit = null,
+    string? JobCode = null);
 
 /// <summary>
 /// The stored attempt + latest result an integrity decision is made from. <see cref="RequestedTimeMultiplier"/> is the
@@ -50,7 +52,9 @@ public sealed record ProviderFitRow(
     string? NormVersion,
     DateTimeOffset AttemptCreatedAt,
     decimal RequestedTimeMultiplier,
-    decimal? AppliedTimeMultiplier);
+    decimal? AppliedTimeMultiplier,
+    double? JobFit = null,
+    string? JobCode = null);
 
 /// <summary>
 /// Maps stored provider attempts and results to FIT v2 results. The rules (assessment-platform design §6.3):
@@ -112,7 +116,9 @@ public static class ProviderFitMapping
                 valid ? row.Cefr : null,
                 valid ? row.Level : null,
                 row.ContentVersion,
-                row.NormVersion));
+                row.NormVersion,
+                valid ? row.JobFit : null,
+                valid ? row.JobCode : null));
         }
 
         return results;

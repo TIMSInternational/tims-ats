@@ -149,6 +149,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         }
 
         var listed = JobRelatedness.ParseListedInstruments(context.FitRequirementsJson);
+        // TIMS 2026-11-12: a PCA carries the vacancy's position code, so the provider reports the PCA-vs-JCA fit.
+        var pcaJobCode = JobRelatedness.PcaJobCode(context.FitRequirementsJson);
         var locale = input.Locale ?? binding.DefaultLocale;
         // The org's proctoring (owner decision 2026-11-11: tims-suite parity), snapshotted onto each NEW attempt at
         // reserve: the attempt row is what every create is built from, so a later settings change never alters a sitting
@@ -170,7 +172,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
 
             attempts.Add(new NewAttempt(
                 item.Instrument, reason, locale, input.TimeMultiplier, input.Aids, input.ExpiresAt, input.AgeBand,
-                AssessmentProctoring.ForAssignment(item.Instrument, proctoring, identityCheckAllowed)));
+                AssessmentProctoring.ForAssignment(item.Instrument, proctoring, identityCheckAllowed),
+                item.Instrument == ProviderInstruments.Pca ? pcaJobCode : null));
         }
 
         var reserved = await _repository.ReserveAttemptsAsync(
@@ -331,7 +334,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             attempt.Id.ToString(),
             attempt.AgeBand!,
             attempt.InstrumentVersion,
-            ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring);
+            ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring,
+            attempt.Instrument == ProviderInstruments.Pca ? attempt.JobCode : null);
 
 
         var created = await _provider.CreateAssignmentAsync(request, IdempotencyKeys.Assignment(attempt.Id), cancellationToken)

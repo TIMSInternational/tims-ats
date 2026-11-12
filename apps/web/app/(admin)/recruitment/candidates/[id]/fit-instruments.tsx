@@ -43,7 +43,10 @@ export function FitInstruments({ breakdown }: { breakdown: unknown }) {
       <ul className="space-y-1.5">
         {entries.map((entry) => (
           <li key={entry.instrument} className="flex justify-between text-[12px]">
-            <span className="text-[#585858]">{t.candidates.fitInstrumentNames[entry.instrument]}</span>
+            <span className="text-[#585858]">
+              {t.candidates.fitInstrumentNames[entry.instrument]}
+              {entry.jobCode && ` · ${t.candidates.fitInstrumentJobCode.replace('{code}', entry.jobCode)}`}
+            </span>
             <EntryValue entry={entry} />
           </li>
         ))}

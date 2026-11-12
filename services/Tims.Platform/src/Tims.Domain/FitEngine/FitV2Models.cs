@@ -17,11 +17,15 @@ public static class FitInstruments
     public static readonly IReadOnlyList<string> All = [Lia, English, Itcia, Personality, Mi, Pca, NativeQuiz];
 
     /// <summary>
-    /// Personality, MI and PCA are never scored and never gate: there is no evidence that a higher or lower
-    /// result predicts job performance (assessment-platform design §6.2). Any configured <c>use</c> is coerced to
+    /// Personality and MI are never scored and never gate: there is no evidence that a higher or lower result
+    /// predicts job performance (assessment-platform design §6.2). Any configured <c>use</c> is coerced to
     /// <see cref="FitInstrumentUses.Advisory"/>.
+    /// <para>PCA is not on this list since TIMS's decision of 2026-11-12: a PCA may be scored or gated, but only on
+    /// the provider's own PCA-vs-JCA fit to the vacancy's TIMS position code (<see cref="AssessmentRequirement.JobCode"/>),
+    /// never on its DISC values. Without a code it stays advisory (the parse drops a scored or gated PCA without
+    /// one).</para>
     /// </summary>
-    public static bool IsAdvisoryOnly(string instrument) => instrument is Personality or Mi or Pca;
+    public static bool IsAdvisoryOnly(string instrument) => instrument is Personality or Mi;
 }
 
 /// <summary>How a vacancy uses an instrument.</summary>
@@ -66,21 +70,26 @@ public static class FitGateStates
 
 /// <summary>
 /// The vacancy minimum for one instrument. Exactly one field is set, depending on the instrument:
-/// <c>GlobalPercentile</c> (lia, 0..100), <c>Cefr</c> (english, A1..C2), <c>Level</c> (itcia, 1..5) or
-/// <c>Score</c> (native_quiz, 0..100 on the normalized score).
+/// <c>GlobalPercentile</c> (lia, 0..100), <c>Cefr</c> (english, A1..C2), <c>Level</c> (itcia, 1..5),
+/// <c>Score</c> (native_quiz, 0..100 on the normalized score) or <c>JobFit</c> (pca, 0..100 on the provider's
+/// job fit).
 /// </summary>
-public sealed record InstrumentMinimum(double? GlobalPercentile, string? Cefr, int? Level, double? Score);
+public sealed record InstrumentMinimum(double? GlobalPercentile, string? Cefr, int? Level, double? Score, double? JobFit = null);
 
 /// <summary>
 /// One parsed <c>fit_requirements.assessments[]</c> entry. <c>Min</c> is null for advisory entries and for a
-/// scored native_quiz without a minimum. <c>Weight</c> is set only on scored entries that declared a valid one.
+/// scored native_quiz or pca without a minimum. <c>Weight</c> is set only on scored entries that declared a valid one.
+/// <c>JobCode</c> is pca only: the vacancy's position code in TIMS's job catalogue (set when TIMS codes the position
+/// for its JCA, e.g. <c>194225</c>). It is sent with the PCA assignment, and the provider reports the candidate's fit
+/// to that position; a scored or gated pca entry requires it.
 /// </summary>
 public sealed record AssessmentRequirement(
     string Instrument,
     string Use,
     InstrumentMinimum? Min,
     double? Weight,
-    string? Reason);
+    string? Reason,
+    string? JobCode = null);
 
 /// <summary>Whether a result may count toward FIT.</summary>
 public enum ResultIntegrity
@@ -95,7 +104,8 @@ public enum ResultIntegrity
 /// <summary>
 /// One completed assessment result as an <c>IAssessmentResultSource</c> adapter reports it. Only the value the
 /// instrument is judged on is read: <c>NormalizedScore</c> (native_quiz), <c>GlobalPercentile</c> (lia),
-/// <c>Cefr</c> (english) or <c>Level</c> (itcia). Advisory instruments need none.
+/// <c>Cefr</c> (english), <c>Level</c> (itcia) or <c>JobFit</c> with <c>JobCode</c> (pca: the provider's computed
+/// fit and the position code it was computed for). Advisory instruments need none.
 /// </summary>
 /// <param name="ResultId">The source's own id for the result (the assignment id for ATS native quizzes).</param>
 /// <param name="Source">Which adapter produced it: <c>ats</c> or <c>provider</c>.</param>
@@ -116,7 +126,9 @@ public sealed record InstrumentResult(
     int? Level,
     string? ContentVersion,
     string? NormVersion,
-    string? Variant = null);
+    string? Variant = null,
+    double? JobFit = null,
+    string? JobCode = null);
 
 /// <summary>
 /// One per-instrument entry of the v2 breakdown.
@@ -138,6 +150,7 @@ public sealed record InstrumentResult(
 /// Set only when the entry judged more than one result (several native quizzes, one per quiz): every result id it
 /// combined, most recent first. <c>ResultId</c> is then the most recent one.
 /// </param>
+/// <param name="JobCode">pca only: the vacancy's position code the entry is judged against.</param>
 public sealed record InstrumentFitEntry(
     string Instrument,
     string Use,
@@ -154,7 +167,8 @@ public sealed record InstrumentFitEntry(
     string? ContentVersion,
     string? NormVersion,
     string? LanguagesEvidence,
-    IReadOnlyList<string>? ResultIds = null);
+    IReadOnlyList<string>? ResultIds = null,
+    string? JobCode = null);
 
 /// <summary>
 /// The FIT v2 result: the two dimensions it changes, the per-instrument entries, and whether a scored result

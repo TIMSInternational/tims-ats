@@ -1523,6 +1523,366 @@
           }
         ]
       }
+    },
+    {
+      "name": "pca scored (TIMS 2026-11-12): the score is TIMS's job fit for the vacancy's position code, copied (78 → 78); alone in the dimension: share 1, effectiveWeight = assessment weight 0.4",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "scored",
+              "jobCode": "194225",
+              "reason": "ajuste al puesto"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "pca",
+            "resultId": "r-pca",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-11-12T00:00:00Z",
+            "jobFit": 78,
+            "jobCode": "194225",
+            "contentVersion": "tims-legacy-pca"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        }
+      },
+      "expected": {
+        "assessment": 78,
+        "languages": null,
+        "reviewPending": false,
+        "entries": [
+          {
+            "instrument": "pca",
+            "use": "scored",
+            "status": "completed",
+            "score": 78,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 1,
+            "effectiveWeight": 0.4,
+            "min": null,
+            "reason": "ajuste al puesto",
+            "resultId": "r-pca",
+            "source": "provider",
+            "contentVersion": "tims-legacy-pca",
+            "normVersion": null,
+            "languagesEvidence": null,
+            "jobCode": "194225"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pca scored with min.jobFit 80: meet-or-exceed round(78 / 80 × 100) = round(97.5) = 98",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "scored",
+              "jobCode": "194225",
+              "min": {
+                "jobFit": 80
+              },
+              "reason": "ajuste al puesto"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "pca",
+            "resultId": "r-pca",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-11-12T00:00:00Z",
+            "jobFit": 78,
+            "jobCode": "194225",
+            "contentVersion": "tims-legacy-pca"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        }
+      },
+      "expected": {
+        "assessment": 98,
+        "languages": null,
+        "reviewPending": false,
+        "entries": [
+          {
+            "instrument": "pca",
+            "use": "scored",
+            "status": "completed",
+            "score": 98,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": 1,
+            "effectiveWeight": 0.4,
+            "min": {
+              "jobFit": 80
+            },
+            "reason": "ajuste al puesto",
+            "resultId": "r-pca",
+            "source": "provider",
+            "contentVersion": "tims-legacy-pca",
+            "normVersion": null,
+            "languagesEvidence": null,
+            "jobCode": "194225"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pca gate on min.jobFit 70: 78 ≥ 70 → met; a gate feeds no score, so the dimension is null",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "gate",
+              "jobCode": "194225",
+              "min": {
+                "jobFit": 70
+              },
+              "reason": "ajuste al puesto"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "pca",
+            "resultId": "r-pca",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-11-12T00:00:00Z",
+            "jobFit": 78,
+            "jobCode": "194225",
+            "contentVersion": "tims-legacy-pca"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        }
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "reviewPending": false,
+        "entries": [
+          {
+            "instrument": "pca",
+            "use": "gate",
+            "status": "completed",
+            "score": null,
+            "gate": "met",
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": {
+              "jobFit": 70
+            },
+            "reason": "ajuste al puesto",
+            "resultId": "r-pca",
+            "source": "provider",
+            "contentVersion": "tims-legacy-pca",
+            "normVersion": null,
+            "languagesEvidence": null,
+            "jobCode": "194225"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a job fit computed for ANOTHER position code (the vacancy's code changed after the PCA was assigned) is no value, never a low score",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "scored",
+              "jobCode": "194225",
+              "reason": "ajuste al puesto"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "pca",
+            "resultId": "r-pca",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-11-12T00:00:00Z",
+            "jobFit": 90,
+            "jobCode": "GC001",
+            "contentVersion": "tims-legacy-pca"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        }
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "reviewPending": false,
+        "entries": [
+          {
+            "instrument": "pca",
+            "use": "scored",
+            "status": "no_value",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": "ajuste al puesto",
+            "resultId": "r-pca",
+            "source": "provider",
+            "contentVersion": "tims-legacy-pca",
+            "normVersion": null,
+            "languagesEvidence": null,
+            "jobCode": "194225"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a pca result with no job fit (job_not_found or unavailable at the provider: no value is reported) is no value",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "scored",
+              "jobCode": "194225",
+              "reason": "ajuste al puesto"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "pca",
+            "resultId": "r-pca",
+            "source": "provider",
+            "integrity": "valid",
+            "completedAt": "2026-11-12T00:00:00Z",
+            "contentVersion": "tims-legacy-pca"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        }
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "reviewPending": false,
+        "entries": [
+          {
+            "instrument": "pca",
+            "use": "scored",
+            "status": "no_value",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": "ajuste al puesto",
+            "resultId": "r-pca",
+            "source": "provider",
+            "contentVersion": "tims-legacy-pca",
+            "normVersion": null,
+            "languagesEvidence": null,
+            "jobCode": "194225"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a scored pca awaiting review is needs_review and sets reviewPending; its value is never read",
+      "input": {
+        "fitRequirements": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "scored",
+              "jobCode": "194225",
+              "reason": "ajuste al puesto"
+            }
+          ]
+        },
+        "results": [
+          {
+            "instrument": "pca",
+            "resultId": "r-pca",
+            "source": "provider",
+            "integrity": "needs_review",
+            "completedAt": "2026-11-12T00:00:00Z",
+            "contentVersion": "tims-legacy-pca"
+          }
+        ],
+        "weights": {
+          "assessment": 0.4,
+          "interview": 0.2,
+          "experience": 0.2,
+          "education": 0.1,
+          "languages": 0.1
+        }
+      },
+      "expected": {
+        "assessment": null,
+        "languages": null,
+        "reviewPending": true,
+        "entries": [
+          {
+            "instrument": "pca",
+            "use": "scored",
+            "status": "needs_review",
+            "score": null,
+            "gate": null,
+            "weight": null,
+            "assessmentShare": null,
+            "effectiveWeight": null,
+            "min": null,
+            "reason": "ajuste al puesto",
+            "resultId": "r-pca",
+            "source": "provider",
+            "contentVersion": "tims-legacy-pca",
+            "normVersion": null,
+            "languagesEvidence": null,
+            "jobCode": "194225"
+          }
+        ]
+      }
     }
   ]
 }

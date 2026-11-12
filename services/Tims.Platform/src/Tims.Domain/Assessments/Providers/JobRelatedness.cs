@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Tims.Domain.FitEngine;
 
 namespace Tims.Domain.Assessments.Providers;
 
@@ -14,6 +16,30 @@ namespace Tims.Domain.Assessments.Providers;
 /// </summary>
 public static class JobRelatedness
 {
+    /// <summary>
+    /// The vacancy's TIMS position code for PCA, exactly as FIT v2 reads its requirements (so what is sent with the
+    /// assignment is what the PCA entry is judged against), or null: no PCA entry, none with a code, or a malformed
+    /// <c>fit_requirements</c>.
+    /// </summary>
+    public static string? PcaJobCode(string? fitRequirementsJson)
+    {
+        if (string.IsNullOrWhiteSpace(fitRequirementsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(fitRequirementsJson, documentOptions: new JsonDocumentOptions { MaxDepth = 16 });
+            return FitV2Kernels.ParseAssessmentRequirements(node)
+                ?.FirstOrDefault(r => r.Instrument == FitInstruments.Pca)?.JobCode;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Instrument → the vacancy's declared reason (null when the entry declares none). Unknown ids are dropped.</summary>
     public static IReadOnlyDictionary<string, string?> ParseListedInstruments(string? fitRequirementsJson)
     {

@@ -147,6 +147,28 @@ public sealed class TimsAssessmentsClientTests
         Assert.False(body.AsObject().ContainsKey("instrument_version"));
     }
 
+    // TIMS 2026-11-12: a PCA create names the vacancy's TIMS position code (contract vacancy.job_code); no other
+    // instrument ever sends one, even if a caller passed it.
+    [Fact]
+    public async Task A_pca_create_sends_the_position_code_in_the_vacancy_and_no_other_instrument_does()
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.Created, AssignmentJson(Guid.NewGuid())));
+        var client = Client();
+
+        Assert.True((await client.CreateAssignmentAsync(
+            AssignmentRequest() with { Instrument = "pca", JobCode = "194225" }, "ats-attempt-pca", CancellationToken.None)).Ok);
+        Assert.True((await client.CreateAssignmentAsync(
+            AssignmentRequest() with { JobCode = "194225" }, "ats-attempt-lia", CancellationToken.None)).Ok);
+        Assert.True((await client.CreateAssignmentAsync(
+            AssignmentRequest() with { Instrument = "pca" }, "ats-attempt-pca-2", CancellationToken.None)).Ok);
+
+        var bodies = _handler.Requests.Where(r => r.Uri == "https://assessments.test/v1/assignments")
+            .Select(r => JsonNode.Parse(r.Body)!["vacancy"]!.AsObject()).ToList();
+        Assert.Equal("194225", bodies[0]["job_code"]!.GetValue<string>());
+        Assert.False(bodies[1].ContainsKey("job_code"));
+        Assert.False(bodies[2].ContainsKey("job_code"));
+    }
+
     // Proctoring parity (2026-11-11): the attempt's stored block is sent as AssignmentProctoring, every key present.
     [Fact]
     public async Task Create_assignment_sends_the_attempts_proctoring_block()

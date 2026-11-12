@@ -412,7 +412,8 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
                 ProviderAttemptStates.PendingCreate, attempt.Reason, attempt.Locale, attempt.TimeMultiplier, attempt.Aids,
                 attempt.ExpiresAt, null, null, PinnedVersions.GetValueOrDefault(attempt.Instrument), null, [], null, null, true,
                 AgeBand: attempt.AgeBand,
-                Proctoring: ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring);
+                Proctoring: ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring,
+                JobCode: attempt.Instrument == ProviderInstruments.Pca ? attempt.JobCode : null);
             Attempts.Add(row);
             rows.Add(row);
         }

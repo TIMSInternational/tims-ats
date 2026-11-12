@@ -405,6 +405,34 @@ provider hides a result (`result_not_visible`) or the subject is erased, the res
 the FIT row whose breakdown names that result id, whatever the FIT flags (the recompute worker runs only with them on,
 so before, a hidden result stayed in FIT for good with a flag off).
 
+### PCA job fit (TIMS, 2026-11-12)
+
+TIMS's FIT for a position is its own PCA-vs-JCA fit, computed by its platform: a position is coded in TIMS (its JCA,
+answered by someone who knows the job) and TIMS compares each candidate's PCA with it. The ATS never computes it.
+
+- **The vacancy names the position.** HR enters the TIMS position code (for example `194225`, the code TIMS's team gave
+  the position) on the vacancy's PCA entry: `fit_requirements.assessments[] = {"instrument":"pca","use":"scored",
+  "jobCode":"194225",...}`. A scored or gated PCA without a code is dropped (`job_code_required`); an invalid code drops
+  the entry (`invalid_job_code`); a code on another instrument is ignored (`job_code_ignored`). Advisory PCA needs no code
+  (with one, TIMS's fit is shown to HR without being scored). Personality and MI stay advisory-only.
+- **The assignment carries it.** The code is stored on the attempt at reserve (`assessment_provider_attempts.job_code`,
+  migration `20261112225624_assessment_provider_attempt_job_code`, PCA only by check constraint) and sent as contract
+  `vacancy.job_code` on every create of that attempt, never re-read (the Idempotency-Key is bound to the body).
+- **The provider asks TIMS.** When tims-suite collects the PCA it calls `GET core/api/results/analysisjca`
+  (`tipAns=a`, the only analysis type the live API accepts) and publishes the answer as `PcaResultV1.scores.job_fit`
+  (contract a01bf3e/f009729): `computed` (TIMS's percentage and the position's DISC profile), `job_not_found` (no
+  position with that code and a completed JCA in TIMS's company) or `unavailable` (TIMS did not answer within 24 h).
+- **FIT reads it.** `GetFitRowsAsync` reads `scores.job_fit` from the stored PCA result (no new column); only a
+  `computed` fit is a value. A scored PCA's fit is TIMS's percentage (or the meet-or-exceed curve on `min.jobFit`); a
+  gate compares it with `min.jobFit`. A fit computed for another code than the vacancy's current one (HR re-coded the
+  vacancy) is `no_value`, never a low score. The breakdown entry names the code (`jobCode`).
+- **Weights.** HR sets each scored test's relative weight in the vacancy editor (the per-instrument `weight` FIT v2
+  always read; the editor now exposes it). The five dimension weights stay on the role family (Settings → FIT weights).
+  TIMS is to supply the percentages; nothing is defaulted on its behalf.
+- **Unverified live:** the scale of TIMS's `Res` (documented as "Resultado del análisis", taken as a 0–100 percentage)
+  and TIMS's answer for an unknown code were never observed on a completed evaluation; tims-suite maps an out-of-range
+  value to `unavailable` and a missing JCA graph to `job_not_found`. Check one real answer before turning FIT v2 on.
+
 ## Unconfirmed 404s
 
 A provider that does not serve a route answers its catch-all 404 with the same `not_found` code as "no such
@@ -608,7 +636,8 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    proctoring snapshot, `completed_by`, `void_reason`), then `20261111195336_assessment_provider_subject_checks.sql`
    (round 13: the erasure sweep's `assessment_provider_subject_checks`), then
    `20261112170426_fit_v2_provider_erasure_removes_fit_rows.sql` (round 13: an erasure deletes the FIT row built from the
-   erased result; function only, no table change). Every file is idempotent and records its
+   erased result; function only, no table change), then `20261112225624_assessment_provider_attempt_job_code.sql` (PCA
+   job fit: the attempt's TIMS position code; one nullable column and its check). Every file is idempotent and records its
    migration id, so re-running one is safe; skipping one is not: the code reads every table and column unconditionally.
 2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be the six
    new tables — `assessment_provider_bindings`, `_attempts`, `_results`, `_webhook_inbox`, `_settings`,

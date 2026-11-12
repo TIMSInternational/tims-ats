@@ -715,12 +715,13 @@ public sealed record AssignmentContext(
 /// </param>
 public sealed record NewAttempt(
     string Instrument, string Reason, string Locale, decimal TimeMultiplier, IReadOnlyList<string> Aids,
-    DateTimeOffset? ExpiresAt, string? AgeBand = null, AssessmentProctoring? Proctoring = null)
+    DateTimeOffset? ExpiresAt, string? AgeBand = null, AssessmentProctoring? Proctoring = null, string? JobCode = null)
 {
     /// <summary>
     /// True when an open attempt already carries exactly these terms: the accommodation (time multiplier and aids, as
-    /// a set), the locale, the job-relatedness reason and the attested age band. The expiry is not compared: a re-send
-    /// may legitimately recompute a relative expiry, and the response echoes the one in force.
+    /// a set), the locale, the job-relatedness reason, the attested age band and (PCA) the vacancy's position code. The
+    /// expiry is not compared: a re-send may legitimately recompute a relative expiry, and the response echoes the one
+    /// in force.
     /// </summary>
     public bool SameTermsAs(AttemptRow open)
     {
@@ -729,6 +730,7 @@ public sealed record NewAttempt(
             && string.Equals(open.Locale, Locale, StringComparison.Ordinal)
             && string.Equals(open.AgeBand, AgeBand, StringComparison.Ordinal)
             && string.Equals(open.Reason, Reason, StringComparison.Ordinal)
+            && string.Equals(open.JobCode, JobCode, StringComparison.Ordinal)
             && open.Aids.Order(StringComparer.Ordinal).SequenceEqual(Aids.Order(StringComparer.Ordinal), StringComparer.Ordinal);
     }
 }
@@ -765,7 +767,8 @@ public sealed record AttemptRow(
     int ResultVisibilityGeneration = 0,
     AssessmentProctoring? Proctoring = null,
     string? CompletedBy = null,
-    string? VoidReason = null)
+    string? VoidReason = null,
+    string? JobCode = null)
 {
     /// <summary>
     /// A consent capture announced by a launch and not answered yet, and not stale at <paramref name="now"/>: the provider

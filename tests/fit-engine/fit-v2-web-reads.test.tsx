@@ -133,6 +133,21 @@ describe('candidate page breakdown panel', () => {
     expect(screen.queryByText(/\/100$/, { selector: '[data-testid="fit-instruments"] span' })).toBeNull();
   });
 
+  // TIMS 2026-11-12: a scored PCA is TIMS's job fit for the vacancy's position, and the line names that position.
+  it("a scored PCA reads TIMS's fit and names the position it is judged against", () => {
+    const breakdown = v2({ assessment: 78 }, [
+      entry({ instrument: 'pca', score: 78, min: null, resultId: 'r-pca', jobCode: '194225' }),
+    ]);
+    render(<FitBreakdown fitScores={[{ id: FS, overallScore: 80, breakdown, calculatedAt: new Date() }]} />);
+    const line = screen.getByTestId('fit-instruments');
+    expect(line.textContent).toContain('PCA');
+    expect(line.textContent).toContain(en.candidates.fitInstrumentJobCode.replace('{code}', '194225'));
+    expect(line.textContent).toContain('78/100');
+    expect(fitV2Entries(breakdown)[0]?.jobCode).toBe('194225');
+    // Only a PCA entry ever carries a position code.
+    expect(fitV2Entries(v2({}, [entry({ jobCode: '194225' })]))[0]?.jobCode).toBeNull();
+  });
+
   it('a v1 breakdown renders exactly as before: no instruments block, no marker', () => {
     render(
       <FitBreakdown

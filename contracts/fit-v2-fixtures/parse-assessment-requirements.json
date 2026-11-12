@@ -236,7 +236,7 @@
       ]
     },
     {
-      "name": "personality/mi/pca are coerced to advisory: no min, no weight",
+      "name": "personality/mi are coerced to advisory: no min, no weight (PCA is not since TIMS 2026-11-12: it is judged on its job fit)",
       "input": {
         "raw": {
           "assessments": [
@@ -774,6 +774,113 @@
         }
       },
       "expected": null
+    },
+    {
+      "name": "pca scored on TIMS's job fit: kept with its trimmed position code, an optional min.jobFit and its weight (TIMS 2026-11-12)",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "scored",
+              "jobCode": " 194225 ",
+              "min": {
+                "jobFit": 60
+              },
+              "weight": 2,
+              "reason": "ajuste al puesto"
+            },
+            {
+              "instrument": "native_quiz",
+              "use": "scored",
+              "weight": 1
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "pca",
+          "use": "scored",
+          "min": {
+            "jobFit": 60
+          },
+          "weight": 2,
+          "reason": "ajuste al puesto",
+          "jobCode": "194225"
+        },
+        {
+          "instrument": "native_quiz",
+          "use": "scored",
+          "min": null,
+          "weight": 1,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "pca scored or gated without a position code is dropped, a pca gate needs min.jobFit, and an advisory pca needs no code (the first valid pca entry wins)",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "scored"
+            },
+            {
+              "instrument": "pca",
+              "use": "gate",
+              "jobCode": "GC001"
+            },
+            {
+              "instrument": "pca",
+              "use": "advisory"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "pca",
+          "use": "advisory",
+          "min": null,
+          "weight": null,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "name": "an invalid position code drops the pca entry; a position code on another instrument is ignored, the entry kept",
+      "input": {
+        "raw": {
+          "assessments": [
+            {
+              "instrument": "pca",
+              "use": "advisory",
+              "jobCode": "19 42"
+            },
+            {
+              "instrument": "itcia",
+              "use": "gate",
+              "min": {
+                "level": 3
+              },
+              "jobCode": "194225"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "instrument": "itcia",
+          "use": "gate",
+          "min": {
+            "level": 3
+          },
+          "weight": null,
+          "reason": null
+        }
+      ]
     }
   ]
 }

@@ -16,6 +16,8 @@ export interface FitV2Entry {
   source: string | null;
   /** The results the entry judged (several native quizzes), else its one result id. */
   resultIds: string[];
+  /** PCA only: the vacancy's TIMS position code the entry is judged against. */
+  jobCode: string | null;
 }
 
 const USES = new Set(['scored', 'gate', 'advisory']);
@@ -49,6 +51,7 @@ export function fitV2Entries(breakdown: unknown): FitV2Entry[] {
       belowMinimum: raw.belowMinimum === true,
       source: typeof raw.source === 'string' ? raw.source : null,
       resultIds: resultIds.length > 0 ? resultIds : typeof raw.resultId === 'string' ? [raw.resultId] : [],
+      jobCode: instrument === 'pca' && typeof raw.jobCode === 'string' ? raw.jobCode.slice(0, 30) : null,
     });
   }
   return entries;

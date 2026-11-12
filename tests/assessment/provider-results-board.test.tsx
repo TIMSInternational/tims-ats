@@ -207,6 +207,55 @@ describe('ProviderResultsBoard', () => {
     expect(within(card).getByLabelText('Trabajo en equipo: Level 3 of 4')).toBeTruthy();
   });
 
+  // TIMS 2026-11-12: a PCA assigned with the vacancy's TIMS position code carries TIMS's own fit to that position.
+  it("PCA: TIMS's fit to the position comes first, with the code, the percentage and the position's JCA profile", () => {
+    mocks.attempts = {
+      consentWithdrawn: false,
+      attempts: [
+        attempt('pca', 4, {
+          profile: {
+            pca: {
+              ...pca,
+              jobFit: { jobCode: '194225', status: 'computed', fit: 78.5, jobProfile: { d: 62, i: 40, s: 55, c: 70 } },
+            },
+          },
+        }),
+      ],
+    };
+    render(<ProviderResultsBoard candidateId="c" />);
+    const fit = within(section(/PCA/)).getByRole('region', { name: 'Fit to the position (TIMS)' });
+    expect(within(fit).getByText('Position code 194225')).toBeTruthy();
+    expect(within(fit).getByLabelText('Fit to the position: 78.5 percent').textContent).toBe('78.5%');
+    expect(
+      within(fit).getByLabelText('Position profile: Dominance 62, Influence 40, Steadiness 55, Compliance 70, out of 100'),
+    ).toBeTruthy();
+    expect(within(fit).getByText(/Computed by TIMS/)).toBeTruthy();
+  });
+
+  it('PCA: a position TIMS cannot compare, or a fit TIMS did not return, says so and shows no number', () => {
+    for (const [status, text] of [
+      ['job_not_found', /no completed JCA for this position code/],
+      ['unavailable', /did not return the fit for this position. It is not a low score/],
+    ] as const) {
+      mocks.attempts = {
+        consentWithdrawn: false,
+        attempts: [
+          attempt('pca', 4, { profile: { pca: { ...pca, jobFit: { jobCode: 'X1', status, fit: null, jobProfile: null } } } }),
+        ],
+      };
+      const { unmount } = render(<ProviderResultsBoard candidateId="c" />);
+      const fit = within(section(/PCA/)).getByRole('region', { name: 'Fit to the position (TIMS)' });
+      expect(within(fit).getByText(text)).toBeTruthy();
+      expect(within(fit).queryByText(/%$/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it('PCA without a position code shows no fit block, and keeps the advisory note', () => {
+    render(<ProviderResultsBoard candidateId="c" />);
+    expect(within(section(/PCA/)).queryByRole('region', { name: 'Fit to the position (TIMS)' })).toBeNull();
+  });
+
   it('speaks Spanish with the suite labels', () => {
     mocks.locale = 'es';
     render(<ProviderResultsBoard candidateId="c" />);

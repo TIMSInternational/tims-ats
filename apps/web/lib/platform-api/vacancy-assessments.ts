@@ -30,8 +30,13 @@ const minimumSchema = z
     cefr: z.enum(CEFR_LEVELS).nullable(),
     level: z.number().int().min(1).max(5).nullable(),
     score: z.number().min(0).max(100).nullable(),
+    // PCA: the minimum on the provider's job fit (0–100).
+    jobFit: z.number().min(0).max(100).nullable(),
   })
   .strict();
+
+/** A TIMS position code (contract JobCode): 2 to 30 letters, digits, `_` or `-`, matched by TIMS as given. */
+export const JOB_CODE_PATTERN = /^[A-Za-z0-9_-]{2,30}$/;
 
 export const requirementSchema = z
   .object({
@@ -40,6 +45,8 @@ export const requirementSchema = z
     min: minimumSchema.nullable(),
     weight: z.number().positive().max(100).nullable(),
     reason: z.string().max(500).nullable(),
+    // PCA only: the vacancy's TIMS position code, against which TIMS computes the PCA-vs-JCA fit.
+    jobCode: z.string().regex(JOB_CODE_PATTERN).nullable(),
   })
   .strict();
 
@@ -61,9 +68,10 @@ export type VacancyAssessments = z.infer<typeof responseSchema>;
 export interface AssessmentRequirementInput {
   instrument: FitRequirementInstrument;
   use: InstrumentUse;
-  min?: { globalPercentile?: number; cefr?: CefrLevel; level?: number; score?: number };
+  min?: { globalPercentile?: number; cefr?: CefrLevel; level?: number; score?: number; jobFit?: number };
   weight?: number;
   reason: string;
+  jobCode?: string;
 }
 
 export const vacancyAssessmentsKey = (vacancyId: string) => ['platform', 'vacancy-assessments', vacancyId] as const;

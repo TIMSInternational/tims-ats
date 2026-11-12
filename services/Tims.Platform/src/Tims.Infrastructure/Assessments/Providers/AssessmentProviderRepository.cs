@@ -151,6 +151,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 Aids = [.. attempt.Aids],
                 RequestedExpiresAt = attempt.ExpiresAt?.UtcDateTime,
                 AgeBand = attempt.AgeBand,
+                // The vacancy's position code as of this reserve (PCA only): every create of this attempt is built from it.
+                JobCode = attempt.Instrument == ProviderInstruments.Pca ? attempt.JobCode : null,
                 InstrumentVersion = pinnedVersion,
                 RequiredConsents = [],
                 AssignedById = actorId,
@@ -601,14 +603,21 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                     Level = r == null ? null : r.Level,
                     Content = r == null ? null : r.ContentVersion,
                     Norm = r == null ? null : r.NormVersion,
+                    // PCA only: its stored scores carry the provider's job fit (contract scores.job_fit).
+                    Scores = r != null && a.Instrument == ProviderInstruments.Pca ? r.Scores : null,
                 })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
 
-        return rows.Select(r => new ProviderFitRow(
-            r.Id, r.Instrument, r.State, r.ResultId, r.Purpose, r.Validity, r.HumanReview,
-            ToOffset(r.ResultCompletedAt ?? r.CompletedAt), r.Percentile, r.Cefr, r.Level, r.Content, r.Norm,
-            ToOffset(r.CreatedAt)!.Value, r.TimeMultiplier, r.Applied)).ToList();
+        return rows.Select(r =>
+        {
+            // Only a COMPUTED fit is a value; job_not_found and unavailable judge nothing (never a zero).
+            var jobFit = PcaJobFits.FromScoresJson(r.Scores) is { Status: PcaJobFits.Computed } computed ? computed : null;
+            return new ProviderFitRow(
+                r.Id, r.Instrument, r.State, r.ResultId, r.Purpose, r.Validity, r.HumanReview,
+                ToOffset(r.ResultCompletedAt ?? r.CompletedAt), r.Percentile, r.Cefr, r.Level, r.Content, r.Norm,
+                ToOffset(r.CreatedAt)!.Value, r.TimeMultiplier, r.Applied, jobFit?.Fit, jobFit?.JobCode);
+        }).ToList();
     }
 
     internal async Task<bool> IsWithdrawnAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
@@ -660,7 +669,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
             a.InstrumentVersion, a.ContentVersion, a.RequiredConsents, ToOffset(a.ExpiresAt), a.LastErrorCode, isNew,
             a.WithdrawalState, ToOffset(a.ProviderErasureRequestedAt), a.MissingConsents, a.AgeBand, a.LatestResultId,
             a.GrantedOptionalConsents, a.DeclinedOptionalConsents, a.ConsentCapturesInFlight,
-            ToOffset(a.ConsentCaptureStartedAt), a.ResultVisibilityGeneration, ProctoringOf(a), a.CompletedBy, a.VoidReason);
+            ToOffset(a.ConsentCaptureStartedAt), a.ResultVisibilityGeneration, ProctoringOf(a), a.CompletedBy, a.VoidReason,
+            a.JobCode);
 
     private static DateTimeOffset? ToOffset(DateTime? value) =>
         value is { } v ? new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc)) : null;

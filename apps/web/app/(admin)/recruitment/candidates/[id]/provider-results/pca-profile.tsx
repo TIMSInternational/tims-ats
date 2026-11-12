@@ -2,7 +2,7 @@
 
 import { useI18n } from '../../../../../../lib/i18n';
 import type { StaffResultProfile } from '../../../../../../lib/platform-api/assessment-providers-staff';
-import { AdvisoryNote, fill, LevelDots } from './chart-parts';
+import { AdvisoryNote, fill, formatNumber, LevelDots } from './chart-parts';
 
 type Pca = NonNullable<StaffResultProfile['pca']>;
 type Graph = Pca['graphs'][number];
@@ -34,9 +34,42 @@ function DiscColumns({ graph }: { graph: Graph }) {
   );
 }
 
+// TIMS's own fit of this PCA to the vacancy's position (its JCA), when the PCA was assigned with the position code:
+// the percentage, and the position's DISC profile drawn on the same scale as the candidate's graphs. Without a value
+// (no comparable position, or TIMS did not answer) it says so: never a zero.
+function JobFit({ jobFit }: { jobFit: NonNullable<Pca['jobFit']> }) {
+  const { t } = useI18n();
+  const r = t.providerAssessments.results.pca.jobFit;
+  const fit = jobFit.status === 'computed' && jobFit.fit !== null ? formatNumber(jobFit.fit) : null;
+  return (
+    <section className="mb-4 rounded-xl border border-[#1F114C] bg-[#FAF9FD] p-3" aria-label={r.title}>
+      <div className="flex items-baseline justify-between gap-3">
+        <h4 className="text-[13px] font-semibold text-[#1F114C]">{r.title}</h4>
+        <span className="text-[12px] text-[#585858]">{fill(r.code, { code: jobFit.jobCode })}</span>
+      </div>
+      {fit !== null ? (
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
+          <p className="text-[28px] font-semibold text-[#1F114C]" aria-label={fill(r.valueLabel, { fit })}>
+            {fill(r.value, { fit })}
+          </p>
+          {jobFit.jobProfile && (
+            <div aria-label={fill(r.profileLabel, { ...jobFit.jobProfile })}>
+              <p className="text-[12px] text-[#585858]">{r.profile}</p>
+              <DiscColumns graph={{ graph: 'job', ...jobFit.jobProfile }} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="mt-2 text-[12px] text-[#585858]">{jobFit.status === 'job_not_found' ? r.notFound : r.unavailable}</p>
+      )}
+      <p className="mt-2 text-[11px] text-[#6B6B6B]">{r.note}</p>
+    </section>
+  );
+}
+
 // PCA (DISC): the instrument draws three graphs from the same answers; they sit side by side on one scale, and the
 // primary one (behaviour under pressure, as TIMS reads it) carries the only emphasis on the page. The competencies follow
-// as levels 1 to 4, named by the provider.
+// as levels 1 to 4, named by the provider. TIMS's fit to the vacancy's position comes first when there is one.
 export function PcaProfile({ pca }: { pca: Pca }) {
   const { t } = useI18n();
   const results = t.providerAssessments.results;
@@ -45,6 +78,7 @@ export function PcaProfile({ pca }: { pca: Pca }) {
 
   return (
     <div>
+      {pca.jobFit && <JobFit jobFit={pca.jobFit} />}
       <p className="text-[12px] text-[#585858]">{r.headline}</p>
       <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {pca.graphs.map((g) => {
@@ -96,7 +130,7 @@ export function PcaProfile({ pca }: { pca: Pca }) {
           })}
         </ul>
       )}
-      <AdvisoryNote text={results.advisoryNote} />
+      {!pca.jobFit && <AdvisoryNote text={results.advisoryNote} />}
     </div>
   );
 }

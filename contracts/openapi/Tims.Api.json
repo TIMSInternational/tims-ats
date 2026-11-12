@@ -12922,6 +12922,49 @@
           }
         }
       },
+      "DiscFactors": {
+        "required": [
+          "d",
+          "i",
+          "s",
+          "c"
+        ],
+        "type": "object",
+        "properties": {
+          "d": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "i": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "s": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "c": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "DiscGraphScore": {
         "required": [
           "graph",
@@ -13852,6 +13895,15 @@
               "string"
             ],
             "format": "double"
+          },
+          "jobFit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -13860,7 +13912,8 @@
           "globalPercentile",
           "cefr",
           "level",
-          "score"
+          "score",
+          "jobFit"
         ],
         "type": "object",
         "properties": {
@@ -13889,6 +13942,15 @@
             "format": "int32"
           },
           "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "jobFit": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
             "type": [
               "null",
@@ -13945,6 +14007,13 @@
               "null",
               "string"
             ]
+          },
+          "jobCode": {
+            "maxLength": 30,
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -13954,7 +14023,8 @@
           "use",
           "min",
           "weight",
-          "reason"
+          "reason",
+          "jobCode"
         ],
         "type": "object",
         "properties": {
@@ -13984,6 +14054,12 @@
             "format": "double"
           },
           "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobCode": {
             "type": [
               "null",
               "string"
@@ -16436,6 +16512,42 @@
           }
         }
       },
+      "PcaJobFit": {
+        "required": [
+          "jobCode",
+          "status",
+          "fit",
+          "jobProfile"
+        ],
+        "type": "object",
+        "properties": {
+          "jobCode": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "fit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "jobProfile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DiscFactors"
+              }
+            ]
+          }
+        }
+      },
       "PcaProfile": {
         "required": [
           "primaryGraph",
@@ -16461,6 +16573,16 @@
             "items": {
               "$ref": "#/components/schemas/PcaCompetencyScore"
             }
+          },
+          "jobFit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PcaJobFit"
+              }
+            ]
           }
         }
       },

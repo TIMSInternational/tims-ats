@@ -3,6 +3,7 @@ import {
   CEFR_LEVELS,
   INSTRUMENT_USES,
   FIT_REQUIREMENT_INSTRUMENTS,
+  JOB_CODE_PATTERN,
   type AssessmentRequirement,
   type AssessmentRequirementInput,
   type CefrLevel,
@@ -30,9 +31,23 @@ export function normalizeReason(reason: string): string {
 // Unicode Cc, as .NET char.IsControl counts it.
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
-/** Personality, MI and PCA are never scored and never gate (no evidence a higher result predicts performance). */
+/**
+ * Personality and MI are never scored and never gate (no evidence a higher result predicts performance). PCA may be
+ * scored or gated since TIMS's decision of 2026-11-12, but only on TIMS's own PCA-vs-JCA fit to the vacancy's
+ * position code (`jobCodeRequired`), never on its DISC values.
+ */
 export function allowedUses(instrument: FitRequirementInstrument): readonly InstrumentUse[] {
-  return instrument === 'personality' || instrument === 'mi' || instrument === 'pca' ? ['advisory'] : INSTRUMENT_USES;
+  return instrument === 'personality' || instrument === 'mi' ? ['advisory'] : INSTRUMENT_USES;
+}
+
+/** A scored or gated PCA is judged on its fit to a TIMS position: it needs that position's code. */
+export function jobCodeRequired(instrument: FitRequirementInstrument, use: InstrumentUse): boolean {
+  return instrument === 'pca' && use !== 'advisory';
+}
+
+/** A weight is relative inside the assessment score: only a scored entry has one, and never English (D3). */
+export function takesWeight(instrument: FitRequirementInstrument, use: InstrumentUse): boolean {
+  return use === 'scored' && instrument !== 'english';
 }
 
 /** The default use FIT v2 applies when none is configured. */
@@ -42,7 +57,7 @@ export function defaultUse(instrument: FitRequirementInstrument): InstrumentUse 
   return 'advisory';
 }
 
-export type MinimumKind = 'globalPercentile' | 'cefr' | 'level' | 'score';
+export type MinimumKind = 'globalPercentile' | 'cefr' | 'level' | 'score' | 'jobFit';
 
 /** The kind of minimum an instrument takes; null for the advisory-only instruments. */
 export function minimumKind(instrument: FitRequirementInstrument): MinimumKind | null {
@@ -55,44 +70,55 @@ export function minimumKind(instrument: FitRequirementInstrument): MinimumKind |
       return 'level';
     case 'native_quiz':
       return 'score';
+    case 'pca':
+      return 'jobFit';
     default:
       return null;
   }
 }
 
-/** A minimum is needed for every scored or gated use, except a scored ATS quiz (optional there). */
+/** A minimum is needed for every scored or gated use, except a scored ATS quiz or PCA (optional there). */
 export function minimumRequired(instrument: FitRequirementInstrument, use: InstrumentUse): boolean {
   if (use === 'advisory' || minimumKind(instrument) === null) return false;
-  return instrument !== 'native_quiz' || use === 'gate';
+  return (instrument !== 'native_quiz' && instrument !== 'pca') || use === 'gate';
 }
 
-/** One editor row; `minimum` holds the field's text so a half-typed number is not lost. */
+/**
+ * One editor row. `minimum` and `weight` hold the fields' text so a half-typed number is not lost; `jobCode` is PCA's
+ * TIMS position code (blank elsewhere).
+ */
 export interface AssessmentRow {
   instrument: FitRequirementInstrument;
   use: InstrumentUse;
   minimum: string;
   reason: string;
-  /** A stored weight, kept as is (the editor does not set weights). */
-  weight: number | null;
+  /** The relative weight inside the assessment score (blank = equal weights). */
+  weight: string;
+  jobCode: string;
 }
 
 export function toRow(requirement: AssessmentRequirement): AssessmentRow {
   const min = requirement.min;
-  const minimum = min?.globalPercentile ?? min?.level ?? min?.score ?? (min?.cefr ? min.cefr : null);
+  const minimum =
+    min?.globalPercentile ?? min?.level ?? min?.score ?? min?.jobFit ?? (min?.cefr ? min.cefr : null);
   return {
     instrument: requirement.instrument,
     use: requirement.use,
     minimum: minimum === null || minimum === undefined ? '' : String(minimum),
     reason: requirement.reason ?? '',
-    weight: requirement.weight,
+    weight: requirement.weight === null ? '' : String(requirement.weight),
+    jobCode: requirement.jobCode ?? '',
   };
 }
 
 export function newRow(instrument: FitRequirementInstrument): AssessmentRow {
-  return { instrument, use: defaultUse(instrument), minimum: '', reason: '', weight: null };
+  return { instrument, use: defaultUse(instrument), minimum: '', reason: '', weight: '', jobCode: '' };
 }
 
-/** The entry sent to the server: a minimum only where the use takes one, a weight only on a scored non-English entry. */
+/**
+ * The entry sent to the server: a minimum only where the use takes one, a weight only on a scored non-English entry,
+ * a position code only on PCA (advisory included: TIMS's fit is then shown to HR without scoring it).
+ */
 export function toInput(row: AssessmentRow): AssessmentRequirementInput {
   const input: AssessmentRequirementInput = {
     instrument: row.instrument,
@@ -103,8 +129,14 @@ export function toInput(row: AssessmentRow): AssessmentRequirementInput {
   if (row.use !== 'advisory' && kind && row.minimum.trim() !== '') {
     input.min = kind === 'cefr' ? { cefr: row.minimum as CefrLevel } : { [kind]: Number(row.minimum) };
   }
-  if (row.use === 'scored' && row.instrument !== 'english' && row.weight !== null) input.weight = row.weight;
+  if (takesWeight(row.instrument, row.use) && row.weight.trim() !== '') input.weight = Number(row.weight);
+  if (row.instrument === 'pca' && row.jobCode.trim() !== '') input.jobCode = row.jobCode.trim();
   return input;
+}
+
+function weightIsValid(text: string): boolean {
+  const value = Number(text);
+  return text.trim() !== '' && Number.isFinite(value) && value > 0 && value <= 100;
 }
 
 function minimumIsValid(instrument: FitRequirementInstrument, text: string): boolean {
@@ -121,6 +153,8 @@ export const ROW_ERRORS = {
   reason: 'errorReasonRequired',
   minimum: 'errorMinimumInvalid',
   use: 'errorUseNotAllowed',
+  jobCode: 'errorJobCodeInvalid',
+  weight: 'errorWeightInvalid',
 } as const;
 
 const rowSchema = z
@@ -129,7 +163,8 @@ const rowSchema = z
     use: z.enum(INSTRUMENT_USES),
     minimum: z.string().max(8),
     reason: z.string().max(MAX_REASON_LENGTH * 2),
-    weight: z.number().nullable(),
+    weight: z.string().max(8),
+    jobCode: z.string().max(64),
   })
   .superRefine((row, ctx) => {
     const reason = normalizeReason(row.reason);
@@ -146,6 +181,16 @@ const rowSchema = z
       (hasMinimum ? !minimumIsValid(row.instrument, row.minimum) : minimumRequired(row.instrument, row.use))
     ) {
       ctx.addIssue({ code: 'custom', path: ['minimum'], message: ROW_ERRORS.minimum });
+    }
+    const jobCode = row.jobCode.trim();
+    if (
+      row.instrument === 'pca' &&
+      (jobCode === '' ? jobCodeRequired(row.instrument, row.use) : !JOB_CODE_PATTERN.test(jobCode))
+    ) {
+      ctx.addIssue({ code: 'custom', path: ['jobCode'], message: ROW_ERRORS.jobCode });
+    }
+    if (takesWeight(row.instrument, row.use) && row.weight.trim() !== '' && !weightIsValid(row.weight)) {
+      ctx.addIssue({ code: 'custom', path: ['weight'], message: ROW_ERRORS.weight });
     }
   });
 

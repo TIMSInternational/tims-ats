@@ -6,8 +6,10 @@ import { CEFR_LEVELS, type InstrumentUse } from '../../../../../lib/platform-api
 import type { StaffCatalogInstrument } from '../../../../../lib/platform-api/assessment-providers-staff';
 import {
   allowedUses,
+  jobCodeRequired,
   minimumKind,
   minimumRequired,
+  takesWeight,
   type AssessmentForm,
 } from '../../../../../lib/assessments/vacancy-assessment-form';
 
@@ -16,9 +18,10 @@ const LABEL = 'block text-[12px] font-medium text-[#585858]';
 const ERROR = 'mt-1 text-[11px] text-[#B42318]';
 
 // One configured test: how FIT uses it (only the uses its instrument allows), its minimum (the kind its instrument
-// takes, required for a scored or gated use) and the job-relatedness reason (required). Notes explain D3 (English counts
-// once, in Languages) and D20 (LIA is a threshold until its norms are confirmed). Every field is labelled, and its error
-// is tied to it with aria-describedby.
+// takes, required for a scored or gated use), its relative weight (scored, not English), PCA's TIMS position code
+// (required when PCA is scored or gated: TIMS computes the fit to that position) and the job-relatedness reason
+// (required). Notes explain D3 (English counts once, in Languages), D20 (LIA is a threshold until its norms are
+// confirmed) and where PCA's fit comes from. Every field is labelled, and its error is tied to it with aria-describedby.
 export function VacancyAssessmentRow({
   index,
   form,
@@ -54,8 +57,11 @@ export function VacancyAssessmentRow({
         cefr: va.minimumCefr,
         level: va.minimumLevel,
         score: va.minimumScore,
+        jobFit: va.minimumJobFit,
       }[kind]
     : null;
+  const showJobCode = instrument === 'pca';
+  const showWeight = takesWeight(instrument, use);
   const errorText = (key: string | undefined) => (key && key in va ? va[key as keyof typeof va] : null);
 
   return (
@@ -154,6 +160,68 @@ export function VacancyAssessmentRow({
         )}
       </div>
 
+      {(showJobCode || showWeight) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {showJobCode && (
+            <div>
+              <label htmlFor={`${id}-job-code`} className={LABEL}>
+                {va.jobCodeLabel}
+                {!jobCodeRequired(instrument, use) && ` ${va.minimumOptional}`}
+              </label>
+              <input
+                id={`${id}-job-code`}
+                type="text"
+                maxLength={30}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="194225"
+                {...form.register(`rows.${index}.jobCode`)}
+                disabled={disabled}
+                aria-invalid={Boolean(errors?.jobCode)}
+                aria-describedby={`${id}-job-code-hint${errors?.jobCode ? ` ${id}-job-code-error` : ''}`}
+                className={`mt-1 ${FIELD}`}
+              />
+              <p id={`${id}-job-code-hint`} className="mt-1 text-[11px] text-[#8B8B8B]">
+                {va.jobCodeHint}
+              </p>
+              {errors?.jobCode && (
+                <p id={`${id}-job-code-error`} className={ERROR}>
+                  {errorText(errors.jobCode.message)}
+                </p>
+              )}
+            </div>
+          )}
+          {showWeight && (
+            <div>
+              <label htmlFor={`${id}-weight`} className={LABEL}>
+                {va.weightLabel} {va.minimumOptional}
+              </label>
+              <input
+                id={`${id}-weight`}
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                step="any"
+                {...form.register(`rows.${index}.weight`)}
+                disabled={disabled}
+                aria-invalid={Boolean(errors?.weight)}
+                aria-describedby={`${id}-weight-hint${errors?.weight ? ` ${id}-weight-error` : ''}`}
+                className={`mt-1 ${FIELD}`}
+              />
+              <p id={`${id}-weight-hint`} className="mt-1 text-[11px] text-[#8B8B8B]">
+                {va.weightHint}
+              </p>
+              {errors?.weight && (
+                <p id={`${id}-weight-error`} className={ERROR}>
+                  {errorText(errors.weight.message)}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <label htmlFor={`${id}-reason`} className={LABEL}>
         {va.reasonLabel}
       </label>
@@ -181,6 +249,7 @@ export function VacancyAssessmentRow({
 
       {instrument === 'english' && use !== 'advisory' && <p className="text-[11px] text-[#585858]">{va.noteEnglish}</p>}
       {instrument === 'lia' && use === 'scored' && <p className="text-[11px] text-[#585858]">{va.noteLia}</p>}
+      {instrument === 'pca' && <p className="text-[11px] text-[#585858]">{va.notePcaJobFit}</p>}
       {uses.length === 1 && <p className="text-[11px] text-[#585858]">{va.noteAdvisoryOnly}</p>}
     </li>
   );

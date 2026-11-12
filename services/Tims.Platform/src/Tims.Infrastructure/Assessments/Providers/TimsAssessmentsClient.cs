@@ -290,6 +290,12 @@ public sealed class TimsAssessmentsClient(
             body["expires_at"] = FormatTimestamp(expiresAt);
         }
 
+        // PCA only (contract VacancyContext.job_code): the provider then reports the PCA-vs-JCA fit for that position.
+        if (request.JobCode is { } jobCode && request.Instrument == ProviderInstruments.Pca)
+        {
+            body["vacancy"]!["job_code"] = jobCode;
+        }
+
         // Design §6.3: the version the vacancy's earlier assignments were pinned to, so every candidate sits the same
         // one. Omitted for the vacancy's first assignment: the provider then pins its current GA version.
         if (request.InstrumentVersion is { } version)

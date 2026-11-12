@@ -109,14 +109,25 @@ public sealed class FitV2KernelsFixtureTests
         }
     }
 
-    private static JsonNode RequirementToJson(AssessmentRequirement r) => new JsonObject
+    private static JsonNode RequirementToJson(AssessmentRequirement r)
     {
-        ["instrument"] = r.Instrument,
-        ["use"] = r.Use,
-        ["min"] = FitV2Kernels.MinimumToJson(r.Min),
-        ["weight"] = r.Weight is { } w ? JsonValue.Create(w) : null,
-        ["reason"] = r.Reason,
-    };
+        var json = new JsonObject
+        {
+            ["instrument"] = r.Instrument,
+            ["use"] = r.Use,
+            ["min"] = FitV2Kernels.MinimumToJson(r.Min),
+            ["weight"] = r.Weight is { } w ? JsonValue.Create(w) : null,
+            ["reason"] = r.Reason,
+        };
+
+        // PCA's position code (TIMS 2026-11-12), only where one is set, so every other case keeps its shape.
+        if (r.JobCode is { } jobCode)
+        {
+            json["jobCode"] = jobCode;
+        }
+
+        return json;
+    }
 
     private static InstrumentResult ParseResult(JsonNode r) => new(
         r["instrument"]!.GetValue<string>(),
@@ -136,7 +147,9 @@ public sealed class FitV2KernelsFixtureTests
         r["cefr"] is JsonValue cefr ? cefr.GetValue<string>() : null,
         r["level"] is JsonValue level ? level.GetValue<int>() : null,
         r["contentVersion"] is JsonValue cv ? cv.GetValue<string>() : null,
-        r["normVersion"] is JsonValue nv ? nv.GetValue<string>() : null);
+        r["normVersion"] is JsonValue nv ? nv.GetValue<string>() : null,
+        JobFit: Number(r, "jobFit"),
+        JobCode: r["jobCode"] is JsonValue jc ? jc.GetValue<string>() : null);
 
     private static double? Number(JsonNode r, string key) =>
         r[key] is JsonValue v && v.GetValueKind() == JsonValueKind.Number ? v.GetValue<double>() : null;

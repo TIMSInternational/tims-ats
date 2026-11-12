@@ -4279,6 +4279,16 @@ export interface components {
             percentage: null | number | string;
             suppressed: boolean;
         };
+        DiscFactors: {
+            /** Format: int32 */
+            d: number | string;
+            /** Format: int32 */
+            i: number | string;
+            /** Format: int32 */
+            s: number | string;
+            /** Format: int32 */
+            c: number | string;
+        };
         DiscGraphScore: {
             graph: string;
             /** Format: int32 */
@@ -4492,6 +4502,8 @@ export interface components {
             level: null | number | string;
             /** Format: double */
             score: null | number | string;
+            /** Format: double */
+            jobFit?: null | number | string;
         };
         FitAssessmentMinimumDto: {
             /** Format: double */
@@ -4501,6 +4513,8 @@ export interface components {
             level: null | number | string;
             /** Format: double */
             score: null | number | string;
+            /** Format: double */
+            jobFit: null | number | string;
         };
         FitAssessmentRequirementBody: {
             instrument: string;
@@ -4509,6 +4523,7 @@ export interface components {
             /** Format: double */
             weight: null | number | string;
             reason: null | string;
+            jobCode?: null | string;
         };
         FitAssessmentRequirementDto: {
             instrument: string;
@@ -4517,6 +4532,7 @@ export interface components {
             /** Format: double */
             weight: null | number | string;
             reason: null | string;
+            jobCode: null | string;
         };
         FitAssessmentRequirementsBody: {
             assessments: components["schemas"]["FitAssessmentRequirementBody"][];
@@ -5089,10 +5105,18 @@ export interface components {
             /** Format: int32 */
             scaleMax: number | string;
         };
+        PcaJobFit: {
+            jobCode: string;
+            status: string;
+            /** Format: double */
+            fit: null | number | string;
+            jobProfile: null | components["schemas"]["DiscFactors"];
+        };
         PcaProfile: {
             primaryGraph: null | string;
             graphs: components["schemas"]["DiscGraphScore"][];
             competencies: components["schemas"]["PcaCompetencyScore"][];
+            jobFit?: null | components["schemas"]["PcaJobFit"];
         };
         PendingEssay: {
             questionId: string;

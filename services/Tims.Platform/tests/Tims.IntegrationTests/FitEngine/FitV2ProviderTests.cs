@@ -442,6 +442,89 @@ public sealed class FitV2ProviderTests(FitV2ProviderFixture fixture)
         Assert.Null(await _fixture.Fit.GetFitScoreAsync(candidate, vacancy)); // no provider result remains to recreate it
     }
 
+    // TIMS 2026-11-12: a scored PCA is judged on TIMS's own PCA-vs-JCA fit for the vacancy's TIMS position code, read
+    // from the stored result's scores.job_fit (migration 20261112225624 adds the attempt's job_code). A fit computed for
+    // another code (the vacancy's code changed after the assignment) is no value, never a low score. Own vacancy and
+    // candidate.
+    [Fact]
+    public async Task A_scored_pca_takes_TIMSs_job_fit_for_the_vacancys_code_and_no_value_for_another_code()
+    {
+        const string Seed =
+            """
+            INSERT INTO vacancies (id, organization_id, title, role_family, team_id, assigned_to, created_by, business_unit_id, status, deleted_at, created_at, updated_at) VALUES
+              ('7ac00000-0000-0000-0000-0000000000e7', '11111111-1111-1111-1111-111111111111', 'FIT v2 PCA job fit', NULL, NULL, NULL, 'c0000000-0000-0000-0000-000000000001', NULL, 'open', NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO job_profiles (id, organization_id, vacancy_id, fit_requirements) VALUES
+              ('9f000000-0000-0000-0000-0000000000e7', '11111111-1111-1111-1111-111111111111', '7ac00000-0000-0000-0000-0000000000e7',
+               '{"assessments":[{"instrument":"pca","use":"scored","jobCode":"194225","reason":"ajuste al puesto según TIMS"}]}');
+            INSERT INTO candidates (id, organization_id, email, first_name, last_name, years_experience, education, languages, deleted_at, created_at, updated_at) VALUES
+              ('ca000000-0000-0000-0000-0000000000e7', '11111111-1111-1111-1111-111111111111', 'prov-pca@fit.test', 'Pía', 'Puesto', 4, NULL, NULL, NULL, '2026-01-01 00:00:00', '2026-01-02 00:00:00');
+            INSERT INTO applications (id, organization_id, candidate_id, vacancy_id, status) VALUES
+              ('ab000000-0000-0000-0000-0000000000e7', '11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000e7', '7ac00000-0000-0000-0000-0000000000e7', 'active');
+            INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                purpose, job_relatedness_reason, locale, time_multiplier, provider_subject_id, provider_assignment_id,
+                instrument_version, content_version, latest_result_id, assigned_by_id, created_at, job_code) VALUES
+              ('e0000000-0000-4000-8000-0000000000e7', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-4000-8000-0000000000a0', 'ca000000-0000-0000-0000-0000000000e7', '7ac00000-0000-0000-0000-0000000000e7', 'pca', 'result_ready',
+               'selection', 'ajuste al puesto según TIMS', 'es', 1, 'f0000000-0000-4000-8000-0000000000e7', 'aa000000-0000-4000-8000-0000000000e7', '1.0', 'tims-legacy-pca', 'd0000000-0000-4000-8000-0000000000e7', 'c0000000-0000-0000-0000-000000000001', '2026-11-01 09:00:00+00', '194225');
+            INSERT INTO assessment_provider_results (id, organization_id, attempt_id, provider_result_id, result_revision,
+                result_schema, instrument, instrument_version, content_version, content_sha256, norm_version, scoring_version,
+                scoring_method, purpose, validity_status, completion, global_percentile, cefr, level, time_multiplier_applied,
+                rendered_for, rendered_level, completed_at, scored_at, scores) VALUES
+              (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'e0000000-0000-4000-8000-0000000000e7', 'd0000000-0000-4000-8000-0000000000e7', 1,
+               'PcaResultV1', 'pca', '1.0', 'tims-legacy-pca', repeat('9', 64), NULL, 'pca-scoring-1.0', 'provider', 'selection', 'valid', 'complete', NULL, NULL, NULL, 1,
+               'tenant_hr', 'full', '2026-11-02 10:00:00+00', '2026-11-02 10:00:05+00',
+               '{"competencies":[],"disc":{"primary_graph":"under_pressure","graphs":[]},"job_fit":{"job_code":"194225","analysis":"fit","status":"computed","fit":78,"job_profile":{"d":62,"i":40,"s":55,"c":70},"computed_at":"2026-11-02T10:00:04Z"}}');
+            """;
+        var candidate = Guid.Parse("ca000000-0000-0000-0000-0000000000e7");
+        var vacancy = Guid.Parse("7ac00000-0000-0000-0000-0000000000e7");
+        await _fixture.Fit.ExecuteScalarAsync(Seed);
+        await using var factory = Factory(providers: true);
+        await DrainAsync(factory, candidate, vacancy);
+
+        var row = await _fixture.Fit.GetFitScoreAsync(candidate, vacancy);
+        Assert.NotNull(row);
+        var breakdown = JsonNode.Parse(row.Breakdown)!;
+        Assert.Equal(78, breakdown["assessment"]!.GetValue<double>()); // TIMS's fit, copied
+        var pca = Entry(breakdown, "pca");
+        Assert.Equal("scored", pca["use"]!.GetValue<string>());
+        Assert.Equal("completed", pca["status"]!.GetValue<string>());
+        Assert.Equal(78, pca["score"]!.GetValue<double>());
+        Assert.Equal("194225", pca["jobCode"]!.GetValue<string>());
+        Assert.Equal("d0000000-0000-4000-8000-0000000000e7", pca["resultId"]!.GetValue<string>());
+
+        // HR re-codes the vacancy: the stored fit was computed for 194225, so it judges nothing for GC001.
+        await _fixture.Fit.ExecuteScalarAsync(
+            """
+            UPDATE job_profiles SET fit_requirements = '{"assessments":[{"instrument":"pca","use":"scored","jobCode":"GC001","reason":"ajuste al puesto según TIMS"}]}'
+             WHERE id = '9f000000-0000-0000-0000-0000000000e7';
+            SELECT public.fit_v2_request_recompute('11111111-1111-1111-1111-111111111111', 'ca000000-0000-0000-0000-0000000000e7', '7ac00000-0000-0000-0000-0000000000e7');
+            """);
+        await DrainAsync(factory, candidate, vacancy);
+        var recoded = JsonNode.Parse((await _fixture.Fit.GetFitScoreAsync(candidate, vacancy))!.Breakdown)!;
+        Assert.Null(recoded["assessment"]);
+        var stale = Entry(recoded, "pca");
+        Assert.Equal("no_value", stale["status"]!.GetValue<string>());
+        Assert.Null(stale["score"]);
+        Assert.Equal("GC001", stale["jobCode"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("lia", "194225")] // another instrument never carries a position code
+    [InlineData("pca", "19 42")] // not the contract pattern
+    [InlineData("pca", "x")]
+    public async Task An_attempts_job_code_is_pca_only_and_the_contract_pattern(string instrument, string jobCode)
+    {
+        var id = Guid.NewGuid();
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => _fixture.Fit.ExecuteScalarAsync(
+            $"""
+            INSERT INTO assessment_provider_attempts (id, organization_id, binding_id, candidate_id, vacancy_id, instrument, state,
+                purpose, job_relatedness_reason, locale, time_multiplier, assigned_by_id, job_code) VALUES
+              ('{id}', '11111111-1111-1111-1111-111111111111', 'b0000000-0000-4000-8000-0000000000a0', 'ca000000-0000-0000-0000-0000000000fa',
+               '7ac00000-0000-0000-0000-0000000000fa', '{instrument}', 'pending_create', 'selection', 'razón válida', 'es', 1,
+               'c0000000-0000-0000-0000-000000000001', '{jobCode}');
+            """));
+        Assert.Equal("ck_assessment_provider_attempts_job_code", ex.ConstraintName);
+    }
+
     // Codex ats round 13 run 2 [P1]: a FIT compute reads the provider results under FIT v2's advisory lock and writes the
     // row before it lets go. Without that lock in the erasure trigger, a compute that read the result just before the
     // erasure could write it back after the delete. Session A plays the compute (the lock under the production key, then

@@ -123,8 +123,8 @@ public static class FitAssessmentRequirementsEndpoints
         new(
             view.Assessments.Select(a => new FitAssessmentRequirementDto(
                 a.Instrument, a.Use,
-                a.Min is { } m ? new FitAssessmentMinimumDto(m.GlobalPercentile, m.Cefr, m.Level, m.Score) : null,
-                a.Weight, a.Reason)).ToList(),
+                a.Min is { } m ? new FitAssessmentMinimumDto(m.GlobalPercentile, m.Cefr, m.Level, m.Score, m.JobFit) : null,
+                a.Weight, a.Reason, a.JobCode)).ToList(),
             view.Version,
             view.Issues.Select(ToDto).ToList());
 
@@ -132,12 +132,15 @@ public static class FitAssessmentRequirementsEndpoints
         new(issue.Index, issue.Instrument, issue.Code, issue.Dropped);
 }
 
-/// <summary>One configured instrument, exactly as FIT v2 reads it.</summary>
+/// <summary>
+/// One configured instrument, exactly as FIT v2 reads it. <c>JobCode</c> is PCA's only: the vacancy's TIMS position
+/// code, against which the provider reports the PCA-vs-JCA fit (null elsewhere).
+/// </summary>
 public sealed record FitAssessmentRequirementDto(
-    string Instrument, string Use, FitAssessmentMinimumDto? Min, double? Weight, string? Reason);
+    string Instrument, string Use, FitAssessmentMinimumDto? Min, double? Weight, string? Reason, string? JobCode);
 
-/// <summary>The minimum: one field, by instrument (LIA percentile, English CEFR, ITC-IA level, quiz score).</summary>
-public sealed record FitAssessmentMinimumDto(double? GlobalPercentile, string? Cefr, int? Level, double? Score);
+/// <summary>The minimum: one field, by instrument (LIA percentile, English CEFR, ITC-IA level, quiz score, PCA job fit).</summary>
+public sealed record FitAssessmentMinimumDto(double? GlobalPercentile, string? Cefr, int? Level, double? Score, double? JobFit);
 
 /// <summary>
 /// 200: the stored array, the version to send back on the next write, and the findings (stored entries FIT ignores on a

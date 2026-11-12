@@ -277,7 +277,9 @@ public sealed record ProviderSubject(Guid SubjectId, string Status, bool HasName
 /// <see cref="Proctoring"/> is the block stored on the attempt when it was reserved (the org's settings then), sent as
 /// <c>proctoring</c>; null sends none (the instrument's default policy) and is always null for a link-out instrument.
 /// Because it comes from the attempt row, every re-send of a create carries the same block, so a settings change can
-/// never turn an idempotent retry into a 409 <c>external_ref_conflict</c>.
+/// never turn an idempotent retry into a 409 <c>external_ref_conflict</c>. <see cref="JobCode"/> (PCA only) is the
+/// vacancy's TIMS position code, sent as <c>vacancy.job_code</c>, also from the attempt row for the same reason (the
+/// Idempotency-Key is bound to the body); null sends none.
 /// </summary>
 public sealed record ProviderAssignmentRequest(
     Guid TenantId,
@@ -292,7 +294,8 @@ public sealed record ProviderAssignmentRequest(
     string ExternalRef,
     string AgeBand,
     string? InstrumentVersion = null,
-    AssessmentProctoring? Proctoring = null);
+    AssessmentProctoring? Proctoring = null,
+    string? JobCode = null);
 
 /// <summary>
 /// An assignment as the provider holds it. <see cref="ResultId"/> and the sitting timestamps are what the D17 poller

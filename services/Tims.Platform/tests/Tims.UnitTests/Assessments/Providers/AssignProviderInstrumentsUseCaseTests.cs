@@ -52,6 +52,33 @@ public sealed class AssignProviderInstrumentsUseCaseTests
         Assert.Equal(attempt.Id.ToString(), lia.ExternalRef);
     }
 
+    // TIMS 2026-11-12: a PCA carries the vacancy's TIMS position code, stored on the attempt at reserve so every re-send
+    // of its create has the same body (the Idempotency-Key is bound to it). No other instrument carries one.
+    [Fact]
+    public async Task A_pca_attempt_keeps_the_vacancys_position_code_and_sends_it_and_no_other_instrument_does()
+    {
+        _repository.Context = _repository.Context with
+        {
+            FitRequirementsJson = """{"assessments":[{"instrument":"lia","use":"scored","reason":"Análisis de datos bajo presión de tiempo","min":{"globalPercentile":40}},{"instrument":"pca","use":"scored","jobCode":"194225","reason":"Ajuste al puesto según TIMS"}]}""",
+        };
+
+        await Assign(Input(("lia", null), ("pca", null)));
+
+        var pca = _provider.Assignments.Single(a => a.Request.Instrument == "pca").Request;
+        Assert.Equal("194225", pca.JobCode);
+        Assert.Equal("194225", _repository.Attempts.Single(a => a.Instrument == "pca").JobCode);
+        Assert.Null(_provider.Assignments.Single(a => a.Request.Instrument == "lia").Request.JobCode);
+        Assert.Null(_repository.Attempts.Single(a => a.Instrument == "lia").JobCode);
+    }
+
+    [Fact]
+    public async Task An_advisory_pca_without_a_code_sends_none()
+    {
+        await Assign(Input(("pca", null)));
+
+        Assert.Null(_provider.Assignments.Single(a => a.Request.Instrument == "pca").Request.JobCode);
+    }
+
     [Fact]
     public async Task An_org_without_a_link_out_instrument_sends_no_candidate_pii()
     {

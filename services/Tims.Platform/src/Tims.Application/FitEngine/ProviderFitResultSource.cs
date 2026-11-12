@@ -72,6 +72,8 @@ public sealed class ProviderFitResultSource(IProviderAssessmentResultSource prov
             valid ? result.Cefr : null,
             valid ? result.Level : null,
             result.ContentVersion,
-            result.NormVersion);
+            result.NormVersion,
+            JobFit: valid ? result.JobFit : null,
+            JobCode: valid ? result.JobCode : null);
     }
 }
