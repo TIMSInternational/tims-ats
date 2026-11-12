@@ -115,7 +115,10 @@ public sealed class ProviderWithdrawalSweepUseCaseTests
         var healthy = _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Completed);
         _repository.WithdrawnCandidates.Add(FakeRepository.Candidate);
         await _repository.StageConsentWithdrawalAsync(FakeRepository.Org, FakeRepository.Candidate, Now, CancellationToken.None);
-        var budget = TimeSpan.FromMilliseconds(60);
+        // Wall-clock budget. It was 60 ms, and on a loaded CI runner the second pass's claim plus its one cheap call
+        // overran it (the healthy withdrawal was then deferred, not completed). 1 s keeps the same shape with room for
+        // runner pauses: the 50 transient failures (40 ms each, 2 s) or the first thrown call (2 s) still spend it.
+        var budget = TimeSpan.FromSeconds(1);
         _provider.OnListConsents = subject =>
         {
             if (!slow.Contains(subject))
@@ -123,7 +126,7 @@ public sealed class ProviderWithdrawalSweepUseCaseTests
                 return ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Success([]);
             }
 
-            Thread.Sleep(callThrows ? budget * 2 : TimeSpan.FromMilliseconds(15));
+            Thread.Sleep(callThrows ? budget * 2 : TimeSpan.FromMilliseconds(40));
             return callThrows
                 ? throw new TaskCanceledException("cancelled by the pass budget")
                 : ProviderCall<IReadOnlyList<ProviderConsentRecord>>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true));
