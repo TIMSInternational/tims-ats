@@ -873,6 +873,127 @@ public sealed class TimsAssessmentsClientTests
         Assert.Equal(ProviderFailure.ContractViolation, template.Failure!.Code);
     }
 
+    // HR report downloads: reports:read is asked for ALONE (a client without the grant keeps every other call), the URL
+    // carries format=pdf, audience=tenant_hr, the locale and the variant, and only a real PDF is accepted.
+    [Fact]
+    public async Task A_report_uses_its_own_reports_read_token_and_returns_the_pdf_bytes()
+    {
+        var result = Guid.Parse("9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b");
+        var pdf = Encoding.ASCII.GetBytes("%PDF-1.7\n% fake report body\n");
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl
+            ? Token(r.Content!.ReadAsStringAsync().Result.EndsWith("scope=reports%3Aread", StringComparison.Ordinal) ? "report-token" : "default-token")
+            : r.RequestUri!.AbsolutePath.EndsWith("/report", StringComparison.Ordinal) ? Pdf(pdf)
+            : Json(HttpStatusCode.OK, """{"data":[]}"""));
+        var client = Client();
+
+        var native = await client.GetResultReportPdfAsync(result, null, "es", CancellationToken.None);
+        var variant = await client.GetResultReportPdfAsync(result, "gd", "en", CancellationToken.None);
+        await client.ListInstrumentsAsync(CancellationToken.None);
+
+        Assert.Equal(pdf, native.Value!.Content);
+        Assert.True(variant.Ok);
+        var calls = _handler.Requests.Where(r => r.Uri != TokenUrl).ToList();
+        Assert.Equal($"https://assessments.test/v1/results/{result}/report?format=pdf&audience=tenant_hr&locale=es", calls[0].Uri);
+        Assert.Equal($"https://assessments.test/v1/results/{result}/report?format=pdf&audience=tenant_hr&locale=en&variant=gd", calls[1].Uri);
+        Assert.Equal("Bearer report-token", calls[0].Authorization);
+        Assert.Equal("Bearer default-token", calls[2].Authorization);
+        Assert.DoesNotContain(_handler.Requests.Where(r => r.Uri == TokenUrl), r => r.Body.Contains("reports%3Aread", StringComparison.Ordinal)
+            && r.Body.Contains("results%3Aread", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("application/json", "%PDF-1.7")]   // not served as a PDF
+    [InlineData("application/pdf", "<html>oops")] // served as a PDF, but is not one
+    public async Task A_report_body_that_is_not_a_pdf_is_a_contract_violation(string mediaType, string body)
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.ASCII.GetBytes(body)) { Headers = { ContentType = new(mediaType) } } });
+
+        var got = await Client().GetResultReportPdfAsync(Guid.NewGuid(), null, "es", CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, got.Failure!.Code);
+    }
+
+    [Fact]
+    public async Task A_report_larger_than_the_cap_is_refused_without_reading_it_whole()
+    {
+        var oversized = new byte[TimsAssessmentsClient.MaxReportBytes + 1];
+        "%PDF-"u8.CopyTo(oversized);
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Pdf(oversized));
+
+        var got = await Client().GetResultReportPdfAsync(Guid.NewGuid(), null, "es", CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, got.Failure!.Code);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Gone, "result_voided")]
+    [InlineData(HttpStatusCode.Forbidden, "result_not_visible")]
+    [InlineData(HttpStatusCode.UnprocessableEntity, "validation_failed")]
+    public async Task A_report_refusal_surfaces_the_problem_code(HttpStatusCode status, string code)
+    {
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : Json(status, $$"""{"type":"about:blank","title":"x","status":{{(int)status}},"code":"{{code}}"}""", "application/problem+json"));
+
+        var got = await Client().GetResultReportPdfAsync(Guid.NewGuid(), "pca", "es", CancellationToken.None);
+
+        Assert.Equal(((int?)status, code), (got.Failure!.HttpStatus, got.Failure.Code));
+    }
+
+    [Fact]
+    public async Task A_report_401_drops_the_reports_token_and_retries_once()
+    {
+        var calls = 0;
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token("token-" + calls)
+            : ++calls == 1 ? new HttpResponseMessage(HttpStatusCode.Unauthorized) : Pdf("%PDF-1.4"u8.ToArray()));
+
+        var got = await Client().GetResultReportPdfAsync(Guid.NewGuid(), null, "es", CancellationToken.None);
+
+        Assert.True(got.Ok);
+        Assert.Equal(2, _handler.Requests.Count(r => r.Uri == TokenUrl));
+    }
+
+    [Theory]
+    [InlineData("Bad Variant", "es")]
+    [InlineData(null, "nope-nope")]
+    public async Task An_off_pattern_variant_or_locale_never_reaches_the_network(string? variant, string locale)
+    {
+        var got = await Client().GetResultReportPdfAsync(Guid.NewGuid(), variant, locale, CancellationToken.None);
+
+        Assert.Equal(ProviderFailure.ContractViolation, got.Failure!.Code);
+        Assert.Empty(_handler.Requests);
+    }
+
+    [Fact]
+    public async Task The_report_list_is_the_results_pdf_variants_and_a_body_for_another_result_is_off_contract()
+    {
+        var result = Guid.Parse("9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b");
+        var body = $$"""
+            {"result_id":"{{result}}","reports":[
+              {"variant":"pca","title":"Informe PCA","formats":["pdf"],"locale":"es-CR"},
+              {"variant":"json_only","title":"Solo JSON","formats":["json"]},
+              {"variant":"gd","formats":["pdf","json"]}]}
+            """;
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, body));
+        var client = Client();
+
+        var listed = await client.ListResultReportsAsync(result, CancellationToken.None);
+        Assert.Equal([new ProviderReportOption("pca", "Informe PCA"), new ProviderReportOption("gd", null)], listed.Value);
+        Assert.Equal($"https://assessments.test/v1/results/{result}?audience=tenant_hr", _handler.Requests.Last().Uri);
+
+        var other = await client.ListResultReportsAsync(Guid.NewGuid(), CancellationToken.None);
+        Assert.Equal(ProviderFailure.ContractViolation, other.Failure!.Code);
+
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token()
+            : Json(HttpStatusCode.OK, $$"""{"result_id":"{{result}}","reports":[{"variant":"../x","formats":["pdf"]}]}"""));
+        Assert.Equal(ProviderFailure.ContractViolation, (await client.ListResultReportsAsync(result, CancellationToken.None)).Failure!.Code);
+        _handler.Respond(r => r.RequestUri!.ToString() == TokenUrl ? Token() : Json(HttpStatusCode.OK, $$"""{"result_id":"{{result}}"}"""));
+        Assert.Empty((await client.ListResultReportsAsync(result, CancellationToken.None)).Value!);
+    }
+
+    private static HttpResponseMessage Pdf(byte[] bytes) =>
+        new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) { Headers = { ContentType = new("application/pdf") } } };
+
     // D15 DSAR access: the provider's export asks for a token with subjects:export ALONE (never added to the default
     // scopes every other call carries), and its body is checked to be this subject's SubjectExport.
     [Fact]

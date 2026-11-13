@@ -113,6 +113,21 @@ public interface IAssessmentProvider
     /// <summary><c>GET /v1/results/{id}?audience=tenant_hr</c>, parsed and validated.</summary>
     Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The provider report variants the result's <c>tenant_hr</c> projection lists (<c>reports[]</c>, those offered as
+    /// PDF), from <c>GET /v1/results/{id}?audience=tenant_hr</c>; empty when it lists none (every native instrument, or a
+    /// projection below <c>full</c>). A body for another result id is off contract.
+    /// </summary>
+    Task<ProviderCall<IReadOnlyList<ProviderReportOption>>> ListResultReportsAsync(Guid resultId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>GET /v1/results/{id}/report?format=pdf&amp;audience=tenant_hr</c> (with <c>variant</c> for a provider report),
+    /// with a token for <c>reports:read</c> alone: a partner client without that grant loses only this call. The body must
+    /// be an <c>application/pdf</c> starting with <c>%PDF-</c>, within the client's report size cap.
+    /// </summary>
+    Task<ProviderCall<ProviderReportFile>> GetResultReportPdfAsync(
+        Guid resultId, string? variant, string locale, CancellationToken cancellationToken);
+
     /// <summary>Verifies <c>TIMS-Signature</c> over the raw body with the configured signing secret(s).</summary>
     WebhookSignatureCheck VerifyWebhook(string? signatureHeader, ReadOnlySpan<byte> rawBody, DateTimeOffset now);
 }

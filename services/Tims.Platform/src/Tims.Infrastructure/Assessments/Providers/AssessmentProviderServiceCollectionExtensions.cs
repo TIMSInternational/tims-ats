@@ -32,7 +32,9 @@ public static class AssessmentProviderServiceCollectionExtensions
         services.AddSingleton<ClientCredentialsTokenCache>();
         services.AddHttpClient<IAssessmentProvider, TimsAssessmentsClient>(client =>
             {
-                client.Timeout = TimeSpan.FromSeconds(30); // the per-call budget is the options' RequestTimeoutSeconds
+                // A backstop only: each call has its own budget (the options' RequestTimeoutSeconds; a report PDF
+                // TimsAssessmentsClient.ReportTimeout, as the provider may proxy its own report generator).
+                client.Timeout = TimsAssessmentsClient.ReportTimeout + TimeSpan.FromSeconds(10);
                 client.MaxResponseContentBufferSize = TimsAssessmentsClient.MaxResponseBytes;
             })
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -42,6 +44,8 @@ public static class AssessmentProviderServiceCollectionExtensions
         // AS-7 / AS-14 staff reads (catalog, attempts with results): the same repository class, over the same scoped context.
         services.AddScoped<IProviderStaffReadRepository, AssessmentProviderRepository>();
         services.AddScoped<ProviderStaffReadUseCase>();
+        services.AddScoped<IProviderReportRepository, AssessmentProviderRepository>();
+        services.AddScoped<ProviderReportUseCase>();
         services.AddScoped<AssignProviderInstrumentsUseCase>();
         services.AddScoped<ProviderProctoringSettingsUseCase>();
         services.AddScoped<CancelProviderAttemptUseCase>();

@@ -918,6 +918,24 @@ public sealed partial class ProviderEndpointTests(ProviderEndpointFixture fixtur
             return Task.FromResult(ProviderCall<ParsedProviderResult>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true)));
         }
 
+        /// <summary>The variants every result lists (a PCA-like catalogue of two).</summary>
+        public IReadOnlyList<ProviderReportOption> ReportVariants { get; set; } =
+            [new ProviderReportOption("pca", "Informe PCA"), new ProviderReportOption("gd", "Guía de desarrollo")];
+
+        public Task<ProviderCall<IReadOnlyList<ProviderReportOption>>> ListResultReportsAsync(
+            Guid resultId, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("list_reports:" + resultId);
+            return Task.FromResult(ProviderCall<IReadOnlyList<ProviderReportOption>>.Success(ReportVariants));
+        }
+
+        public Task<ProviderCall<ProviderReportFile>> GetResultReportPdfAsync(
+            Guid resultId, string? variant, string locale, CancellationToken cancellationToken)
+        {
+            Calls.Enqueue("report:" + resultId + ":" + (variant ?? "native") + ":" + locale);
+            return Task.FromResult(ProviderCall<ProviderReportFile>.Success(new ProviderReportFile("%PDF-1.7 endpoint test"u8.ToArray())));
+        }
+
         public WebhookSignatureCheck VerifyWebhook(string? signatureHeader, ReadOnlySpan<byte> rawBody, DateTimeOffset now) =>
             WebhookSignature.Verify(signatureHeader, rawBody, [WebhookSecret], now);
     }

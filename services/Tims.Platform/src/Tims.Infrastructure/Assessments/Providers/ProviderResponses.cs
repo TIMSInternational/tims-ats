@@ -216,6 +216,47 @@ internal static partial class ProviderResponses
     /// <c>SubjectExport</c>: the subject named is the one asked for, <c>generated_at</c> is a timestamp, and the six
     /// sections are arrays. Kept verbatim (the provider's own document); unknown extra fields are kept too.
     /// </summary>
+    /// <summary>
+    /// The PDF report variants a result's projection lists (<c>reports[]</c>: <c>variant</c> on the contract pattern, an
+    /// optional <c>title</c>, <c>formats</c> naming <c>pdf</c>). A missing <c>reports</c> is none; a body for another
+    /// result, or a malformed entry, is off contract (null).
+    /// </summary>
+    public static IReadOnlyList<ProviderReportOption>? ReportOptions(JsonElement root, Guid resultId)
+    {
+        if (root.ValueKind != JsonValueKind.Object || GuidOf(root, "result_id") != resultId)
+        {
+            return null;
+        }
+
+        if (!root.TryGetProperty("reports", out var reports) || reports.ValueKind == JsonValueKind.Null)
+        {
+            return [];
+        }
+
+        if (reports.ValueKind != JsonValueKind.Array || reports.GetArrayLength() > 64)
+        {
+            return null;
+        }
+
+        var options = new List<ProviderReportOption>();
+        foreach (var report in reports.EnumerateArray())
+        {
+            if (report.ValueKind != JsonValueKind.Object || Str(report, "variant", 64) is not { } variant
+                || !ProviderReportUseCase.VariantPattern.IsMatch(variant)
+                || !report.TryGetProperty("formats", out var formats) || formats.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            if (formats.EnumerateArray().Any(f => f.ValueKind == JsonValueKind.String && f.GetString() == "pdf"))
+            {
+                options.Add(new ProviderReportOption(variant, Str(report, "title", 200)));
+            }
+        }
+
+        return options;
+    }
+
     public static ProviderHeldExport? SubjectExport(JsonElement root, Guid subjectId)
     {
         if (root.ValueKind != JsonValueKind.Object

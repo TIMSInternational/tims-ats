@@ -30,6 +30,11 @@ internal sealed class FakeProvider : IAssessmentProvider
 
     public Func<Guid, ProviderCall<ParsedProviderResult>>? OnGetResult { get; set; }
 
+    public Func<Guid, ProviderCall<IReadOnlyList<ProviderReportOption>>>? OnListReports { get; set; }
+
+    /// <summary>(result id, variant, locale) → the report call's answer.</summary>
+    public Func<Guid, string?, string, ProviderCall<ProviderReportFile>>? OnReportPdf { get; set; }
+
     public Guid TenantId { get; set; } = Guid.Parse("3f1d2c4b-8a6e-4f2a-9c1d-5b7e8a9f0c12");
 
     public Guid SubjectId { get; set; } = Guid.Parse("7a2b9c3d-1e4f-4a5b-8c6d-9e0f1a2b3c4d");
@@ -304,6 +309,22 @@ internal sealed class FakeProvider : IAssessmentProvider
         Calls.Add("result");
         return Task.FromResult(OnGetResult?.Invoke(resultId)
             ?? ProviderCall<ParsedProviderResult>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, true)));
+    }
+
+    public Task<ProviderCall<IReadOnlyList<ProviderReportOption>>> ListResultReportsAsync(
+        Guid resultId, CancellationToken cancellationToken)
+    {
+        Calls.Add("list_reports");
+        return Task.FromResult(OnListReports?.Invoke(resultId)
+            ?? ProviderCall<IReadOnlyList<ProviderReportOption>>.Success([]));
+    }
+
+    public Task<ProviderCall<ProviderReportFile>> GetResultReportPdfAsync(
+        Guid resultId, string? variant, string locale, CancellationToken cancellationToken)
+    {
+        Calls.Add("report:" + (variant ?? "native") + ":" + locale);
+        return Task.FromResult(OnReportPdf?.Invoke(resultId, variant, locale)
+            ?? ProviderCall<ProviderReportFile>.Success(new ProviderReportFile("%PDF-1.4 fake"u8.ToArray())));
     }
 
     public WebhookSignatureCheck VerifyWebhook(string? signatureHeader, ReadOnlySpan<byte> rawBody, DateTimeOffset now) =>

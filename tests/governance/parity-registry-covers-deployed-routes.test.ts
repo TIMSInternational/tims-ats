@@ -578,7 +578,13 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'assessment:update at ORG scope, and their only effect is the block the remote provider receives with each new ' +
       'assignment: covered by ProviderEndpointTests.Settings (401/403 for the reader and the own-scope leader, strict ' +
       'bodies, the identity check refused while its platform flag is off, tenant isolation, the next assignment carrying ' +
-      'the block) and Assessments/AssessmentProviderProctoringTests (RLS, grants, audit, the attempt snapshot).',
+      'the block) and Assessments/AssessmentProviderProctoringTests (RLS, grants, audit, the attempt snapshot). ' +
+      'The two HR report reads (the PDF reports an attempt\'s latest result offers, and one report as application/pdf) ' +
+      'gate on assessment:read at company scope or wider (D6: a narrower reader is refused even on its own vacancy) ' +
+      'and proxy the remote provider\'s getResultReport with a reports:read token: covered by ' +
+      'ProviderEndpointTests.Reports (the dark flag, D6 403, the list, the PDF headers and audit row, a voided result, ' +
+      'an unknown attempt, an off-pattern variant or locale), Assessments/TimsAssessmentsClientTests (the scope asked ' +
+      'alone, the PDF checks, the size cap, the refusals) and Tims.UnitTests ProviderReportUseCaseTests.',
     routes: [
       'GET /assessments/provider-catalog',
       'GET /assessments/provider-attempts',
@@ -595,6 +601,8 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure',
       'GET /assessments/provider-settings/proctoring',
       'PUT /assessments/provider-settings/proctoring',
+      'GET /assessments/provider-attempts/{attemptId}/reports',
+      'GET /assessments/provider-attempts/{attemptId}/report',
     ],
   },
 ];

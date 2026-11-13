@@ -38,6 +38,14 @@ public sealed class TimsAssessmentsClient(
     public const string HttpClientName = "tims-assessments";
     public const int MaxResponseBytes = 262_144;
 
+    /// <summary>The largest report PDF accepted (read as a stream, never buffered whole by the HTTP client).</summary>
+    public const int MaxReportBytes = 20 * 1024 * 1024;
+
+    /// <summary>A report's budget: longer than a JSON call's, since the provider may generate the PDF upstream.</summary>
+    public static readonly TimeSpan ReportTimeout = TimeSpan.FromSeconds(90);
+
+    private static readonly byte[] PdfMagic = "%PDF-"u8.ToArray();
+
     /// <summary>
     /// The longest <c>Retry-After</c> an <c>idempotency_key_in_use</c> is waited out in place (once). Longer, the failure
     /// goes back to the caller: a webhook, a launch or an assign must not hold its request that long. A 409 without
@@ -417,6 +425,122 @@ public sealed class TimsAssessmentsClient(
     public Task<ProviderCall<ParsedProviderResult>> GetResultAsync(Guid resultId, CancellationToken cancellationToken) =>
         SendAsync(HttpMethod.Get, $"v1/results/{resultId:D}?audience=tenant_hr", null, null, "get_result",
             root => ProviderResultParser.TryParse(root, out var parsed, out _) ? parsed : null, cancellationToken);
+
+    public Task<ProviderCall<IReadOnlyList<ProviderReportOption>>> ListResultReportsAsync(
+        Guid resultId, CancellationToken cancellationToken) =>
+        SendAsync(HttpMethod.Get, $"v1/results/{resultId:D}?audience=tenant_hr", null, null, "list_result_reports",
+            root => ProviderResponses.ReportOptions(root, resultId), cancellationToken);
+
+    public async Task<ProviderCall<ProviderReportFile>> GetResultReportPdfAsync(
+        Guid resultId, string? variant, string locale, CancellationToken cancellationToken)
+    {
+        if (!ProviderFormats.IsLocale(locale) || (variant is not null && !ProviderReportUseCase.VariantPattern.IsMatch(variant)))
+        {
+            return ProviderCall<ProviderReportFile>.Fail(ProviderFailure.Local(ProviderFailure.ContractViolation, transient: false));
+        }
+
+        if (!IsConfigured)
+        {
+            return ProviderCall<ProviderReportFile>.Fail(ProviderFailure.Local(ProviderFailure.Unconfigured, transient: false));
+        }
+
+        var path = $"v1/results/{resultId:D}/report?format=pdf&audience=tenant_hr&locale={Uri.EscapeDataString(locale)}"
+            + (variant is null ? string.Empty : $"&variant={variant}");
+        var uri = new Uri(_options.ResolvedBaseUri, path);
+        const string operation = "get_result_report";
+        var unauthorizedRetried = false;
+        while (true)
+        {
+            var token = await tokens.GetTokenAsync(AssessmentProviderOptions.ReportScope, cancellationToken).ConfigureAwait(false);
+            if (token is null)
+            {
+                return ProviderCall<ProviderReportFile>.Fail(ProviderFailure.Local(ProviderFailure.TokenUnavailable, transient: true));
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/pdf"));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/problem+json", 0.5));
+            HttpStatusCode status;
+            string? mediaType;
+            byte[]? bytes;
+            TimeSpan? retryAfter;
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(ReportTimeout);
+                using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
+                    .ConfigureAwait(false);
+                status = response.StatusCode;
+                mediaType = response.Content.Headers.ContentType?.MediaType;
+                retryAfter = ProviderResponses.RetryAfter(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+                var cap = (int)status is >= 200 and < 300 ? MaxReportBytes : 65_536;
+                bytes = await ReadCappedAsync(response.Content, cap, timeout.Token).ConfigureAwait(false);
+            }
+            catch (HttpRequestException)
+            {
+                logger.LogWarning("TIMS Assessments {Operation} unreachable", operation);
+                return ProviderCall<ProviderReportFile>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, transient: true));
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning("TIMS Assessments {Operation} timed out", operation);
+                return ProviderCall<ProviderReportFile>.Fail(ProviderFailure.Local(ProviderFailure.Unavailable, transient: true));
+            }
+
+            if (status == HttpStatusCode.Unauthorized && !unauthorizedRetried)
+            {
+                unauthorizedRetried = true;
+                tokens.Invalidate(AssessmentProviderOptions.ReportScope);
+                continue;
+            }
+
+            if ((int)status is >= 200 and < 300)
+            {
+                if (bytes is null || !string.Equals(mediaType, "application/pdf", StringComparison.OrdinalIgnoreCase)
+                    || !bytes.AsSpan().StartsWith(PdfMagic))
+                {
+                    logger.LogWarning("TIMS Assessments {Operation} returned an off-contract body", operation);
+                    return ProviderCall<ProviderReportFile>.Fail(
+                        ProviderFailure.Local(ProviderFailure.ContractViolation, transient: false));
+                }
+
+                return ProviderCall<ProviderReportFile>.Success(new ProviderReportFile(bytes));
+            }
+
+            logger.LogWarning("TIMS Assessments {Operation} failed with {Status}", operation, (int)status);
+            var text = bytes is null ? string.Empty : Encoding.UTF8.GetString(bytes);
+            return ProviderCall<ProviderReportFile>.Fail(
+                status == HttpStatusCode.Unauthorized
+                    ? new ProviderFailure(401, "unauthorized", false, [])
+                    : ProviderResponses.Problem((int)status, text, retryAfter));
+        }
+    }
+
+    /// <summary>The body, or null when it is larger than <paramref name="cap"/> bytes (never read past the cap).</summary>
+    private static async Task<byte[]?> ReadCappedAsync(HttpContent content, int cap, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is { } declared && declared > cap)
+        {
+            return null;
+        }
+
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81_920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > cap)
+            {
+                return null;
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
+    }
 
     public WebhookSignatureCheck VerifyWebhook(string? signatureHeader, ReadOnlySpan<byte> rawBody, DateTimeOffset now) =>
         WebhookSignature.Verify(signatureHeader, rawBody, _options.SigningSecrets, now);

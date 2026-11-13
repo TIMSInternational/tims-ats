@@ -22,6 +22,12 @@ public sealed class AssessmentProviderOptions
     public const string ExportScope = "subjects:export";
 
     /// <summary>
+    /// The report downloads' scope, requested ALONE for those calls like <see cref="ExportScope"/>, so a partner client
+    /// provisioned without it keeps every other call (a token request for an ungranted scope fails as a whole).
+    /// </summary>
+    public const string ReportScope = "reports:read";
+
+    /// <summary>
     /// The API base URL: an https origin or an https base path, e.g. <c>https://www.timssuite.com/api</c> (owner default
     /// D18: <c>/v1</c> stays mounted at <c>/api/v1</c>). Every call path (<c>v1/…</c>) is joined RELATIVE to it, so a
     /// base path is kept; a trailing slash is optional. Credentials, a query or a fragment make it invalid.
