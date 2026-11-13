@@ -162,7 +162,8 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
                 AgeBand = attempt.AgeBand,
                 // The vacancy's position code as of this reserve (PCA only): every create of this attempt is built from it.
                 JobCode = attempt.Instrument == ProviderInstruments.Pca ? attempt.JobCode : null,
-                InstrumentVersion = pinnedVersion,
+                // The vacancy's pin; for its first assignment, the version the catalog says must be named (or none).
+                InstrumentVersion = pinnedVersion ?? attempt.CatalogVersion,
                 RequiredConsents = [],
                 AssignedById = actorId,
                 CreatedAt = timestamp,

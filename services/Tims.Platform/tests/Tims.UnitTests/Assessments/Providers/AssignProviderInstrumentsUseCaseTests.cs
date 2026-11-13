@@ -52,6 +52,69 @@ public sealed class AssignProviderInstrumentsUseCaseTests
         Assert.Equal(attempt.Id.ToString(), lia.ExternalRef);
     }
 
+    // ── the version a vacancy's FIRST assignment names (walkthrough 2026-11-13: ITC-IA, offered only as a beta, was
+    // refused with instrument_version_not_available because the ATS named none and the provider serves a beta only
+    // when named) ──────────────────────────────────────────────────────────────────────────────────────────────
+
+    private static ProviderCatalogVersion V(string version, string status, bool selection) =>
+        new(version, status, "native", selection, ["es"], ["assessment"]);
+
+    private void CatalogWith(string instrument, params ProviderCatalogVersion[] versions) =>
+        _provider.CatalogResult = ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>.Success(
+            ProviderInstruments.All
+                .Select(i => i == instrument
+                    ? new ProviderCatalogInstrument(i, versions)
+                    : new ProviderCatalogInstrument(i, [V("1.0", "ga", true)]))
+                .ToList());
+
+    private void ListItciaOnTheVacancy() =>
+        _repository.Context = _repository.Context with
+        {
+            FitRequirementsJson =
+                """{"assessments":[{"instrument":"lia","use":"scored","reason":"Análisis de datos bajo presión de tiempo"},{"instrument":"itcia","use":"scored","reason":"Juicio sobre fuentes y resultados de IA"}]}""",
+        };
+
+    [Fact]
+    public async Task A_beta_only_instrument_names_its_beta_version_on_the_vacancys_first_assignment()
+    {
+        ListItciaOnTheVacancy();
+        CatalogWith("itcia", V("1.0", "beta", true));
+
+        var result = await Assign(Input(("itcia", null), ("lia", null)));
+
+        Assert.Equal(ProviderAssignOutcome.Ok, result.Outcome);
+        Assert.Equal("1.0", _provider.Assignments.Single(a => a.Request.Instrument == "itcia").Request.InstrumentVersion);
+        // The attempt row carries it, so every re-send of the create and every later candidate of the vacancy match.
+        Assert.Equal("1.0", _repository.Attempts.Single(a => a.Instrument == "itcia").InstrumentVersion);
+        // A GA instrument still names none: the provider picks its default, as before.
+        Assert.Null(_provider.Assignments.Single(a => a.Request.Instrument == "lia").Request.InstrumentVersion);
+    }
+
+    [Fact]
+    public async Task A_failed_catalog_read_names_no_version_and_the_assignment_still_goes_ahead()
+    {
+        ListItciaOnTheVacancy();
+        _provider.CatalogResult = ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>.Fail(
+            ProviderFailure.Local(ProviderFailure.ContractViolation, transient: true));
+
+        var result = await Assign(Input(("itcia", null)));
+
+        Assert.Equal(ProviderAssignOutcome.Ok, result.Outcome);
+        Assert.Null(_provider.Assignments.Single().Request.InstrumentVersion);
+    }
+
+    [Fact]
+    public async Task The_vacancys_pin_wins_over_the_catalog()
+    {
+        ListItciaOnTheVacancy();
+        CatalogWith("itcia", V("2.0", "beta", true), V("1.0", "beta", true));
+        _repository.PinnedVersions["itcia"] = "1.0";
+
+        await Assign(Input(("itcia", null)));
+
+        Assert.Equal("1.0", _provider.Assignments.Single().Request.InstrumentVersion);
+    }
+
     // TIMS 2026-11-12: a PCA carries the vacancy's TIMS position code, stored on the attempt at reserve so every re-send
     // of its create has the same body (the Idempotency-Key is bound to it). No other instrument carries one.
     [Fact]
@@ -244,7 +307,8 @@ public sealed class AssignProviderInstrumentsUseCaseTests
         var result = await Assign(Input(("lia", null)));
 
         Assert.Equal(ProviderAssignOutcome.ConsentWithdrawn, result.Outcome);
-        Assert.Empty(_provider.Calls);
+        // Only the catalog read (the version a first assignment names): nothing is created or sent.
+        Assert.Equal(["catalog"], _provider.Calls);
     }
 
     [Fact]
@@ -523,7 +587,8 @@ public sealed class AssignProviderInstrumentsUseCaseTests
         var result = await Assign(Input(("lia", null)));
 
         Assert.Equal(ProviderAssignOutcome.InstrumentNotEnabled, result.Outcome);
-        Assert.Empty(_provider.Calls);
+        // Only the catalog read (the version a first assignment names): nothing is created or sent.
+        Assert.Equal(["catalog"], _provider.Calls);
         Assert.Empty(_repository.Attempts);
     }
 

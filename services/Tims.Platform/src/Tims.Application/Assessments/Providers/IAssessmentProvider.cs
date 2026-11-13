@@ -251,6 +251,27 @@ public sealed record ProviderCatalogInstrument(string Instrument, IReadOnlyList<
     /// <summary>Offered for hiring: some GA or beta version allows purpose <c>selection</c>.</summary>
     public bool OfferedForSelection =>
         Versions.Any(v => v.SelectionAllowed && v.Status is "ga" or "beta");
+
+    /// <summary>
+    /// The version a new assignment must NAME so the provider serves one open for hiring, or null to name none. The
+    /// provider picks its first GA version when none is named and serves a beta only when named (contract
+    /// <c>createAssignment</c>): so null when that default allows selection, else the first GA version that does, else
+    /// the first beta that does. Without it, an instrument offered only as a beta was refused on its first assignment
+    /// (<c>instrument_version_not_available</c>) although the catalog offered it.
+    /// </summary>
+    public string? VersionToName
+    {
+        get
+        {
+            if (Versions.FirstOrDefault(v => v.Status == "ga") is { SelectionAllowed: true })
+            {
+                return null;
+            }
+
+            var open = Versions.Where(v => v.SelectionAllowed && v.Status is "ga" or "beta").ToList();
+            return (open.FirstOrDefault(v => v.Status == "ga") ?? open.FirstOrDefault())?.InstrumentVersion;
+        }
+    }
 }
 
 /// <summary>
@@ -288,7 +309,8 @@ public sealed record ProviderSubject(Guid SubjectId, string Status, bool HasName
 /// carry the adjustment only (multiplier + aids), never its reason. <see cref="AgeBand"/> is the attested band sent as
 /// <c>age_attestation</c> (required by the amended contract), never an age or a date of birth.
 /// <see cref="InstrumentVersion"/> is the version the vacancy is already pinned to (design §6.3: every candidate of a
-/// vacancy sits the same version), sent as <c>instrument_version</c>; null for the vacancy's first assignment.
+/// vacancy sits the same version), sent as <c>instrument_version</c>. A vacancy's first assignment names one only when
+/// the provider would not serve it by default (<see cref="ProviderCatalogInstrument.VersionToName"/>), else null.
 /// <see cref="Proctoring"/> is the block stored on the attempt when it was reserved (the org's settings then), sent as
 /// <c>proctoring</c>; null sends none (the instrument's default policy) and is always null for a link-out instrument.
 /// Because it comes from the attempt row, every re-send of a create carries the same block, so a settings change can

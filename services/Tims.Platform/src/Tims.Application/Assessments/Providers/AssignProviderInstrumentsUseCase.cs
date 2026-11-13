@@ -157,6 +157,14 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
         // already assigned, and never turns a retried create into a 409 external_ref_conflict.
         var proctoring = (await _repository.GetProctoringSettingsAsync(organizationId, cancellationToken).ConfigureAwait(false))
             ?.Settings;
+        // The version a vacancy's FIRST assignment must name (a beta, or a GA other than the provider's default): read
+        // once from the catalog. A later assignment takes the vacancy's pin at reserve. A failed read names none, which is
+        // what every assignment sent before: no new way for an assignment to fail.
+        var catalog = await _provider.ListInstrumentsAsync(cancellationToken).ConfigureAwait(false);
+        var versionToName = catalog.Ok
+            ? catalog.Value!.GroupBy(i => i.Instrument, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First().VersionToName, StringComparer.Ordinal)
+            : new Dictionary<string, string?>(StringComparer.Ordinal);
         var attempts = new List<NewAttempt>();
         foreach (var item in input.Instruments)
         {
@@ -173,7 +181,8 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             attempts.Add(new NewAttempt(
                 item.Instrument, reason, locale, input.TimeMultiplier, input.Aids, input.ExpiresAt, input.AgeBand,
                 AssessmentProctoring.ForAssignment(item.Instrument, proctoring, identityCheckAllowed),
-                item.Instrument == ProviderInstruments.Pca ? pcaJobCode : null));
+                item.Instrument == ProviderInstruments.Pca ? pcaJobCode : null,
+                versionToName.GetValueOrDefault(item.Instrument)));
         }
 
         var reserved = await _repository.ReserveAttemptsAsync(

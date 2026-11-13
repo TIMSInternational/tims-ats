@@ -716,7 +716,8 @@ public sealed record AssignmentContext(
 /// </param>
 public sealed record NewAttempt(
     string Instrument, string Reason, string Locale, decimal TimeMultiplier, IReadOnlyList<string> Aids,
-    DateTimeOffset? ExpiresAt, string? AgeBand = null, AssessmentProctoring? Proctoring = null, string? JobCode = null)
+    DateTimeOffset? ExpiresAt, string? AgeBand = null, AssessmentProctoring? Proctoring = null, string? JobCode = null,
+    string? CatalogVersion = null)
 {
     /// <summary>
     /// True when an open attempt already carries exactly these terms: the accommodation (time multiplier and aids, as

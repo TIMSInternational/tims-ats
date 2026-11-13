@@ -57,9 +57,17 @@ internal sealed class FakeProvider : IAssessmentProvider
             ?? ProviderCall<ProviderConsentTemplate>.Success(Template(purpose, locale)));
     }
 
+    /// <summary>Replaces the catalog answer (default: every instrument GA, MI not for selection).</summary>
+    public ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>? CatalogResult { get; set; }
+
     public Task<ProviderCall<IReadOnlyList<ProviderCatalogInstrument>>> ListInstrumentsAsync(CancellationToken cancellationToken)
     {
         Calls.Add("catalog");
+        if (CatalogResult is { } result)
+        {
+            return Task.FromResult(result);
+        }
+
         IReadOnlyList<ProviderCatalogInstrument> catalog = ProviderInstruments.All
             .Select(i => new ProviderCatalogInstrument(i, [new ProviderCatalogVersion("1.0", "ga", "native", i != ProviderInstruments.Mi, ["es"], ["assessment"])]))
             .ToList();
@@ -436,7 +444,7 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             // Mirrors the real repository: a new attempt takes the vacancy's pinned version at reserve.
             var row = new AttemptRow(Guid.NewGuid(), organizationId, candidateId, vacancyId, attempt.Instrument,
                 ProviderAttemptStates.PendingCreate, attempt.Reason, attempt.Locale, attempt.TimeMultiplier, attempt.Aids,
-                attempt.ExpiresAt, null, null, PinnedVersions.GetValueOrDefault(attempt.Instrument), null, [], null, null, true,
+                attempt.ExpiresAt, null, null, PinnedVersions.GetValueOrDefault(attempt.Instrument) ?? attempt.CatalogVersion, null, [], null, null, true,
                 AgeBand: attempt.AgeBand,
                 Proctoring: ProviderInstruments.IsLinkOut(attempt.Instrument) ? null : attempt.Proctoring,
                 JobCode: attempt.Instrument == ProviderInstruments.Pca ? attempt.JobCode : null);

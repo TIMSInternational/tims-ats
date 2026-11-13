@@ -186,6 +186,35 @@ public sealed class AssessmentProviderProctoringTests(AssessmentProviderSchemaFi
             $"SELECT job_code IS NULL FROM assessment_provider_attempts WHERE candidate_id = '{candidate}' AND instrument = 'lia'"));
     }
 
+    // Walkthrough 2026-11-13: a vacancy's FIRST attempt stores the version the catalog says must be named (a beta the
+    // provider serves only when named), so its create names it; a later attempt of the same vacancy keeps that pin even
+    // when the catalog would now name another.
+    [Fact]
+    public async Task A_first_reserve_stores_the_catalog_version_and_a_later_reserve_keeps_the_vacancy_pin()
+    {
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_bindings SET enabled_instruments = ARRAY['lia','english','pca','itcia'] WHERE id = '{AssessmentProviderSchemaFixture.BindingA}'");
+        var binding = new ProviderBindingRow(AssessmentProviderSchemaFixture.BindingA, AssessmentProviderSchemaFixture.OrgA,
+            AssessmentProviderSchemaFixture.TenantA, ["lia", "english", "pca", "itcia"], "es");
+        async Task<string?> ReserveAsync(Guid candidate, string? catalogVersion)
+        {
+            await using var db = fixture.NewContext();
+            var reserved = await new AssessmentProviderRepository(db).ReserveAttemptsAsync(AssessmentProviderSchemaFixture.OrgA,
+                Guid.NewGuid(), binding, candidate, AssessmentProviderSchemaFixture.VacancyA,
+                [new("itcia", "Juicio sobre fuentes y resultados de IA", "es", 1m, [], null, ProviderAgeBands.Adult, null, null, catalogVersion)],
+                DateTimeOffset.UtcNow, CancellationToken.None);
+            return reserved.Attempts.Single().InstrumentVersion;
+        }
+
+        var first = await NewCandidateAsync();
+        Assert.Equal("1.0", await ReserveAsync(first, "1.0"));
+        Assert.Equal("1.0", await fixture.ScalarAsync(
+            $"SELECT instrument_version FROM assessment_provider_attempts WHERE candidate_id = '{first}' AND instrument = 'itcia'"));
+
+        var second = await NewCandidateAsync();
+        Assert.Equal("1.0", await ReserveAsync(second, "2.0"));
+    }
+
     [Fact]
     public async Task A_half_written_proctoring_snapshot_is_refused_by_the_table()
     {
