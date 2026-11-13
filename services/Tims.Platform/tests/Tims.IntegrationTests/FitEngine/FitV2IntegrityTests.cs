@@ -434,6 +434,7 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         Assert.Equal(1, (await _fixture.GetRecomputeRequestAsync(second, seed.Vacancy))!.Value.Seq);
         Assert.Null(await _fixture.GetRecomputeRequestAsync(noRow, seed.Vacancy)); // nothing stale without a row
         Assert.Null(await _fixture.GetRecomputeRequestAsync(other.Candidate, other.Vacancy));
+        Assert.Null(await _fixture.GetRecomputeRequestAsync(other.Candidate, seed.Vacancy)); // a row of ANOTHER vacancy
 
         // Re-writing the same value (or touching another column) enqueues nothing more.
         await SqlAsync("UPDATE job_profiles SET fit_requirements = fit_requirements WHERE vacancy_id = @v", ("v", seed.Vacancy));
