@@ -160,7 +160,11 @@ public sealed class FitEngineFixture : IAsyncLifetime
             await role.ExecuteNonQueryAsync();
         }
 
-        foreach (var sql in new[] { SchemaSql, RlsSql, IdentitySeedSql, FitEngineSeedSql, FitV2SeedSql, FitV2IntegrityMigrationSql })
+        foreach (var sql in new[]
+                 {
+                     SchemaSql, RlsSql, IdentitySeedSql, FitEngineSeedSql, FitV2SeedSql, FitV2IntegrityMigrationSql,
+                     FitV2RequirementsRecomputeMigrationSql,
+                 })
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
@@ -174,6 +178,13 @@ public sealed class FitEngineFixture : IAsyncLifetime
     /// </summary>
     public static string FitV2IntegrityMigrationSql =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "prisma-migrations", "20261109100000_fit_v2_integrity.sql"));
+
+    /// <summary>
+    /// The Prisma migration 20261113090000_fit_v2_requirements_recompute, verbatim (a requirements edit enqueues a
+    /// recompute for every FIT row of the vacancy). Applied after the integrity migration, as in prod.
+    /// </summary>
+    public static string FitV2RequirementsRecomputeMigrationSql =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "prisma-migrations", "20261113090000_fit_v2_requirements_recompute.sql"));
 
     /// <summary>The recompute request for a (candidate, vacancy) via superuser: its sequence and attempts, or null.</summary>
     public async Task<(long Seq, int Attempts, string? LastError)?> GetRecomputeRequestAsync(Guid candidateId, Guid vacancyId)

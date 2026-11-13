@@ -426,10 +426,12 @@ answered by someone who knows the job) and TIMS compares each candidate's PCA wi
   `computed` fit is a value. A scored PCA's fit is TIMS's percentage (or the meet-or-exceed curve on `min.jobFit`); a
   gate compares it with `min.jobFit`. A fit computed for another code than the vacancy's current one (HR re-coded the
   vacancy) is `no_value`, never a low score. The breakdown entry names the code (`jobCode`).
-- **Known gap (Codex ats run 1 [P1], not fixed):** saving the vacancy's requirements does not queue a recompute (the
-  editor's role cannot call `fit_v2_request_recompute`; every requirement edit behaves this way). After re-coding a
-  vacancy, stored FIT rows keep the old PCA score until HR runs Compute Rankings or another result arrives. Fix: a
-  SECURITY DEFINER trigger on `job_profiles.fit_requirements` that enqueues each existing row of the vacancy.
+- **Requirement edits re-score (Codex ats run 2 [P1], fixed):** saving the vacancy's requirements (re-coding the PCA
+  position, a minimum, a weight or a use) enqueues, in the same transaction, a recompute for every candidate holding a
+  FIT row for the vacancy: the SECURITY DEFINER trigger `fit_v2_requirements_changed` on `job_profiles`
+  (`packages/db/prisma/migrations/20261113090000_fit_v2_requirements_recompute`, psql after
+  `20261109100000_fit_v2_integrity`). It fires for every writer and only when the stored value changed; the queue's
+  worker then re-scores the rows, so a PCA judged on the old code's fit shows `no_value` within one drain.
 - **Weights.** HR sets each scored test's relative weight in the vacancy editor (the per-instrument `weight` FIT v2
   always read; the editor now exposes it). The five dimension weights stay on the role family (Settings → FIT weights).
   TIMS is to supply the percentages; nothing is defaulted on its behalf.

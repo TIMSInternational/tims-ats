@@ -414,6 +414,58 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         Assert.Equal(2, await _fixture.ExecuteScalarAsync("SELECT norm_sample_size FROM assessment_results WHERE assignment_id = @a", ("a", assignment)));
     }
 
+    // ── Codex ats run 2 [P1] (20261113090000_fit_v2_requirements_recompute): a requirements edit re-scores the vacancy ──
+    [Fact]
+    public async Task A_requirements_edit_enqueues_a_recompute_for_every_fit_row_of_the_vacancy_and_nothing_else()
+    {
+        var seed = await SeedQuizAsync(v2: true, normalized: 80);
+        var second = await SeedCandidateAsync();
+        var noRow = await SeedCandidateAsync();
+        var other = await SeedQuizAsync(v2: true, normalized: 60); // another vacancy's FIT row
+        await SeedFitRowAsync(seed.Candidate, seed.Vacancy);
+        await SeedFitRowAsync(second, seed.Vacancy);
+        await SeedFitRowAsync(other.Candidate, other.Vacancy);
+        await SqlAsync("DELETE FROM fit_recompute_requests WHERE vacancy_id IN (@v, @w)", ("v", seed.Vacancy), ("w", other.Vacancy));
+
+        await SqlAsync(
+            "UPDATE job_profiles SET fit_requirements = '{\"assessments\":[{\"instrument\":\"native_quiz\",\"use\":\"gate\",\"min\":{\"normalized\":50}}]}' WHERE vacancy_id = @v",
+            ("v", seed.Vacancy));
+        Assert.Equal(1, (await _fixture.GetRecomputeRequestAsync(seed.Candidate, seed.Vacancy))!.Value.Seq);
+        Assert.Equal(1, (await _fixture.GetRecomputeRequestAsync(second, seed.Vacancy))!.Value.Seq);
+        Assert.Null(await _fixture.GetRecomputeRequestAsync(noRow, seed.Vacancy)); // nothing stale without a row
+        Assert.Null(await _fixture.GetRecomputeRequestAsync(other.Candidate, other.Vacancy));
+
+        // Re-writing the same value (or touching another column) enqueues nothing more.
+        await SqlAsync("UPDATE job_profiles SET fit_requirements = fit_requirements WHERE vacancy_id = @v", ("v", seed.Vacancy));
+        await SqlAsync("UPDATE job_profiles SET disc_targets = disc_targets WHERE vacancy_id = @v", ("v", seed.Vacancy));
+        Assert.Equal(1, (await _fixture.GetRecomputeRequestAsync(seed.Candidate, seed.Vacancy))!.Value.Seq);
+
+        // The C# requirements writer (app_tenant under TenantScope) enqueues through the same trigger.
+        await using (var db = _fixture.NewWriteContext())
+        {
+            Assert.NotNull(await new FitEngineWriteUseCase(new FitEngineWriteRepository(db)).UpdateFitRequirementsAsync(
+                Org, seed.Vacancy,
+                JsonNode.Parse("""{"assessments":[{"instrument":"native_quiz","use":"scored","weight":2}]}"""),
+                Now, CancellationToken.None));
+        }
+
+        Assert.Equal(2, (await _fixture.GetRecomputeRequestAsync(seed.Candidate, seed.Vacancy))!.Value.Seq);
+        Assert.Equal(2, (await _fixture.GetRecomputeRequestAsync(second, seed.Vacancy))!.Value.Seq);
+        Assert.False((bool)(await _fixture.ExecuteScalarAsync(
+            "SELECT has_function_privilege('app_tenant', 'public.fit_v2_requirements_changed()', 'execute')"))!);
+    }
+
+    [Fact]
+    public async Task A_requirements_edit_on_a_v1_vacancy_enqueues_nothing()
+    {
+        var seed = await SeedQuizAsync(v2: false, normalized: 80);
+        await SeedFitRowAsync(seed.Candidate, seed.Vacancy);
+
+        await SqlAsync("UPDATE job_profiles SET fit_requirements = '{\"minYearsExperience\":4}' WHERE vacancy_id = @v", ("v", seed.Vacancy));
+
+        Assert.Null(await _fixture.GetRecomputeRequestAsync(seed.Candidate, seed.Vacancy));
+    }
+
     // ── Codex release round 3 [P1]: the vacancy's FIT v2 configuration survives a writer that does not know it ──
     [Fact]
     public async Task A_requirements_writer_that_does_not_know_v2_keeps_the_assessments_and_only_the_csharp_writer_removes_them()
@@ -568,6 +620,20 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         await SqlAsync("DELETE FROM fit_recompute_requests WHERE candidate_id = @c", ("c", candidate));
         return new QuizSeed(candidate, vacancy, assignment);
     }
+
+    private async Task<Guid> SeedCandidateAsync()
+    {
+        var candidate = Guid.NewGuid();
+        await SqlAsync(
+            "INSERT INTO candidates (id, organization_id, email, first_name, last_name, created_at, updated_at) VALUES (@id, @o, @e, 'Req', 'Edit', now(), now())",
+            ("id", candidate), ("o", Org), ("e", $"{candidate:N}@fit.test"));
+        return candidate;
+    }
+
+    private Task SeedFitRowAsync(Guid candidate, Guid vacancy) => SqlAsync(
+        "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, weights, calculated_at, created_at, updated_at) "
+        + "VALUES (@id, @o, @c, @v, 70, '{}', '{}', now(), now(), now())",
+        ("id", Guid.NewGuid()), ("o", Org), ("c", candidate), ("v", vacancy));
 
     private async Task<Guid> SeedVacancyAsync(Guid? team, string fitRequirements = """{"assessments":[{"instrument":"native_quiz","use":"scored"}]}""")
     {
