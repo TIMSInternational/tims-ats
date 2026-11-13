@@ -85,10 +85,19 @@ public sealed partial class AssessmentProviderRepository(AssessmentProviderDbCon
 
         // Round 12: the binding lock (shared; an unbind takes it exclusively), FIRST, then the binding re-checked in force
         // in this transaction: an assignment can never slip in between an unbind's open-work check and its deactivation.
-        if (!await LockActiveBindingAsync(organizationId, binding.Id, cancellationToken).ConfigureAwait(false))
+        var enabled = await LockActiveBindingAsync(organizationId, binding.Id, cancellationToken).ConfigureAwait(false);
+        if (enabled is null)
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
             return new ReserveOutcome(false, [], BindingInactive: true);
+        }
+
+        // Codex ats run 7 [P2]: the caller checked the instruments against the binding it read before this transaction;
+        // one the platform owner disabled since is refused here, under the lock that change takes.
+        if (attempts.FirstOrDefault(a => !enabled.Contains(a.Instrument, StringComparer.Ordinal)) is { } disabled)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new ReserveOutcome(false, [], InstrumentDisabled: disabled.Instrument);
         }
 
         // The lock CandidateConsentRepository.WithdrawOneAsync and the FIT upsert take for this candidate.

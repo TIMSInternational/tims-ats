@@ -497,8 +497,13 @@ public sealed partial class AssessmentProviderRepository
         ArgumentNullException.ThrowIfNull(instruments);
         var timestamp = now.UtcDateTime;
         // PRIVILEGED (no TenantScope): app_tenant has SELECT only on bindings, so a tenant session can never enable an
-        // instrument for itself. The audit row shares the transaction.
+        // instrument for itself. The audit row shares the transaction. The binding lock is taken EXCLUSIVELY, as an unbind
+        // takes it (Codex ats run 7 [P2]): a reserve in flight (shared) commits first, and a later one re-reads the enabled
+        // instruments after this commits, so an instrument disabled here never gains a new attempt.
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var lockKey = BindingLockKey(organizationId);
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
         var binding = await _db.Bindings
             .FirstOrDefaultAsync(b => b.OrganizationId == organizationId && b.Provider == ProviderNames.TimsAssessments,
                 cancellationToken)

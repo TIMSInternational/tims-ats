@@ -457,6 +457,47 @@ public sealed class AssessmentProviderRound12Tests(AssessmentProviderSchemaFixtu
             $"SELECT count(*) FROM assessment_provider_attempts WHERE organization_id = '{org}'"));
     }
 
+    // Codex ats run 7 [P2]: disabling an instrument takes the binding lock exclusively, so it waits for a reserve in
+    // flight; a reserve that read the binding before the change re-reads it under the lock and writes nothing for it.
+    [Fact]
+    public async Task Disabling_an_instrument_waits_for_a_reserve_in_flight_and_a_later_reserve_for_it_writes_nothing()
+    {
+        var org = await OrgAsync();
+        var candidate = await CandidateAsync(org);
+        var stale = (await WithRepository(r => r.GetActiveBindingAsync(org, CancellationToken.None)))!;
+        Assert.Contains("lia", stale.EnabledInstruments);
+
+        await using var reserve = new Npgsql.NpgsqlConnection(fixture.ConnectionString);
+        await reserve.OpenAsync();
+        await using var tx = await reserve.BeginTransactionAsync();
+        await using (var command = new Npgsql.NpgsqlCommand(
+            $"SELECT pg_advisory_xact_lock_shared(hashtextextended('assessment-provider-binding:{org}', 0))", reserve, tx))
+        {
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var disable = WithRepository(r => r.UpsertBindingAsync(
+            org, stale.ProviderTenantId, ["english"], "es", Guid.NewGuid(), Now, CancellationToken.None));
+        await Task.Delay(500);
+        Assert.False(disable.IsCompleted); // waits for the reserve
+        await tx.CommitAsync();
+        Assert.Equal(["english"], (await disable).EnabledInstruments);
+
+        var outcome = await WithRepository(r => r.ReserveAttemptsAsync(org, Guid.NewGuid(), stale, candidate, Guid.NewGuid(),
+            [new NewAttempt("lia", "Análisis de datos", "es", 1m, [], null, "18_plus")], Now, CancellationToken.None));
+        Assert.Equal("lia", outcome.InstrumentDisabled);
+        Assert.False(outcome.BindingInactive);
+        Assert.Empty(outcome.Attempts);
+        Assert.Equal(0L, await fixture.ScalarAsync(
+            $"SELECT count(*) FROM assessment_provider_attempts WHERE organization_id = '{org}'"));
+
+        // An instrument still enabled is reserved as before.
+        var english = await WithRepository(r => r.ReserveAttemptsAsync(org, Guid.NewGuid(), stale, candidate, Guid.NewGuid(),
+            [new NewAttempt("english", "Inglés para el puesto", "es", 1m, [], null, "18_plus")], Now, CancellationToken.None));
+        Assert.Null(english.InstrumentDisabled);
+        Assert.Single(english.Attempts);
+    }
+
     // ── 4. Round 13: privacy events after an unbind; the capture fence ends with the decision ───────────────────────
 
     private static byte[] Event(Guid eventId, string type, Guid tenant, string data) =>

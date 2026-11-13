@@ -190,6 +190,12 @@ public sealed class AssignProviderInstrumentsUseCase(IAssessmentProviderReposito
             return ProviderAssignResult.Fail(ProviderAssignOutcome.NotEnabled);
         }
 
+        if (reserved.InstrumentDisabled is { } disabled)
+        {
+            // The platform owner disabled the instrument between the binding read above and the reserve: nothing was written.
+            return ProviderAssignResult.Fail(ProviderAssignOutcome.InstrumentNotEnabled, disabled);
+        }
+
         if (reserved.TermsConflict is { } conflict)
         {
             // A re-send with a corrected accommodation must never answer 200 while the old terms stay in force.

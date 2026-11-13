@@ -35,8 +35,9 @@ public interface IAssessmentProviderRepository
         Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// In ONE transaction, under the binding lock an unbind takes (shared here; the binding must still be in force, else
-    /// <see cref="ReserveOutcome.BindingInactive"/> and nothing is written) and the same per-candidate advisory lock a
+    /// In ONE transaction, under the binding lock an unbind or a change of the enabled instruments takes (shared here; the
+    /// binding must still be in force, else <see cref="ReserveOutcome.BindingInactive"/>, and every requested instrument
+    /// still enabled, else <see cref="ReserveOutcome.InstrumentDisabled"/>; nothing is written) and the same per-candidate advisory lock a
     /// consent withdrawal takes: re-checks the withdrawal, then for each instrument returns the open attempt or inserts a
     /// <c>pending_create</c> one, plus one audit row. All instruments or none: when an open attempt carries other terms than requested (accommodation,
     /// locale or reason), nothing is written and that attempt comes back as <see cref="ReserveOutcome.TermsConflict"/>.
@@ -795,8 +796,11 @@ public sealed record AttemptRow(
 /// requested; nothing was written (re-sending can never silently drop a corrected accommodation).
 /// </summary>
 /// <param name="BindingInactive">An unbind committed before the reserve could take the binding lock: nothing was written.</param>
+/// <param name="InstrumentDisabled">A requested instrument the platform owner disabled before the reserve could take the
+/// binding lock (Codex ats run 7 [P2]): nothing was written.</param>
 public sealed record ReserveOutcome(
-    bool ConsentWithdrawn, IReadOnlyList<AttemptRow> Attempts, AttemptRow? TermsConflict = null, bool BindingInactive = false);
+    bool ConsentWithdrawn, IReadOnlyList<AttemptRow> Attempts, AttemptRow? TermsConflict = null, bool BindingInactive = false,
+    string? InstrumentDisabled = null);
 
 /// <summary>The attempt plus the candidate identity a launch is checked against.</summary>
 public sealed record LaunchContext(

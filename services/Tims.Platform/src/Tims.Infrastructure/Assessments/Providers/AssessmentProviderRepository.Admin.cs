@@ -122,16 +122,21 @@ public sealed partial class AssessmentProviderRepository
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    // The binding's reserve-side guard, inside the reserve's transaction: the shared binding lock, then whether the
-    // binding is still in force. False when an unbind committed first.
-    private async Task<bool> LockActiveBindingAsync(Guid organizationId, Guid bindingId, CancellationToken cancellationToken)
+    // The binding's reserve-side guard, inside the reserve's transaction: the shared binding lock, then the binding's
+    // enabled instruments as committed now, or null when an unbind committed first. An unbind and a change of the enabled
+    // instruments take the same lock exclusively, so neither can commit between this read and the reserve's insert.
+    private async Task<IReadOnlyList<string>?> LockActiveBindingAsync(
+        Guid organizationId, Guid bindingId, CancellationToken cancellationToken)
     {
         var key = BindingLockKey(organizationId);
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock_shared(hashtextextended({key}, 0))", cancellationToken).ConfigureAwait(false);
-        return await _db.Bindings.AsNoTracking()
-            .AnyAsync(b => b.Id == bindingId && b.OrganizationId == organizationId && b.IsActive, cancellationToken)
+        var enabled = await _db.Bindings.AsNoTracking()
+            .Where(b => b.Id == bindingId && b.OrganizationId == organizationId && b.IsActive)
+            .Select(b => b.EnabledInstruments)
+            .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
+        return enabled;
     }
 
     private async Task<ProviderOpenWork> OpenWorkAsync(Guid organizationId, CancellationToken cancellationToken)

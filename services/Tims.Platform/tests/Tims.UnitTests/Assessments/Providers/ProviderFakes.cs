@@ -383,6 +383,11 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
             return Task.FromResult(new ReserveOutcome(false, [], BindingInactive: true));
         }
 
+        if (attempts.FirstOrDefault(a => a.Instrument == DisabledAtReserve) is { } disabled)
+        {
+            return Task.FromResult(new ReserveOutcome(false, [], InstrumentDisabled: disabled.Instrument));
+        }
+
         if (WithdrawnUnderLock)
         {
             return Task.FromResult(new ReserveOutcome(true, []));
@@ -862,6 +867,9 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     /// <summary>Bindings the fake considers unbound (inactive) after a DeactivateBindingAsync.</summary>
     public bool BindingInactive { get; set; }
+
+    /// <summary>An instrument the platform owner disabled after the binding was read: the reserve refuses it.</summary>
+    public string? DisabledAtReserve { get; set; }
 
     public List<(Guid CandidateId, string Outcome, int Subjects, int Requested)> ErasureRuns { get; } = [];
 

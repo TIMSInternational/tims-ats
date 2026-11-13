@@ -514,6 +514,19 @@ public sealed class AssignProviderInstrumentsUseCaseTests
         Assert.Empty(_repository.Writes);
     }
 
+    // Codex ats run 7 [P2]: an instrument disabled after the binding was read is refused by the reserve, under the lock.
+    [Fact]
+    public async Task An_instrument_disabled_while_the_assignment_was_in_flight_is_refused_and_nothing_is_created()
+    {
+        _repository.DisabledAtReserve = "lia";
+
+        var result = await Assign(Input(("lia", null)));
+
+        Assert.Equal(ProviderAssignOutcome.InstrumentNotEnabled, result.Outcome);
+        Assert.Empty(_provider.Calls);
+        Assert.Empty(_repository.Attempts);
+    }
+
     [Fact]
     public async Task Without_a_binding_or_with_the_instrument_disabled_nothing_is_assigned()
     {
