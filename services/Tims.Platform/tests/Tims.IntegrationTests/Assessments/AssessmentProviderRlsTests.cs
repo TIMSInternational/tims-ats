@@ -461,6 +461,54 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
             $"SELECT count(*) FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
     }
 
+    // Codex ats run 5 [P1]: the tenant lowers a result's visibility (full -> summary) without a new scoring revision. The
+    // same revision with the lower projection replaces the stored detail, fences the fetches already in flight, and a
+    // stale full fetch read before it can no longer bring the detail back; a true repeat still changes nothing.
+    [Fact]
+    public async Task The_same_revision_lowered_to_summary_replaces_the_detail_and_a_stale_full_fetch_cannot_restore_it()
+    {
+        var (attempt, subject) = await InsertAttemptAsync("completed");
+        var before = await RowAsync(attempt);
+        var full = ResultFor(before.ProviderAssignmentId!.Value) with
+        {
+            SubjectId = subject, ScoresJson = """{"global":{"percentile":62.4}}""",
+        };
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, before, full, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        var stored = await RowAsync(attempt);
+        await using (var db = fixture.NewContext())
+        {
+            // A repeat of the same revision and projection: nothing to do.
+            Assert.False(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, stored, full, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        var summary = full with { RenderedLevel = "summary", ScoresJson = "{}", GlobalPercentile = null };
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, stored, summary, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("summary|{}|true", await fixture.ScalarAsync(
+            $"SELECT rendered_level || '|' || scores::text || '|' || (global_percentile IS NULL)::text FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+        Assert.Equal(stored.ResultVisibilityGeneration + 1, (await RowAsync(attempt)).ResultVisibilityGeneration);
+
+        // A full fetch that read the attempt before the lowering commits after it: refused, the detail stays gone.
+        await using (var db = fixture.NewContext())
+        {
+            Assert.False(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, stored, full, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("summary", await fixture.ScalarAsync(
+            $"SELECT rendered_level FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+    }
+
     [Fact]
     public async Task A_corrected_revision_restores_the_attempt_when_the_only_newer_one_was_cancelled()
     {

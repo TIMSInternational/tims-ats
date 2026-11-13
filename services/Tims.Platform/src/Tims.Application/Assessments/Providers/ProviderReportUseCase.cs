@@ -27,7 +27,8 @@ public sealed record ProviderReportTarget(
     string? ValidityStatus,
     string? RenderedLevel,
     bool ResultsStopped,
-    bool ConsentWithdrawn);
+    bool ConsentWithdrawn,
+    int? ResultRevision = null);
 
 /// <summary>The provider-table reads and the audit row the report use case needs.</summary>
 public interface IProviderReportRepository
@@ -154,9 +155,13 @@ public sealed class ProviderReportUseCase(IProviderReportRepository repository, 
         }
 
         // Codex ats run 4 [P1]: a #312 withdrawal, an erasure or a newer result that committed during the provider call
-        // wins; the bytes are dropped, never delivered or audited as delivered.
+        // wins; the bytes are dropped, never delivered or audited as delivered. Run 5 [P1]: a newer REVISION keeps the
+        // result's id, and a lowered visibility (full -> summary) keeps both: the revision and the rendered level are
+        // compared too.
         var after = await _repository.GetReportTargetAsync(organizationId, attemptId, cancellationToken).ConfigureAwait(false);
         if (after is null || after.ConsentWithdrawn || after.ResultsStopped || after.ProviderResultId != target.ProviderResultId
+            || after.ResultRevision != target.ResultRevision
+            || !string.Equals(after.RenderedLevel, target.RenderedLevel, StringComparison.Ordinal)
             || after.ValidityStatus is not ("valid" or "needs_review"))
         {
             return new ProviderReportDownloadResult(ProviderReportOutcome.NoReport, null, target.Instrument);

@@ -32,6 +32,7 @@ public sealed partial class AssessmentProviderRepository : IProviderReportReposi
                     ResultId = r == null ? (Guid?)null : r.ProviderResultId,
                     Validity = r == null ? null : r.ValidityStatus,
                     Level = r == null ? null : r.RenderedLevel,
+                    Revision = r == null ? (int?)null : r.ResultRevision,
                 })
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
         var withdrawn = row is not null
@@ -46,7 +47,7 @@ public sealed partial class AssessmentProviderRepository : IProviderReportReposi
             || row.State == ProviderAttemptStates.Erased;
         return new ProviderReportTarget(
             row.CandidateId, row.VacancyId, row.Instrument, row.Locale, row.ResultId, row.Validity, row.Level, stopped,
-            withdrawn);
+            withdrawn, row.Revision);
     }
 
     public async Task AuditReportDownloadAsync(

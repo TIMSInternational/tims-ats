@@ -21,12 +21,18 @@ import { ProviderReportMenu } from './provider-report-menu';
 
 const ORDER = ['lia', 'english', 'personality', 'pca', 'itcia', 'mi'] as const;
 
-/** The newest attempt of each instrument, in the order a recruiter reads them. */
-function latestByInstrument(attempts: StaffProviderAttempt[]): StaffProviderAttempt[] {
-  const seen = new Set<string>();
-  return attempts
-    .filter((a) => (seen.has(a.instrument) ? false : (seen.add(a.instrument), true)))
-    .sort((a, b) => ORDER.indexOf(a.instrument) - ORDER.indexOf(b.instrument));
+/**
+ * The current attempt of each instrument, in the order a recruiter reads them: the newest one HR did not cancel, the rule
+ * FIT uses to pick the attempt it scores (a cancelled retry never hides the completed attempt before it, Codex ats run 5).
+ * With every attempt cancelled, the newest one. The read lists attempts newest first.
+ */
+export function latestByInstrument(attempts: StaffProviderAttempt[]): StaffProviderAttempt[] {
+  const current = new Map<string, StaffProviderAttempt>();
+  for (const a of attempts) {
+    const held = current.get(a.instrument);
+    if (!held || (held.status === 'cancelled' && a.status !== 'cancelled')) current.set(a.instrument, a);
+  }
+  return [...current.values()].sort((a, b) => ORDER.indexOf(a.instrument) - ORDER.indexOf(b.instrument));
 }
 
 function ResultBody({

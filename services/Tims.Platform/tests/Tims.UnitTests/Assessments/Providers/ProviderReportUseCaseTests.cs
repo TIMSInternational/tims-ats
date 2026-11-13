@@ -21,8 +21,8 @@ public sealed class ProviderReportUseCaseTests
 
     private static ProviderReportTarget Target(
         string instrument = "lia", string? validity = "valid", string? level = "full", Guid? result = null,
-        bool stopped = false, bool withdrawn = false) =>
-        new(Guid.NewGuid(), Guid.NewGuid(), instrument, "es", result ?? Result, validity, level, stopped, withdrawn);
+        bool stopped = false, bool withdrawn = false, int revision = 1) =>
+        new(Guid.NewGuid(), Guid.NewGuid(), instrument, "es", result ?? Result, validity, level, stopped, withdrawn, revision);
 
     private Task<ProviderReportListResult> List(bool inScope = true) =>
         UseCase.ListAsync(Org, Attempt, _ => Task.FromResult(inScope), CancellationToken.None);
@@ -110,6 +110,9 @@ public sealed class ProviderReportUseCaseTests
     [InlineData("stopped")]
     [InlineData("newer_result")]
     [InlineData("voided")]
+    // Run 5 [P1]: a newer revision keeps the result id; a lowered visibility keeps the id and the revision.
+    [InlineData("newer_revision")]
+    [InlineData("lowered_to_summary")]
     public async Task A_change_committed_during_the_provider_call_drops_the_report(string what)
     {
         _repository.Target = Target();
@@ -118,6 +121,8 @@ public sealed class ProviderReportUseCaseTests
             "withdrawn" => Target(withdrawn: true),
             "stopped" => Target(stopped: true),
             "newer_result" => Target(result: Guid.NewGuid()),
+            "newer_revision" => Target(revision: 2),
+            "lowered_to_summary" => Target(level: "summary"),
             _ => Target(validity: "voided"),
         };
 

@@ -466,6 +466,25 @@ describe('ProviderResultsBoard', () => {
     ).toThrow();
   });
 
+  it('a cancelled retry never hides the completed attempt before it (the attempt FIT scores); all cancelled: the newest', () => {
+    // The read lists attempts newest first.
+    mocks.attempts = {
+      consentWithdrawn: false,
+      attempts: [attempt('lia', 7, null, 'cancelled'), attempt('lia', 1, { globalPercentile: 62.4, profile: { lia } })],
+    };
+    const { unmount } = render(<ProviderResultsBoard candidateId="c" />);
+    expect(within(section(/LIA/)).getByText('62.4')).toBeTruthy();
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(1);
+    unmount();
+
+    mocks.attempts = {
+      consentWithdrawn: false,
+      attempts: [attempt('lia', 7, null, 'cancelled'), attempt('lia', 1, null, 'cancelled')],
+    };
+    render(<ProviderResultsBoard candidateId="c" />);
+    expect(section(/LIA/).getAttribute('aria-labelledby')).toBe('result-00000007-0000-4000-8000-000000000000');
+  });
+
   it('renders nothing for a withdrawn candidate or without attempts', () => {
     mocks.attempts = { consentWithdrawn: true, attempts: [] };
     const { container } = render(<ProviderResultsBoard candidateId="c" />);

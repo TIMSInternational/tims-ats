@@ -284,11 +284,25 @@ public sealed partial class AssessmentProviderRepository
             .FirstOrDefaultAsync(r => r.OrganizationId == organizationId && r.ProviderResultId == result.ResultId,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (stored is not null && stored.ResultRevision >= result.ResultRevision)
+        // Deliveries are unordered: an older revision never overwrites a newer one, and a repeat changes nothing. Codex ats
+        // run 5 [P1]: the SAME revision with another projection is not a repeat: the tenant changed the result's visibility
+        // (full -> summary, or back), and the stored scores must follow, or detail it no longer releases stays readable to
+        // staff and FIT. A LOWERED projection also fences every fetch already in flight (they read the attempt under the
+        // old generation and may carry the old detail), as a hide does.
+        var lowered = false;
+        if (stored is not null)
         {
-            // Deliveries are unordered: an older or repeated revision never overwrites a newer one.
-            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
-            return false;
+            var sameProjection = string.Equals(stored.RenderedLevel, result.RenderedLevel, StringComparison.Ordinal)
+                && string.Equals(stored.RenderedFor, result.RenderedFor, StringComparison.Ordinal);
+            if (stored.ResultRevision > result.ResultRevision
+                || (stored.ResultRevision == result.ResultRevision && sameProjection))
+            {
+                await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return false;
+            }
+
+            lowered = stored.ResultRevision == result.ResultRevision
+                && ProjectionRank(result.RenderedLevel) < ProjectionRank(stored.RenderedLevel);
         }
 
         if (stored is null)
@@ -359,6 +373,11 @@ public sealed partial class AssessmentProviderRepository
         entity.LatestResultId = result.ResultId;
         entity.CompletedAt ??= result.CompletedAt.UtcDateTime;
         entity.UpdatedAt = timestamp;
+        if (lowered)
+        {
+            entity.ResultVisibilityGeneration++;
+        }
+
         AddAudit(organizationId, null, "assessment_provider_result_received", attempt.Id, new Dictionary<string, object?>
         {
             ["instrument"] = result.Instrument,
@@ -375,6 +394,14 @@ public sealed partial class AssessmentProviderRepository
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
+
+    /// <summary>How much of a result a projection releases: <c>full</c> above <c>summary</c> above anything else.</summary>
+    private static int ProjectionRank(string? level) => level switch
+    {
+        "full" => 2,
+        "summary" => 1,
+        _ => 0,
+    };
 
     public async Task<int> HideResultAsync(
         Guid organizationId, AttemptRow attempt, Guid resultId, DateTimeOffset now, CancellationToken cancellationToken)
