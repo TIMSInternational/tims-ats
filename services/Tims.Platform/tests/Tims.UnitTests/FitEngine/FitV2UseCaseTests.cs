@@ -778,6 +778,15 @@ public sealed class FitV2UseCaseTests
 
         public List<(string Json, bool Replace)> RequirementWrites { get; } = [];
 
+        // The in-lock read sees the vacancy as the fake stores it.
+
+        public async Task<string?> GetFitRequirementsInLockAsync(
+
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+
+            (await GetVacancyForFitAsync(organizationId, vacancyId, cancellationToken))?.FitRequirements;
+
+
         public Task<string?> UpsertFitRequirementsAsync(
             Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
             CancellationToken cancellationToken)
@@ -798,7 +807,7 @@ public sealed class FitV2UseCaseTests
         // Mirrors the real transaction: consent re-check, lock, in-lock build, write; a throw rolls everything back.
         public async Task<bool> UpsertFitScoreV2Async(
             Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-            Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+            Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
             bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null)
         {
             Events.Add("consent");
@@ -826,16 +835,22 @@ public sealed class FitV2UseCaseTests
                     }
                 }
             }
-            FitScoreWrite write;
+            FitScoreWrite? built;
             try
             {
-                write = await buildInLock(cancellationToken);
+                built = await buildInLock(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
             }
             catch
             {
                 RolledBack++;
                 throw;
+            }
+
+            if (built is not { } write)
+            {
+                Events.Add("no longer v2");
+                return false;
             }
 
             Events.Add("write");

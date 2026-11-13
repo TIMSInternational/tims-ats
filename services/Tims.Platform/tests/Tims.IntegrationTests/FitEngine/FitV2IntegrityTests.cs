@@ -428,7 +428,7 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         await SqlAsync("DELETE FROM fit_recompute_requests WHERE vacancy_id IN (@v, @w)", ("v", seed.Vacancy), ("w", other.Vacancy));
 
         await SqlAsync(
-            "UPDATE job_profiles SET fit_requirements = '{\"assessments\":[{\"instrument\":\"native_quiz\",\"use\":\"gate\",\"min\":{\"normalized\":50}}]}' WHERE vacancy_id = @v",
+            "UPDATE job_profiles SET fit_requirements = '{\"assessments\":[{\"instrument\":\"native_quiz\",\"use\":\"gate\",\"min\":{\"score\":70}}]}' WHERE vacancy_id = @v",
             ("v", seed.Vacancy));
         Assert.Equal(1, (await _fixture.GetRecomputeRequestAsync(seed.Candidate, seed.Vacancy))!.Value.Seq);
         Assert.Equal(1, (await _fixture.GetRecomputeRequestAsync(second, seed.Vacancy))!.Value.Seq);
@@ -454,6 +454,55 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         Assert.Equal(2, (await _fixture.GetRecomputeRequestAsync(second, seed.Vacancy))!.Value.Seq);
         Assert.False((bool)(await _fixture.ExecuteScalarAsync(
             "SELECT has_function_privilege('app_tenant', 'public.fit_v2_requirements_changed()', 'execute')"))!);
+    }
+
+    // Codex ats run 3 [P1]: a first compute that read the old requirements before an edit must not persist them. The
+    // edit's trigger holds the vacancy's requirements lock; the compute's write waits for it and reads the requirements
+    // in the lock, so the row it writes is the edited configuration.
+    [Fact]
+    public async Task A_compute_racing_a_requirements_edit_writes_the_edited_configuration()
+    {
+        var seed = await SeedQuizAsync(v2: true, normalized: 80);
+        await using var edit = new NpgsqlConnection(_fixture.ConnectionString);
+        await edit.OpenAsync();
+        await using var tx = await edit.BeginTransactionAsync();
+        await using (var command = new NpgsqlCommand(
+            "UPDATE job_profiles SET fit_requirements = '{\"assessments\":[{\"instrument\":\"native_quiz\",\"use\":\"gate\",\"min\":{\"score\":70}}]}' WHERE vacancy_id = @v",
+            edit, tx))
+        {
+            command.Parameters.AddWithValue("v", seed.Vacancy);
+            await command.ExecuteNonQueryAsync(); // the trigger now holds the requirements lock
+        }
+
+        var compute = RecomputeAsync(seed, onlyIfRowExists: false); // reads the old (committed) requirements first
+        var first = await Task.WhenAny(compute, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.NotSame(compute, first); // its write waits for the edit
+        await tx.CommitAsync();
+        Assert.True(await compute.WaitAsync(TimeSpan.FromSeconds(30)));
+
+        var breakdown = JsonNode.Parse((await _fixture.GetFitScoreAsync(seed.Candidate, seed.Vacancy))!.Breakdown)!;
+        Assert.Equal("gate", breakdown["assessments"]![0]!["use"]!.GetValue<string>());
+    }
+
+    // Codex ats run 3 [P1]: removing the vacancy's assessments (the C# writer's explicit null) deletes its FIT v2 rows,
+    // built from a configuration that no longer exists; a v1 row of the same vacancy stays.
+    [Fact]
+    public async Task Removing_the_assessments_deletes_the_vacancys_fit_v2_rows_and_keeps_v1_rows()
+    {
+        var seed = await SeedQuizAsync(v2: true, normalized: 80);
+        Assert.True(await RecomputeAsync(seed, onlyIfRowExists: false));
+        var v1 = await SeedCandidateAsync();
+        await SeedFitRowAsync(v1, seed.Vacancy);
+
+        await using (var db = _fixture.NewWriteContext())
+        {
+            Assert.NotNull(await new FitEngineWriteUseCase(new FitEngineWriteRepository(db)).UpdateFitRequirementsAsync(
+                Org, seed.Vacancy, JsonNode.Parse("""{"minYearsExperience":2,"assessments":null}"""), Now,
+                CancellationToken.None));
+        }
+
+        Assert.Null(await _fixture.GetFitScoreAsync(seed.Candidate, seed.Vacancy));
+        Assert.NotNull(await _fixture.GetFitScoreAsync(v1, seed.Vacancy));
     }
 
     [Fact]

@@ -249,7 +249,7 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     public async Task<bool> UpsertFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-        Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+        Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
         bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
@@ -272,6 +272,12 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({FitV2LockKey(organizationId, candidateId, vacancyId)}, 0))",
             cancellationToken).ConfigureAwait(false);
+        // The vacancy's requirements lock, SHARED (the job_profiles requirements trigger takes it exclusively): the
+        // callbacks read the requirements in the lock, so an edit either waits for this write and re-queues its row, or
+        // committed before it and is what this write reads (Codex ats run 3 [P1]).
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock_shared(hashtextextended({FitV2RequirementsLockKey(organizationId, vacancyId)}, 0))",
+            cancellationToken).ConfigureAwait(false);
 
         // A recompute keeps an existing row current, and creates one only when createIfMissing says so (a provider
         // result for a pipeline candidate, round 11). Checked under the lock: a first compute still in flight holds
@@ -290,6 +296,11 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         // The in-lock read and evaluation, on this open transaction. A throw or a cancellation here (or in the write
         // below) disposes the scope without a commit: rollback, and the stored row is untouched.
         var write = await buildInLock(cancellationToken).ConfigureAwait(false);
+        if (write is null)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
 
         await ExecuteFitScoreUpsertAsync(
             organizationId, candidateId, vacancyId, write.OverallScore, write.BreakdownJson, weightsJson,
@@ -346,6 +357,16 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
     /// <summary>The FIT v2 per-(organization, candidate, vacancy) advisory-lock key text.</summary>
     public static string FitV2LockKey(Guid organizationId, Guid candidateId, Guid vacancyId) =>
         $"fit_v2:{organizationId}:{candidateId}:{vacancyId}";
+
+    /// <summary>The key the job_profiles requirements trigger (20261113090000) takes exclusively.</summary>
+    public static string FitV2RequirementsLockKey(Guid organizationId, Guid vacancyId) =>
+        $"fit_v2_requirements:{organizationId}:{vacancyId}";
+
+    public async Task<string?> GetFitRequirementsInLockAsync(
+        Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+        await _db.Database.SqlQuery<string?>(
+                $"SELECT fit_requirements::text AS \"Value\" FROM job_profiles WHERE organization_id = {organizationId} AND vacancy_id = {vacancyId}")
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
     public async Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
         Guid organizationId, Guid vacancyId, CancellationToken cancellationToken)

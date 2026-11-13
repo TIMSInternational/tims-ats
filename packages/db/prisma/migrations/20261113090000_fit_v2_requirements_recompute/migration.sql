@@ -10,8 +10,18 @@
 -- vacancy, through the same SECURITY DEFINER fit_v2_request_recompute (which enqueues only while the vacancy is
 -- configured for FIT v2, and refuses an organization other than the session's tenant). It fires for every writer
 -- of fit_requirements (the C# requirements writer, and the TS updateFitRequirements / upsertJobProfile), and only
--- when the stored value actually changed. Candidates with no FIT row yet have nothing stale; their first compute
--- reads the new requirements.
+-- when the stored value actually changed.
+--
+-- A compute in flight (Codex ats run 3 [P1]): every FIT v2 write reads the vacancy's requirements INSIDE its locked
+-- transaction while holding the per-vacancy lock fit_v2_requirements:{org}:{vacancy} SHARED
+-- (FitEngineWriteRepository.UpsertFitScoreV2Async). This trigger takes it EXCLUSIVELY before it reads the rows, so a
+-- compute that read the old requirements commits its row first (and the row is re-queued here), and one that starts
+-- later reads the new ones. A candidate with no row and no compute in flight has nothing stale.
+--
+-- Leaving FIT v2 (Codex ats run 3 [P1]): an edit that removes the `assessments` key (the C# writer's explicit
+-- `assessments: null`) leaves FIT v2 rows built from a configuration that no longer exists, and FIT v1 computes only
+-- on demand. Those rows are deleted in the edit's transaction (derived data: HR's next Compute Rankings scores the
+-- candidates with v1), under the same exclusive lock, so no v2 write can land after the delete.
 --
 -- Apply by psql after 20261109100000_fit_v2_integrity (it calls fit_v2_request_recompute). Re-runnable. No table,
 -- column or grant change for app_tenant.
@@ -28,6 +38,14 @@ BEGIN
   IF TG_OP = 'UPDATE'
      AND NEW.fit_requirements IS NOT DISTINCT FROM OLD.fit_requirements
      AND NEW.vacancy_id = OLD.vacancy_id THEN
+    RETURN NULL;
+  END IF;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('fit_v2_requirements:' || NEW.organization_id::text || ':' || NEW.vacancy_id::text, 0));
+  IF NOT coalesce(jsonb_typeof(NEW.fit_requirements) = 'object' AND NEW.fit_requirements ? 'assessments', false) THEN
+    DELETE FROM public.fit_scores f
+    WHERE f.organization_id = NEW.organization_id AND f.vacancy_id = NEW.vacancy_id
+      AND f.breakdown ->> 'fitVersion' = '2';
     RETURN NULL;
   END IF;
   FOR r IN

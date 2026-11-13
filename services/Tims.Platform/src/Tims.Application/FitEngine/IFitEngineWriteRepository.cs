@@ -65,10 +65,21 @@ public interface IFitEngineWriteRepository
     /// population), and <paramref name="createIfMissing"/>, called in the lock, answers true: then the row is created
     /// as a compute would create it.
     /// </remarks>
+    /// <para>Codex ats run 3 [P1]: after the FIT v2 lock it also takes the vacancy's requirements lock
+    /// (<c>fit_v2_requirements:{org}:{vacancy}</c>) SHARED, which the <c>job_profiles</c> requirements trigger takes
+    /// exclusively, so the callbacks read the requirements with <see cref="GetFitRequirementsInLockAsync"/> as of a
+    /// state no edit can change before the write commits. <paramref name="buildInLock"/> answers null when the vacancy
+    /// is no longer configured for FIT v2 there: nothing is written and the call returns false.</para>
     Task<bool> UpsertFitScoreV2Async(
         Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-        Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+        Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
         bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null);
+
+    /// <summary>
+    /// The vacancy's <c>job_profiles.fit_requirements</c> as text (null: no profile or a null value), read on the open
+    /// FIT v2 write transaction. Only inside the <see cref="UpsertFitScoreV2Async"/> callbacks.
+    /// </summary>
+    Task<string?> GetFitRequirementsInLockAsync(Guid organizationId, Guid vacancyId, CancellationToken cancellationToken);
 
     /// <summary>
     /// The C#-owned <c>job_profiles.fit_requirements</c> write, one atomic <c>INSERT … ON CONFLICT DO UPDATE</c> on the

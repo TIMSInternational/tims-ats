@@ -466,9 +466,18 @@ public sealed class FitEngineUseCaseTests
         // v1 never takes the v2 path; a call here is a test failure.
         public Task<bool> UpsertFitScoreV2Async(
             Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-            Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+            Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
             bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null) =>
             throw new InvalidOperationException("the v1 tests never reach the FIT v2 write");
+
+        // The in-lock read sees the vacancy as the fake stores it.
+
+        public async Task<string?> GetFitRequirementsInLockAsync(
+
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+
+            (await GetVacancyForFitAsync(organizationId, vacancyId, cancellationToken))?.FitRequirements;
+
 
         public Task<string?> UpsertFitRequirementsAsync(
             Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,

@@ -338,7 +338,7 @@ public sealed class FitV2IntegrityTests
 
         public async Task<bool> UpsertFitScoreV2Async(
             Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
-            Func<CancellationToken, Task<FitScoreWrite>> buildInLock, CancellationToken cancellationToken,
+            Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
             bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null)
         {
             Assert.True(onlyIfRowExists);
@@ -350,6 +350,15 @@ public sealed class FitV2IntegrityTests
             await buildInLock(cancellationToken);
             return true;
         }
+
+        // The in-lock read sees the vacancy as the fake stores it.
+
+        public async Task<string?> GetFitRequirementsInLockAsync(
+
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+
+            (await GetVacancyForFitAsync(organizationId, vacancyId, cancellationToken))?.FitRequirements;
+
 
         public Task<string?> UpsertFitRequirementsAsync(
             Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,

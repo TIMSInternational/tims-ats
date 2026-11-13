@@ -141,8 +141,8 @@ public sealed class FitEngineWriteUseCase(
                 ? ComputeFitScoreAsync(
                     organizationId, candidateId, vacancyId, requirements, vacancy?.RoleFamily, now, cancellationToken)
                 : ComputeFitScoreV2Async(
-                    organizationId, candidateId, vacancyId, requirements, assessmentRequirements, vacancy?.RoleFamily,
-                    now, onlyIfRowExists: false, cancellationToken);
+                    organizationId, candidateId, vacancyId, liaScoredAllowed, vacancy?.RoleFamily, now,
+                    onlyIfRowExists: false, cancellationToken);
             if (await computed.ConfigureAwait(false))
             {
                 scored++;
@@ -181,21 +181,24 @@ public sealed class FitEngineWriteUseCase(
         }
 
         var requirementsNode = ParseNullableJson(vacancy.FitRequirements);
-        if (ParseV2Requirements(requirementsNode, liaScoredAllowed) is not { } assessmentRequirements)
+        if (ParseV2Requirements(requirementsNode, liaScoredAllowed) is null)
         {
             return false;
         }
 
         // Asked only for a missing row, in the lock: the repository has already checked the candidate holds an
-        // active application for the vacancy (the computeForVacancy population) on the same transaction.
-        Func<CancellationToken, Task<bool>> createIfMissing = async ct => HoldsProviderResult(
-            await _assessmentResults.GetResultsAsync(organizationId, candidateId, vacancyId, ct).ConfigureAwait(false),
-            assessmentRequirements);
+        // active application for the vacancy (the computeForVacancy population) on the same transaction. Judged on the
+        // requirements as read in the lock (Codex ats run 3 [P1]).
+        Func<CancellationToken, Task<bool>> createIfMissing = async ct =>
+            await V2RequirementsInLockAsync(organizationId, vacancyId, liaScoredAllowed, ct).ConfigureAwait(false)
+                is { } inLock
+            && HoldsProviderResult(
+                await _assessmentResults.GetResultsAsync(organizationId, candidateId, vacancyId, ct).ConfigureAwait(false),
+                inLock.Assessments);
 
         return await ComputeFitScoreV2Async(
-                organizationId, candidateId, vacancyId, FitEngineKernels.ParseRequirements(requirementsNode),
-                assessmentRequirements, vacancy.RoleFamily, now, onlyIfRowExists: true, cancellationToken,
-                createIfMissing)
+                organizationId, candidateId, vacancyId, liaScoredAllowed, vacancy.RoleFamily, now, onlyIfRowExists: true,
+                cancellationToken, createIfMissing)
             .ConfigureAwait(false);
     }
 
@@ -276,10 +279,23 @@ public sealed class FitEngineWriteUseCase(
     // back, so a compute never leaves a row it could not stand behind. A change that commits after the last compute's
     // in-lock read is picked up by the next compute, as for every other input. The other inputs (candidate data,
     // interview score, weights) keep v1's snapshot semantics.
+    /// <summary>
+    /// The vacancy's requirements as read INSIDE the FIT v2 write (under the shared requirements lock the edit trigger
+    /// takes exclusively), or null when it is no longer configured for FIT v2 there.
+    /// </summary>
+    private async Task<(FitRequirements Requirements, IReadOnlyList<AssessmentRequirement> Assessments)?> V2RequirementsInLockAsync(
+        Guid organizationId, Guid vacancyId, bool liaScoredAllowed, CancellationToken cancellationToken)
+    {
+        var node = ParseNullableJson(
+            await _repository.GetFitRequirementsInLockAsync(organizationId, vacancyId, cancellationToken).ConfigureAwait(false));
+        return ParseV2Requirements(node, liaScoredAllowed) is { } assessments
+            ? (FitEngineKernels.ParseRequirements(node), assessments)
+            : null;
+    }
+
     private async Task<bool> ComputeFitScoreV2Async(
-        Guid organizationId, Guid candidateId, Guid vacancyId, FitRequirements requirements,
-        IReadOnlyList<AssessmentRequirement> assessmentRequirements, string? roleFamily, DateTimeOffset now,
-        bool onlyIfRowExists, CancellationToken cancellationToken,
+        Guid organizationId, Guid candidateId, Guid vacancyId, bool liaScoredAllowed, string? roleFamily,
+        DateTimeOffset now, bool onlyIfRowExists, CancellationToken cancellationToken,
         Func<CancellationToken, Task<bool>>? createIfMissing = null)
     {
         var candidate = await _repository.GetCandidateForFitAsync(organizationId, candidateId, cancellationToken)
@@ -291,13 +307,22 @@ public sealed class FitEngineWriteUseCase(
         var (weights, weightsJson) = await ResolveWeightProfileAsync(organizationId, roleFamily, now, cancellationToken)
             .ConfigureAwait(false);
         var candidateLanguages = ParseNullableJson(candidate?.Languages);
-        var experience = FitEngineKernels.DeriveExperienceScore(candidate?.YearsExperience, requirements);
-        var education = FitEngineKernels.DeriveEducationScore(ParseNullableJson(candidate?.Education), requirements);
 
         return await _repository.UpsertFitScoreV2Async(
                 organizationId, candidateId, vacancyId, weightsJson, now,
                 async ct =>
                 {
+                    // The requirements as of the lock, never the caller's earlier read (Codex ats run 3 [P1]).
+                    if (await V2RequirementsInLockAsync(organizationId, vacancyId, liaScoredAllowed, ct).ConfigureAwait(false)
+                        is not { } inLock)
+                    {
+                        return null;
+                    }
+
+                    var (requirements, assessmentRequirements) = inLock;
+                    var experience = FitEngineKernels.DeriveExperienceScore(candidate?.YearsExperience, requirements);
+                    var education = FitEngineKernels.DeriveEducationScore(
+                        ParseNullableJson(candidate?.Education), requirements);
                     var results = await _assessmentResults
                         .GetResultsAsync(organizationId, candidateId, vacancyId, ct)
                         .ConfigureAwait(false);
