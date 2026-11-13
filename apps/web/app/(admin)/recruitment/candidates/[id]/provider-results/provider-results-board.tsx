@@ -101,8 +101,9 @@ function VacancyResults({ vacancyId, attempts }: { vacancyId: string; attempts: 
               )}
             </div>
             <div className="flex items-center gap-2">
-              {/* Company scope only (the profile is there only for it, D6); a voided result has no report. */}
-              {attempt.result?.profile && attempt.result.validity !== 'voided' && (
+              {/* C# decides by the report endpoints' rule (company scope, D6; valid or under review; detail released). A
+                  result lowered to summary has no profile but keeps its report (Codex ats run 7). */}
+              {attempt.result?.reportsAvailable && (
                 <ProviderReportMenu attemptId={attempt.attemptId} instrument={attempt.instrument} />
               )}
               <ProviderStatusChip status={attempt.status} />

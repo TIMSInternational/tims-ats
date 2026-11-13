@@ -5745,6 +5745,8 @@ export interface components {
             normVersion: null | string;
             completedAt: string;
             profile?: null | components["schemas"]["ProviderResultProfile"];
+            /** @default false */
+            reportsAvailable: boolean;
         };
         StaffValidationRow: {
             id: string;

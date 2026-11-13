@@ -20,7 +20,8 @@ public sealed record StaffResultRecord(
     int? Level,
     decimal TimeMultiplierApplied,
     DateTimeOffset CompletedAt,
-    string? ScoresJson = null);
+    string? ScoresJson = null,
+    string? RenderedLevel = null);
 
 public sealed record StaffAttemptRecord(
     AttemptRow Attempt, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, StaffResultRecord? Result);
@@ -81,7 +82,10 @@ public sealed record StaffCatalogResult(StaffReadOutcome Outcome, StaffCatalog? 
 /// unknown) and never the level behind it (<see cref="GlobalPercentile"/>, <see cref="Cefr"/>, <see cref="Level"/> and
 /// <see cref="ValidityReasons"/> are null for them). <see cref="Profile"/> (the shape behind the result: LIA subtests,
 /// English skills, Personality dimensions, PCA's DISC graphs and competencies) is for company-scope readers and only on a
-/// valid result: a narrow reader, a result under review and a voided one get null.
+/// valid result: a narrow reader, a result under review and a voided one get null. <see cref="ReportsAvailable"/> says
+/// whether the reader may download a PDF report of it, by the rule the report endpoints apply (company scope; valid or
+/// under review; a native report from <c>summary</c> up, a provider variant only at <c>full</c>): a result lowered to
+/// summary has no profile but still has its report (Codex ats run 7).
 /// </summary>
 public sealed record StaffProviderResult(
     string Validity,
@@ -95,7 +99,8 @@ public sealed record StaffProviderResult(
     string InstrumentVersion,
     string? NormVersion,
     string CompletedAt,
-    ProviderResultProfile? Profile = null);
+    ProviderResultProfile? Profile = null,
+    bool ReportsAvailable = false);
 
 /// <summary>
 /// One attempt as staff see it: the status chip (<see cref="ProviderStaffStatuses"/>), how the vacancy counts the
@@ -266,7 +271,11 @@ public sealed class ProviderStaffReadUseCase(
                 result.InstrumentVersion,
                 result.NormVersion,
                 Format(result.CompletedAt),
-                hidesLevels || valid != true ? null : ProviderResultProfiles.Parse(a.Instrument, result.ScoresJson));
+                hidesLevels || valid != true ? null : ProviderResultProfiles.Parse(a.Instrument, result.ScoresJson),
+                !hidesLevels && result.ValidityStatus is ProviderValidity.Valid or ProviderValidity.NeedsReview
+                    && (ProviderInstruments.IsLinkOut(a.Instrument)
+                        ? result.RenderedLevel == "full"
+                        : result.RenderedLevel is "summary" or "full"));
         }
 
         return new StaffProviderAttempt(

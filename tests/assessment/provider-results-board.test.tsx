@@ -58,6 +58,7 @@ const base = {
   instrumentVersion: '1.0',
   normVersion: null,
   completedAt: '2026-11-10T15:00:00.000Z',
+  reportsAvailable: true,
 };
 const attempt = (instrument: string, n: number, result: Record<string, unknown> | null, status = 'result_ready') => ({
   attemptId: `0000000${n}-0000-4000-8000-000000000000`,
@@ -363,7 +364,11 @@ describe('ProviderResultsBoard', () => {
     expect(within(section(/LIA/)).getByRole('button', { name: 'Results report' })).toBeTruthy();
     unmount();
 
-    for (const result of [{ profile: null }, { profile: { lia }, validity: 'voided' }]) {
+    // C# says no: a narrow reader (no profile either), a voided result.
+    for (const result of [
+      { profile: null, reportsAvailable: false },
+      { profile: { lia }, validity: 'voided', reportsAvailable: false },
+    ]) {
       mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, result)] };
       const view = render(<ProviderResultsBoard candidateId="c" />);
       expect(screen.queryByRole('button', { name: 'PDF reports' })).toBeNull();
@@ -483,6 +488,16 @@ describe('ProviderResultsBoard', () => {
     };
     render(<ProviderResultsBoard candidateId="c" />);
     expect(section(/LIA/).getAttribute('aria-labelledby')).toBe('result-00000007-0000-4000-8000-000000000000');
+  });
+
+  it('PDF reports: a result lowered to summary has no profile but keeps its report (C# says it is available)', () => {
+    mocks.reports = { data: [{ variant: null, title: null }], error: null, isPending: false, isError: false };
+    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, { profile: null, reportsAvailable: true })] };
+    render(<ProviderResultsBoard candidateId="c" />);
+    const card = section(/LIA/);
+    expect(within(card).getByText('This result has no detail to show.')).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'PDF reports' }));
+    expect(within(card).getByRole('button', { name: 'Results report' })).toBeTruthy();
   });
 
   it('renders nothing for a withdrawn candidate or without attempts', () => {

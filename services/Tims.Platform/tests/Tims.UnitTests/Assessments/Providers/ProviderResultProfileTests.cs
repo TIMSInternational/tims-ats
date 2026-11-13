@@ -198,6 +198,32 @@ public sealed class ProviderResultProfileTests
         return Assert.Single(list.Attempts).Result;
     }
 
+    // Codex ats run 7 [P2]: the PDF menu follows the report endpoints' own rule, not the profile; a result lowered to
+    // summary has no profile and still has its native report.
+    [Theory]
+    [InlineData("lia", ProviderValidity.Valid, "summary", false, true)]
+    [InlineData("lia", ProviderValidity.Valid, "full", false, true)]
+    [InlineData("lia", ProviderValidity.NeedsReview, "summary", false, true)]
+    [InlineData("lia", ProviderValidity.Valid, "full", true, false)] // D6: a narrow reader
+    [InlineData("lia", ProviderValidity.Voided, "full", false, false)]
+    [InlineData("lia", ProviderValidity.Valid, "status_only", false, false)]
+    [InlineData("pca", ProviderValidity.Valid, "summary", false, false)] // a provider variant needs full
+    [InlineData("pca", ProviderValidity.Valid, "full", false, true)]
+    public async Task Reports_are_available_by_the_report_endpoints_rule(
+        string instrument, string validity, string level, bool hidesLevels, bool expected)
+    {
+        var staff = new OneAttemptStaffRepository(
+            new StaffResultRecord(
+                Guid.NewGuid(), "selection", "1.0", null, validity, validity == ProviderValidity.Valid ? [] : ["proctoring"],
+                false, null, null, null, 1m, Now.AddHours(-1), level == "full" ? Pca : "{}", level),
+            instrument);
+        var list = await new ProviderStaffReadUseCase(new FakeRepository(), staff, new FakeProvider()).ListCandidateAttemptsAsync(
+            FakeRepository.Org, FakeRepository.Candidate, hidesLevels, liaScoredAllowed: false,
+            _ => Task.FromResult(true), Now, CancellationToken.None);
+
+        Assert.Equal(expected, Assert.Single(list.Attempts).Result!.ReportsAvailable);
+    }
+
     [Fact]
     public async Task A_company_scope_reader_gets_the_profile_of_a_valid_result()
     {
@@ -217,7 +243,7 @@ public sealed class ProviderResultProfileTests
     public async Task A_result_that_is_not_valid_has_no_profile(string validity) =>
         Assert.Null((await ViewAsync(hidesLevels: false, validity))!.Profile);
 
-    private sealed class OneAttemptStaffRepository(StaffResultRecord result) : IProviderStaffReadRepository
+    private sealed class OneAttemptStaffRepository(StaffResultRecord result, string instrument = "pca") : IProviderStaffReadRepository
     {
         private const string Requirements =
             """{"assessments":[{"instrument":"pca","use":"advisory","reason":"Entrevista"}]}""";
@@ -230,7 +256,7 @@ public sealed class ProviderResultProfileTests
             Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken)
         {
             var attempt = new AttemptRow(
-                Guid.NewGuid(), FakeRepository.Org, FakeRepository.Candidate, FakeRepository.Vacancy, "pca",
+                Guid.NewGuid(), FakeRepository.Org, FakeRepository.Candidate, FakeRepository.Vacancy, instrument,
                 ProviderAttemptStates.ResultReady, "r", "es", 1m, [], null, Guid.NewGuid(), Guid.NewGuid(), "1.0", "c-1",
                 ["assessment"], null, null, false, MissingConsents: []);
             return Task.FromResult(new StaffCandidateAttempts(

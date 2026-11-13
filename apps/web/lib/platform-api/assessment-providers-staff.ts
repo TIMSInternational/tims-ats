@@ -253,6 +253,8 @@ const resultSchema = z
     normVersion: z.string().max(64).nullable(),
     completedAt: z.string().max(40).datetime({ offset: true }),
     profile: profileSchema.nullable().optional(),
+    // Whether this reader may download a PDF report of the result (the report endpoints' own rule, decided by C#).
+    reportsAvailable: z.boolean(),
   })
   .strict();
 

@@ -19336,6 +19336,10 @@
                 "$ref": "#/components/schemas/ProviderResultProfile"
               }
             ]
+          },
+          "reportsAvailable": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
