@@ -172,6 +172,8 @@ fi
 
 # ── tims-suite ────────────────────────────────────────────────────────────────────────────────────────
 if [ ! -s "$STATE/suite.json" ] || ! kill -0 "$(cat "$STATE/suite-up.pid" 2>/dev/null)" 2>/dev/null; then
+  # A fresh suite-up is a fresh suite database: the partner client and webhook subscription of a previous one are gone.
+  rm -f "$STATE/provision.out" "$STATE/webhook.out"
   log "tims-suite (schema, API, hosted player)"
   rm -f "$STATE/suite.json"
   SUITE_DIR="$SUITE_DIR" STATE_DIR="$STATE" TLS_CERT="$STATE/tls/leaf.pem" TLS_KEY="$STATE/tls/leaf.key" CA_PEM="$STATE/tls/ca.pem" \
