@@ -471,7 +471,8 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         var before = await RowAsync(attempt);
         var full = ResultFor(before.ProviderAssignmentId!.Value) with
         {
-            SubjectId = subject, ScoresJson = """{"global":{"percentile":62.4}}""",
+            SubjectId = subject,
+            ScoresJson = """{"global":{"percentile":62.4}}""",
         };
         await using (var db = fixture.NewContext())
         {
@@ -519,7 +520,8 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         var read = await RowAsync(attempt);
         var full1 = ResultFor(read.ProviderAssignmentId!.Value) with
         {
-            SubjectId = subject, ScoresJson = """{"global":{"percentile":62.4}}""",
+            SubjectId = subject,
+            ScoresJson = """{"global":{"percentile":62.4}}""",
         };
         await using (var db = fixture.NewContext())
         {
@@ -552,7 +554,10 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
         var otherRead = await RowAsync(other);
         var otherSummary = ResultFor(otherRead.ProviderAssignmentId!.Value) with
         {
-            SubjectId = otherSubject, RenderedLevel = "summary", ScoresJson = "{}", GlobalPercentile = null,
+            SubjectId = otherSubject,
+            RenderedLevel = "summary",
+            ScoresJson = "{}",
+            GlobalPercentile = null,
         };
         await using (var db = fixture.NewContext())
         {
