@@ -434,7 +434,10 @@ answered by someone who knows the job) and TIMS compares each candidate's PCA wi
   FIT row for the vacancy: the SECURITY DEFINER trigger `fit_v2_requirements_changed` on `job_profiles`
   (`packages/db/prisma/migrations/20261113090000_fit_v2_requirements_recompute`, psql after
   `20261109100000_fit_v2_integrity`). It fires for every writer and only when the stored value changed; the queue's
-  worker then re-scores the rows, so a PCA judged on the old code's fit shows `no_value` within one drain.
+  worker then re-scores the rows, so a PCA judged on the old code's fit shows `no_value` within one drain. The trigger
+  takes the vacancy's requirements lock exclusively, and every FIT write (v2, and v1 with FIT v2 on) takes it shared and
+  reads the requirements inside its transaction (Codex ats runs 3 and 4), so a compute racing an edit never keeps the
+  old configuration. Removing the assessments deletes the vacancy's FIT v2 rows (HR's next Compute Rankings scores v1).
 - **Weights.** HR sets each scored test's relative weight in the vacancy editor (the per-instrument `weight` FIT v2
   always read; the editor now exposes it). The five dimension weights stay on the role family (Settings → FIT weights).
   TIMS is to supply the percentages; nothing is defaulted on its behalf.
