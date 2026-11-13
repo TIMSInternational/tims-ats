@@ -5314,6 +5314,15 @@
       "notReady": "Los resultados aparecen aquí cuando el candidato termina y TIMS califica la prueba.",
       "underReview": "TIMS está revisando este resultado. No se muestra hasta que termine la revisión.",
       "noProfile": "Este resultado no tiene detalle para mostrar.",
+      "reports": {
+        "button": "Informes PDF",
+        "native": "Informe de resultados",
+        "loading": "Cargando informes…",
+        "none": "Este resultado no tiene informes para descargar.",
+        "error": "No se pudieron cargar los informes. Inténtalo de nuevo.",
+        "downloading": "Descargando…",
+        "downloadError": "No se pudo descargar el informe. Inténtalo de nuevo."
+      },
       "advisoryNote": "Describe un estilo, no una capacidad. Ningún perfil es mejor que otro y nunca es motivo de rechazo.",
       "levelOf": "Nivel {value} de {max}",
       "lia": {

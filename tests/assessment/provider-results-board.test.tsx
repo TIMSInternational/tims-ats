@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // The HR results board (Assessments tab): each TIMS result drawn from its profile (C# ProviderResultProfile), values
 // always printed as text, the vacancy's minimum marked, nothing drawn for a result under review or a narrow reader.
@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   attempts: null as unknown,
   stored: null as unknown,
   locale: 'en' as 'en' | 'es',
+  reports: { data: undefined, error: null, isPending: true, isError: false } as Record<string, unknown>,
+  reportsEnabled: [] as boolean[],
+  download: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -30,6 +33,16 @@ vi.mock('../../apps/web/lib/platform-api/assessment-providers-staff', async (ori
   useCandidateProviderAttempts: () => ({ data: mocks.attempts }),
 }));
 
+vi.mock('../../apps/web/lib/platform-api/assessment-provider-reports', async (original) => ({
+  ...(await original<typeof import('../../apps/web/lib/platform-api/assessment-provider-reports')>()),
+  useProviderReports: (_attemptId: string, enabled: boolean) => {
+    mocks.reportsEnabled.push(enabled);
+    return mocks.reports;
+  },
+  downloadProviderReport: mocks.download,
+}));
+
+import { PlatformApiError } from '../../apps/web/lib/platform-api/client';
 import { ProviderResultsBoard } from '../../apps/web/app/(admin)/recruitment/candidates/[id]/provider-results/provider-results-board';
 
 const VACANCY = '11111111-1111-4111-8111-111111111111';
@@ -288,6 +301,53 @@ describe('ProviderResultsBoard', () => {
     mocks.attempts = { consentWithdrawn: false, attempts: [attempt('pca', 4, null, 'sent')] };
     render(<ProviderResultsBoard candidateId="c" />);
     expect(screen.getByText(/Results appear here once the candidate finishes/)).toBeTruthy();
+  });
+
+  it('PDF reports: a company-scope card offers them, loads the list only when opened, and saves the one chosen', async () => {
+    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('pca', 4, { profile: { pca } })] };
+    mocks.reports = {
+      data: [
+        { variant: 'pca', title: 'Informe PCA' },
+        { variant: 'gd', title: null },
+      ],
+      error: null,
+      isPending: false,
+      isError: false,
+    };
+    mocks.reportsEnabled = [];
+    mocks.download.mockClear();
+    render(<ProviderResultsBoard candidateId="c" />);
+    const card = section(/PCA/);
+    const button = within(card).getByRole('button', { name: 'PDF reports' });
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(mocks.reportsEnabled.every((enabled) => !enabled)).toBe(true); // nothing is read until it opens
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(within(card).getByRole('button', { name: 'Informe PCA' })).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: 'gd' })); // no title: the variant id
+    await waitFor(() => expect(mocks.download).toHaveBeenCalledWith('00000004-0000-4000-8000-000000000000', 'pca', 'gd'));
+    await waitFor(() => expect(button.getAttribute('aria-expanded')).toBe('false')); // closes once saved
+  });
+
+  it('PDF reports: the native report is the results report; a narrow reader, a voided result and a 403 get no menu', () => {
+    mocks.reports = { data: [{ variant: null, title: null }], error: null, isPending: false, isError: false };
+    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, { profile: { lia } })] };
+    const { unmount } = render(<ProviderResultsBoard candidateId="c" />);
+    fireEvent.click(within(section(/LIA/)).getByRole('button', { name: 'PDF reports' }));
+    expect(within(section(/LIA/)).getByRole('button', { name: 'Results report' })).toBeTruthy();
+    unmount();
+
+    for (const result of [{ profile: null }, { profile: { lia }, validity: 'voided' }]) {
+      mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, result)] };
+      const view = render(<ProviderResultsBoard candidateId="c" />);
+      expect(screen.queryByRole('button', { name: 'PDF reports' })).toBeNull();
+      view.unmount();
+    }
+
+    mocks.reports = { data: undefined, error: new PlatformApiError(403, 'Forbidden'), isPending: false, isError: true };
+    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, { profile: { lia } })] };
+    render(<ProviderResultsBoard candidateId="c" />);
+    expect(screen.queryByRole('button', { name: 'PDF reports' })).toBeNull();
   });
 
   it('renders nothing for a withdrawn candidate or without attempts', () => {

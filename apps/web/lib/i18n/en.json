@@ -5297,6 +5297,15 @@
       "notReady": "Results appear here once the candidate finishes and TIMS scores the test.",
       "underReview": "TIMS is reviewing this result. It is not shown until the review ends.",
       "noProfile": "This result has no detail to show.",
+      "reports": {
+        "button": "PDF reports",
+        "native": "Results report",
+        "loading": "Loading reports…",
+        "none": "This result has no reports to download.",
+        "error": "The reports could not be loaded. Try again.",
+        "downloading": "Downloading…",
+        "downloadError": "The report could not be downloaded. Try again."
+      },
       "advisoryNote": "Describes style, not ability. No profile is better than another, and it is never a reason to reject.",
       "levelOf": "Level {value} of {max}",
       "lia": {

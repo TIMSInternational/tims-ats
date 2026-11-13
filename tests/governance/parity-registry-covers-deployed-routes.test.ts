@@ -702,7 +702,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         224 → 226 (round 12): the platform owner's binding state read and unbind join the AS-5 group.
     //         226 → 228 (proctoring parity, 2026-11-11): the org's assessment security settings (GET + PUT) join
     //         the AS-5 group.
-    expect(deployed.size).toBe(228);
+    //         228 → 230 (HR PDF reports, 2026-11-12): the report list and the report download join the AS-5 group.
+    expect(deployed.size).toBe(230);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -789,7 +790,8 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 124 → 128 (release slice "atsux"): two staff reads join the AS-5 group, the editor's two routes the FIT v2 group.
     // 128 → 130 (round 12): the binding state read and unbind join the AS-5 group.
     // 130 → 132 (proctoring parity, 2026-11-11): the org's assessment security settings join the AS-5 group.
-    expect(allowlistNormalised.length).toBe(132);
+    // 132 → 134 (HR PDF reports, 2026-11-12): the report list and the report download join the AS-5 group.
+    expect(allowlistNormalised.length).toBe(134);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {

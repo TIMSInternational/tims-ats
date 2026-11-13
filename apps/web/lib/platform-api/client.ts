@@ -208,6 +208,34 @@ export async function platformGetRaw(path: string, query?: QueryParams, pathPara
   return response.json();
 }
 
+/**
+ * GET of a binary body (a report PDF): same auth, base URL and error handling as {@link platformGet}, but asks for
+ * `application/pdf` and returns the body as a Blob. The path is the C# route template; {@link PathParams} fill it.
+ */
+export async function platformGetBlob(path: string, query?: QueryParams, pathParams?: PathParams): Promise<Blob> {
+  if (!isPlatformApiEnabled()) {
+    throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
+  }
+
+  const token = await getAccessToken();
+  const headers: Record<string, string> = { Accept: 'application/pdf' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const resolvedPath = applyPathParams(path, pathParams);
+  const response = await fetch(`/api/platform${resolvedPath}${buildQueryString(query)}`, {
+    method: 'GET',
+    headers,
+    credentials: 'same-origin',
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => undefined);
+    throw new PlatformApiError(response.status, response.statusText, errorBody);
+  }
+
+  return response.blob();
+}
+
 // ---------------------------------------------------------------------------
 // Mutations (POST / PATCH / DELETE) — needed by the write-side dark-cutover wrappers.
 // Mirrors the GET pattern above verbatim, once per HTTP verb (openapi-typescript keys each

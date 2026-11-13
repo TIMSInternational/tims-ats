@@ -15,6 +15,7 @@ import { EnglishProfile } from './english-profile';
 import { LiaProfile } from './lia-profile';
 import { PcaProfile } from './pca-profile';
 import { PersonalityProfile } from './personality-profile';
+import { ProviderReportMenu } from './provider-report-menu';
 
 const ORDER = ['lia', 'english', 'personality', 'pca', 'itcia', 'mi'] as const;
 
@@ -87,7 +88,13 @@ function VacancyResults({ vacancyId, attempts }: { vacancyId: string; attempts: 
                 </p>
               )}
             </div>
-            <ProviderStatusChip status={attempt.status} />
+            <div className="flex items-center gap-2">
+              {/* Company scope only (the profile is there only for it, D6); a voided result has no report. */}
+              {attempt.result?.profile && attempt.result.validity !== 'voided' && (
+                <ProviderReportMenu attemptId={attempt.attemptId} instrument={attempt.instrument} />
+              )}
+              <ProviderStatusChip status={attempt.status} />
+            </div>
           </header>
           <ResultBody attempt={attempt} minimum={minimumOf(attempt.instrument)} />
         </section>
