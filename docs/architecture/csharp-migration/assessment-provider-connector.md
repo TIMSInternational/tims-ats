@@ -36,6 +36,8 @@ Here every instrument is a **remote** provider, and provider attempts live only 
 | `POST /platform/assessment-providers/bindings`                                                        | platform owner                                                                  | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments                                                                         |
 | `GET /assessments/provider-catalog?vacancyId=`                                                        | staff, `assessment:read` (+ the vacancy scope probe with `vacancyId`)           | The instruments this org may assign (binding AND catalog for selection), with delivery, locales, consents, versions and the version the vacancy is pinned to           |
 | `GET /assessments/provider-attempts?candidateId=`                                                     | staff, `assessment:read`; out-of-scope vacancies omitted                        | Status chip, how the vacancy counts it (D3, D20) and the result (validity, reviewPending, minimum met). D6: below company scope, no level, reasons or accommodation    |
+| `GET /assessments/provider-attempts/{attemptId}/reports`                                              | staff, `assessment:read` at company scope or wider (D6) + the vacancy probe     | The PDF reports the attempt's latest result offers: the results report of a native test (`variant: null`) and the variants the `full` projection lists (PCA)         |
+| `GET /assessments/provider-attempts/{attemptId}/report?variant=&locale=`                              | staff, as above                                                                 | One report as `application/pdf`, `private, no-store`, audited (`assessment_provider_report_downloaded`); 404 `report_unavailable`, 503 when the provider is down        |
 | `POST /portal/assessment-attempts/{attemptId}/launch`                                                 | the candidate, by confirmed email                                               | Optional per-purpose consents and `embedded`. Returns the hosted launch (D16): the player's single-use URL and its frame ancestors, body only. Rate limit: `auth` tier |
 | `GET /portal/assessment-attempts?organizationSlug=`                                                   | the candidate, by confirmed email                                               | The candidate's own attempts at that org, one coarse status each (D9), the consent purposes still missing, the start deadline                                          |
 | `GET /portal/assessment-attempts/{attemptId}/consent-templates?locale=es\|en`                         | the candidate, by confirmed email                                               | The provider's consent templates for the purposes the attempt still needs; 404 unless it is the candidate's and needs consent                                          |
@@ -357,7 +359,8 @@ inside the 30-day revision window, so two repairs run in the poller's scheduled 
 - `ClientId`
 - `ClientSecret`
 - `Scopes` (default `catalog:read assignments:write subjects:write results:read`). The DSAR export asks for a
-  separate token with `subjects:export` ALONE, so no ordinary call carries it.
+  separate token with `subjects:export` ALONE, and the report downloads one with `reports:read` ALONE, so no ordinary
+  call carries either (a client without `reports:read` keeps every other call; only its report downloads fail, 503).
 - `PortalBaseUrl` (optional, an https origin): the candidate portal the hosted player returns to (D16)
 - `WebhookSigningSecret`
 - `WebhookSigningSecretPrevious` (during a rotation)
@@ -528,6 +531,16 @@ pending counsel (D2, D22).
 `requires_human_review` is a top-level field of `ItciaResultV1`, not part of `scores`, so a summary projection carries
 it too. A present non-boolean value is off contract and the result is refused.
 
+## HR PDF reports (contract `getResultReport`)
+
+HR downloads the provider's reports from the results board ("PDF reports" on a result card). A report is never wider
+than the result the ATS shows: the attempt's latest stored result must be valid or under review (a voided one has no
+report), still feed the ATS (no erasure, no withdrawal, #312) and be rendered for `tenant_hr` at `summary` or `full`; a
+provider variant (PCA: TIMS's own PDFs, listed on the result's `full` projection and read live) needs `full`, and a
+link-out instrument has only variants. Readers below company scope are refused (D6). The client streams the body with
+a 20 MB cap and accepts only `application/pdf` starting with `%PDF-`, within a 90 s budget; the web relay
+(`/api/platform`) keeps its own 30 s limit, which a slow TIMS report can exceed.
+
 ## Known gaps (not done here)
 
 - The withdrawal cascade's scheduled retry (`ProviderWithdrawalSweepHostedService`, registered only with the connector
@@ -656,6 +669,7 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    - `catalog:read`, `assignments:write`, `subjects:write`, `results:read` (the ATS's default `Scopes`; `subjects:write`
      includes subject enrichment);
    - `subjects:export` (the DSAR export, which the ATS requests ALONE in a separate token);
+   - `reports:read` (HR's PDF report downloads, also requested ALONE; the suite's `--profile ats` grants it);
    - `events:subscribe` (managing the webhook subscription in step 4; the ATS's own calls never request it);
    - as the client's registered origin, the candidate portal's https origin, exactly `AssessmentProviders__PortalBaseUrl`
      (the hosted player's `return_url`, CORS, and the `frame_ancestors` that let the portal frame the player).
