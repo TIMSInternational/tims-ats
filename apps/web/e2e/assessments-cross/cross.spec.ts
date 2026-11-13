@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test, type Browser, type BrowserContext, type Frame, type Page } from '@playwright/test';
 import {
@@ -712,6 +712,27 @@ test('H8 HR reads each result on the candidate (exact levels; PCA advisory)', as
   await expect(jobFit).toContainText('Position code 194225');
   await expect(board(/^PCA/).getByLabel(/^Behavior Under Pressure: Dominance \d+/)).toBeVisible();
   await shot(hr, 'hr-candidate-results-board');
+  // HR PDF reports (reports:read): the results report of a native test, rendered by the suite, and TIMS's own PCA
+  // reports (the stand-in serves one PDF for every variant), each saved through the ATS relay.
+  const saveReport = async (region: RegExp, item: string) => {
+    const card = board(region);
+    await card.getByRole('button', { name: 'PDF reports' }).click();
+    const option = card.getByRole('button', { name: item });
+    await expect(option).toBeVisible({ timeout: 30_000 });
+    const [download] = await Promise.all([hr.waitForEvent('download', { timeout: 60_000 }), option.click()]);
+    const saved = await download.path();
+    return { name: download.suggestedFilename(), head: readFileSync(saved).subarray(0, 5).toString('latin1') };
+  };
+  const liaReport = await saveReport(/^LIA/, 'Results report');
+  expect(liaReport).toEqual({ name: 'tims-lia.pdf', head: '%PDF-' });
+  const pcaReport = await saveReport(/^PCA/, 'Informe PCA');
+  expect(pcaReport).toEqual({ name: 'tims-pca-pca.pdf', head: '%PDF-' });
+  const downloads = atsSql(
+    st,
+    `select count(*) from audit_logs where action='assessment_provider_report_downloaded' and entity_id in (${sqlStr(attemptsA.lia)}, ${sqlStr(attemptsA.pca)})`,
+  );
+  expect(downloads).toBe('2');
+  record('H8 PDF reports', `${liaReport.name} (suite-rendered) and ${pcaReport.name} (TIMS variant via the stand-in), ${downloads} audit rows`);
   if (shotsDir) {
     await hr.goto(`/recruitment/candidates/${candidateA}?tab=tabFitGaps`);
     await hr.waitForLoadState('networkidle').catch(() => undefined);
@@ -752,6 +773,10 @@ test('H9 a team leader sees only "below minimum" for a gated result, never the l
   await expect(row.getByText(/Global percentile/)).toHaveCount(0);
   await card.scrollIntoViewIfNeeded();
   await shot(leader, 'leader-candidate-results');
+  // D6: a report is the full interpretation, so the leader's board offers none.
+  await leader.goto(`/recruitment/candidates/${candidateA}?tab=tabAssessments`);
+  await expect(leader.getByRole('heading', { name: 'Results', level: 2 })).toBeVisible({ timeout: 60_000 });
+  await expect(leader.getByRole('button', { name: 'PDF reports' })).toHaveCount(0);
   record(
     'H9 D6 team leader',
     `owner SQL leader_assessment_read.sql granted ${granted.split('\n').find((l) => l.includes('|')) ?? 'nothing'}; leader ${leaderId} sees "Below minimum" for ${gated} (HR's exact ${gated === 'LIA' ? 'global percentile' : `CEFR ${english || 'n/a'}`} hidden)`,
