@@ -4,8 +4,11 @@ namespace Tims.Application.Assessments.Providers;
 
 /// <summary>What one poll did: organizations visited, attempts polled, attempts changed, attempts that failed.</summary>
 /// <param name="CancelsConfirmed">Unconfirmed staff cancels this run confirmed (nothing left at the provider).</param>
+/// <param name="Truncated">The run stopped claiming at <see cref="ProviderAttemptPollUseCase.MaxPassDuration"/>; the rest
+/// waits for the next run.</param>
 public sealed record AttemptPoll(
-    int Organizations, int Polled, int Changed, int Failed, int FailedOrganizations, int CancelsConfirmed = 0);
+    int Organizations, int Polled, int Changed, int Failed, int FailedOrganizations, int CancelsConfirmed = 0,
+    bool Truncated = false);
 
 /// <summary>One run of the D17 polling fallback over every organization.</summary>
 public interface IProviderAttemptPoll
@@ -34,6 +37,9 @@ public interface IProviderAttemptPoll
 /// a cancel whose create could not be ruled out (Codex ATS P1) never blocks the unbind forever. One that still cannot be
 /// confirmed is stamped and goes to the back of that queue.</item>
 /// </list>
+/// A run claims nothing new after <see cref="MaxPassDuration"/> (Codex ats run 7 [P2]: a backlog or a slow provider made
+/// one pass last hours, and the erasure sweep that shares the job waited behind it): the attempt and the cancel in hand
+/// finish, at least one of each is always tried, and the rest waits for the next run.
 /// A candidate whose #312 withdrawal had not reached the attempt is staged first, and nothing is fetched for it (the
 /// cascade and its sweep own it from then on). A failed attempt never stops the others; it is polled again once stale.
 /// A 404 or 410 on the assignment is never read as a state by itself. It is the one answer an erased subject's assignment
@@ -43,10 +49,18 @@ public interface IProviderAttemptPoll
 /// scores with staff and FIT). Any other answer, or a failed lookup, changes nothing and the attempt is polled again.
 /// </summary>
 /// <param name="maxPollDurationForTests">TEST-ONLY: replaces <see cref="ProviderAttemptPolling.MaxPollDuration"/>.</param>
+/// <param name="maxPassDurationForTests">TEST-ONLY: replaces <see cref="MaxPassDuration"/>.</param>
 public sealed class ProviderAttemptPollUseCase(
-    IAssessmentProviderRepository repository, IAssessmentProvider provider, TimeSpan? maxPollDurationForTests = null)
+    IAssessmentProviderRepository repository, IAssessmentProvider provider, TimeSpan? maxPollDurationForTests = null,
+    TimeSpan? maxPassDurationForTests = null)
     : IProviderAttemptPoll
 {
+    /// <summary>
+    /// After this long a run claims no further attempt or cancel: below the hosted job's five-minute interval, so a run
+    /// ends within about one interval plus the one poll in hand (<see cref="ProviderAttemptPolling.MaxPollDuration"/>).
+    /// </summary>
+    public static readonly TimeSpan MaxPassDuration = TimeSpan.FromMinutes(4);
+
     public const int MaxOrganizations = 200;
     public const int MaxAttemptsPerOrganization = 25;
     public const int MaxUnconfirmedCancels = 50;
@@ -54,6 +68,7 @@ public sealed class ProviderAttemptPollUseCase(
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
     private readonly TimeSpan _maxPollDuration = maxPollDurationForTests ?? ProviderAttemptPolling.MaxPollDuration;
+    private readonly TimeSpan _maxPassDuration = maxPassDurationForTests ?? MaxPassDuration;
 
     public async Task<AttemptPoll> RunAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -65,11 +80,24 @@ public sealed class ProviderAttemptPollUseCase(
 
         var organizations = await _repository.ListOrganizationsWithPollableAttemptsAsync(MaxOrganizations, cancellationToken)
             .ConfigureAwait(false);
+        var pass = System.Diagnostics.Stopwatch.StartNew();
+        var truncated = false;
         int polled = 0, changed = 0, failed = 0, failedOrganizations = 0;
         foreach (var organizationId in organizations)
         {
+            if (truncated)
+            {
+                break;
+            }
+
             for (var claims = 0; claims < MaxAttemptsPerOrganization; claims++)
             {
+                if (polled > 0 && pass.Elapsed >= _maxPassDuration)
+                {
+                    truncated = true;
+                    break;
+                }
+
                 IReadOnlyList<PolledAttempt> claimed;
                 try
                 {
@@ -122,8 +150,15 @@ public sealed class ProviderAttemptPollUseCase(
         {
             var unconfirmed = await _repository.ListUnconfirmedCancelsAsync(MaxUnconfirmedCancels, cancellationToken)
                 .ConfigureAwait(false);
+            var tried = 0;
             foreach (var pending in unconfirmed)
             {
+                if (tried++ > 0 && pass.Elapsed >= _maxPassDuration)
+                {
+                    truncated = true;
+                    break;
+                }
+
                 using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 limit.CancelAfter(_maxPollDuration);
                 var confirmed = false;
@@ -154,7 +189,7 @@ public sealed class ProviderAttemptPollUseCase(
             }
         }
 
-        return new AttemptPoll(organizations.Count, polled, changed, failed, failedOrganizations, cancelsConfirmed);
+        return new AttemptPoll(organizations.Count, polled, changed, failed, failedOrganizations, cancelsConfirmed, truncated);
     }
 
     /// <summary>

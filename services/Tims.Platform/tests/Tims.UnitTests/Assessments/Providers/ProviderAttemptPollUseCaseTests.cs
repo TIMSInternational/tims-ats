@@ -426,6 +426,31 @@ public sealed class ProviderAttemptPollUseCaseTests
         return row;
     }
 
+    // Codex ats run 7 [P2]: a pass past its budget claims nothing new (the erasure sweep shares the job), yet always
+    // tries at least one attempt and one cancel, so neither queue can starve.
+    [Fact]
+    public async Task A_pass_past_its_budget_claims_nothing_new_but_always_tries_one_attempt_and_one_cancel()
+    {
+        _repository.AddCreatedAttempt("lia", ProviderAttemptStates.Launched);
+        _repository.AddCreatedAttempt("english", ProviderAttemptStates.Launched);
+        _repository.AddCreatedAttempt("mi", ProviderAttemptStates.Launched);
+        AddUnconfirmedCancel();
+        AddUnconfirmedCancel();
+        _provider.OnGetAssignment = id => AssignmentOf(_repository.Attempts.Single(a => a.ProviderAssignmentId == id), "in_progress");
+
+        var outcome = await new ProviderAttemptPollUseCase(_repository, _provider, null, TimeSpan.Zero)
+            .RunAsync(Owner, Now, CancellationToken.None);
+
+        Assert.Equal((1, 1, true), (outcome.Polled, outcome.CancelsConfirmed, outcome.Truncated));
+        Assert.Single(_repository.Released);
+        Assert.Equal(1, _provider.Calls.Count(c => c == "lookup"));
+
+        // Within the budget everything is tried and nothing is truncated.
+        var rest = await Run();
+        Assert.Equal((2, 1, false), (rest.Polled, rest.CancelsConfirmed, rest.Truncated));
+        Assert.True(ProviderAttemptPollUseCase.MaxPassDuration < TimeSpan.FromMinutes(5)); // below the hosted job's interval
+    }
+
     [Fact]
     public async Task An_unconfirmed_cancel_whose_create_never_landed_is_confirmed_by_the_poller()
     {

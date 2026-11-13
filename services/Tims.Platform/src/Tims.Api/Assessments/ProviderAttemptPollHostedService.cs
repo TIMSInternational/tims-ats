@@ -12,10 +12,11 @@ namespace Tims.Api.Assessments;
 /// the database clock), so two instances never poll the same attempt at once. <see cref="Owner"/> is this process's lease
 /// owner id; an instance that dies mid-run frees its leases when they expire.</para>
 ///
-/// <para>Each tick then runs the <see cref="IProviderErasureSweep"/> (Codex r13 P1), in its own scope and its own catch, so
-/// a failed poll never skips it: every subject that still holds a stored result is asked about at most once per
-/// configured interval, whatever the result's age. Two instances never ask about one subject in one interval (each
-/// check is claimed with a conditional stamp).</para>
+/// <para>Each tick first runs the <see cref="IProviderErasureSweep"/> (Codex r13 P1), in its own scope and its own catch,
+/// then the poll (Codex ats run 7 [P2]: the sweep used to wait behind a poll pass of any length). A failed or slow poll
+/// therefore never skips the sweep, and the poll's own pass budget bounds how long the next tick's sweep can wait: every
+/// subject that still holds a stored result is asked about at most once per configured interval, whatever the result's
+/// age. Two instances never ask about one subject in one interval (each check is claimed with a conditional stamp).</para>
 ///
 /// <para>As in <see cref="ProviderWithdrawalSweepHostedService"/>, the catch-all is load-bearing: an exception escaping
 /// <c>ExecuteAsync</c> stops the WHOLE host. A failed run is logged and retried at the next tick. The DI graph is resolved
@@ -65,38 +66,8 @@ public sealed class ProviderAttemptPollHostedService(
                 return;
             }
 
-            try
-            {
-                await using var scope = _scopeFactory.CreateAsyncScope();
-                var poll = scope.ServiceProvider.GetRequiredService<IProviderAttemptPoll>();
-                var outcome = await poll.RunAsync(Owner, _timeProvider.GetUtcNow(), stoppingToken).ConfigureAwait(false);
-                if (outcome.Failed > 0 || outcome.FailedOrganizations > 0)
-                {
-                    _logger.LogWarning(
-                        "assessment provider poll: {Polled} attempt(s) polled, {Changed} changed, {Failed} failed, {FailedOrganizations} organization(s) failed",
-                        outcome.Polled, outcome.Changed, outcome.Failed, outcome.FailedOrganizations);
-                }
-                else if (outcome.Polled > 0)
-                {
-                    _logger.LogInformation(
-                        "assessment provider poll: {Polled} attempt(s) polled, {Changed} changed", outcome.Polled, outcome.Changed);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                // Leases expire on their own; the next tick retries. NEVER rethrow (see the class docblock).
-                _logger.LogError(ex, "assessment provider poll failed; retrying in {Interval}", Interval);
-            }
-
-            if (stoppingToken.IsCancellationRequested)
-            {
-                return;
-            }
-
+            // The erasure sweep first (Codex ats run 7 [P2]): it is the privacy duty, so a long poll pass can delay it by
+            // at most one pass (bounded by ProviderAttemptPollUseCase.MaxPassDuration), never skip it.
             try
             {
                 await using var scope = _scopeFactory.CreateAsyncScope();
@@ -123,6 +94,38 @@ public sealed class ProviderAttemptPollHostedService(
             {
                 // A claimed check stays stamped; that subject is asked again after the interval. NEVER rethrow.
                 _logger.LogError(ex, "assessment provider erasure sweep failed; retrying in {Interval}", Interval);
+            }
+
+            if (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var poll = scope.ServiceProvider.GetRequiredService<IProviderAttemptPoll>();
+                var outcome = await poll.RunAsync(Owner, _timeProvider.GetUtcNow(), stoppingToken).ConfigureAwait(false);
+                if (outcome.Failed > 0 || outcome.FailedOrganizations > 0 || outcome.Truncated)
+                {
+                    _logger.LogWarning(
+                        "assessment provider poll: {Polled} attempt(s) polled, {Changed} changed, {Failed} failed, {FailedOrganizations} organization(s) failed, truncated {Truncated}",
+                        outcome.Polled, outcome.Changed, outcome.Failed, outcome.FailedOrganizations, outcome.Truncated);
+                }
+                else if (outcome.Polled > 0)
+                {
+                    _logger.LogInformation(
+                        "assessment provider poll: {Polled} attempt(s) polled, {Changed} changed", outcome.Polled, outcome.Changed);
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                // Leases expire on their own; the next tick retries. NEVER rethrow (see the class docblock).
+                _logger.LogError(ex, "assessment provider poll failed; retrying in {Interval}", Interval);
             }
         }
     }

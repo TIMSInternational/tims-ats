@@ -54,6 +54,28 @@ public sealed class ProviderAttemptPollHostedServiceTests
         Assert.True(sweep.Calls >= 3, $"the sweep ran {sweep.Calls} time(s)");
     }
 
+    // Codex ats run 7 [P2]: the sweep runs first, so a poll pass that never ends cannot hold back the tick's sweep.
+    [Fact]
+    public async Task A_poll_that_never_returns_does_not_hold_back_the_ticks_erasure_sweep()
+    {
+        var poll = new ScriptedPoll { Hang = true };
+        var sweep = new ScriptedSweep();
+        var service = Build(poll, TimeSpan.FromMilliseconds(30), sweep);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitUntilAsync(() => poll.Calls >= 1 && sweep.Calls >= 1, TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        Assert.Equal(1, poll.Calls); // still hanging in the first tick
+        Assert.Equal(1, sweep.Calls); // ran before it
+    }
+
     [Fact]
     public async Task A_missing_erasure_sweep_registration_fails_the_start()
     {
@@ -145,17 +167,25 @@ public sealed class ProviderAttemptPollHostedServiceTests
 
         public int FailFirstCalls { get; init; }
 
+        /// <summary>Every run waits until the host stops (a pass that never ends).</summary>
+        public bool Hang { get; init; }
+
         public int Calls => Volatile.Read(ref _calls);
 
         public System.Collections.Concurrent.ConcurrentBag<Guid> Owners { get; } = [];
 
-        public Task<AttemptPoll> RunAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
+        public async Task<AttemptPoll> RunAsync(Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
         {
             Owners.Add(owner);
             var call = Interlocked.Increment(ref _calls);
+            if (Hang)
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+
             return call <= FailFirstCalls
                 ? throw new InvalidOperationException("provider down")
-                : Task.FromResult(new AttemptPoll(0, 0, 0, 0, 0));
+                : new AttemptPoll(0, 0, 0, 0, 0);
         }
     }
 }
