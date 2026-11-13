@@ -333,7 +333,8 @@ public sealed class FitV2IntegrityTests
 
         public Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken) =>
+            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+            bool skipIfV2Configured = false) =>
             throw new InvalidOperationException("a recompute never writes v1");
 
         public async Task<bool> UpsertFitScoreV2Async(

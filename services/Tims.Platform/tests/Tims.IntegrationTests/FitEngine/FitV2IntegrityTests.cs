@@ -484,6 +484,30 @@ public sealed class FitV2IntegrityTests(FitEngineFixture fixture)
         Assert.Equal("gate", breakdown["assessments"]![0]!["use"]!.GetValue<string>());
     }
 
+    // Codex ats run 4 [P1]: a v1 compute (the vacancy had no assessments when it read them) racing the edit that adds
+    // them must not leave a v1 row on a FIT v2 vacancy: its write waits for the edit, sees FIT v2 and writes nothing.
+    [Fact]
+    public async Task A_v1_compute_racing_the_first_v2_configuration_writes_no_v1_row()
+    {
+        var seed = await SeedQuizAsync(v2: false, normalized: 80);
+        await using var edit = new NpgsqlConnection(_fixture.ConnectionString);
+        await edit.OpenAsync();
+        await using var tx = await edit.BeginTransactionAsync();
+        await using (var command = new NpgsqlCommand(
+            "UPDATE job_profiles SET fit_requirements = '{\"assessments\":[{\"instrument\":\"native_quiz\",\"use\":\"scored\"}]}' WHERE vacancy_id = @v",
+            edit, tx))
+        {
+            command.Parameters.AddWithValue("v", seed.Vacancy);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var compute = RecomputeAsync(seed, onlyIfRowExists: false); // reads the v1 (committed) requirements
+        Assert.NotSame(compute, await Task.WhenAny(compute, Task.Delay(TimeSpan.FromSeconds(2))));
+        await tx.CommitAsync();
+        Assert.False(await compute.WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.Null(await _fixture.GetFitScoreAsync(seed.Candidate, seed.Vacancy));
+    }
+
     // Codex ats run 3 [P1]: removing the vacancy's assessments (the C# writer's explicit null) deletes its FIT v2 rows,
     // built from a configuration that no longer exists; a v1 row of the same vacancy stays.
     [Fact]

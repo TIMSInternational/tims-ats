@@ -139,7 +139,8 @@ public sealed class FitEngineWriteUseCase(
             // immediately before the write) — nothing written, not counted.
             var computed = assessmentRequirements is null
                 ? ComputeFitScoreAsync(
-                    organizationId, candidateId, vacancyId, requirements, vacancy?.RoleFamily, now, cancellationToken)
+                    organizationId, candidateId, vacancyId, requirements, vacancy?.RoleFamily, now, cancellationToken,
+                    skipIfV2Configured: fitV2Enabled)
                 : ComputeFitScoreV2Async(
                     organizationId, candidateId, vacancyId, liaScoredAllowed, vacancy?.RoleFamily, now,
                     onlyIfRowExists: false, cancellationToken);
@@ -224,7 +225,7 @@ public sealed class FitEngineWriteUseCase(
     // not join candidates) still gets a row: person-dims null, assessment/interview still fetched. TS parity.
     private async Task<bool> ComputeFitScoreAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, FitRequirements requirements, string? roleFamily,
-        DateTimeOffset now, CancellationToken cancellationToken)
+        DateTimeOffset now, CancellationToken cancellationToken, bool skipIfV2Configured = false)
     {
         var candidate = await _repository.GetCandidateForFitAsync(organizationId, candidateId, cancellationToken)
             .ConfigureAwait(false);
@@ -263,7 +264,7 @@ public sealed class FitEngineWriteUseCase(
 
         return await _repository.UpsertFitScoreUnlessWithdrawnAsync(
                 organizationId, candidateId, vacancyId, result.OverallScore, breakdown.ToJsonString(), weightsJson,
-                result.IsPartial, now, cancellationToken)
+                result.IsPartial, now, cancellationToken, skipIfV2Configured)
             .ConfigureAwait(false);
     }
 

@@ -153,6 +153,15 @@ public sealed class ProviderReportUseCase(IProviderReportRepository repository, 
             return new ProviderReportDownloadResult(Map(got.Failure!), null, target.Instrument);
         }
 
+        // Codex ats run 4 [P1]: a #312 withdrawal, an erasure or a newer result that committed during the provider call
+        // wins; the bytes are dropped, never delivered or audited as delivered.
+        var after = await _repository.GetReportTargetAsync(organizationId, attemptId, cancellationToken).ConfigureAwait(false);
+        if (after is null || after.ConsentWithdrawn || after.ResultsStopped || after.ProviderResultId != target.ProviderResultId
+            || after.ValidityStatus is not ("valid" or "needs_review"))
+        {
+            return new ProviderReportDownloadResult(ProviderReportOutcome.NoReport, null, target.Instrument);
+        }
+
         await _repository.AuditReportDownloadAsync(
                 organizationId, actorId, attemptId, target.CandidateId, target.Instrument, variant, cancellationToken)
             .ConfigureAwait(false);

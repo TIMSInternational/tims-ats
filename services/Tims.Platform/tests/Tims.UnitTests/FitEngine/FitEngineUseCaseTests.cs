@@ -452,7 +452,8 @@ public sealed class FitEngineUseCaseTests
 
         public Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
+            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+            bool skipIfV2Configured = false)
         {
             if (WithdrawnBeforeWrite.Contains(candidateId))
             {

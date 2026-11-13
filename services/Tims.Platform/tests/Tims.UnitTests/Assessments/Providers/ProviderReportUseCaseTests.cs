@@ -104,6 +104,30 @@ public sealed class ProviderReportUseCaseTests
         Assert.Empty(_repository.Audits);
     }
 
+    // Codex ats run 4 [P1]: a withdrawal, an erasure or a newer result committed during the provider call wins.
+    [Theory]
+    [InlineData("withdrawn")]
+    [InlineData("stopped")]
+    [InlineData("newer_result")]
+    [InlineData("voided")]
+    public async Task A_change_committed_during_the_provider_call_drops_the_report(string what)
+    {
+        _repository.Target = Target();
+        _repository.AfterFetch = what switch
+        {
+            "withdrawn" => Target(withdrawn: true),
+            "stopped" => Target(stopped: true),
+            "newer_result" => Target(result: Guid.NewGuid()),
+            _ => Target(validity: "voided"),
+        };
+
+        var got = await Download();
+
+        Assert.Equal(ProviderReportOutcome.NoReport, got.Outcome);
+        Assert.Null(got.File);
+        Assert.Empty(_repository.Audits);
+    }
+
     [Fact]
     public async Task A_result_under_review_has_its_report()
     {
@@ -173,6 +197,9 @@ public sealed class ProviderReportUseCaseTests
     {
         public ProviderReportTarget? Target { get; set; }
 
+        /// <summary>What the second read (after the provider call) sees, when set.</summary>
+        public ProviderReportTarget? AfterFetch { get; set; }
+
         public int Reads { get; private set; }
 
         public List<(Guid Attempt, string Instrument, string? Variant)> Audits { get; } = [];
@@ -181,7 +208,8 @@ public sealed class ProviderReportUseCaseTests
             Guid organizationId, Guid attemptId, CancellationToken cancellationToken)
         {
             Reads++;
-            return Task.FromResult(attemptId == Attempt && organizationId == Org ? Target : null);
+            var target = Reads > 1 && AfterFetch is not null ? AfterFetch : Target;
+            return Task.FromResult(attemptId == Attempt && organizationId == Org ? target : null);
         }
 
         public Task AuditReportDownloadAsync(

@@ -765,7 +765,8 @@ public sealed class FitV2UseCaseTests
 
         public Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
+            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+            bool skipIfV2Configured = false)
         {
             if (WithdrawnAfterWrites is { } limit && FitScoreUpserts.Count >= limit)
             {

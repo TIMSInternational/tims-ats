@@ -159,7 +159,8 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     public async Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
+        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+        bool skipIfV2Configured = false)
     {
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
@@ -176,6 +177,21 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         {
             await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
             return false;
+        }
+
+        if (skipIfV2Configured)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock_shared(hashtextextended({FitV2RequirementsLockKey(organizationId, vacancyId)}, 0))",
+                cancellationToken).ConfigureAwait(false);
+            var nowV2 = await _db.Database.SqlQuery<bool>(
+                    $"SELECT EXISTS (SELECT 1 FROM job_profiles WHERE organization_id = {organizationId} AND vacancy_id = {vacancyId} AND jsonb_typeof(fit_requirements) = 'object' AND fit_requirements ? 'assessments') AS \"Value\"")
+                .SingleAsync(cancellationToken).ConfigureAwait(false);
+            if (nowV2)
+            {
+                await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return false;
+            }
         }
 
         await ExecuteFitScoreUpsertAsync(

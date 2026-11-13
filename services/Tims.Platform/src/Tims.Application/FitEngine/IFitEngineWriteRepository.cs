@@ -44,9 +44,13 @@ public interface IFitEngineWriteRepository
     /// #312: in the SAME transaction it first takes the withdrawal's per-candidate advisory lock and RE-CHECKS the
     /// candidate's consent; a withdrawal committed after the pre-loop check skips the write and returns false.
     /// </summary>
+    /// <para><paramref name="skipIfV2Configured"/> (FIT v2 on, Codex ats run 4 [P1]): under the vacancy's requirements
+    /// lock (shared; the requirements trigger takes it exclusively), a vacancy configured for FIT v2 by an edit that
+    /// committed after the compute read its requirements is not written as v1 (false).</para>
     Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken);
+        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+        bool skipIfV2Configured = false);
 
     /// <summary>
     /// The FIT v2 write: read the integrity-carrying inputs and write the row ATOMICALLY. In one transaction it
