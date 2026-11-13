@@ -117,6 +117,9 @@ public sealed class AssessmentProviderProctoringTests(AssessmentProviderSchemaFi
         var candidate = await NewCandidateAsync();
         var binding = new ProviderBindingRow(AssessmentProviderSchemaFixture.BindingA, AssessmentProviderSchemaFixture.OrgA,
             AssessmentProviderSchemaFixture.TenantA, ["lia", "pca"], "es");
+        // The reserve re-reads the stored binding's instruments under its lock (Codex ats run 7): enable PCA there too.
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_bindings SET enabled_instruments = ARRAY['lia','english','pca'] WHERE id = '{AssessmentProviderSchemaFixture.BindingA}'");
         NewAttempt[] attempts =
         [
             new("lia", "Análisis de datos", "es", 1m, [], null, ProviderAgeBands.Adult, Strict),
@@ -153,6 +156,9 @@ public sealed class AssessmentProviderProctoringTests(AssessmentProviderSchemaFi
         var candidate = await NewCandidateAsync();
         var binding = new ProviderBindingRow(AssessmentProviderSchemaFixture.BindingA, AssessmentProviderSchemaFixture.OrgA,
             AssessmentProviderSchemaFixture.TenantA, ["lia", "pca"], "es");
+        // The reserve re-reads the stored binding's instruments under its lock (Codex ats run 7): enable PCA there too.
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_bindings SET enabled_instruments = ARRAY['lia','english','pca'] WHERE id = '{AssessmentProviderSchemaFixture.BindingA}'");
         NewAttempt[] attempts =
         [
             new("lia", "Análisis de datos", "es", 1m, [], null, ProviderAgeBands.Adult, null, "194225"),
