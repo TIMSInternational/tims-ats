@@ -34,7 +34,7 @@ export function MiProfile({ mi }: { mi: Mi }) {
           return (
             <li
               key={i.intelligence}
-              className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_7rem] items-center gap-3"
+              className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto] items-center gap-3"
               aria-label={
                 i.sumScore === null
                   ? `${name}: ${r.notAnswered}`
@@ -43,7 +43,7 @@ export function MiProfile({ mi }: { mi: Mi }) {
             >
               <span className="truncate text-[13px] text-[#333333]">{name}</span>
               <MeterBar value={i.sumScore} max={MAX_SUM} />
-              <span className="text-right text-[12px] text-[#1F114C]">
+              <span className="whitespace-nowrap text-right text-[12px] text-[#1F114C]">
                 {i.sumScore === null ? r.notAnswered : `${fill(r.outOf, { value: i.sumScore })} · ${band ?? ''}`}
               </span>
             </li>
