@@ -12,7 +12,9 @@ import { ProviderStatusChip } from '../provider-status-chip';
 import { ProviderProctoringNote } from '../provider-proctoring-note';
 import { fill } from './chart-parts';
 import { EnglishProfile } from './english-profile';
+import { ItciaProfile } from './itcia-profile';
 import { LiaProfile } from './lia-profile';
+import { MiProfile } from './mi-profile';
 import { PcaProfile } from './pca-profile';
 import { PersonalityProfile } from './personality-profile';
 import { ProviderReportMenu } from './provider-report-menu';
@@ -32,7 +34,7 @@ function ResultBody({
   minimum,
 }: {
   attempt: StaffProviderAttempt;
-  minimum: { percentile: number | null; cefr: string | null };
+  minimum: { percentile: number | null; cefr: string | null; level: number | null };
 }) {
   const { t } = useI18n();
   const r = t.providerAssessments.results;
@@ -47,6 +49,8 @@ function ResultBody({
   if (profile?.english) return <EnglishProfile english={profile.english} minimum={minimum.cefr} />;
   if (profile?.personality) return <PersonalityProfile personality={profile.personality} />;
   if (profile?.pca) return <PcaProfile pca={profile.pca} />;
+  if (profile?.itcia) return <ItciaProfile itcia={profile.itcia} minimum={minimum.level} />;
+  if (profile?.mi) return <MiProfile mi={profile.mi} />;
   return <p className="text-[13px] text-[#6B6B6B]">{r.noProfile}</p>;
 }
 
@@ -58,12 +62,14 @@ function VacancyResults({ vacancyId, attempts }: { vacancyId: string; attempts: 
     english: r.english.title,
     personality: r.personality.title,
     pca: r.pca.title,
+    itcia: r.itcia.title,
+    mi: r.mi.title,
   };
   const names = t.candidates.fitInstrumentNames;
   const requirements = useVacancyAssessments(vacancyId);
   const minimumOf = (instrument: string) => {
     const min = requirements.data?.assessments.find((a) => a.instrument === instrument)?.min ?? null;
-    return { percentile: min?.globalPercentile ?? null, cefr: min?.cefr ?? null };
+    return { percentile: min?.globalPercentile ?? null, cefr: min?.cefr ?? null, level: min?.level ?? null };
   };
   const dateFormat = new Intl.DateTimeFormat(locale === 'EN' ? 'en' : 'es', { dateStyle: 'medium' });
 

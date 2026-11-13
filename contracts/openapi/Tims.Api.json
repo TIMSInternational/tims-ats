@@ -15249,6 +15249,103 @@
           }
         }
       },
+      "ItciaCategoryScore": {
+        "required": [
+          "category",
+          "score",
+          "coverage",
+          "provisional"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "coverage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "provisional": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ItciaProfile": {
+        "required": [
+          "globalLevel",
+          "globalLevelCode",
+          "coreScore",
+          "completion",
+          "categories",
+          "riskFlags",
+          "recommendedAutonomyLevel"
+        ],
+        "type": "object",
+        "properties": {
+          "globalLevel": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "globalLevelCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "coreScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "completion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItciaCategoryScore"
+            }
+          },
+          "riskFlags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recommendedAutonomyLevel": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "JoinBody": {
         "required": [
           "token"
@@ -15820,6 +15917,86 @@
           },
           "currency": {
             "type": "string"
+          }
+        }
+      },
+      "MiIntelligenceScore": {
+        "required": [
+          "intelligence",
+          "sumScore",
+          "band",
+          "bandCode",
+          "answered"
+        ],
+        "type": "object",
+        "properties": {
+          "intelligence": {
+            "type": "string"
+          },
+          "sumScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "band": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "bandCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "answered": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "MiProfile": {
+        "required": [
+          "allComplete",
+          "intelligences",
+          "dominant",
+          "tied",
+          "noDifferentiation"
+        ],
+        "type": "object",
+        "properties": {
+          "allComplete": {
+            "type": "boolean"
+          },
+          "intelligences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MiIntelligenceScore"
+            }
+          },
+          "dominant": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tied": {
+            "type": "boolean"
+          },
+          "noDifferentiation": {
+            "type": "boolean"
           }
         }
       },
@@ -17870,6 +18047,26 @@
               },
               {
                 "$ref": "#/components/schemas/PcaProfile"
+              }
+            ]
+          },
+          "itcia": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ItciaProfile"
+              }
+            ]
+          },
+          "mi": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MiProfile"
               }
             ]
           }

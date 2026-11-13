@@ -26,6 +26,79 @@ public sealed class ProviderResultProfileTests
         {"disc":{"primary_graph":"under_pressure","graphs":[{"graph":"work_adaptation","d":62,"i":48,"s":35,"c":55},{"graph":"under_pressure","d":70,"i":40,"s":30,"c":52},{"graph":"self_image","d":55,"i":50,"s":42,"c":49},{"graph":"fourth","d":1,"i":1,"s":1,"c":1}]},"competencies":[{"code":"tims-pca:orientacion_a_resultados","name":"Orientación a resultados","level":{"code":"l3","ordinal":3},"scale_max":4},{"code":"tims-pca:trabajo_en_equipo","name":"Trabajo en equipo","level":{"code":"l9","ordinal":9}},{"code":"<script>","name":"x","level":{"ordinal":2}}]}
         """;
 
+    // The contract's own examples (tims-interop examples/assessments/result-itcia.json, result-mi.json), plus junk.
+    private const string Itcia = """
+        {"completion":"complete","global_level":{"scale_id":"itcia.level","code":"autonomo","ordinal":3,"label":"Autónomo"},"core_score":1.92,"categories":[{"category_id":"C2","score":1.8,"coverage":"complete","provisional":false},{"category_id":"C1","score":2.1,"coverage":"complete","provisional":false},{"category_id":"C4","score":1.7,"coverage":"partial","provisional":true},{"category_id":"C1","score":0.1,"coverage":"complete","provisional":false},{"category_id":"C9","score":2},{"category_id":"C5","score":4.5,"coverage":"odd","provisional":false}],"risk":{"flags":["R2","R2","R7","<b>"],"recommended_autonomy_level":{"scale_id":"itcia.level","code":"funcional","ordinal":2}}}
+        """;
+
+    private const string Mi = """
+        {"all_intelligences_complete":false,"intelligences":[{"intelligence_id":"linguistica","sum_score":21,"band":{"scale_id":"mi.band","code":"fortaleza","ordinal":3,"label":"Fortaleza"},"answered":5,"expected":5},{"intelligence_id":"musical","sum_score":9,"band":{"scale_id":"mi.band","code":"por_desarrollar","ordinal":1},"answered":5,"expected":5},{"intelligence_id":"naturalista","sum_score":30,"band":{"code":"x","ordinal":7},"answered":5,"expected":5},{"intelligence_id":"emocional","sum_score":14,"band":{"code":"moderado","ordinal":2},"answered":3,"expected":5},{"intelligence_id":"linguistica","sum_score":5,"answered":5},{"intelligence_id":"telepatica","sum_score":20,"answered":5}],"dominant":{"intelligence_ids":["linguistica","telepatica","linguistica"],"tied":false,"no_differentiation":false}}
+        """;
+
+    [Fact]
+    public void Itcia_keeps_the_level_the_evidence_per_category_and_the_risk_flags_bounded()
+    {
+        var itcia = ProviderResultProfiles.Parse("itcia", Itcia)!.Itcia!;
+
+        Assert.Equal(3, itcia.GlobalLevel);
+        Assert.Equal("autonomo", itcia.GlobalLevelCode);
+        Assert.Equal(1.92, itcia.CoreScore);
+        Assert.Equal("complete", itcia.Completion);
+        // C1–C7 only, each once (the first wins), in catalogue order; a score off the 0–3 scale is dropped, not clamped.
+        Assert.Equal(["C1", "C2", "C4", "C5"], itcia.Categories.Select(c => c.Category));
+        Assert.Equal(2.1, itcia.Categories[0].Score);
+        Assert.True(itcia.Categories.Single(c => c.Category == "C4").Provisional);
+        Assert.Equal("partial", itcia.Categories.Single(c => c.Category == "C4").Coverage);
+        Assert.Null(itcia.Categories.Single(c => c.Category == "C5").Score);
+        Assert.Null(itcia.Categories.Single(c => c.Category == "C5").Coverage);
+        Assert.Equal(["R2"], itcia.RiskFlags);
+        Assert.Equal(2, itcia.RecommendedAutonomyLevel);
+    }
+
+    [Fact]
+    public void Itcia_without_a_level_on_its_own_scale_has_none()
+    {
+        var itcia = ProviderResultProfiles.Parse(
+            "itcia", """{"global_level":{"scale_id":"lia.level","code":"autonomo","ordinal":3},"core_score":null,"categories":[{"category_id":"C3","score":null,"coverage":"partial","provisional":true}]}""")!.Itcia!;
+
+        Assert.Null(itcia.GlobalLevel);
+        Assert.Null(itcia.GlobalLevelCode);
+        Assert.Null(itcia.CoreScore);
+        Assert.Equal(["C3"], itcia.Categories.Select(c => c.Category));
+        Assert.Empty(itcia.RiskFlags);
+    }
+
+    [Fact]
+    public void Mi_keeps_each_known_intelligence_once_and_never_scores_an_unanswered_one()
+    {
+        var mi = ProviderResultProfiles.Parse("mi", Mi)!.Mi!;
+
+        Assert.False(mi.AllComplete);
+        Assert.Equal(["linguistica", "musical", "naturalista", "emocional"], mi.Intelligences.Select(i => i.Intelligence));
+        var linguistica = mi.Intelligences[0];
+        Assert.Equal((21, 3, "fortaleza"), (linguistica.SumScore, linguistica.Band, linguistica.BandCode));
+        // Off the 5–25 sum and the 1–3 band: dropped, not clamped.
+        var naturalista = mi.Intelligences.Single(i => i.Intelligence == "naturalista");
+        Assert.Null(naturalista.SumScore);
+        Assert.Null(naturalista.Band);
+        Assert.Null(naturalista.BandCode);
+        // Three of five ratings: no sum and no band, whatever the payload says.
+        var emocional = mi.Intelligences.Single(i => i.Intelligence == "emocional");
+        Assert.Equal((null, null, 3), (emocional.SumScore, emocional.Band, emocional.Answered));
+        Assert.Equal(["linguistica"], mi.Dominant);
+    }
+
+    [Fact]
+    public void The_two_new_members_are_written_only_when_set()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            ProviderResultProfiles.Parse("lia", Lia), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        Assert.DoesNotContain("itcia", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"mi\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"pca\":null", json, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Lia_keeps_the_global_percentile_and_valid_subtests_only()
     {

@@ -128,6 +128,32 @@ const pca = {
   competencies: [{ code: 'tims-pca:trabajo_en_equipo', name: 'Trabajo en equipo', level: 3, scaleMax: 4 }],
 };
 
+// The contract's ITC-IA and MI shapes as the C# profile carries them (2026-11-13: these two had no detail at all).
+const itcia = {
+  globalLevel: 3,
+  globalLevelCode: 'autonomo',
+  coreScore: 1.92,
+  completion: 'partial',
+  categories: [
+    { category: 'C1', score: 2.1, coverage: 'complete', provisional: false },
+    { category: 'C4', score: 1.7, coverage: 'partial', provisional: true },
+    { category: 'C6', score: null, coverage: 'partial', provisional: true },
+  ],
+  riskFlags: ['R2'],
+  recommendedAutonomyLevel: 2,
+};
+const mi = {
+  allComplete: false,
+  intelligences: [
+    { intelligence: 'linguistica', sumScore: 21, band: 3, bandCode: 'fortaleza', answered: 5 },
+    { intelligence: 'musical', sumScore: 9, band: 1, bandCode: 'por_desarrollar', answered: 5 },
+    { intelligence: 'emocional', sumScore: null, band: null, bandCode: null, answered: 3 },
+  ],
+  dominant: ['linguistica', 'interpersonal'],
+  tied: true,
+  noDifferentiation: false,
+};
+
 function all() {
   mocks.attempts = {
     consentWithdrawn: false,
@@ -348,6 +374,96 @@ describe('ProviderResultsBoard', () => {
     mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, { profile: { lia } })] };
     render(<ProviderResultsBoard candidateId="c" />);
     expect(screen.queryByRole('button', { name: 'PDF reports' })).toBeNull();
+  });
+
+  it('ITC-IA: the level by name and as n of 5, the minimum, the evidence per category, flags and autonomy', () => {
+    mocks.stored = {
+      version: 1,
+      assessments: [
+        { instrument: 'itcia', use: 'scored', min: { level: 3 }, reason: 'r', weight: null },
+      ],
+    };
+    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('itcia', 5, { level: 3, profile: { itcia } })] };
+    render(<ProviderResultsBoard candidateId="c" />);
+    const card = section(/^ITC-IA/);
+    expect(within(card).getByText('Autonomous')).toBeTruthy();
+    expect(within(card).getByText('Level 3 of 5')).toBeTruthy();
+    expect(within(card).getByText('Vacancy minimum: level 3')).toBeTruthy();
+    expect(within(card).getByText('Core evidence: 1.92 of 3')).toBeTruthy();
+    expect(within(card).getByLabelText('Problem framing: evidence 2.10 of 3')).toBeTruthy();
+    expect(within(card).getAllByText('Provisional (few observations) · Partially covered')).toHaveLength(2);
+    // A category without evidence prints a dash, not 0.
+    expect(within(card).getByLabelText('Workflow integration and orchestration')).toBeTruthy();
+    expect(within(card).getByText('R2 · High-impact decision')).toBeTruthy();
+    expect(within(card).getByText('Recommended autonomy: Functional')).toBeTruthy();
+    expect(within(card).getByText(/closed before every category was covered/)).toBeTruthy();
+    expect(within(card).getByText(/provisional until TIMS recalibrates/)).toBeTruthy();
+  });
+
+  it('ITC-IA: no level says why; no flag says so', () => {
+    mocks.attempts = {
+      consentWithdrawn: false,
+      attempts: [attempt('itcia', 5, { profile: { itcia: { ...itcia, globalLevel: null, riskFlags: [] } } })],
+    };
+    render(<ProviderResultsBoard candidateId="c" />);
+    const card = section(/^ITC-IA/);
+    expect(within(card).getByText(/No global level/)).toBeTruthy();
+    expect(within(card).getByText('No critical flag was raised.')).toBeTruthy();
+    expect(within(card).queryByText(/Level \d of 5/)).toBeNull();
+  });
+
+  it('MI: the dominant intelligences, each sum of 25 with its band, an unanswered one has neither; advisory note', () => {
+    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('mi', 6, { profile: { mi } })] };
+    render(<ProviderResultsBoard candidateId="c" />);
+    const card = section(/^Multiple intelligences/);
+    expect(within(card).getByText('Linguistic · Interpersonal')).toBeTruthy();
+    expect(within(card).getByText(/share the top score/)).toBeTruthy();
+    expect(within(card).getByLabelText('Linguistic: 21 of 25, Strength')).toBeTruthy();
+    expect(within(card).getByLabelText('Musical: 9 of 25, To develop')).toBeTruthy();
+    expect(within(card).getByLabelText('Emotional: Not answered')).toBeTruthy();
+    expect(within(card).getByText(/Not every intelligence was answered/)).toBeTruthy();
+    expect(within(card).getByText(/it never decides/)).toBeTruthy();
+  });
+
+  it('ITC-IA and MI speak Spanish with the suite labels, after PCA, and each offers its PDF report', () => {
+    mocks.locale = 'es';
+    mocks.reports = { data: [{ variant: null, title: null }], error: null, isPending: false, isError: false };
+    mocks.attempts = {
+      consentWithdrawn: false,
+      attempts: [
+        attempt('mi', 6, { profile: { mi } }),
+        attempt('itcia', 5, { profile: { itcia } }),
+        attempt('pca', 4, { profile: { pca } }),
+      ],
+    };
+    render(<ProviderResultsBoard candidateId="c" />);
+    const titles = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(titles.slice(1)).toEqual(['ITC-IA · Pensamiento crítico con IA', 'Inteligencias múltiples']);
+    expect(within(section(/^ITC-IA/)).getByText('Autónomo')).toBeTruthy();
+    expect(within(section(/^ITC-IA/)).getByLabelText('Planteamiento del problema: evidencia 2.10 de 3')).toBeTruthy();
+    expect(within(section(/^Inteligencias/)).getByLabelText('Lingüística: 21 de 25, Fortaleza')).toBeTruthy();
+    for (const name of [/^ITC-IA/, /^Inteligencias/]) {
+      expect(within(section(name)).getByRole('button', { name: 'Informes PDF' })).toBeTruthy();
+    }
+  });
+
+  it('the attempts read accepts the ITC-IA and MI profiles and refuses one off their scales', async () => {
+    const { parseCandidateProviderAttempts } = await import(
+      '../../apps/web/lib/platform-api/assessment-providers-staff'
+    );
+    const read = (profile: unknown) => ({
+      consentWithdrawn: false,
+      attempts: [attempt('itcia', 5, { profile: profile as Record<string, unknown> })],
+    });
+    expect(() => parseCandidateProviderAttempts(read({ itcia }))).not.toThrow();
+    expect(() => parseCandidateProviderAttempts(read({ mi }))).not.toThrow();
+    expect(() => parseCandidateProviderAttempts(read({ itcia: { ...itcia, coreScore: 3.5 } }))).toThrow();
+    expect(() => parseCandidateProviderAttempts(read({ itcia: { ...itcia, riskFlags: ['R9'] } }))).toThrow();
+    expect(() =>
+      parseCandidateProviderAttempts(
+        read({ mi: { ...mi, intelligences: [{ ...mi.intelligences[0], sumScore: 30 }] } }),
+      ),
+    ).toThrow();
   });
 
   it('renders nothing for a withdrawn candidate or without attempts', () => {

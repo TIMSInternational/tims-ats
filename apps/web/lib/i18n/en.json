@@ -5407,6 +5407,74 @@
           "unavailable": "TIMS did not return the fit for this position. It is not a low score.",
           "note": "Computed by TIMS: the candidate's PCA compared with the position's JCA. The ATS does not calculate it."
         }
+      },
+      "itcia": {
+        "title": "ITC-IA · Critical thinking with AI",
+        "headline": "Global level",
+        "noLevel": "No global level: too few categories were covered.",
+        "core": "Core evidence: {value} of 3",
+        "minimum": "Vacancy minimum: level {value}",
+        "chartLabel": "Evidence per category, from 0 to 3",
+        "categoryValue": "{name}: evidence {value} of 3",
+        "provisional": "Provisional (few observations)",
+        "partialCoverage": "Partially covered",
+        "partialSession": "The session closed before every category was covered.",
+        "risksTitle": "Critical flags",
+        "noRisks": "No critical flag was raised.",
+        "recommendedAutonomy": "Recommended autonomy: {level}",
+        "provisionalScale": "Levels are provisional until TIMS recalibrates them after the pilot.",
+        "levelNames": {
+          "1": "Assisted",
+          "2": "Functional",
+          "3": "Autonomous",
+          "4": "Orchestrator",
+          "5": "Architect"
+        },
+        "categories": {
+          "C1": "Problem framing",
+          "C2": "Strategy and task delegation",
+          "C3": "Instruction and interaction design",
+          "C4": "Iterative control and adaptation",
+          "C5": "Critical evaluation and verification",
+          "C6": "Workflow integration and orchestration",
+          "C7": "Responsible use and human accountability"
+        },
+        "flags": {
+          "R1": "Sensitive data",
+          "R2": "High-impact decision",
+          "R3": "Fabricated or unverified evidence",
+          "R4": "Uncontrolled automation",
+          "R5": "Bias and transparency"
+        }
+      },
+      "mi": {
+        "title": "Multiple intelligences",
+        "headline": "Dominant intelligences",
+        "tied": "Several intelligences share the top score.",
+        "noDifferentiation": "No intelligence stands out from the others.",
+        "chartLabel": "Sum of five ratings per intelligence, from 5 to 25",
+        "intelligenceValue": "{name}: {value} of 25, {band}",
+        "notAnswered": "Not answered",
+        "outOf": "{value} of 25",
+        "incomplete": "Not every intelligence was answered.",
+        "note": "A self-report of preferences, not normed: it describes, it never decides.",
+        "bands": {
+          "por_desarrollar": "To develop",
+          "moderado": "Moderate",
+          "fortaleza": "Strength"
+        },
+        "intelligences": {
+          "linguistica": "Linguistic",
+          "logico_matematica": "Logical-mathematical",
+          "visual_espacial": "Visual-spatial",
+          "musical": "Musical",
+          "corporal_kinestesica": "Bodily-kinesthetic",
+          "interpersonal": "Interpersonal",
+          "intrapersonal": "Intrapersonal",
+          "naturalista": "Naturalist",
+          "espiritual_existencial": "Spiritual-existential",
+          "emocional": "Emotional"
+        }
       }
     },
     "proctoring": {

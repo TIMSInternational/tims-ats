@@ -5424,6 +5424,74 @@
           "unavailable": "TIMS no devolvió el ajuste para este puesto. No es una puntuación baja.",
           "note": "Calculado por TIMS: el PCA del candidato comparado con el JCA del puesto. El ATS no lo calcula."
         }
+      },
+      "itcia": {
+        "title": "ITC-IA · Pensamiento crítico con IA",
+        "headline": "Nivel global",
+        "noLevel": "Sin nivel global: se cubrieron muy pocas categorías.",
+        "core": "Evidencia central: {value} de 3",
+        "minimum": "Mínimo de la vacante: nivel {value}",
+        "chartLabel": "Evidencia por categoría, de 0 a 3",
+        "categoryValue": "{name}: evidencia {value} de 3",
+        "provisional": "Provisional (pocas observaciones)",
+        "partialCoverage": "Cubierta en parte",
+        "partialSession": "La sesión cerró antes de cubrir todas las categorías.",
+        "risksTitle": "Alertas críticas",
+        "noRisks": "No se levantó ninguna alerta crítica.",
+        "recommendedAutonomy": "Autonomía recomendada: {level}",
+        "provisionalScale": "Los niveles son provisionales hasta que TIMS los recalibre después del piloto.",
+        "levelNames": {
+          "1": "Asistido",
+          "2": "Funcional",
+          "3": "Autónomo",
+          "4": "Orquestador",
+          "5": "Arquitecto"
+        },
+        "categories": {
+          "C1": "Planteamiento del problema",
+          "C2": "Estrategia y delegación de tareas",
+          "C3": "Diseño de instrucción e interacción",
+          "C4": "Control iterativo y adaptación",
+          "C5": "Evaluación crítica y verificación",
+          "C6": "Integración y orquestación de flujos",
+          "C7": "Uso responsable y responsabilidad humana"
+        },
+        "flags": {
+          "R1": "Datos sensibles",
+          "R2": "Decisión de alto impacto",
+          "R3": "Evidencia fabricada o no verificada",
+          "R4": "Automatización sin control",
+          "R5": "Sesgo y transparencia"
+        }
+      },
+      "mi": {
+        "title": "Inteligencias múltiples",
+        "headline": "Inteligencias dominantes",
+        "tied": "Varias inteligencias comparten el puntaje más alto.",
+        "noDifferentiation": "Ninguna inteligencia se distingue de las demás.",
+        "chartLabel": "Suma de cinco valoraciones por inteligencia, de 5 a 25",
+        "intelligenceValue": "{name}: {value} de 25, {band}",
+        "notAnswered": "Sin responder",
+        "outOf": "{value} de 25",
+        "incomplete": "No se respondieron todas las inteligencias.",
+        "note": "Un autorreporte de preferencias, sin normas: describe, nunca decide.",
+        "bands": {
+          "por_desarrollar": "Por desarrollar",
+          "moderado": "Moderado",
+          "fortaleza": "Fortaleza"
+        },
+        "intelligences": {
+          "linguistica": "Lingüística",
+          "logico_matematica": "Lógico-Matemática",
+          "visual_espacial": "Visual-Espacial",
+          "musical": "Musical",
+          "corporal_kinestesica": "Corporal-Kinestésica",
+          "interpersonal": "Interpersonal",
+          "intrapersonal": "Intrapersonal",
+          "naturalista": "Naturalista",
+          "espiritual_existencial": "Espiritual-Existencial",
+          "emocional": "Emocional"
+        }
       }
     },
     "proctoring": {

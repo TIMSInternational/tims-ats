@@ -4814,6 +4814,25 @@ export interface components {
             /** Format: date-time */
             createdAt: unknown;
         };
+        ItciaCategoryScore: {
+            category: string;
+            /** Format: double */
+            score: null | number | string;
+            coverage: null | string;
+            provisional: boolean;
+        };
+        ItciaProfile: {
+            /** Format: int32 */
+            globalLevel: null | number | string;
+            globalLevelCode: null | string;
+            /** Format: double */
+            coreScore: null | number | string;
+            completion: null | string;
+            categories: components["schemas"]["ItciaCategoryScore"][];
+            riskFlags: string[];
+            /** Format: int32 */
+            recommendedAutonomyLevel: null | number | string;
+        };
         JoinBody: {
             token: string;
         };
@@ -4947,6 +4966,23 @@ export interface components {
             /** Format: double */
             internalMax: number | string;
             currency: string;
+        };
+        MiIntelligenceScore: {
+            intelligence: string;
+            /** Format: int32 */
+            sumScore: null | number | string;
+            /** Format: int32 */
+            band: null | number | string;
+            bandCode: null | string;
+            /** Format: int32 */
+            answered: number | string;
+        };
+        MiProfile: {
+            allComplete: boolean;
+            intelligences: components["schemas"]["MiIntelligenceScore"][];
+            dominant: string[];
+            tied: boolean;
+            noDifferentiation: boolean;
         };
         ModuleHealthPoint: {
             module: string;
@@ -5425,6 +5461,8 @@ export interface components {
             english?: null | components["schemas"]["EnglishProfile"];
             personality?: null | components["schemas"]["PersonalityProfile"];
             pca?: null | components["schemas"]["PcaProfile"];
+            itcia?: null | components["schemas"]["ItciaProfile"];
+            mi?: null | components["schemas"]["MiProfile"];
         };
         ProviderSubjectExport: {
             attempts: components["schemas"]["ProviderExportAttempt"][];

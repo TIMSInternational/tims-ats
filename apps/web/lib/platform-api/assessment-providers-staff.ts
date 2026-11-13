@@ -83,6 +83,9 @@ const percent = z.number().min(0).max(100);
 const cefrCode = z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
 const pole = z.string().regex(/^[A-Z]$/);
 const disc = z.number().int().min(0).max(100);
+const evidence = z.number().min(0).max(3);
+const coverage = z.enum(['complete', 'partial']);
+const itciaLevel = z.number().int().min(1).max(5);
 
 const profileSchema = z
   .object({
@@ -182,6 +185,55 @@ const profileSchema = z
       .strict()
       .nullable()
       .optional(),
+    // ITC-IA: the 1–5 level, the 0–3 evidence (core and per category C1–C7), and the critical flags (HR only).
+    itcia: z
+      .object({
+        globalLevel: itciaLevel.nullable(),
+        globalLevelCode: profileKey.nullable(),
+        coreScore: evidence.nullable(),
+        completion: coverage.nullable(),
+        categories: z
+          .array(
+            z
+              .object({
+                category: z.string().regex(/^C[1-7]$/),
+                score: evidence.nullable(),
+                coverage: coverage.nullable(),
+                provisional: z.boolean(),
+              })
+              .strict(),
+          )
+          .max(7),
+        riskFlags: z.array(z.string().regex(/^R[1-5]$/)).max(5),
+        recommendedAutonomyLevel: itciaLevel.nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    // MI: each intelligence's sum (5–25) and band (1–3), null until its five ratings are answered; the dominant ones.
+    mi: z
+      .object({
+        allComplete: z.boolean(),
+        intelligences: z
+          .array(
+            z
+              .object({
+                intelligence: profileKey,
+                sumScore: z.number().int().min(5).max(25).nullable(),
+                band: z.number().int().min(1).max(3).nullable(),
+                bandCode: profileKey.nullable(),
+                answered: z.number().int().min(0).max(5),
+              })
+              .strict(),
+          )
+          .max(10),
+        dominant: z.array(profileKey).max(10),
+        tied: z.boolean(),
+        noDifferentiation: z.boolean(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -239,6 +291,11 @@ export type StaffProviderAttempt = z.infer<typeof attemptSchema>;
 export type StaffProviderResult = z.infer<typeof resultSchema>;
 export type StaffAttemptList = z.infer<typeof attemptsSchema>;
 
+/** The attempts read, validated (strict: an unknown or out-of-range field rejects the whole read). */
+export function parseCandidateProviderAttempts(raw: unknown): StaffAttemptList {
+  return attemptsSchema.parse(raw);
+}
+
 export const providerAttemptsKey = (candidateId: string) => ['platform', 'provider-attempts', candidateId] as const;
 
 /** GET /assessments/provider-attempts — the candidate's attempts as this reader may see them (D6 applied by C#). */
@@ -248,7 +305,7 @@ export function useCandidateProviderAttempts(candidateId: string) {
     enabled: isProviderAssessmentsStaffEnabled(),
     retry: false,
     queryFn: async (): Promise<StaffAttemptList> =>
-      attemptsSchema.parse(await platformGet('/assessments/provider-attempts', { candidateId })),
+      parseCandidateProviderAttempts(await platformGet('/assessments/provider-attempts', { candidateId })),
   });
 }
 

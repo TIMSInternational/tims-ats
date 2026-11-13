@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Tims.Domain.Assessments.Providers;
@@ -14,7 +15,11 @@ public sealed record ProviderResultProfile(
     LiaProfile? Lia = null,
     EnglishProfile? English = null,
     PersonalityProfile? Personality = null,
-    PcaProfile? Pca = null);
+    PcaProfile? Pca = null,
+    // Written only when set (2026-11-13): a web build from before these two existed parses the profile strictly, so a
+    // null member it does not know would reject every candidate's read until the web deploys.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ItciaProfile? Itcia = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MiProfile? Mi = null);
 
 /// <summary>LIA: the global percentile and level, the norm status, and one percentile per administered subtest.</summary>
 public sealed record LiaProfile(
@@ -54,6 +59,32 @@ public sealed record DiscGraphScore(string Graph, int D, int I, int S, int C);
 
 public sealed record PcaCompetencyScore(string Code, string Name, int Level, int ScaleMax);
 
+/// <summary>
+/// ITC-IA (ItciaResultV1): the global level on the 1–5 <c>itcia.level</c> scale, the core evidence score and each
+/// category's (the 0–3 <c>itcia.evidence_0_3</c> scale; C1–C7), the completion, and the critical risk flags (R1–R5) with
+/// the autonomy level the instrument recommends (HR only, per the contract).
+/// </summary>
+public sealed record ItciaProfile(
+    int? GlobalLevel,
+    string? GlobalLevelCode,
+    double? CoreScore,
+    string? Completion,
+    IReadOnlyList<ItciaCategoryScore> Categories,
+    IReadOnlyList<string> RiskFlags,
+    int? RecommendedAutonomyLevel);
+
+public sealed record ItciaCategoryScore(string Category, double? Score, string? Coverage, bool Provisional);
+
+/// <summary>
+/// MI (MiResultV1): each of the ten intelligences' sum (5–25, null until its five ratings are answered) and band (1–3,
+/// <c>mi.band</c>), and the dominant intelligences. A self-report: advisory only.
+/// </summary>
+public sealed record MiProfile(
+    bool AllComplete, IReadOnlyList<MiIntelligenceScore> Intelligences, IReadOnlyList<string> Dominant, bool Tied,
+    bool NoDifferentiation);
+
+public sealed record MiIntelligenceScore(string Intelligence, int? SumScore, int? Band, string? BandCode, int Answered);
+
 /// <summary>Parses a stored <c>scores</c> jsonb into a <see cref="ProviderResultProfile"/>. Never throws.</summary>
 public static partial class ProviderResultProfiles
 {
@@ -63,6 +94,21 @@ public static partial class ProviderResultProfiles
     public const int MaxGraphs = 3;
     public const int MaxCompetencies = 40;
     public const int MaxNameLength = 120;
+    public const int ItciaCategories = 7;
+    public const int ItciaRiskFlags = 5;
+    public const int MiIntelligences = 10;
+
+    private static readonly HashSet<string> MiIds = new(StringComparer.Ordinal)
+    {
+        "linguistica", "logico_matematica", "visual_espacial", "musical", "corporal_kinestesica", "interpersonal",
+        "intrapersonal", "naturalista", "espiritual_existencial", "emocional",
+    };
+
+    [GeneratedRegex("^C[1-7]$")]
+    private static partial Regex ItciaCategory();
+
+    [GeneratedRegex("^R[1-5]$")]
+    private static partial Regex RiskFlag();
 
     private static readonly HashSet<string> Cefr = new(StringComparer.Ordinal) { "A1", "A2", "B1", "B2", "C1", "C2" };
 
@@ -104,6 +150,8 @@ public static partial class ProviderResultProfiles
             ProviderInstruments.English => English(root) is { } en ? new ProviderResultProfile(English: en) : null,
             ProviderInstruments.Personality => Personality(root) is { } p ? new ProviderResultProfile(Personality: p) : null,
             ProviderInstruments.Pca => Pca(root) is { } pca ? new ProviderResultProfile(Pca: pca) : null,
+            ProviderInstruments.Itcia => Itcia(root) is { } itcia ? new ProviderResultProfile(Itcia: itcia) : null,
+            ProviderInstruments.Mi => Mi(root) is { } mi ? new ProviderResultProfile(Mi: mi) : null,
             _ => null,
         };
     }
@@ -202,6 +250,98 @@ public static partial class ProviderResultProfiles
             graphs.Any(g => g.Graph == primary) ? primary : null, graphs, competencies, PcaJobFits.FromScores(root));
     }
 
+    private static ItciaProfile? Itcia(JsonObject root)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var categories = Items(root["categories"], ItciaCategories, node =>
+            Text(node["category_id"]) is { } id && ItciaCategory().IsMatch(id) && seen.Add(id)
+                ? new ItciaCategoryScore(
+                    id, Evidence(node["score"]), Text(node["coverage"]) is "complete" or "partial" ? Text(node["coverage"]) : null,
+                    node["provisional"] is JsonValue pv && pv.TryGetValue<bool>(out var provisional) && provisional)
+                : null);
+        var global = root["global_level"] as JsonObject;
+        var level = ItciaLevelOf(global);
+        if (level is null && categories.Count == 0)
+        {
+            return null;
+        }
+
+        var risk = root["risk"] as JsonObject;
+        var flags = new List<string>();
+        if (risk?["flags"] is JsonArray array)
+        {
+            foreach (var flag in array)
+            {
+                if (flags.Count == ItciaRiskFlags)
+                {
+                    break;
+                }
+
+                if (Text(flag) is { } f && RiskFlag().IsMatch(f) && !flags.Contains(f))
+                {
+                    flags.Add(f);
+                }
+            }
+        }
+
+        return new ItciaProfile(
+            level, level is null ? null : KeyOf(global?["code"]), Evidence(root["core_score"]),
+            Text(root["completion"]) is "complete" or "partial" ? Text(root["completion"]) : null,
+            [.. categories.OrderBy(c => c.Category, StringComparer.Ordinal)], flags,
+            ItciaLevelOf(risk?["recommended_autonomy_level"] as JsonObject));
+    }
+
+    private static int? ItciaLevelOf(JsonObject? level) =>
+        level is not null && Text(level["scale_id"]) is null or "itcia.level" ? Int(level["ordinal"], 1, 5) : null;
+
+    private static MiProfile? Mi(JsonObject root)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var intelligences = Items(root["intelligences"], MiIntelligences, node =>
+        {
+            if (Text(node["intelligence_id"]) is not { } id || !MiIds.Contains(id) || !seen.Add(id))
+            {
+                return null;
+            }
+
+            var answered = Int(node["answered"], 0, 5) ?? 0;
+            var band = node["band"] as JsonObject;
+            var bandLevel = band is null ? null : Int(band["ordinal"], 1, 3);
+            // Null until all five ratings are answered (the contract): an unanswered dimension is never a strength.
+            return answered == 5
+                ? new MiIntelligenceScore(id, Int(node["sum_score"], 5, 25), bandLevel,
+                    bandLevel is null ? null : KeyOf(band?["code"]), answered)
+                : new MiIntelligenceScore(id, null, null, null, answered);
+        });
+        if (intelligences.Count == 0)
+        {
+            return null;
+        }
+
+        var dominantNode = root["dominant"] as JsonObject;
+        var dominant = new List<string>();
+        if (dominantNode?["intelligence_ids"] is JsonArray ids)
+        {
+            foreach (var id in ids)
+            {
+                if (dominant.Count == MiIntelligences)
+                {
+                    break;
+                }
+
+                if (Text(id) is { } d && seen.Contains(d) && !dominant.Contains(d))
+                {
+                    dominant.Add(d);
+                }
+            }
+        }
+
+        static bool Flag(JsonNode? node) => node is JsonValue v && v.TryGetValue<bool>(out var b) && b;
+        return new MiProfile(
+            Flag(root["all_intelligences_complete"]), intelligences, dominant, Flag(dominantNode?["tied"]),
+            Flag(dominantNode?["no_differentiation"]));
+    }
+
     // ── bounded readers ─────────────────────────────────────────────────────────────────────
 
     private static List<T> Items<T>(JsonNode? node, int max, Func<JsonObject, T?> read)
@@ -255,6 +395,10 @@ public static partial class ProviderResultProfiles
 
     private static string? CefrOf(JsonNode? cefr) =>
         Text((cefr as JsonObject)?["code"]) is { } code && Cefr.Contains(code) ? code : null;
+
+    /// <summary>The ITC-IA evidence scale, 0–3, to two decimals.</summary>
+    private static double? Evidence(JsonNode? node) =>
+        Number(node) is { } n && n is >= 0 and <= 3 ? Math.Round(n, 2) : null;
 
     private static double? Percent(JsonNode? node) =>
         Number(node) is { } n && n is >= 0 and <= 100 ? Math.Round(n, 1) : null;
