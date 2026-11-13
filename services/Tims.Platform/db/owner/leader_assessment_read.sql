@@ -1,6 +1,7 @@
 -- OWNER STEP (round 11, owner default D6): give ONE organization's seeded 'leader' role assessment:read at TEAM
 -- scope, so a team leader reaches the D6 assessment view (only "below minimum", never the level or CEFR) for the
 -- vacancies of the teams they lead. Without it the seeded leader has no assessment grant and sees no assessments card.
+-- It does not unlock a candidate's essay answers: listing and grading essays need company scope (Codex ats run 2).
 --
 -- Why an owner step and not a seed change: the role grants' single source of truth is
 -- packages/db/prisma/seed-access-matrix.ts (mirrored into the embedded

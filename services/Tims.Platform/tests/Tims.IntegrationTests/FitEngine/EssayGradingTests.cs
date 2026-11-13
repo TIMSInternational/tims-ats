@@ -163,7 +163,7 @@ public sealed class EssayGradingTests(FitEngineFixture fixture)
 
     [Theory]
     [InlineData(FitEngineFixture.ReaderOnlySub, HttpStatusCode.Forbidden)] // no assessment grant
-    [InlineData(FitEngineFixture.TeamLeadSub, HttpStatusCode.NotFound)]   // assessment:update @ team; vacancy has no team
+    [InlineData(FitEngineFixture.TeamLeadSub, HttpStatusCode.Forbidden)]  // assessment:update @ team: below company scope (D6)
     [InlineData(FitEngineFixture.OrgBAdminSub, HttpStatusCode.Forbidden)] // OrgB holds no assessment grant
     public async Task Authorization(string sub, HttpStatusCode expected)
     {
@@ -171,6 +171,40 @@ public sealed class EssayGradingTests(FitEngineFixture fixture)
 
         Assert.Equal(expected, (await GradeAsync(FitEngineFixture.QEssay2, "1", sub)).Status);
         Assert.Equal(expected, (await SendAsync(HttpMethod.Get, $"/fit-engine/assignments/{FitEngineFixture.AsgGrade}/essays", null, sub)).Status);
+    }
+
+    // Codex ats run 2 [P1] (owner default D6): a team leader's assessment:read @ team (the D6 owner step) reaches only
+    // "below minimum". The essays are the candidate's own answers, so even an assignment on a vacancy of the leader's
+    // own team is refused, for the list and for the grade, and nothing is graded.
+    [Fact]
+    public async Task A_reader_below_company_scope_gets_no_essays_even_on_a_vacancy_of_its_own_team()
+    {
+        await _fixture.ResetGradingAsync();
+        var original = await _fixture.ExecuteScalarAsync(
+            "SELECT vacancy_id FROM assessment_assignments WHERE id = @a", ("a", FitEngineFixture.AsgGrade));
+        await _fixture.ExecuteScalarAsync(
+            "UPDATE assessment_assignments SET vacancy_id = @v WHERE id = @a",
+            ("v", FitEngineFixture.VacInTeam), ("a", FitEngineFixture.AsgGrade));
+        try
+        {
+            var list = await SendAsync(
+                HttpMethod.Get, $"/fit-engine/assignments/{FitEngineFixture.AsgGrade}/essays", null, FitEngineFixture.TeamLeadSub);
+            Assert.Equal(HttpStatusCode.Forbidden, list.Status);
+            Assert.Null(list.Body);
+            Assert.Equal(HttpStatusCode.Forbidden, (await GradeAsync(FitEngineFixture.QEssay2, "1", FitEngineFixture.TeamLeadSub)).Status);
+            Assert.Equal(DBNull.Value, await _fixture.ExecuteScalarAsync(
+                "SELECT points_awarded FROM assessment_responses WHERE assignment_id = @a AND question_id = @q",
+                ("a", FitEngineFixture.AsgGrade), ("q", FitEngineFixture.QEssay2)));
+
+            // Company scope still reads them.
+            Assert.Equal(HttpStatusCode.OK, (await SendAsync(
+                HttpMethod.Get, $"/fit-engine/assignments/{FitEngineFixture.AsgGrade}/essays")).Status);
+        }
+        finally
+        {
+            await _fixture.ExecuteScalarAsync(
+                "UPDATE assessment_assignments SET vacancy_id = @v WHERE id = @a", ("v", original!), ("a", FitEngineFixture.AsgGrade));
+        }
     }
 
     [Fact]

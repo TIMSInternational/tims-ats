@@ -7,6 +7,7 @@ using Tims.Api.Configuration;
 using Tims.Application.Access;
 using Tims.Application.FitEngine;
 using Tims.Application.Identity;
+using Tims.Domain.FitEngine;
 using Tims.Infrastructure.Access;
 
 namespace Tims.Api.FitEngine;
@@ -19,7 +20,10 @@ namespace Tims.Api.FitEngine;
 ///   POST /fit-engine/assignments/{id}/essays/{questionId}/grade — <c>assessment:update</c>; body <c>{ points }</c>,
 ///        0..the question's points. 200 { remainingPending, normalizedScore } / 400 / 404 / 409 (already graded, or a question's points
 ///        were edited below an awarded score, so no honest score can be computed).
-/// Both run the assignment's vacancy scope probe (assignments are scoped via their vacancy, as in TS). Mapped only
+/// Both run the assignment's vacancy scope probe (assignments are scoped via their vacancy, as in TS), and both need
+/// company scope or wider (owner default D6, Codex ats run 2 [P1]): a narrower reader (a team leader holding the D6
+/// <c>assessment:read @ team</c> grant, a unit-scoped HRBP) sees only "below minimum", and an essay's prompt and
+/// answer are the candidate's own words, far more than that; such a caller gets 403 whatever the assignment. Mapped only
 /// with <see cref="PlatformOptions.FitEngineV2Enabled"/> (or at OpenAPI generation). A FIT score is not recomputed
 /// here: the next compute reads the graded result.
 /// </summary>
@@ -47,6 +51,11 @@ public static class EssayGradingEndpoints
                 if (gate.Failure is not null)
                 {
                     return gate.Failure;
+                }
+
+                if (FitV2Visibility.HidesBelowMinimum(gate.Scope!.Value))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
                 }
 
                 var orgId = Guid.Parse(gate.Context!.OrganizationId);
@@ -87,6 +96,11 @@ public static class EssayGradingEndpoints
                 if (gate.Failure is not null)
                 {
                     return gate.Failure;
+                }
+
+                if (FitV2Visibility.HidesBelowMinimum(gate.Scope!.Value))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
                 }
 
                 var orgId = Guid.Parse(gate.Context!.OrganizationId);
