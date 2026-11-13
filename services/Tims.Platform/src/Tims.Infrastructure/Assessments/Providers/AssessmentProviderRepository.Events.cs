@@ -287,9 +287,7 @@ public sealed partial class AssessmentProviderRepository
         // Deliveries are unordered: an older revision never overwrites a newer one, and a repeat changes nothing. Codex ats
         // run 5 [P1]: the SAME revision with another projection is not a repeat: the tenant changed the result's visibility
         // (full -> summary, or back), and the stored scores must follow, or detail it no longer releases stays readable to
-        // staff and FIT. A LOWERED projection also fences every fetch already in flight (they read the attempt under the
-        // old generation and may carry the old detail), as a hide does.
-        var lowered = false;
+        // staff and FIT.
         if (stored is not null)
         {
             var sameProjection = string.Equals(stored.RenderedLevel, result.RenderedLevel, StringComparison.Ordinal)
@@ -300,10 +298,13 @@ public sealed partial class AssessmentProviderRepository
                 await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
                 return false;
             }
-
-            lowered = stored.ResultRevision == result.ResultRevision
-                && ProjectionRank(result.RenderedLevel) < ProjectionRank(stored.RenderedLevel);
         }
+
+        // Any accepted store that releases LESS than what a fetch already in flight may carry fences those fetches (they
+        // read the attempt under the old generation), as a hide does, whatever the revision (Codex ats run 6 [P1]: a
+        // revision-2 summary stored over a revision-1 full, then a revision-2 full fetched before the change, would
+        // otherwise restore the detail). With no stored row, an in-flight fetch may carry anything up to `full`.
+        var lowered = ProjectionRank(result.RenderedLevel) < (stored is null ? FullRank : ProjectionRank(stored.RenderedLevel));
 
         if (stored is null)
         {
@@ -396,9 +397,11 @@ public sealed partial class AssessmentProviderRepository
     }
 
     /// <summary>How much of a result a projection releases: <c>full</c> above <c>summary</c> above anything else.</summary>
+    private const int FullRank = 2;
+
     private static int ProjectionRank(string? level) => level switch
     {
-        "full" => 2,
+        "full" => FullRank,
         "summary" => 1,
         _ => 0,
     };

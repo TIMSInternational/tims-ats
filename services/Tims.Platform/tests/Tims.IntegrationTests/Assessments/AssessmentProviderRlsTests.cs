@@ -509,6 +509,69 @@ public sealed class AssessmentProviderRlsTests(AssessmentProviderSchemaFixture f
             $"SELECT rendered_level FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
     }
 
+    // Codex ats run 6 [P1]: the fence holds across revisions. Stored revision 1/full; fetches A and B read the same
+    // generation; B (revision 2, summary: visibility lowered) commits first, A (revision 2, full, fetched before the
+    // change) after. A must be refused. And a FIRST stored result that is summary fences a full fetch in flight too.
+    [Fact]
+    public async Task A_lowered_projection_fences_in_flight_fetches_across_revisions_and_on_the_first_store()
+    {
+        var (attempt, subject) = await InsertAttemptAsync("completed");
+        var read = await RowAsync(attempt);
+        var full1 = ResultFor(read.ProviderAssignmentId!.Value) with
+        {
+            SubjectId = subject, ScoresJson = """{"global":{"percentile":62.4}}""",
+        };
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, read, full1, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        // A full first store does not fence: nothing in flight can carry more than full.
+        var bothRead = await RowAsync(attempt);
+        Assert.Equal(read.ResultVisibilityGeneration, bothRead.ResultVisibilityGeneration);
+        var summary2 = full1 with { ResultRevision = 2, RenderedLevel = "summary", ScoresJson = "{}", GlobalPercentile = null };
+        var full2 = full1 with { ResultRevision = 2 };
+        await using (var b = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(b).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, bothRead, summary2, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        await using (var a = fixture.NewContext())
+        {
+            Assert.False(await new AssessmentProviderRepository(a).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, bothRead, full2, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("summary|2", await fixture.ScalarAsync(
+            $"SELECT rendered_level || '|' || result_revision FROM assessment_provider_results WHERE attempt_id = '{attempt}'"));
+
+        // The first store of another attempt is summary: a full fetch that read the attempt before it is refused.
+        var (other, otherSubject) = await InsertAttemptAsync("completed");
+        var otherRead = await RowAsync(other);
+        var otherSummary = ResultFor(otherRead.ProviderAssignmentId!.Value) with
+        {
+            SubjectId = otherSubject, RenderedLevel = "summary", ScoresJson = "{}", GlobalPercentile = null,
+        };
+        await using (var db = fixture.NewContext())
+        {
+            Assert.True(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, otherRead, otherSummary, DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        await using (var db = fixture.NewContext())
+        {
+            Assert.False(await new AssessmentProviderRepository(db).StoreResultAsync(
+                AssessmentProviderSchemaFixture.OrgA, otherRead,
+                otherSummary with { RenderedLevel = "full", ScoresJson = """{"global":{"percentile":62.4}}""", GlobalPercentile = 62.4 },
+                DateTimeOffset.UtcNow, CancellationToken.None));
+        }
+
+        Assert.Equal("summary", await fixture.ScalarAsync(
+            $"SELECT rendered_level FROM assessment_provider_results WHERE attempt_id = '{other}'"));
+    }
+
     [Fact]
     public async Task A_corrected_revision_restores_the_attempt_when_the_only_newer_one_was_cancelled()
     {
