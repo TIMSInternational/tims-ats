@@ -2,18 +2,13 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../../lib/i18n';
+import { formatMessage } from '../../../../../../lib/i18n/format';
+import { formatCurrency } from '../../../../../../lib/format-utils';
+import { StatusBadge, Switch, inputClasses } from '../../../../../../components';
+import type { StatusTone } from '../../../../../../components';
 import type { EntitlementItem } from '../../../../../../lib/trpc-types';
 
-const SOURCE_STYLES: Record<string, string> = {
-  plan: 'bg-blue-100 text-blue-700',
-  addon: 'bg-violet-100 text-violet-700',
-  override: 'bg-amber-100 text-amber-700',
-};
-
-const KIND_STYLES: Record<string, string> = {
-  core: 'bg-emerald-100 text-emerald-700',
-  addon: 'bg-violet-100 text-violet-700',
-};
+const SOURCE_TONE: Record<string, StatusTone> = { plan: 'info', addon: 'brand', override: 'warning' };
 
 function parseNumberOrNull(raw: string): number | null {
   const trimmed = raw.trim();
@@ -37,6 +32,9 @@ interface EntitlementRowProps {
 // the row with fresh values instead of stale local drafts.
 export function EntitlementRow({ entitlement, disabled, onToggle, onLimitCommit, onUnitPriceCommit }: EntitlementRowProps) {
   const { t } = useI18n();
+  const e = t.entitlementsAdmin;
+  const nameId = `entitlement-${entitlement.moduleCode}-name`;
+  const priceHelpId = `entitlement-${entitlement.moduleCode}-price-help`;
   const [limitDraft, setLimitDraft] = useState(entitlement.limit == null ? '' : String(entitlement.limit));
   // Seeded from the RAW per-org override (entitlement.unitPrice), never from
   // effectiveUnitPrice (the merged override-or-catalog-default value). An
@@ -70,30 +68,24 @@ export function EntitlementRow({ entitlement, disabled, onToggle, onLimitCommit,
       : source === 'override'
         ? t.entitlementsAdmin.sourceOverride
         : null;
-  const sourceStyle = source != null ? SOURCE_STYLES[source] || 'bg-gray-100 text-gray-700' : '';
+  const kindLabel = entitlement.kind === 'core' ? e.kindCore : entitlement.kind === 'addon' ? e.kindAddon : entitlement.kind;
 
+  const dash = <span className="text-callout text-muted">{'\u2014'}</span>;
   return (
-    <tr className="hover:bg-[#FAFAFA]">
-      <td className="px-5 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[#333]">{entitlement.name}</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${KIND_STYLES[entitlement.kind] || 'bg-gray-100 text-gray-700'}`}>
-            {entitlement.kind}
-          </span>
+    <tr className="hover:bg-surface-hover">
+      <td className="px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span id={nameId} className="text-body font-medium text-primary">{entitlement.name}</span>
+          <StatusBadge tone={entitlement.kind === 'core' ? 'success' : 'neutral'} icon="none">{kindLabel}</StatusBadge>
         </div>
       </td>
       <td className="px-4 py-2.5">
-        <button
-          onClick={() => onToggle(entitlement.moduleCode, !entitlement.enabled)}
+        <Switch
+          checked={entitlement.enabled}
+          labelledBy={nameId}
           disabled={disabled}
-          className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 disabled:opacity-50 ${
-            entitlement.enabled ? 'bg-[#1F114C]' : 'bg-gray-300'
-          }`}
-        >
-          <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-            entitlement.enabled ? 'left-[22px]' : 'left-0.5'
-          }`} />
-        </button>
+          onChange={(next) => onToggle(entitlement.moduleCode, next)}
+        />
       </td>
       <td className="px-4 py-2.5">
         {entitlement.metered ? (
@@ -101,39 +93,50 @@ export function EntitlementRow({ entitlement, disabled, onToggle, onLimitCommit,
             type="number"
             min={0}
             value={limitDraft}
-            onChange={(e) => setLimitDraft(e.target.value)}
+            onChange={(ev) => setLimitDraft(ev.target.value)}
             onBlur={handleLimitBlur}
             disabled={disabled}
-            className="w-24 h-8 px-2 rounded-lg border border-[#EDEDED] text-xs text-[#333] disabled:opacity-50"
+            aria-label={formatMessage(e.limitFor, { module: entitlement.name })}
+            className={inputClasses('md', 'w-24 tabular-nums')}
           />
         ) : (
-          <span className="text-xs text-[#8B8B8B]">{'\u2014'}</span>
+          dash
         )}
       </td>
       <td className="px-4 py-2.5">
         {entitlement.metered ? (
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={priceDraft}
-            onChange={(e) => setPriceDraft(e.target.value)}
-            onBlur={handleUnitPriceBlur}
-            placeholder={entitlement.effectiveUnitPrice != null ? String(entitlement.effectiveUnitPrice) : t.entitlementsAdmin.catalogDefault}
-            disabled={disabled}
-            className="w-28 h-8 px-2 rounded-lg border border-[#EDEDED] text-xs text-[#333] disabled:opacity-50"
-          />
+          <div>
+            <div className="relative w-32">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-callout text-secondary" aria-hidden="true">USD</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={priceDraft}
+                onChange={(ev) => setPriceDraft(ev.target.value)}
+                onBlur={handleUnitPriceBlur}
+                placeholder={e.defaultPlaceholder}
+                disabled={disabled}
+                aria-label={formatMessage(e.unitPriceFor, { module: entitlement.name })}
+                aria-describedby={entitlement.effectiveUnitPrice != null ? priceHelpId : undefined}
+                className={inputClasses('md', 'pl-11 tabular-nums')}
+              />
+            </div>
+            {entitlement.effectiveUnitPrice != null && (
+              <p id={priceHelpId} className="mt-1 text-caption text-secondary">
+                {formatMessage(e.catalogPrice, { price: formatCurrency(entitlement.effectiveUnitPrice, 'USD', 2) })}
+              </p>
+            )}
+          </div>
         ) : (
-          <span className="text-xs text-[#8B8B8B]">{'\u2014'}</span>
+          dash
         )}
       </td>
       <td className="px-4 py-2.5">
-        {sourceLabel ? (
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${sourceStyle}`}>
-            {sourceLabel}
-          </span>
+        {sourceLabel && source ? (
+          <StatusBadge tone={SOURCE_TONE[source] ?? 'neutral'} icon="none">{sourceLabel}</StatusBadge>
         ) : (
-          <span className="text-xs text-[#8B8B8B]">{'\u2014'}</span>
+          dash
         )}
       </td>
     </tr>

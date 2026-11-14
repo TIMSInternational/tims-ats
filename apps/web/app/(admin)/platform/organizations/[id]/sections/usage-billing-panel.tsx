@@ -4,18 +4,18 @@ import { useState } from 'react';
 import { trpc } from '../../../../../../lib/trpc';
 import { toast } from '../../../../../../lib/toast';
 import { useI18n } from '../../../../../../lib/i18n';
-import { Skeleton, ErrorState, EmptyState } from '../../../../../../components';
+import { formatCurrency } from '../../../../../../lib/format-utils';
+import { Button, ConfirmDialog, EmptyState, ErrorState, Skeleton, inputClasses } from '../../../../../../components';
 import type { UsageBillingLine } from '../../../../../../lib/trpc-types';
 
 const emptyIcon = (
-  <svg className="w-10 h-10 text-[#EDEDED]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+  <svg className="size-8" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
     <path d="M9 14l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 );
 
-function fmtCurrency(value: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value);
-}
+const fmtCurrency = (value: number): string => formatCurrency(value, 'USD', 2);
+const TH = 'px-4 py-2.5 text-callout font-semibold text-secondary';
 
 function startOfCurrentMonth(): Date {
   const now = new Date();
@@ -83,89 +83,117 @@ export function UsageBillingPanel({ orgId }: { orgId: string }) {
   const lines: UsageBillingLine[] = preview.data?.lines ?? [];
   const subtotalUsd = preview.data?.subtotalUsd ?? 0;
 
+  const [confirming, setConfirming] = useState(false);
   const handleGenerate = () => {
     if (!periodStart || !periodEnd) return;
-    if (!window.confirm(t.usageBilling.generateConfirm)) return;
+    setConfirming(false);
     generateInvoice.mutate({ orgId, periodStart, periodEnd });
   };
+  const nothingBillable = hasValidPeriod && !preview.isLoading && (lines.length === 0 || subtotalUsd <= 0);
+  const u = t.usageBilling;
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-[#EDEDED]">
-        <h3 className="text-sm font-semibold text-[#333]">{t.usageBilling.title}</h3>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-[#8B8B8B]">{t.usageBilling.periodLabel}</label>
-          <input
-            type="date"
-            value={periodStartInput}
-            onChange={(e) => setPeriodStartInput(e.target.value)}
-            disabled={generateInvoice.isPending}
-            className="h-8 px-2 rounded-lg border border-[#EDEDED] text-xs text-[#333] disabled:opacity-50"
-          />
-          <span className="text-xs text-[#8B8B8B]">{'–'}</span>
-          <input
-            type="date"
-            value={periodEndInput}
-            onChange={(e) => setPeriodEndInput(e.target.value)}
-            disabled={generateInvoice.isPending}
-            className="h-8 px-2 rounded-lg border border-[#EDEDED] text-xs text-[#333] disabled:opacity-50"
-          />
-          <button
-            onClick={handleGenerate}
-            disabled={generateInvoice.isPending || !hasValidPeriod || lines.length === 0 || subtotalUsd <= 0}
-            className="h-8 px-3 rounded-lg bg-[#1F114C] text-xs text-white font-medium hover:bg-[#2a1866] transition disabled:opacity-50"
-          >
-            {t.usageBilling.generate}
-          </button>
+    <section className="overflow-hidden rounded-xl bg-white shadow-card" aria-labelledby="usage-billing-title">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
+        <h2 id="usage-billing-title" className="text-subheading font-semibold text-primary">{u.title}</h2>
+        <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+          <fieldset className="grid w-full grid-cols-2 gap-2 sm:w-auto">
+            <legend className="mb-1 text-callout font-medium text-secondary">{u.periodLabel}</legend>
+            <label className="block">
+              <span className="sr-only">{u.periodFrom}</span>
+              <input
+                type="date"
+                value={periodStartInput}
+                onChange={(e) => setPeriodStartInput(e.target.value)}
+                disabled={generateInvoice.isPending}
+                className={inputClasses('md')}
+              />
+            </label>
+            <label className="block">
+              <span className="sr-only">{u.periodTo}</span>
+              <input
+                type="date"
+                value={periodEndInput}
+                onChange={(e) => setPeriodEndInput(e.target.value)}
+                disabled={generateInvoice.isPending}
+                className={inputClasses('md')}
+              />
+            </label>
+          </fieldset>
+          <div className="w-full sm:w-auto">
+            <Button
+              fullWidth
+              className="sm:w-auto"
+              onClick={() => setConfirming(true)}
+              loading={generateInvoice.isPending}
+              disabled={!hasValidPeriod || nothingBillable}
+              aria-describedby={nothingBillable ? 'usage-billing-disabled' : undefined}
+            >
+              {u.generate}
+            </Button>
+          </div>
+          {nothingBillable && (
+            <p id="usage-billing-disabled" className="w-full text-callout text-secondary sm:text-right">{u.noUsage}</p>
+          )}
         </div>
       </div>
+      {confirming && (
+        <ConfirmDialog
+          title={u.generateConfirmTitle}
+          description={u.generateConfirmBody}
+          confirmLabel={u.generateConfirmBtn}
+          onConfirm={handleGenerate}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
 
       {!hasValidPeriod ? (
-        <EmptyState icon={emptyIcon} message={t.usageBilling.emptyPeriod} />
+        <EmptyState icon={emptyIcon} size="compact" message={t.usageBilling.emptyPeriod} />
       ) : preview.isLoading ? (
-        <div className="p-5 space-y-3">
+        <div className="space-y-3 p-5" aria-hidden="true">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 animate-pulse">
+            <div key={i} className="flex items-center gap-4">
               <Skeleton className="h-3 w-32" /><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-16" /><Skeleton className="h-3 w-16" /><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-20" />
             </div>
           ))}
         </div>
       ) : preview.isError ? (
-        <ErrorState onRetry={() => preview.refetch()} error={preview.error} />
+        <ErrorState onRetry={() => preview.refetch()} error={preview.error} size="compact" />
       ) : lines.length === 0 ? (
-        <EmptyState icon={emptyIcon} message={t.usageBilling.noUsage} />
+        <EmptyState icon={emptyIcon} size="compact" message={t.usageBilling.noUsage} />
       ) : (
-        <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left">
+          <caption className="sr-only">{u.title}</caption>
           <thead>
-            <tr className="border-b border-[#EDEDED]">
-              <th className="px-5 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.usageBilling.moduleCol}</th>
-              <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.usageBilling.usageCol}</th>
-              <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.usageBilling.includedCol}</th>
-              <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.usageBilling.billableCol}</th>
-              <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.usageBilling.unitPriceCol}</th>
-              <th className="px-4 py-3 text-[11px] font-semibold text-[#8B8B8B] uppercase tracking-wider">{t.usageBilling.amountCol}</th>
+            <tr className="border-b border-border">
+              <th scope="col" className={TH}>{u.moduleCol}</th>
+              <th scope="col" className={`${TH} text-right`}>{u.usageCol}</th>
+              <th scope="col" className={`${TH} text-right`}>{u.includedCol}</th>
+              <th scope="col" className={`${TH} text-right`}>{u.billableCol}</th>
+              <th scope="col" className={`${TH} text-right`}>{u.unitPriceCol}</th>
+              <th scope="col" className={`${TH} text-right`}>{u.amountCol}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#F3F3F3]">
+          <tbody className="divide-y divide-border">
             {lines.map((line) => (
-              <tr key={line.moduleCode} className="hover:bg-[#FAFAFA]">
-                <td className="px-5 py-2.5 text-sm text-[#333] font-medium">{line.name}</td>
-                <td className="px-4 py-2.5 text-xs text-[#8B8B8B]">{line.quantity} {line.unit}</td>
-                <td className="px-4 py-2.5 text-xs text-[#8B8B8B]">{line.includedQty}</td>
-                <td className="px-4 py-2.5 text-xs text-[#8B8B8B]">{line.billableQty}</td>
-                <td className="px-4 py-2.5 text-xs text-[#8B8B8B]">{fmtCurrency(line.unitPrice)}</td>
-                <td className="px-4 py-2.5 text-sm text-[#333] font-medium">{fmtCurrency(line.amountUsd)}</td>
+              <tr key={line.moduleCode} className="hover:bg-surface-hover">
+                <td className="px-4 py-2.5 text-body font-medium text-primary">{line.name}</td>
+                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{line.quantity} {line.unit}</td>
+                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{line.includedQty}</td>
+                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{line.billableQty}</td>
+                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{fmtCurrency(line.unitPrice)}</td>
+                <td className="px-4 py-2.5 text-right text-body font-medium tabular-nums text-primary">{fmtCurrency(line.amountUsd)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t border-[#EDEDED] bg-[#FAFAFA]">
-              <td className="px-5 py-2.5 text-xs text-[#8B8B8B] font-semibold" colSpan={5}>{t.usageBilling.subtotal}</td>
-              <td className="px-4 py-2.5 text-sm text-[#333] font-bold">{fmtCurrency(subtotalUsd)}</td>
+            <tr className="border-t border-border bg-surface-hover">
+              <th scope="row" className="px-4 py-2.5 text-left text-callout font-semibold text-secondary" colSpan={5}>{u.subtotal}</th>
+              <td className="px-4 py-2.5 text-right text-body font-semibold tabular-nums text-primary">{fmtCurrency(subtotalUsd)}</td>
             </tr>
           </tfoot>
         </table></div>
       )}
-    </div>
+    </section>
   );
 }

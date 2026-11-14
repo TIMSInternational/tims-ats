@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal } from '../../../../../../components';
+import { Modal, buttonClasses } from '../../../../../../components';
 import { useI18n } from '../../../../../../lib/i18n';
 import { toast } from '../../../../../../lib/toast';
 import {
@@ -94,7 +94,7 @@ export function AssessmentProviderDsarPanel({ organizationId }: { organizationId
           <button
             type="submit"
             disabled={busy !== null}
-            className="h-9 rounded-lg border border-[#1F114C] px-4 text-[12px] font-semibold text-[#1F114C] disabled:opacity-50"
+            className={buttonClasses({ variant: 'secondary' })}
           >
             {busy === 'export' ? pa.exporting : pa.exportButton}
           </button>
@@ -102,7 +102,7 @@ export function AssessmentProviderDsarPanel({ organizationId }: { organizationId
             type="button"
             disabled={busy !== null}
             onClick={askErase}
-            className="h-9 rounded-lg bg-[#DD0C15] px-4 text-[12px] font-semibold text-white disabled:opacity-50"
+            className={buttonClasses({ variant: 'destructive-secondary' })}
           >
             {busy === 'erase' ? pa.erasing : pa.eraseButton}
           </button>
@@ -110,25 +110,25 @@ export function AssessmentProviderDsarPanel({ organizationId }: { organizationId
       </form>
       <p
         aria-live="polite"
-        className={message?.tone === 'error' ? 'text-[12px] text-[#B42318]' : 'text-[12px] text-[#027A48]'}
+        className={message?.tone === 'error' ? 'text-callout text-danger' : 'text-callout text-success'}
       >
         {message?.text ?? ''}
       </p>
       {confirmErase && (
         <Modal title={pa.eraseConfirmTitle} onClose={() => setConfirmErase(null)} maxWidth="max-w-md">
-          <p className="text-[13px] text-[#585858] mb-4">{pa.eraseConfirmBody.replace('{id}', confirmErase)}</p>
+          <p className="mb-4 text-body text-secondary">{pa.eraseConfirmBody.replace('{id}', confirmErase)}</p>
           <div className="flex gap-3">
             <button
               type="button"
               onClick={() => setConfirmErase(null)}
-              className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858]"
+              className={buttonClasses({ variant: 'secondary', className: 'flex-1' })}
             >
               {pa.cancel}
             </button>
             <button
               type="button"
               onClick={() => void runErase(confirmErase)}
-              className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium"
+              className={buttonClasses({ variant: 'destructive', className: 'flex-1' })}
             >
               {pa.eraseSubmit}
             </button>

@@ -63,12 +63,6 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/people/onboarding/onboarding-table.tsx:159:jsx-text',
   'apps/web/app/(admin)/people/performance/feedback-panel.tsx:135:jsx-text',
   'apps/web/app/(admin)/people/performance/feedback-panel.tsx:185:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/activity-section.tsx:57:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:102:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:105:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:183:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/users-section.tsx:114:jsx-text', // re-anchored: the local English role list moved to lib/role-labels.ts
-  'apps/web/app/(admin)/platform/organizations/org-actions-dropdown.tsx:28:ternary',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/page.tsx:100:jsx-text',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-panel.tsx:108:jsx-text',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/video-area.tsx:81:ternary',
@@ -100,9 +94,6 @@ const KNOWN_DEBT = new Set<string>([
   // accents (fix/es-accents) made them detectable. Remove each entry when it moves to t.*.
   'apps/web/app/(admin)/people/onboarding/onboarding-table.tsx:138:jsx-text',
   'apps/web/app/(admin)/people/performance/page.tsx:68:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:67:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:68:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:150:jsx-text',
   'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:55:jsx-text',
   'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:100:jsx-text',
   'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:44:placeholder',

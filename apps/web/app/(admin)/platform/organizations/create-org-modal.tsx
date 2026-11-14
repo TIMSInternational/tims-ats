@@ -7,6 +7,16 @@ import { useI18n } from '../../../../lib/i18n';
 import { sanitizeSlugInput, slugify } from '../../../../lib/slugify';
 import { EMPTY_ORG_LOCALE_FORM, orgLocaleFormToProfile } from '../../../../lib/org-locale-form';
 import { OrgLocaleFields } from './org-locale-fields';
+import {
+  BUTTON_GROUP_CLASSES,
+  Button,
+  FIELD_HELP_CLASSES,
+  FIELD_LABEL_CLASSES,
+  Modal,
+  inputClasses,
+  selectClasses,
+} from '../../../../components';
+import { PLAN_KEYS, planLabel } from './plan-label';
 
 export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
@@ -23,7 +33,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
       onSuccess();
     },
     onError: (err) => {
-      toast(err.message || 'Error al crear organización', { type: 'error' });
+      toast(err.message || t.organizations.createError, { type: 'error' });
     },
   });
 
@@ -39,113 +49,101 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
     });
   };
 
+  const o = t.organizations;
+  const label = FIELD_LABEL_CLASSES;
+  const field = inputClasses('md');
+  const blockedHintId = 'create-org-blocked-hint';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-[#333]">{t.organizations.newOrg}</h2>
-          <button
-            aria-label={t.common.close}
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition"
-          >
-            <svg
-              className="w-4 h-4 text-[#8B8B8B]"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+    <Modal title={o.newOrg} onClose={onClose} dirty={Boolean(formName || formEmail)}>
+      <form onSubmit={handleCreate} className="space-y-4">
+        <div>
+          <label htmlFor="create-org-name" className={label}>{o.orgNameLabel}</label>
+          <input
+            id="create-org-name"
+            type="text"
+            required
+            autoFocus
+            value={formName}
+            onChange={(e) => {
+              setFormName(e.target.value);
+              setFormSlug(slugify(e.target.value));
+            }}
+            placeholder={o.orgNamePlaceholder}
+            className={field}
+          />
         </div>
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">{t.organizations.orgNameLabel}</label>
-            <input
-              type="text"
-              required
-              value={formName}
-              onChange={(e) => {
-                setFormName(e.target.value);
-                setFormSlug(slugify(e.target.value));
-              }}
-              placeholder={t.organizations.orgNamePlaceholder}
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">Slug</label>
-            <input
-              type="text"
-              required
-              value={formSlug}
-              onChange={(e) => setFormSlug(sanitizeSlugInput(e.target.value))}
-              placeholder="constructora-bolivar"
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono focus:outline-none focus:border-[#1F114C]"
-            />
-          </div>
-          <div>
-            <label htmlFor="create-org-plan" className="block text-xs font-medium text-[#585858] mb-1.5">Plan</label>
-            <select
-              id="create-org-plan"
-              value={formPlan}
-              onChange={(e) => setFormPlan(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm bg-white focus:outline-none focus:border-[#1F114C]"
-            >
-              <option value="trial">Trial</option>
-              <option value="starter">Starter</option>
-              <option value="professional">Professional</option>
-              <option value="enterprise">Enterprise</option>
-            </select>
-          </div>
-          <div>
-            {/* Persisted only as billing_email — this modal invites nobody. The admin invite lives in
-                "Invitar Organización" (/platform/invitations). Payload key stays `adminEmail`. */}
-            <label htmlFor="create-org-billing-email" className="block text-xs font-medium text-[#585858] mb-1.5">
-              {t.organizations.billingEmailLabel}
-            </label>
-            <input
-              id="create-org-billing-email"
-              type="email"
-              required
-              maxLength={254}
-              value={formEmail}
-              onChange={(e) => setFormEmail(e.target.value)}
-              placeholder="facturacion@empresa.com"
-              aria-describedby="create-org-billing-email-hint"
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
-            />
-            <p id="create-org-billing-email-hint" className="mt-1.5 text-xs text-[#8B8B8B]">
-              {t.organizations.billingEmailHint}
-            </p>
-          </div>
-          <OrgLocaleFields idPrefix="create-org" value={localeForm} onChange={setLocaleForm} />
-          {createOrg.error && (
-            <div className="p-2.5 rounded-lg bg-red-50 text-xs text-[#DD0C15] font-medium">
-              Error: {createOrg.error.message}
-            </div>
+        <div>
+          <label htmlFor="create-org-slug" className={label}>{o.slugLabel}</label>
+          <input
+            id="create-org-slug"
+            type="text"
+            required
+            value={formSlug}
+            onChange={(e) => setFormSlug(sanitizeSlugInput(e.target.value))}
+            placeholder="constructora-bolivar"
+            aria-describedby="create-org-slug-hint"
+            className={inputClasses('md', 'font-mono')}
+          />
+          <p id="create-org-slug-hint" className={FIELD_HELP_CLASSES}>{o.slugHint}</p>
+        </div>
+        <div>
+          <label htmlFor="create-org-plan" className={label}>{o.plan}</label>
+          <select
+            id="create-org-plan"
+            value={formPlan}
+            onChange={(e) => setFormPlan(e.target.value)}
+            className={selectClasses('md')}
+          >
+            {PLAN_KEYS.map((p) => <option key={p} value={p}>{planLabel(p, t)}</option>)}
+          </select>
+        </div>
+        <div>
+          {/* Persisted only as billing_email — this modal invites nobody. The admin invite lives in
+              "Invitar organización" (/platform/invitations). Payload key stays `adminEmail`. */}
+          <label htmlFor="create-org-billing-email" className={label}>
+            {o.billingEmailLabel}
+          </label>
+          <input
+            id="create-org-billing-email"
+            type="email"
+            required
+            maxLength={254}
+            value={formEmail}
+            onChange={(e) => setFormEmail(e.target.value)}
+            placeholder="facturacion@empresa.com"
+            aria-describedby="create-org-billing-email-hint"
+            className={field}
+          />
+          <p id="create-org-billing-email-hint" className={FIELD_HELP_CLASSES}>
+            {o.billingEmailHint}
+          </p>
+        </div>
+        <OrgLocaleFields idPrefix="create-org" value={localeForm} onChange={setLocaleForm} />
+        {createOrg.error && (
+          <p role="alert" className="rounded-lg bg-danger-bg p-2.5 text-callout font-medium text-danger">
+            {createOrg.error.message}
+          </p>
+        )}
+        <div className="space-y-2 border-t border-border pt-4">
+          {!localeProfile && (
+            <p id={blockedHintId} className="text-callout text-secondary sm:text-right">{o.chooseCountryFirst}</p>
           )}
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
-            >
+          <div className={BUTTON_GROUP_CLASSES}>
+            <Button variant="secondary" onClick={onClose}>
               {t.common.cancel}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              disabled={createOrg.isPending || !localeProfile}
-              className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition disabled:opacity-60"
+              disabled={!localeProfile}
+              loading={createOrg.isPending}
+              aria-describedby={!localeProfile ? blockedHintId : undefined}
             >
-              {createOrg.isPending ? t.common.loading : t.common.create}
-            </button>
+              {t.common.create}
+            </Button>
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      </form>
+    </Modal>
   );
 }
