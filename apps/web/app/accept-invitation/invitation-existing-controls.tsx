@@ -1,45 +1,39 @@
-import { invitationField as field } from './invitation-styles';
+'use client';
+
+import { SsoProviderButtons } from '../(auth)/login/sso-provider-buttons';
+import { OrDivider } from '../(auth)/or-divider';
 
 /**
- * Ways in for an invitee whose account already exists: recover the password by email and, outside the
- * pilot, Google / Microsoft. The pilot hides SSO (staff sign in with a password at /login, which offers no
- * SSO either), so an account completed here can always sign in again.
+ * Google / Microsoft for an invitee whose account already exists, laid out like /login: the provider
+ * buttons, then the "o con tu correo" divider above the password field. The pilot hides SSO (staff sign in
+ * with a password at /login, which offers no SSO either), so an account completed here can always sign in
+ * again; this then renders nothing.
  */
 export function InvitationExistingControls({
   busy,
   ssoEnabled,
-  help,
-  forgot,
   continueGoogle,
   continueMicrosoft,
-  onRecover,
+  orWithEmail,
   onSocial,
 }: {
   busy: boolean;
   ssoEnabled: boolean;
-  help: string;
-  forgot: string;
   continueGoogle: string;
   continueMicrosoft: string;
-  onRecover: () => void;
+  orWithEmail: string;
   onSocial: (provider: 'google' | 'azure') => void;
 }) {
+  if (!ssoEnabled) return null;
   return (
     <>
-      <p className="text-xs leading-5 text-slate-500">{help}</p>
-      <button disabled={busy} type="button" className="w-full text-sm underline" onClick={onRecover}>
-        {forgot}
-      </button>
-      {ssoEnabled && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <button type="button" disabled={busy} className={field} onClick={() => onSocial('google')}>
-            {continueGoogle}
-          </button>
-          <button type="button" disabled={busy} className={field} onClick={() => onSocial('azure')}>
-            {continueMicrosoft}
-          </button>
-        </div>
-      )}
+      <SsoProviderButtons
+        labels={{ google: continueGoogle, azure: continueMicrosoft }}
+        disabled={busy}
+        onSelect={onSocial}
+        className="grid grid-cols-1 gap-3"
+      />
+      <OrDivider label={orWithEmail} />
     </>
   );
 }

@@ -123,9 +123,10 @@ describe('staff /login', () => {
     expect(screen.queryByText('Request rate limit reached')).toBeNull();
   });
 
-  it('brands the mobile header with the one product name', () => {
+  it('titles the page with its task, not the product name', () => {
     render(<LoginPage />);
-    expect(screen.getByRole('heading', { name: 'TIMS ATS' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: es.auth.login })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'TIMS ATS' })).toBeNull();
     expect(screen.queryByText('TIMS Platform')).toBeNull();
   });
 });

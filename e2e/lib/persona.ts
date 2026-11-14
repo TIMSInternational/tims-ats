@@ -32,7 +32,7 @@ export async function newPersona(browser: Browser): Promise<Persona> {
 export async function signIn(page: Page, creds: Credentials): Promise<void> {
   await page.goto('/login');
   await page.getByPlaceholder('tu@empresa.com').fill(creds.email);
-  await page.getByPlaceholder('••••••••').fill(creds.password);
+  await page.getByLabel('Contraseña', { exact: true }).fill(creds.password);
   await page.getByRole('button', { name: /^iniciar sesi[oó]n$/i }).click();
   await expect(page).not.toHaveURL(/\/login(\?|$)/, { timeout: 45_000 });
 }

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function MfaLayout({ children }: { children: React.ReactNode }) {
   return (
     <I18nProvider>
-      <div className="flex min-h-screen items-center justify-center bg-[#F6F6F6] px-4 py-10">{children}</div>
+      <main className="flex min-h-dvh items-center justify-center bg-surface px-4 py-10">{children}</main>
     </I18nProvider>
   );
 }

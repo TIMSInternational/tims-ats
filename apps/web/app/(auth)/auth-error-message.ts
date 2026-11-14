@@ -1,4 +1,4 @@
-// Maps a Supabase Auth error (sign-in, password-reset email, OAuth start) onto translated copy, so the
+// Maps a Supabase Auth error (sign-in, sign-up, password-reset email, OAuth start) onto translated copy, so the
 // staff never see the provider's raw English text ("Email rate limit exceeded", "Failed to fetch", …).
 // Keyed on the stable `code` / `status` / `name` fields, never on the message, except the legacy
 // "Invalid login credentials" message older GoTrue versions send without a code. Unknown errors fall
@@ -11,6 +11,10 @@ export type AuthErrorCopy = {
   readonly authNetworkError: string;
   readonly accountDisabled: string;
   readonly invalidEmail: string;
+  /** Sign-up only: the provider rejected the password (too weak / too common). */
+  readonly passwordRejected?: string;
+  /** Sign-up only: self-registration is switched off on the auth server. */
+  readonly registrationClosedDesc?: string;
 };
 
 const RATE_LIMIT_CODES = new Set(['over_request_rate_limit', 'over_email_send_rate_limit']);
@@ -34,6 +38,8 @@ export function authErrorMessage(error: unknown, copy: AuthErrorCopy, fallback: 
   if ((code && RATE_LIMIT_CODES.has(code)) || status === 429) return copy.authRateLimited;
   if (code === 'user_banned') return copy.accountDisabled;
   if (code === 'email_address_invalid') return copy.invalidEmail;
+  if (code === 'weak_password' && copy.passwordRejected) return copy.passwordRejected;
+  if (code === 'signup_disabled' && copy.registrationClosedDesc) return copy.registrationClosedDesc;
   // supabase-js reports an unreachable / timed-out auth server as AuthRetryableFetchError (status 0
   // for a failed fetch, 5xx gateway codes otherwise).
   if (name === 'AuthRetryableFetchError' || code === 'request_timeout' || status === 0) return copy.authNetworkError;
