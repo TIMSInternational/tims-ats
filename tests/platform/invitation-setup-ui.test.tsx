@@ -86,6 +86,14 @@ async function fillProfile() {
 }
 
 describe('invitation account setup', () => {
+  it('keeps names, password and confirmation natively required', async () => {
+    render(<InvitationSetup />);
+    await screen.findByText('TIMS Test');
+    for (const label of ['Nombre', 'Apellido', 'Contraseña', 'Confirmar contraseña']) {
+      expect(screen.getByLabelText(label)).toBeRequired();
+    }
+  });
+
   it('creates an identity, authenticates it, and finalizes tenant access', async () => {
     render(<InvitationSetup />);
     await fillProfile();

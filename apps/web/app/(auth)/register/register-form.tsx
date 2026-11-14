@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { getAuthRedirectUrl } from '@tims/shared';
 import Link from 'next/link';
@@ -8,10 +8,23 @@ import { useI18n } from '../../../lib/i18n';
 import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../lib/auth/canonical-auth-origin';
 import { useAuthCaptcha } from '../../../lib/auth/use-auth-captcha';
 import { AuthCaptcha } from '../../../components/auth-captcha';
+import { Button } from '../../../components/button';
+import { TEXT_LINK_CLASSES } from '../../../components/button-styles';
+import { Field } from '../../../components/field';
+import { TextInput } from '../../../components/text-input';
+import { authErrorMessage } from '../auth-error-message';
+import { AUTH_ERROR_CLASSES, AUTH_PROMPT_CLASSES, AUTH_SUBTITLE_CLASSES, AUTH_TITLE_CLASSES } from '../auth-card';
+import { AuthSuccess } from '../auth-success';
+import { CaptchaHint } from '../captcha-hint';
+import { OrDivider } from '../or-divider';
+import { PasswordInput } from '../password-input';
+import { SsoProviderButtons, type SsoProvider } from '../login/sso-provider-buttons';
 
 type AccountType = 'candidate' | 'company';
 
-export function RegisterForm({ accountType, onBack }: { accountType: AccountType; onBack: () => void }) {
+const passwordLengthOk = (value: string) => value.length >= 12 && value.length <= 128;
+
+export function RegisterForm({ accountType }: { accountType: AccountType }) {
   const { t } = useI18n();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -21,10 +34,17 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [success, setSuccess] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
   // C-34: Turnstile token for Supabase Auth captcha (single-use: reset after every attempt).
   const captcha = useAuthCaptcha();
+  const captchaPending = captcha.siteKey !== undefined && !captcha.satisfied;
   useCanonicalAuthOrigin();
+
+  // Same 12–128 rule as before, now shown under the field on blur and while it stays invalid
+  // (text-fields.md › Best practices).
+  const checkPassword = (value: string) => setPasswordError(passwordLengthOk(value) ? '' : t.auth.passwordMinLength);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +52,9 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
     if (!captcha.satisfied) return;
     setError('');
 
-    if (password.length < 12 || password.length > 128) {
-      setError(t.auth.passwordMinLength);
+    if (!passwordLengthOk(password)) {
+      setPasswordError(t.auth.passwordMinLength);
+      passwordRef.current?.focus();
       return;
     }
 
@@ -47,31 +68,36 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
       setLoading(false);
       return;
     }
-    const supabase = createSupabaseBrowserClient();
     const captchaOption = captcha.tokenOption();
     captcha.reset();
 
-    const { error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          first_name: firstName,
-          last_name: lastName,
-          account_type: accountType,
-          company_name: accountType === 'company' ? companyName : undefined,
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            account_type: accountType,
+            company_name: accountType === 'company' ? companyName : undefined,
+          },
+          emailRedirectTo,
+          ...captchaOption,
         },
-        emailRedirectTo,
-        ...captchaOption,
-      },
-    });
-
-    if (signUpError) {
-      setError(
-        signUpError.message === 'User already registered'
-          ? t.auth.emailAlreadyRegistered
-          : signUpError.message
-      );
+      });
+      if (signUpError) {
+        setError(
+          signUpError.message === 'User already registered'
+            ? t.auth.emailAlreadyRegistered
+            : authErrorMessage(signUpError, t.auth, t.auth.registerFailed),
+        );
+        setLoading(false);
+        return;
+      }
+    } catch (thrown) {
+      setError(authErrorMessage(thrown, t.auth, t.auth.registerFailed));
       setLoading(false);
       return;
     }
@@ -80,150 +106,161 @@ export function RegisterForm({ accountType, onBack }: { accountType: AccountType
     setLoading(false);
   };
 
-  const handleGoogleSignUp = async () => {
+  const handleSsoSignUp = async (provider: SsoProvider) => {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?type=${accountType}`,
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-      },
-    });
-  };
-
-  const handleMicrosoftSignUp = async () => {
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: {
-        scopes: 'openid profile email',
-        redirectTo: `${window.location.origin}/auth/callback?type=${accountType}`,
-      },
+      provider,
+      options:
+        provider === 'google'
+          ? {
+              redirectTo: `${window.location.origin}/auth/callback?type=${accountType}`,
+              queryParams: { access_type: 'offline', prompt: 'consent' },
+            }
+          : {
+              scopes: 'openid profile email',
+              redirectTo: `${window.location.origin}/auth/callback?type=${accountType}`,
+            },
     });
   };
 
   if (success) {
     return (
-      <div className="text-center">
-        <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-          <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
-        </div>
-        <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.verifyEmail}</h3>
-        <p className="text-[13px] text-[#585858] mb-4">
-          {t.auth.confirmationSentTo} <strong>{email}</strong>.
+      <AuthSuccess title={t.auth.verifyEmail} icon="mail">
+        <p className="mb-4 text-body text-secondary">
+          {t.auth.confirmationSentTo} <strong className="break-all text-primary">{email}</strong>.
         </p>
-        <Link href="/login" className="text-[13px] text-[#DD0C15] font-medium hover:underline">
+        <Link href="/login" className={`${TEXT_LINK_CLASSES} min-h-7`}>
           {t.auth.goToLogin}
         </Link>
-      </div>
+      </AuthSuccess>
     );
   }
 
   return (
     <>
-      {/* Header with back button */}
-      <div className="flex items-center gap-3 mb-6">
-        <button aria-label={t.common.back} onClick={onBack} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[#F6F6F6] transition-colors">
-          <svg className="w-4 h-4 text-[#585858]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <div>
-          <h2 className="text-lg font-semibold text-[#1F114C]">
-            {accountType === 'candidate' ? t.auth.candidateAccountTitle : t.auth.companyAccountTitle}
-          </h2>
-          <p className="text-[12px] text-[#8B8B8B]">
-            {accountType === 'candidate'
-              ? t.auth.candidateAccountDesc
-              : t.auth.startFreeTrialDesc}
-          </p>
-        </div>
+      <div className="mb-6">
+        <h1 className={AUTH_TITLE_CLASSES}>
+          {accountType === 'candidate' ? t.auth.candidateAccountTitle : t.auth.companyAccountTitle}
+        </h1>
+        <p className={AUTH_SUBTITLE_CLASSES}>
+          {accountType === 'candidate' ? t.auth.candidateAccountDesc : t.auth.startFreeTrialDesc}
+        </p>
       </div>
 
-      {/* SSO */}
-      <div className="space-y-3 mb-6">
-        <button onClick={handleGoogleSignUp} className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-[#EDEDED] text-[13px] font-medium text-[#333] hover:bg-[#FAFAFA] transition">
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-          </svg>
-          {t.auth.signUpGoogle}
-        </button>
-        <button onClick={handleMicrosoftSignUp} className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-[#EDEDED] text-[13px] font-medium text-[#333] hover:bg-[#FAFAFA] transition">
-          <svg className="w-5 h-5" viewBox="0 0 21 21">
-            <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
-            <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
-            <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
-            <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
-          </svg>
-          {t.auth.signUpMicrosoft}
-        </button>
-      </div>
-
-      <div className="relative mb-6">
-        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#EDEDED]"></div></div>
-        <div className="relative flex justify-center"><span className="bg-white px-3 text-[12px] text-[#8B8B8B]">{t.auth.orWithEmail}</span></div>
-      </div>
+      <SsoProviderButtons
+        labels={{ google: t.auth.signUpGoogle, azure: t.auth.signUpMicrosoft }}
+        onSelect={(provider) => void handleSsoSignUp(provider)}
+      />
+      <OrDivider label={t.auth.orWithEmail} />
 
       <form onSubmit={handleRegister} className="space-y-4">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">{error}</div>
+          <div role="alert" className={AUTH_ERROR_CLASSES}>
+            {error}
+          </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="register-first-name" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.firstName}</label>
-            <input id="register-first-name" autoComplete="given-name" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder="Juan" />
-          </div>
-          <div>
-            <label htmlFor="register-last-name" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.lastName}</label>
-            <input id="register-last-name" autoComplete="family-name" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder="Garcia" />
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
+          <Field label={t.auth.firstName} id="register-first-name">
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                autoComplete="given-name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
+            )}
+          </Field>
+          <Field label={t.auth.lastName} id="register-last-name">
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                autoComplete="family-name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
+            )}
+          </Field>
         </div>
 
         {accountType === 'company' && (
-          <div>
-            <label htmlFor="register-company" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.companyName}</label>
-            <input id="register-company" autoComplete="organization" type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} required className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder={t.auth.companyNamePlaceholder} />
-          </div>
+          <Field label={t.auth.companyName} id="register-company">
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                autoComplete="organization"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+                placeholder={t.auth.companyNamePlaceholder}
+              />
+            )}
+          </Field>
         )}
 
-        <div>
-          <label htmlFor="register-email" className="block text-[12px] font-medium text-[#585858] mb-1.5">
-            {accountType === 'company' ? t.auth.corporateEmail : t.auth.email}
-          </label>
-          <input id="register-email" autoComplete="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder="tu@empresa.com" />
-        </div>
+        <Field label={accountType === 'company' ? t.auth.corporateEmail : t.auth.email} id="register-email">
+          {(control) => (
+            <TextInput
+              {...control}
+              size="lg"
+              autoComplete="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="tu@empresa.com"
+            />
+          )}
+        </Field>
 
-        <div>
-          <label htmlFor="register-password" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.password}</label>
-          <div className="relative">
-            <input id="register-password" autoComplete="new-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} maxLength={128} className="w-full h-11 px-4 pr-11 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition" placeholder={t.auth.passwordMinPlaceholder} />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? t.auth.hidePasswords : t.auth.showPasswords} aria-pressed={showPassword} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B8B8B] hover:text-[#585858] transition-colors">
-              {showPassword ? (
-                <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3.98 8.223A10.477 10.477 0 001.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
-              ) : (
-                <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-              )}
-            </button>
-          </div>
-        </div>
+        <Field label={t.auth.password} id="register-password" help={t.auth.passwordHelp} error={passwordError}>
+          {(control) => (
+            <PasswordInput
+              {...control}
+              ref={passwordRef}
+              autoComplete="new-password"
+              shown={showPassword}
+              onToggle={() => setShowPassword(!showPassword)}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (passwordError) checkPassword(e.target.value);
+              }}
+              onBlur={(e) => {
+                if (e.target.value) checkPassword(e.target.value);
+              }}
+              required
+              minLength={12}
+              maxLength={128}
+            />
+          )}
+        </Field>
 
         <AuthCaptcha captcha={captcha} />
 
-        <button type="submit" disabled={loading || !captcha.satisfied} className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 disabled:cursor-not-allowed transition">
-          {loading
-            ? t.auth.creatingAccount
-            : accountType === 'company'
-              ? t.auth.startFreeTrialButton
-              : t.auth.createAccount}
-        </button>
+        <div>
+          <Button
+            type="submit"
+            size="lg"
+            fullWidth
+            loading={loading}
+            loadingLabel={t.auth.creatingAccount}
+            disabled={!captcha.satisfied}
+            aria-describedby={captchaPending ? 'register-captcha-hint' : undefined}
+          >
+            {accountType === 'company' ? t.auth.startFreeTrialButton : t.auth.createAccount}
+          </Button>
+          <CaptchaHint id="register-captcha-hint" pending={captchaPending} />
+        </div>
 
-        <p className="text-center text-[12px] text-[#8B8B8B]">
+        <p className={AUTH_PROMPT_CLASSES}>
           {t.auth.alreadyHaveAccount}{' '}
-          <Link href="/login" className="text-[#DD0C15] font-medium hover:underline">
+          <Link href="/login" className={`${TEXT_LINK_CLASSES} min-h-7`}>
             {t.auth.login}
           </Link>
         </p>

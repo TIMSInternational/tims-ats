@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import type { Session } from '@supabase/supabase-js';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
-import type { copy } from './invitation-copy';
+import type es from '../../lib/i18n/es.json';
 import type { AuthCaptcha } from '../../lib/auth/use-auth-captcha';
 import {
   invitationSchema,
@@ -18,7 +18,7 @@ import {
   type Invitation,
 } from './invitation-setup-api';
 
-type InvitationCopy = (typeof copy)['es'];
+type InvitationCopy = (typeof es)['acceptInvitation'];
 type Adoption = { status: 'adopted' } | { status: 'other'; email: string } | { status: 'failed' };
 
 /** State and actions of the invitation page; the component only renders them. */
