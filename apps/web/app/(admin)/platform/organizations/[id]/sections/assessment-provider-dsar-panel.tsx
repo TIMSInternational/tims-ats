@@ -70,23 +70,23 @@ export function AssessmentProviderDsarPanel({ organizationId }: { organizationId
   const error = form.formState.errors.candidateId;
   return (
     <section aria-labelledby="provider-dsar-title" className="space-y-3" data-testid="provider-dsar-panel">
-      <h4 id="provider-dsar-title" className="text-[13px] font-semibold text-[#1F114C]">
+      <h4 id="provider-dsar-title" className="text-body font-semibold text-brand">
         {pa.dsarTitle}
       </h4>
-      <p className="text-[12px] text-[#585858]">{pa.dsarHelp}</p>
+      <p className="text-callout text-secondary">{pa.dsarHelp}</p>
       <form onSubmit={runExport} className="space-y-2" noValidate>
-        <label className="flex flex-col gap-1 text-[12px] font-medium text-[#585858] max-w-md">
+        <label className="flex flex-col gap-1 text-callout font-medium text-secondary max-w-md">
           {pa.candidateLabel}
           <input
             {...form.register('candidateId')}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? 'provider-dsar-candidate-error' : undefined}
-            className="h-9 rounded-lg border border-[#EDEDED] px-2 font-mono text-[12px]"
+            className="h-9 rounded-lg border border-field-border px-2 font-mono text-callout"
             autoComplete="off"
           />
         </label>
         {error && (
-          <p id="provider-dsar-candidate-error" role="alert" className="text-[12px] text-[#B42318]">
+          <p id="provider-dsar-candidate-error" role="alert" className="text-callout text-danger">
             {pa.candidateInvalid}
           </p>
         )}
