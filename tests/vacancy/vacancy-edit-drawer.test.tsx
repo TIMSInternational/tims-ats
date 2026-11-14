@@ -169,6 +169,27 @@ describe('vacancy detail lifecycle actions', () => {
     expect(m.update).toHaveBeenCalledWith({ id: VACANCY, title: 'Analista Sr', assignedTo: 'leader-1' });
   });
 
+  it('footer "Cancelar" asks before discarding an edit, and closes at once when nothing changed', () => {
+    render(<VacancyLifecycleActions vacancy={detail('published')} />);
+    fireEvent.click(screen.getByRole('button', { name: es.vacancies.editVacancy }));
+    let drawer = screen.getByRole('dialog', { name: es.vacancies.editVacancyTitle });
+    fireEvent.change(within(drawer).getByLabelText(es.vacancies.titleField), { target: { value: 'Analista Sr' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: es.common.cancel }));
+    expect(screen.getByText(es.common.discardTitle)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: es.common.keepEditing }));
+    drawer = screen.getByRole('dialog', { name: es.vacancies.editVacancyTitle });
+    expect(within(drawer).getByLabelText(es.vacancies.titleField)).toHaveValue('Analista Sr');
+    fireEvent.click(screen.getByRole('button', { name: es.common.cancel }));
+    fireEvent.click(screen.getByRole('button', { name: es.common.discard }));
+    expect(screen.queryByRole('dialog', { name: es.vacancies.editVacancyTitle })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: es.vacancies.editVacancy }));
+    drawer = screen.getByRole('dialog', { name: es.vacancies.editVacancyTitle });
+    fireEvent.click(within(drawer).getByRole('button', { name: es.common.cancel }));
+    expect(screen.queryByRole('dialog', { name: es.vacancies.editVacancyTitle })).not.toBeInTheDocument();
+    expect(screen.queryByText(es.common.discardTitle)).not.toBeInTheDocument();
+  });
+
   it('blocks a salary band whose minimum is above its maximum', () => {
     render(<VacancyLifecycleActions vacancy={detail('draft')} />);
     fireEvent.click(screen.getByRole('button', { name: es.vacancies.editVacancy }));

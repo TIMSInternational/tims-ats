@@ -2666,6 +2666,8 @@
     "channelsClosedNote": "La vacante está cerrada; no se pueden agregar canales.",
     "channelsFrozenNote": "La vacante está congelada; reanúdala para agregar canales.",
     "channelStatusUnknown": "Estado desconocido",
+    "channelStatusUnpublished": "Despublicado",
+    "commentPrefix": "Comentario:",
     "addChannelAction": "Agregar canal…",
     "rejectedCandidates": "Rechazados",
     "slaOverdueOne": "Vencido hace {count} día",

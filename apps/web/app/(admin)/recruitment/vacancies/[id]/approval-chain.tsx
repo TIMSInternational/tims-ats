@@ -9,6 +9,7 @@ import { toast } from '../../../../../lib/toast';
 import { Button } from '../../../../../components';
 import { canSubmitForApproval, findPendingApprovalForUser } from '../../../../../lib/vacancy-approval-helpers';
 import { WithdrawApprovalModal } from './withdraw-approval-modal';
+import { ApprovalStepIcon } from './approval-step-icon';
 
 interface Approval {
   id: string;
@@ -37,28 +38,6 @@ const STATUS_ICONS: Record<string, { bg: string; text: string; icon: 'check' | '
   pending: { bg: 'bg-warning', text: 'text-warning', icon: 'clock' },
   cancelled: { bg: 'bg-muted', text: 'text-secondary', icon: 'x' },
 };
-
-function StepIcon({ icon }: { icon: 'check' | 'x' | 'clock' }) {
-  return (
-    <svg
-      className="size-3.5 text-white"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      {icon === 'check' && <path d="m4.5 12.75 6 6 9-13.5" />}
-      {icon === 'x' && <path d="M6 18L18 6M6 6l12 12" />}
-      {icon === 'clock' && (
-        <>
-          <circle cx="12" cy="12" r="10" />
-          <path d="M12 6v6l4 2" />
-        </>
-      )}
-    </svg>
-  );
-}
 
 /**
  * The approval steps of a vacancy and the submitter's way to take a pending request back. Submitting lives in the
@@ -142,7 +121,7 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
                   aria-hidden="true"
                   className={`flex size-6 shrink-0 items-center justify-center rounded-full ${config.bg}`}
                 >
-                  <StepIcon icon={config.icon} />
+                  <ApprovalStepIcon icon={config.icon} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-body text-primary">
@@ -159,7 +138,10 @@ export function ApprovalChain({ vacancyId, vacancyStatus, approvals }: ApprovalC
                   </p>
                   {a.comment && (
                     <blockquote className="mt-1 border-l-2 border-border pl-2 text-callout text-secondary">
-                      <span className="font-medium">{t.vacancies.rejectionReasonPrefix}</span> {a.comment}
+                      <span className="font-medium">
+                        {a.status === 'rejected' ? t.vacancies.rejectionReasonPrefix : t.vacancies.commentPrefix}
+                      </span>{' '}
+                      {a.comment}
                     </blockquote>
                   )}
                 </div>

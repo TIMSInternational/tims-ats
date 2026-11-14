@@ -1,10 +1,10 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useI18n } from '../../../../../lib/i18n';
 import { ErrorState, ProgressBar, Skeleton, TEXT_LINK_CLASSES } from '../../../../../components';
 import type { VacancyStats } from '../../../../../lib/trpc-types';
+import { CountTile } from './count-tile';
 
 interface CandidatesSummaryProps {
   vacancyId: string;
@@ -15,24 +15,6 @@ interface CandidatesSummaryProps {
 }
 
 const CARD = 'rounded-xl border border-border bg-white p-5 shadow-card';
-
-function Heading({ children }: { children: ReactNode }) {
-  return (
-    <h2 id="vacancy-candidates-title" className="text-heading font-semibold text-brand">
-      {children}
-    </h2>
-  );
-}
-
-/** Counts are ordinary facts, so the tiles are neutral (color.md: one colour, one meaning — red is for destruction). */
-function CountTile({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="flex-1 rounded-lg bg-surface p-2.5 text-center">
-      <p className="text-2xl font-semibold tabular-nums text-primary">{value}</p>
-      <p className="text-caption text-secondary">{label}</p>
-    </div>
-  );
-}
 
 export function CandidatesSummary({ vacancyId, stats, isLoading, isError, onRetry }: CandidatesSummaryProps) {
   const { t } = useI18n();
@@ -59,7 +41,9 @@ export function CandidatesSummary({ vacancyId, stats, isLoading, isError, onRetr
   if (isError) {
     return (
       <section aria-labelledby="vacancy-candidates-title" className={CARD}>
-        <Heading>{t.vacancies.candidatesAssociated}</Heading>
+        <h2 id="vacancy-candidates-title" className="text-heading font-semibold text-brand">
+          {t.vacancies.candidatesAssociated}
+        </h2>
         <ErrorState onRetry={onRetry} size="compact" />
       </section>
     );
@@ -72,7 +56,9 @@ export function CandidatesSummary({ vacancyId, stats, isLoading, isError, onRetr
   return (
     <section aria-labelledby="vacancy-candidates-title" className={CARD}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <Heading>{t.vacancies.candidatesAssociated}</Heading>
+        <h2 id="vacancy-candidates-title" className="text-heading font-semibold text-brand">
+          {t.vacancies.candidatesAssociated}
+        </h2>
         <Link href={`/recruitment/pipeline?vacancy=${vacancyId}`} className={`${TEXT_LINK_CLASSES} text-callout`}>
           {t.vacancies.viewAllCandidates}
         </Link>

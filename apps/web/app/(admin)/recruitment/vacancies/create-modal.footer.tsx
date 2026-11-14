@@ -3,20 +3,19 @@
 import { useI18n } from '../../../../lib/i18n';
 import { Button } from '../../../../components';
 import type { Step } from './create-modal.helpers';
+import { requestDialogClose } from './request-dialog-close';
 
 interface WizardFooterProps {
   step: Step;
   onBack: () => void;
+  /** Fallback when the dialog shell cannot be found; normally Cancel goes through the Modal's guard. */
+  onCancel: () => void;
   onNext: () => void;
   onSubmit: () => void;
   nextDisabled: boolean;
   submitDisabled: boolean;
   isPending: boolean;
 }
-
-// "Cancelar" goes through the Modal's own close request (Escape), so it gets the same unsaved-changes guard
-// as the ✕, the backdrop and the Escape key.
-const requestModalClose = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
 /**
  * The wizard's sticky action row (sheets.md: never Cancel, Back and Next together). Step 1 offers Cancel; later
@@ -25,6 +24,7 @@ const requestModalClose = () => document.dispatchEvent(new KeyboardEvent('keydow
 export function WizardFooter({
   step,
   onBack,
+  onCancel,
   onNext,
   onSubmit,
   nextDisabled,
@@ -35,7 +35,7 @@ export function WizardFooter({
   return (
     <>
       {step === 1 ? (
-        <Button variant="secondary" onClick={requestModalClose}>
+        <Button variant="secondary" onClick={(e) => requestDialogClose(e, t.common.close, onCancel)}>
           {t.common.cancel}
         </Button>
       ) : (

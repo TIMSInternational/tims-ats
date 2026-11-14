@@ -49,7 +49,7 @@ export function CompetencySuggestions({
               type="button"
               onClick={onAddAll}
               disabled={disabled || !canAdd}
-              className={buttonClasses({ variant: 'primary', size: 'sm' })}
+              className={buttonClasses({ variant: 'secondary', size: 'sm' })}
             >
               {v.competencySuggestionAddAll}
             </button>

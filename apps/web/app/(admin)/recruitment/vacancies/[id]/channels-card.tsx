@@ -29,14 +29,14 @@ interface ChannelsCardProps {
   channels: Channel[];
 }
 
-// Monogram tiles are decorative (the channel name is next to them); -700 backgrounds keep white text ≥ 5:1.
+// Monogram tiles are decorative (the channel name is next to them); solid @theme tokens keep white text ≥ 4.5:1.
 const CHANNEL_COLORS: Record<string, { bg: string; text: string }> = {
-  linkedin: { bg: 'bg-blue-700', text: 'in' },
+  linkedin: { bg: 'bg-info', text: 'in' },
   indeed: { bg: 'bg-brand', text: 'ID' },
-  computrabajo: { bg: 'bg-orange-700', text: 'CT' },
-  elempleo: { bg: 'bg-teal-700', text: 'EE' },
+  computrabajo: { bg: 'bg-warning', text: 'CT' },
+  elempleo: { bg: 'bg-chart-3', text: 'EE' },
   website: { bg: 'bg-brand', text: 'P' },
-  internal: { bg: 'bg-green-700', text: 'R' },
+  internal: { bg: 'bg-success', text: 'R' },
   other: { bg: 'bg-secondary', text: '?' },
 };
 
@@ -130,6 +130,8 @@ export function ChannelsCard({ vacancyId, vacancyStatus, channels }: ChannelsCar
                   <StatusBadge tone="success">{t.vacancies.statusPublished}</StatusBadge>
                 ) : ch.status === 'pending' ? (
                   <StatusBadge tone="warning">{t.vacancies.pending}</StatusBadge>
+                ) : ch.status === 'unpublished' ? (
+                  <StatusBadge tone="neutral">{t.vacancies.channelStatusUnpublished}</StatusBadge>
                 ) : (
                   <StatusBadge tone="neutral">{t.vacancies.channelStatusUnknown}</StatusBadge>
                 )}

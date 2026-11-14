@@ -2666,6 +2666,8 @@
     "channelsClosedNote": "The vacancy is closed; channels cannot be added.",
     "channelsFrozenNote": "The vacancy is frozen; resume it to add channels.",
     "channelStatusUnknown": "Unknown status",
+    "channelStatusUnpublished": "Unpublished",
+    "commentPrefix": "Comment:",
     "addChannelAction": "Add channel…",
     "rejectedCandidates": "Rejected",
     "slaOverdueOne": "Overdue by {count} day",

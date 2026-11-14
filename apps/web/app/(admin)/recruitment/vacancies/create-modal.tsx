@@ -164,7 +164,11 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
     priority !== 'medium' ||
     contractType !== 'indefinido' ||
     remotePolicy !== 'hybrid' ||
-    slaTargetDays !== '30';
+    slaTargetDays !== '30' ||
+    chosenCurrency !== null ||
+    salaryPeriod !== 'monthly' ||
+    !requireApproval ||
+    autoPublish;
 
   const stepLabels = [
     t.vacancies.wizardStepBasic,
@@ -183,6 +187,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
         <WizardFooter
           step={step}
           onBack={() => setStep((step - 1) as Step)}
+          onCancel={onClose}
           onNext={goNext}
           onSubmit={handleSubmit}
           nextDisabled={step === 2 && !isStep2Valid}

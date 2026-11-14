@@ -32,7 +32,8 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
   const statusMap = vacancyStatusMap(t.vacancies);
   const back = { href: '/recruitment/vacancies', label: t.sidebar.vacancies };
 
-  if (vacancy.isLoading) {
+  // isPending, not isLoading: a query paused offline has no data yet and must not read as "not found".
+  if (vacancy.isPending) {
     return (
       <div className="flex h-full flex-col overflow-hidden" aria-busy="true">
         <span className="sr-only" role="status">
@@ -60,7 +61,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
 
   // A vacancy outside the caller's organisation, or deleted, answers NOT_FOUND: a retry can never work, so say
   // what happened and offer the way back (feedback.md: help people understand why).
-  const notFound = vacancy.error?.data?.code === 'NOT_FOUND' || (!vacancy.isError && !vacancy.data);
+  const notFound = vacancy.error?.data?.code === 'NOT_FOUND' || (vacancy.isSuccess && !vacancy.data);
   if (notFound) {
     return (
       <div className="flex h-full items-center justify-center">
