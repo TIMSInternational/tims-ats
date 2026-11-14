@@ -105,7 +105,6 @@ export function TalentPoolFilters({ filters, onFilterChange, onClear, className 
             type="range"
             min="0"
             max="100"
-            step="5"
             value={filters.fitMin}
             onChange={(e) => onFilterChange('fitMin', Number(e.target.value))}
             aria-valuetext={formatMessage(tp.fitMinValue, { n: filters.fitMin })}

@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { pluralize } from '../../../../lib/i18n/format';
+import { formatMessage, pluralize } from '../../../../lib/i18n/format';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { Button, Modal, PageHeader, inputClasses } from '../../../../components';
@@ -105,7 +105,7 @@ export default function TalentPoolsPage() {
     }
   };
 
-  const filterButtonLabel = activeFilterCount > 0 ? `${tp.filters} (${activeFilterCount})` : tp.filters;
+  const filterButtonLabel = activeFilterCount > 0 ? formatMessage(tp.filtersCount, { n: activeFilterCount }) : tp.filters;
 
   return (
     <div className="flex flex-col md:h-full md:overflow-hidden">

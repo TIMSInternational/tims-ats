@@ -1438,7 +1438,8 @@
     "noCandidatesFilteredDesc": "Prueba con otra búsqueda o borra los filtros.",
     "noCandidatesEmptyDesc": "Añade candidatos para tenerlos a mano en futuras vacantes.",
     "exportDoneOne": "Se exportó {count} candidato",
-    "exportDoneOther": "Se exportaron {count} candidatos"
+    "exportDoneOther": "Se exportaron {count} candidatos",
+    "filtersCount": "Filtros ({n})"
   },
   "onboarding": {
     "title": "Onboarding",
@@ -2230,7 +2231,13 @@
     "daysOther": "{count} días",
     "notesEmpty": "Aún no hay notas",
     "notesAdd": "Añadir notas",
-    "formFirstNamePlaceholder": "María"
+    "formFirstNamePlaceholder": "María",
+    "listCappedFiltered": "Se muestran los primeros {shown} resultados. Afina la búsqueda para ver el resto.",
+    "createErrorForbidden": "No tienes permiso para crear candidatos.",
+    "createErrorInvalid": "Algunos datos no son válidos. Revisa el email y la URL de LinkedIn e inténtalo de nuevo.",
+    "moveStageErrorForbidden": "No tienes permiso para mover a este candidato.",
+    "moveStageErrorRejected": "Este movimiento no está permitido desde la etapa actual.",
+    "tagRemoveError": "No se pudo quitar la etiqueta. Inténtalo de nuevo."
   },
   "pipeline": {
     "title": "Pipeline",

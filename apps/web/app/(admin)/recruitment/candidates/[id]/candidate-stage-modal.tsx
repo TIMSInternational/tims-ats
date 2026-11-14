@@ -48,9 +48,16 @@ export function CandidateStageModal({
         utils.pipeline.getMovementHistory.invalidate({ applicationId }),
       ]);
       onClose();
-    } catch {
-      // A generic, actionable line: raw server messages are not shown (writing.md › Best practices).
-      setError(t.candidates.moveStageError);
+    } catch (err) {
+      // An actionable line per tRPC code; raw server messages are not shown (writing.md › Best practices).
+      const code = (err as { data?: { code?: string } | null } | null)?.data?.code;
+      setError(
+        code === 'FORBIDDEN'
+          ? t.candidates.moveStageErrorForbidden
+          : code === 'BAD_REQUEST' || code === 'PRECONDITION_FAILED'
+            ? t.candidates.moveStageErrorRejected
+            : t.candidates.moveStageError,
+      );
     }
   };
 

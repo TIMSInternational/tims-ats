@@ -32,8 +32,8 @@ export function TagsCard({ tags, candidateId }: { tags: Tag[]; candidateId: stri
     onSuccess: () => {
       utils.candidate.getById.invalidate({ id: candidateId });
     },
-    onError: (err) => {
-      toast(err.message, { type: 'error' });
+    onError: () => {
+      toast(t.candidates.tagRemoveError, { type: 'error' });
     },
   });
 
@@ -61,7 +61,7 @@ export function TagsCard({ tags, candidateId }: { tags: Tag[]; candidateId: stri
                   hideTooltip
                   onClick={() => removeTag.mutate({ candidateId, tag: tag.tag })}
                   disabled={removeTag.isPending}
-                  className="-my-1 rounded-full text-current hover:bg-black/5"
+                  className="-my-1 rounded-full text-current hover:bg-surface-hover"
                 >
                   <svg
                     className="size-3.5"

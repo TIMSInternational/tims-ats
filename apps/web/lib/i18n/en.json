@@ -1438,7 +1438,8 @@
     "noCandidatesFilteredDesc": "Try another search or clear the filters.",
     "noCandidatesEmptyDesc": "Add candidates to keep them at hand for future vacancies.",
     "exportDoneOne": "Exported {count} candidate",
-    "exportDoneOther": "Exported {count} candidates"
+    "exportDoneOther": "Exported {count} candidates",
+    "filtersCount": "Filters ({n})"
   },
   "onboarding": {
     "title": "Onboarding",
@@ -2230,7 +2231,13 @@
     "daysOther": "{count} days",
     "notesEmpty": "No notes yet",
     "notesAdd": "Add notes",
-    "formFirstNamePlaceholder": "Maria"
+    "formFirstNamePlaceholder": "Maria",
+    "listCappedFiltered": "Showing the first {shown} results. Refine your search to see the rest.",
+    "createErrorForbidden": "You don't have permission to create candidates.",
+    "createErrorInvalid": "Some details are not valid. Check the email and LinkedIn URL and try again.",
+    "moveStageErrorForbidden": "You don't have permission to move this candidate.",
+    "moveStageErrorRejected": "This move isn't allowed from the current stage.",
+    "tagRemoveError": "The tag couldn't be removed. Try again."
   },
   "pipeline": {
     "title": "Pipeline",

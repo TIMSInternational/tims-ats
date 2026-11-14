@@ -64,7 +64,7 @@ export function TalentPoolResultsHeader({ totalCount, filters, onFilterChange }:
                   size="sm"
                   hideTooltip
                   onClick={() => removePill(pill)}
-                  className="-my-1 rounded-full text-brand hover:bg-black/5"
+                  className="-my-1 rounded-full text-brand hover:bg-surface-hover"
                 >
                   <svg
                     className="size-3.5"

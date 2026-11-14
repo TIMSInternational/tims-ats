@@ -236,7 +236,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const currentStage = activeApplications[0]?.currentStage;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex flex-col md:h-full md:overflow-hidden">
       <PageHeader
         back={{ href: '/recruitment/candidates', label: t.candidates.title }}
         title={`${c.firstName} ${c.lastName}`}
@@ -260,7 +260,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         }
       />
 
-      <div className="min-w-0 flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
+      <div className="min-w-0 flex-1 px-4 py-5 md:overflow-y-auto md:px-6 md:py-6">
         <CandidateHeader candidate={c} />
 
         <Tabs

@@ -146,7 +146,9 @@ export default function CandidatesPage() {
 
         {candidates.data?.nextCursor && kpis.data && (
           <p className="mt-3 shrink-0 text-callout text-secondary" role="status">
-            {formatMessage(t.candidates.listCapped, { shown: LIST_LIMIT, total: kpis.data.total })}
+            {hasFilters
+              ? formatMessage(t.candidates.listCappedFiltered, { shown: LIST_LIMIT })
+              : formatMessage(t.candidates.listCapped, { shown: LIST_LIMIT, total: kpis.data.total })}
           </p>
         )}
       </div>

@@ -14,9 +14,9 @@ import { CARD } from './card-styles';
 // The same FIT scale as the pipeline card, list, table and filter (A-23). The ring keeps the band colour; the
 // band is also written in words, in status tokens that pass 4.5:1 (accessibility.md › Vision).
 const FIT_BORDER: Record<FitBand, string> = {
-  high: 'border-green-500',
-  medium: 'border-amber-500',
-  low: 'border-red-500',
+  high: 'border-success',
+  medium: 'border-warning',
+  low: 'border-danger',
 };
 const FIT_TEXT: Record<FitBand, string> = { high: 'text-success', medium: 'text-warning', low: 'text-danger' };
 

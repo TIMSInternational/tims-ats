@@ -79,7 +79,14 @@ export function CreateModal({ onConfirm, onClose, isPending, errorCode }: Create
     if (errorCode === 'CONFLICT') setStep(1);
   }, [errorCode]);
   const emailError = errorCode === 'CONFLICT' ? t.candidates.emailTaken : undefined;
-  const generalError = errorCode && errorCode !== 'CONFLICT' ? t.candidates.createError : undefined;
+  const generalError =
+    !errorCode || errorCode === 'CONFLICT'
+      ? undefined
+      : errorCode === 'FORBIDDEN'
+        ? t.candidates.createErrorForbidden
+        : errorCode === 'BAD_REQUEST'
+          ? t.candidates.createErrorInvalid
+          : t.candidates.createError;
 
   const handleCancel = () => (dirty ? setConfirmingCancel(true) : onClose());
 
