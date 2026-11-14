@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { formatMessage } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
@@ -22,6 +22,19 @@ export function TeamMembersModal({ team, abilities, onClose }: TeamMembersModalP
   const [adding, setAdding] = useState(false);
   // Removing asks inside the row (a second modal on top of this one would stack overlays).
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // The inline confirm unmounts the focused "Quitar" button; keep focus inside the dialog and return
+  // it to that row's "Quitar" when the confirm is cancelled (settings-check-02).
+  const removeButtons = useRef(new Map<string, HTMLButtonElement>());
+  const [returnFocusTo, setReturnFocusTo] = useState<string | null>(null);
+  useEffect(() => {
+    if (returnFocusTo === null || confirmingId !== null) return;
+    removeButtons.current.get(returnFocusTo)?.focus();
+    setReturnFocusTo(null);
+  }, [returnFocusTo, confirmingId]);
+  const cancelConfirm = (userId: string) => {
+    setConfirmingId(null);
+    setReturnFocusTo(userId);
+  };
 
   const add = useOrgStructureMutation('addTeamMember', {
     onSuccess: () => {
@@ -61,7 +74,13 @@ export function TeamMembersModal({ team, abilities, onClose }: TeamMembersModalP
                     {formatMessage(t.units.removeMemberInline, { name: m.fullName })}
                   </p>
                   <div className="flex gap-2">
-                    <Button variant="secondary" size="sm" onClick={() => setConfirmingId(null)} disabled={busy}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      autoFocus
+                      onClick={() => cancelConfirm(m.userId)}
+                      disabled={busy}
+                    >
                       {t.units.cancel}
                     </Button>
                     <Button
@@ -85,7 +104,16 @@ export function TeamMembersModal({ team, abilities, onClose }: TeamMembersModalP
                     <p className="truncate text-callout text-secondary">{m.email}</p>
                   </div>
                   {abilities.unassignPeople && (
-                    <Button variant="tertiary" size="sm" disabled={busy} onClick={() => setConfirmingId(m.userId)}>
+                    <Button
+                      ref={(el: HTMLButtonElement | HTMLAnchorElement | null) => {
+                        if (el instanceof HTMLButtonElement) removeButtons.current.set(m.userId, el);
+                        else removeButtons.current.delete(m.userId);
+                      }}
+                      variant="tertiary"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => setConfirmingId(m.userId)}
+                    >
                       {t.units.remove}
                     </Button>
                   )}

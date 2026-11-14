@@ -244,7 +244,7 @@ describe('organization data card (D-11)', () => {
     expect(screen.getByText('Costa Rica (CR)')).toBeInTheDocument();
     expect(screen.getByText(/^CRC · colón/)).toBeInTheDocument();
     expect(screen.getByText(/hora de Costa Rica \(GMT-6\)/)).toBeInTheDocument();
-    expect(screen.getByText(/los correos a candidatos no incluyen un correo de contacto/)).toBeInTheDocument();
+    expect(screen.getByText('Los correos a candidatos no incluyen un correo de contacto.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /\/careers\/piloto$/ })).toBeInTheDocument();
   });
 });

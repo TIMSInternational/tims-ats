@@ -139,9 +139,9 @@ describe('business units settings — C# management (flag on)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nueva unidad' }));
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ventas' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear unidad' }));
-    // Translated copy, never the backend's own text (settings-15).
+    // Translated copy for the stable code, never the backend's own text (settings-15, settings-check-03).
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('No se pudo guardar el cambio');
+    expect(alert).toHaveTextContent('Algún dato no es válido, por ejemplo un nombre vacío o demasiado largo.');
     expect(alert).not.toHaveTextContent('Nombre duplicado');
   });
 

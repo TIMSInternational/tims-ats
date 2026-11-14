@@ -9,27 +9,10 @@ import { InviteForm } from './invite-form';
 import { PendingInvitationsTable } from './pending-invitations-table';
 import { MembersTable } from './members-table';
 import { isInvitationForbidden } from './invitation-error-message';
+import { ForbiddenLine } from './forbidden-line';
 
 const SECTION_CLS = 'rounded-xl bg-white p-5 shadow-card';
 const HEADING_CLS = 'text-subheading font-semibold text-primary';
-
-function ForbiddenLine({ text }: { text: string }) {
-  return (
-    <p role="status" className="flex items-center gap-2 text-callout text-secondary">
-      <svg
-        className="size-4 shrink-0 text-muted"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-      >
-        <path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-      </svg>
-      {text}
-    </p>
-  );
-}
 
 // /settings/users ("Equipo"): a company admin invites their own team into THEIR org (finding F8).
 // The route itself is gated on user:read (lib/nav/routes.ts) so the member list is visible to

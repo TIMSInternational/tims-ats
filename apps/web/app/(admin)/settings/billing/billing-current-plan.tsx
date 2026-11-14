@@ -41,7 +41,10 @@ function planStatus(t: T, status: string | null | undefined): { label: string; t
   }
 }
 
-/** "Plan actual": skeleton until the plan is known, never a default "Prueba · En prueba" (settings-09). */
+/**
+ * "Plan actual": skeleton only while the plan request is pending (settings-09). A resolved `null` (no
+ * Subscription row) is a real answer and renders the trial plan, as before.
+ */
 export function BillingCurrentPlan({ configured }: { configured: boolean }) {
   const { t, locale } = useI18n();
   const plan = useBillingCurrentPlan();
@@ -80,7 +83,7 @@ export function BillingCurrentPlan({ configured }: { configured: boolean }) {
       </h2>
       {plan.isError ? (
         <ErrorState size="compact" onRetry={() => plan.refetch()} />
-      ) : !data ? (
+      ) : plan.isPending ? (
         <div className="mt-3 space-y-2" aria-busy="true">
           <Skeleton className="h-8 w-40 rounded-md" />
           <Skeleton className="h-4 w-24" />

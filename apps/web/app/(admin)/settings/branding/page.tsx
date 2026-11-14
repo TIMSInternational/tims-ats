@@ -83,7 +83,7 @@ export default function BrandingPage() {
           ) : org.isError ? (
             <ErrorState onRetry={() => org.refetch()} error={org.error} />
           ) : (
-            <form onSubmit={onSave} className="flex flex-col gap-5 md:flex-row">
+            <form onSubmit={onSave} noValidate className="flex flex-col gap-5 md:flex-row">
               <div className="flex size-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface">
                 {showPreview ? (
                   <img
