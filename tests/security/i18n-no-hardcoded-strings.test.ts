@@ -85,10 +85,6 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/recruitment/offers/_components/offer-letter.tsx:199:jsx-text',
   'apps/web/app/(admin)/recruitment/offers/_components/offer-validations.tsx:174:jsx-text',
   'apps/web/app/(admin)/recruitment/offers/_components/signing-link-modal.tsx:88:jsx-text',
-  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.tsx:197:ternary',
-  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.tsx:220:ternary',
-  'apps/web/app/(admin)/recruitment/pipeline/pipeline-list-view.tsx:133:jsx-text',
-  'apps/web/app/(admin)/recruitment/pipeline/pipeline-list-view.tsx:137:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:163:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:166:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-table.tsx:150:jsx-text',
@@ -107,7 +103,6 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:100:jsx-text',
   'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:44:placeholder',
   'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:227:jsx-text',
-  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.fields.tsx:44:placeholder',
   'apps/web/app/(admin)/talent/team-intelligence/page.tsx:35:jsx-text',
 ]);
 

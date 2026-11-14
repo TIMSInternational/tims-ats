@@ -1,34 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { CandidateAvatar, StatusBadge } from '../../../../components';
+import { CandidateAvatar, CHOICE_INPUT_CLASSES, StatusBadge, type StatusMapEntry } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
-import { fitBand, type FitBand } from '../../../../lib/pipeline-fit';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { candidateSourceLabel } from '../../../../lib/candidate-labels';
 import type { ScheduleRequest } from './pipeline-actions';
 import type { FlatApp } from './pipeline-table-data';
 import { RejectionBadge } from './rejection-badge';
-
-const FIT_COLORS: Record<FitBand, string> = {
-  high: 'text-green-600 bg-green-50',
-  medium: 'text-amber-600 bg-amber-50',
-  low: 'text-red-600 bg-red-50',
-};
-
-const STAGE_BADGE: Record<number, string> = {
-  0: 'bg-[#E8E5F0] text-[#1F114C]',
-  1: 'bg-[#D4CFE5] text-[#1F114C]',
-  2: 'bg-[#B8AED4] text-[#1F114C]',
-  3: 'bg-[#7B6BAA] text-white',
-  4: 'bg-[#5C4B99] text-white',
-  5: 'bg-[#1F114C] text-white',
-};
+import { PipelineFitChip } from './pipeline-fit-chip';
+import { PipelineNoValue } from './pipeline-no-value';
+import { PipelineRowActions } from './pipeline-row-actions';
+import { PipelineSlaChip } from './pipeline-sla-chip';
 
 interface PipelineTableRowProps {
   app: FlatApp;
   nextStage: { id: string; name: string } | undefined;
-  striped: boolean;
-  statusMap: Record<string, { cls: string; label: string }>;
+  statusMap: Record<string, StatusMapEntry>;
   bulkEnabled: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
@@ -37,10 +25,11 @@ interface PipelineTableRowProps {
   onSchedule?: (request: ScheduleRequest) => void;
 }
 
+const CELL = 'py-2.5 px-3';
+
 export function PipelineTableRow({
   app,
   nextStage,
-  striped,
   statusMap,
   bulkEnabled,
   isSelected,
@@ -52,7 +41,9 @@ export function PipelineTableRow({
   const { t } = useI18n();
   const p = t.pipeline;
   return (
-    <tr className={`border-b border-[#F0F0F0] hover:bg-[#FAFAFA] transition ${striped ? 'bg-[#FAFAFA]/50' : ''} ${app.isOverdue ? 'border-l-[3px] border-l-[#DD0C15]' : ''}`}>
+    <tr
+      className={`border-b border-border transition-colors ${isSelected ? 'bg-brand-tint' : 'hover:bg-surface-hover'}`}
+    >
       {bulkEnabled && (
         <td className="py-2.5 pl-4">
           {app.actionable && (
@@ -61,93 +52,67 @@ export function PipelineTableRow({
               aria-label={p.bulkSelectRow.replace('{name}', app.name)}
               checked={isSelected}
               onChange={onToggleSelect}
-              className="h-3.5 w-3.5 accent-[#1F114C]"
+              className={CHOICE_INPUT_CLASSES}
             />
           )}
         </td>
       )}
-      <td className="py-2.5 px-3">
+      <td className={CELL}>
         <div className="flex items-center gap-2">
-          <CandidateAvatar firstName={app.firstName} lastName={app.lastName} avatar={app.avatar} size="sm" />
+          <CandidateAvatar firstName={app.firstName} lastName={app.lastName} avatar={app.avatar} size="sm" decorative />
           <div className="min-w-0">
-            <Link href={`/recruitment/candidates/${app.candidateId}`} className="text-[12px] font-medium text-[#333] truncate block hover:underline">
+            <Link
+              href={`/recruitment/candidates/${app.candidateId}`}
+              className="text-body font-medium text-primary truncate block hover:underline"
+            >
               {app.name}
             </Link>
-            {app.currentTitle && <p className="text-[10px] text-[#8B8B8B] truncate">{app.currentTitle}</p>}
+            {app.currentTitle && <p className="text-callout text-secondary truncate">{app.currentTitle}</p>}
           </div>
         </div>
       </td>
-      <td className="py-2.5 px-3 text-center">
-        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STAGE_BADGE[Math.min(app.stageOrder, 5)]}`}>
+      <td className={`${CELL} text-center`}>
+        <StatusBadge tone="brand" icon="none">
           {app.stageName}
-        </span>
+        </StatusBadge>
       </td>
-      <td className="py-2.5 px-3 text-center">
-        {app.fitScore === null ? (
-          <span title={p.fitPending} className="text-[11px] text-[#8B8B8B]">—</span>
-        ) : (
-          <span title={`${p.fitScore}: ${app.fitScore}${app.isPartialFit ? ` (${p.fitPartial})` : ''}`} className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${FIT_COLORS[fitBand(app.fitScore)]}`}>
-            {Math.round(app.fitScore)}{app.isPartialFit ? '*' : ''}
-          </span>
-        )}
+      <td className={`${CELL} text-center`}>
+        <PipelineFitChip score={app.fitScore} isPartial={app.isPartialFit} compact />
       </td>
-      <td className="py-2.5 px-3 text-center">
-        <span className="text-[10px] text-[#585858]">{candidateSourceLabel(app.source, t.candidates)}</span>
+      <td className={`${CELL} text-center whitespace-nowrap text-callout text-secondary`}>
+        {candidateSourceLabel(app.source, t.candidates)}
       </td>
-      <td className="py-2.5 px-3 text-center">
+      <td className={`${CELL} text-center`}>
         {app.actionable ? (
-          <span className={`text-[11px] ${app.isOverdue ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>{app.days}d</span>
+          <span
+            className="text-callout tabular-nums text-secondary"
+            title={formatMessage(p.daysShortLabel, { n: app.days })}
+          >
+            <span aria-hidden="true">{formatMessage(p.daysShort, { n: app.days })}</span>
+            <span className="sr-only">{formatMessage(p.daysShortLabel, { n: app.days })}</span>
+          </span>
         ) : (
-          <span className="text-[9px] text-[#ccc]">—</span>
+          <PipelineNoValue />
         )}
       </td>
-      <td className="py-2.5 px-3 text-center">
+      <td className={`${CELL} text-center`}>
         {app.status === 'rejected' ? (
           <RejectionBadge rejectedAt={app.rejectedAt} rejectedReason={app.rejectedReason} showReason />
         ) : (
           <StatusBadge status={app.status} map={statusMap} />
         )}
       </td>
-      <td className="py-2.5 px-3 text-center">
-        {app.isOverdue ? (
-          <span className="text-[9px] bg-red-50 text-[#DD0C15] px-1.5 py-0.5 rounded font-medium">{p.slaOverdueShort}</span>
-        ) : app.actionable && app.slaHours ? (
-          <span className="text-[9px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">{p.slaOnTime}</span>
-        ) : (
-          <span className="text-[9px] text-[#ccc]">—</span>
-        )}
+      <td className={`${CELL} text-center`}>
+        <PipelineSlaChip app={app} />
       </td>
       <td className="py-2.5 px-4 text-right">
-        <div className="flex items-center gap-2 justify-end">
-          {app.actionable && nextStage && (
-            <button type="button" onClick={() => onMove(app.id, nextStage.id)} className="text-[10px] text-[#1F114C] bg-[#F0EEF5] hover:bg-[#E8E5F0] px-2 py-1 rounded font-medium transition">
-              → {nextStage.name}
-            </button>
-          )}
-          {app.actionable && onSchedule && (
-            <button
-              type="button"
-              onClick={() => onSchedule({ applicationId: app.id, candidateId: app.candidateId, candidateName: app.name })}
-              aria-label={p.scheduleInterviewFor.replace('{name}', app.name)}
-              className="text-[10px] text-[#1F114C] hover:bg-[#F0EEF5] px-2 py-1 rounded font-medium transition"
-            >
-              {p.scheduleShort}
-            </button>
-          )}
-          <Link href={`/recruitment/candidates/${app.candidateId}`} className="text-[10px] text-[#585858] hover:text-[#1F114C]">
-            {p.viewShort}
-          </Link>
-          {app.actionable && onReject && (
-            <button
-              type="button"
-              onClick={() => onReject(app.id, app.name)}
-              aria-label={t.rejectCandidateModal.actionLabel.replace('{name}', app.name)}
-              className="text-[10px] text-[#DD0C15] hover:bg-red-50 px-2 py-1 rounded font-medium transition"
-            >
-              {p.reject}
-            </button>
-          )}
-        </div>
+        <PipelineRowActions
+          app={app}
+          nextStage={nextStage}
+          onMove={onMove}
+          onReject={onReject}
+          onSchedule={onSchedule}
+        />
       </td>
     </tr>
   );
