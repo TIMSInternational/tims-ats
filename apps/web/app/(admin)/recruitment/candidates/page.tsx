@@ -117,7 +117,12 @@ export default function CandidatesPage() {
                 value={kpis.data.activeApplications}
                 subtitle={`${kpis.data.total > 0 ? Math.round((kpis.data.activeApplications / kpis.data.total) * 100) : 0}%`}
               />
-              <KpiCard label={t.candidates.colPool} value={kpis.data.byPool.length} subtitle={poolSummary} />
+              <KpiCard
+                label={t.candidates.colPool}
+                value={kpis.data.byPool.length}
+                subtitle={poolSummary}
+                clampSubtitle
+              />
             </>
           ) : null}
         </div>

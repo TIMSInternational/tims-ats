@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { FIELD_LABEL_CLASSES, SegmentedControl } from '../../../../components';
 
@@ -25,6 +26,8 @@ export function VacancyChoiceGroups({
   priority,
   onPriorityChange,
 }: VacancyChoiceGroupsProps) {
+  const modalityLabelId = useId();
+  const priorityLabelId = useId();
   const { t } = useI18n();
   const modalityOptions = [
     { value: 'onsite', label: t.vacancies.onsite },
@@ -41,11 +44,12 @@ export function VacancyChoiceGroups({
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div>
-        <p className={FIELD_LABEL_CLASSES} aria-hidden="true">
+        <p id={modalityLabelId} className={FIELD_LABEL_CLASSES}>
           {t.vacancies.workModality}
         </p>
         <SegmentedControl<RemotePolicy | ''>
           label={t.vacancies.workModality}
+          labelledBy={modalityLabelId}
           options={modalityOptions}
           value={remotePolicy}
           onChange={(value) => {
@@ -55,11 +59,12 @@ export function VacancyChoiceGroups({
         />
       </div>
       <div>
-        <p className={FIELD_LABEL_CLASSES} aria-hidden="true">
+        <p id={priorityLabelId} className={FIELD_LABEL_CLASSES}>
           {t.vacancies.priority}
         </p>
         <SegmentedControl<Priority>
           label={t.vacancies.priority}
+          labelledBy={priorityLabelId}
           options={priorityOptions}
           value={priority}
           onChange={onPriorityChange}

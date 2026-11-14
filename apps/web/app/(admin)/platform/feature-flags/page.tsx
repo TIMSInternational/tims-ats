@@ -16,15 +16,9 @@ import {
 } from '../../../../components';
 import { CreateFlagModal } from './create-flag-modal';
 import { FlagOverridesPanel } from './flag-overrides-panel';
+import { withoutKey } from './without-key';
 
 const TH = 'px-4 py-3 text-callout font-medium text-secondary';
-
-function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-  if (!(key in record)) return record;
-  const next = { ...record };
-  delete next[key];
-  return next;
-}
 
 export default function PlatformFeatureFlagsPage() {
   const { t } = useI18n();

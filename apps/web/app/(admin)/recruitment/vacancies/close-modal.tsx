@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { formatMessage, useI18n } from '../../../../lib/i18n';
-import { Button, Field, Modal, TextInput } from '../../../../components';
-import { requestDialogClose } from './request-dialog-close';
+import { Button, DialogCancelButton, Field, Modal, TextInput } from '../../../../components';
 
 interface CloseModalProps {
   vacancyTitle: string;
@@ -26,13 +25,7 @@ export function CloseModal({ vacancyTitle, onConfirm, onClose, isPending }: Clos
       dirty={reason.trim().length > 0 && !isPending}
       footer={
         <>
-          <Button
-            variant="secondary"
-            onClick={(e) => requestDialogClose(e, t.common.close, onClose)}
-            disabled={isPending}
-          >
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={isPending} />
           <Button
             variant="destructive"
             onClick={() => onConfirm(reason)}

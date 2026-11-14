@@ -247,9 +247,9 @@ test('recruiter moves the candidate to Oferta and drafts an offer', async () => 
   const dialog = page.getByRole('dialog', { name: 'Crear borrador de oferta' });
   await dialog.getByLabel(/salario base/i).fill('96000000');
   const start = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  await dialog.getByLabel('Fecha Inicio').fill(start);
+  await dialog.getByLabel('Fecha de inicio').fill(start);
   // Contract type is a select of Costa Rican terms (portal.contractTypes), prefilled from the vacancy.
-  await dialog.getByLabel('Tipo Contrato').selectOption({ label: 'Plazo indefinido' });
+  await dialog.getByLabel('Tipo de contrato').selectOption({ label: 'Plazo indefinido' });
   await dialog.getByRole('button', { name: 'Crear borrador de oferta' }).click();
   await expect(dialog).toBeHidden();
   // On success the modal closes and THEN the app router-pushes to the new draft (B-16:

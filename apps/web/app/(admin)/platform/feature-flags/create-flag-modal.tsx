@@ -2,7 +2,15 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { Button, CHOICE_INPUT_CLASSES, CHOICE_ROW_CLASSES, Field, Modal, TextInput } from '../../../../components';
+import {
+  Button,
+  CHOICE_INPUT_CLASSES,
+  CHOICE_ROW_CLASSES,
+  DialogCancelButton,
+  Field,
+  Modal,
+  TextInput,
+} from '../../../../components';
 
 interface CreateFlagModalProps {
   isPending: boolean;
@@ -29,9 +37,7 @@ export function CreateFlagModal({ isPending, onCreate, onClose }: CreateFlagModa
       dirty={key.length > 0}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={isPending}>
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={isPending} />
           <Button onClick={submit} disabled={!key} loading={isPending} loadingLabel={t.common.saving}>
             {ff.createFlagSubmit}
           </Button>

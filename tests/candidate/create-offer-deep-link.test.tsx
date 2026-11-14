@@ -38,7 +38,7 @@ describe('create offer from the 360', () => {
     fireEvent.change(container.querySelector('#offer-salary-amount') as HTMLInputElement, { target: { value: '800000' } });
     const startDate = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
     fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, { target: { value: startDate } });
-    fireEvent.change(screen.getByLabelText(/Tipo Contrato|Contract Type/), { target: { value: 'indefinido' } });
+    fireEvent.change(screen.getByLabelText(/Tipo de contrato|Contract type/), { target: { value: 'indefinido' } });
     const buttons = screen.getAllByRole('button');
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
     await waitFor(() => expect(m.push).toHaveBeenCalledWith('/recruitment/offers?offer=offer-9'));

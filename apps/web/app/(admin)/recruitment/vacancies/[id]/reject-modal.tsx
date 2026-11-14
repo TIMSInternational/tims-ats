@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import { Button, Field, Modal, TextInput } from '../../../../../components';
-import { requestDialogClose } from '../request-dialog-close';
+import { Button, DialogCancelButton, Field, Modal, TextInput } from '../../../../../components';
 
 interface RejectModalProps {
   onConfirm: (comment: string) => void;
@@ -25,13 +24,7 @@ export function RejectModal({ onConfirm, onClose, isPending }: RejectModalProps)
       dirty={comment.trim().length > 0 && !isPending}
       footer={
         <>
-          <Button
-            variant="secondary"
-            onClick={(e) => requestDialogClose(e, t.common.close, onClose)}
-            disabled={isPending}
-          >
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={isPending} />
           <Button
             variant="destructive"
             onClick={() => onConfirm(comment)}

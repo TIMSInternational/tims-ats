@@ -126,7 +126,7 @@ describe('apply modal close guard', () => {
     mocks.onClose.mockReset();
     fireEvent.change(screen.getAllByRole('textbox')[0]!, { target: { value: 'Ana' } });
     fireEvent.click(screen.getByRole('button', { name: p.cancel }));
-    expect(screen.getByRole('alertdialog')).toHaveTextContent(en.common.discardTitle);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(en.portal.applyDiscardTitle);
     expect(mocks.onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: en.common.keepEditing }));
     expect(screen.queryByRole('alertdialog')).toBeNull();

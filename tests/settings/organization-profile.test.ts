@@ -157,12 +157,10 @@ describe('card formatting (web)', () => {
     expect(countryLabel(null, 'es')).toBeNull();
     expect(careersPageUrl('https://app.test/', 'pilot org')).toBe('https://app.test/careers/pilot%20org');
   });
-  it('time zone options label Costa Rica as "hora de Costa Rica (GMT-6)" and keep an unlisted current zone', () => {
+  it('time zone options label Costa Rica as "Hora de Costa Rica (GMT-6)" and keep an unlisted current zone', () => {
     const options = timeZoneOptions('es', 'Asia/Tokyo', new Date('2026-11-04T12:00:00Z'));
     expect(options[0]?.value).toBe('Asia/Tokyo');
-    expect(options.find((o) => o.value === 'America/Costa_Rica')?.label).toBe(
-      'hora de Costa Rica (GMT-6) · America/Costa_Rica',
-    );
+    expect(options.find((o) => o.value === 'America/Costa_Rica')?.label).toBe('Hora de Costa Rica (GMT-6)');
     expect(options.find((o) => o.value === 'UTC')?.label).toBe('UTC');
     expect(timeZoneOptions('es', 'not/a-zone').some((o) => o.value === 'not/a-zone')).toBe(false);
   });

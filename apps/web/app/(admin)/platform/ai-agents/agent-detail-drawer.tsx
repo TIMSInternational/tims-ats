@@ -8,6 +8,7 @@ import {
   Button,
   CHOICE_INPUT_CLASSES,
   CHOICE_ROW_CLASSES,
+  DialogCancelButton,
   Drawer,
   Field,
   Select,
@@ -101,9 +102,7 @@ export function AgentDetailDrawer({ agent, onClose, onSuccess }: AgentDetailDraw
       footer={
         tab === 'config' ? (
           <>
-            <Button variant="secondary" onClick={onClose}>
-              {t.common.cancel}
-            </Button>
+            <DialogCancelButton onCancel={onClose} />
             <Button onClick={save} loading={updateAgent.isPending} loadingLabel={t.common.saving}>
               {ai.saveChanges}
             </Button>

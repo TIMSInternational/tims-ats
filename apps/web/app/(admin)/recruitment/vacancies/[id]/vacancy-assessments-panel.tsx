@@ -54,9 +54,9 @@ export function VacancyAssessmentsPanel({ vacancyId }: { vacancyId: string }) {
       className="rounded-xl bg-white p-4 shadow-card md:p-5"
       data-testid="vacancy-assessments"
     >
-      <h3 id="vacancy-assessments-title" className="mb-1 text-subheading font-semibold text-brand">
+      <h2 id="vacancy-assessments-title" className="mb-1 text-heading font-semibold text-brand">
         {t.vacancyAssessments.title}
-      </h3>
+      </h2>
       <p className="mb-4 text-callout text-secondary">{t.vacancyAssessments.description}</p>
       {body()}
     </section>

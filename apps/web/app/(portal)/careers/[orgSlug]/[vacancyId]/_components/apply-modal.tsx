@@ -192,6 +192,8 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
       size="lg"
       fullScreenOnMobile
       dirty={hasInput && !submitting}
+      discardTitle={p.applyDiscardTitle}
+      discardBody={p.applyDiscardBody}
       footer={
         confirmingCancel ? undefined : (
         <ApplyModalFooter
@@ -288,7 +290,12 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
       )}
 
       {confirmingCancel && (
-        <DiscardChangesPrompt onKeepEditing={() => setConfirmingCancel(false)} onDiscard={requestClose} />
+        <DiscardChangesPrompt
+          onKeepEditing={() => setConfirmingCancel(false)}
+          onDiscard={requestClose}
+          title={p.applyDiscardTitle}
+          body={p.applyDiscardBody}
+        />
       )}
 
       {submitError && <ApplySubmitError message={submitError} />}

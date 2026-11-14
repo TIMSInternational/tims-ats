@@ -34,6 +34,16 @@ interface FieldProps {
   children: React.ReactElement<FieldControlProps> | ((control: FieldControlProps) => React.ReactNode);
 }
 
+/**
+ * Only the keys Field actually sets. cloneElement overwrites a child prop even with `undefined`, so passing
+ * `{ required: undefined }` would strip a `required` the caller put on the control itself.
+ */
+function definedProps(control: FieldControlProps): Partial<FieldControlProps> {
+  return Object.fromEntries(
+    Object.entries(control).filter(([, value]) => value !== undefined),
+  ) as Partial<FieldControlProps>;
+}
+
 /** Label + control + help + error with the ids wired up (foundation-spec.md §6). */
 export function Field({ label, help, error, required, optional, hideLabel, id, className = '', children }: FieldProps) {
   const { t } = useI18n();
@@ -61,7 +71,7 @@ export function Field({ label, help, error, required, optional, hideLabel, id, c
         )}
         {optional && <span className="font-normal text-secondary"> ({t.common.optional})</span>}
       </label>
-      {typeof children === 'function' ? children(control) : React.cloneElement(children, control)}
+      {typeof children === 'function' ? children(control) : React.cloneElement(children, definedProps(control))}
       {help && (
         <p id={helpId} className={FIELD_HELP_CLASSES}>
           {help}

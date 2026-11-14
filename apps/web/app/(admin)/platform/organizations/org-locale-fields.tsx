@@ -111,7 +111,7 @@ export function OrgLocaleFields({
               —
             </option>
             {zones.map((zone) => (
-              <option key={zone.value} value={zone.value}>
+              <option key={zone.value} value={zone.value} title={zone.value}>
                 {zone.label}
               </option>
             ))}

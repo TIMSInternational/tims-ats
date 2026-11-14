@@ -12,6 +12,8 @@ export interface SegmentOption<T extends string> {
 interface SegmentedControlProps<T extends string> {
   /** Required group name ("Vista", "Periodo"). */
   label: string;
+  /** Id of a visible label that names the group; used instead of `label` so it is not announced twice. */
+  labelledBy?: string;
   options: readonly SegmentOption<T>[];
   value: T;
   onChange: (value: T) => void;
@@ -27,6 +29,7 @@ interface SegmentedControlProps<T extends string> {
  */
 export function SegmentedControl<T extends string>({
   label,
+  labelledBy,
   options,
   value,
   onChange,
@@ -38,7 +41,8 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       role="group"
-      aria-label={label}
+      aria-label={labelledBy ? undefined : label}
+      aria-labelledby={labelledBy}
       className={`${fullWidth ? 'flex w-full' : 'inline-flex'} rounded-lg bg-surface p-0.5 ${className}`}
     >
       {options.map((option) => (

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
-import { Button, BUTTON_GROUP_CLASSES, Modal, Stepper } from '../../../../components';
+import { Button, BUTTON_GROUP_CLASSES, DialogCancelButton, Modal, Stepper } from '../../../../components';
 import { Step1Fields, Step2Fields, Step3Fields } from './add-candidate-modal.fields';
 import { ExistingCandidateNotFoundError, type Step, type ProcessStep } from './add-candidate-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
@@ -145,9 +145,7 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
         )}
       </div>
       <div className={BUTTON_GROUP_CLASSES}>
-        <Button variant="secondary" onClick={onClose} disabled={isPending}>
-          {t.common.cancel}
-        </Button>
+        <DialogCancelButton onCancel={onClose} disabled={isPending} />
         {step > 1 && (
           <Button variant="secondary" onClick={() => setStep((step - 1) as Step)} disabled={isPending}>
             {p.addCandidateBack}

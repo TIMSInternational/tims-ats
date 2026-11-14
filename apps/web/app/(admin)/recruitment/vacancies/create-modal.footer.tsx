@@ -1,14 +1,13 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
-import { Button } from '../../../../components';
+import { Button, DialogCancelButton } from '../../../../components';
 import type { Step } from './create-modal.helpers';
-import { requestDialogClose } from './request-dialog-close';
 
 interface WizardFooterProps {
   step: Step;
   onBack: () => void;
-  /** Fallback when the dialog shell cannot be found; normally Cancel goes through the Modal's guard. */
+  /** Fallback outside a Modal; inside one, Cancel goes through the Modal's dirty guard. */
   onCancel: () => void;
   onNext: () => void;
   onSubmit: () => void;
@@ -35,9 +34,7 @@ export function WizardFooter({
   return (
     <>
       {step === 1 ? (
-        <Button variant="secondary" onClick={(e) => requestDialogClose(e, t.common.close, onCancel)}>
-          {t.common.cancel}
-        </Button>
+        <DialogCancelButton onCancel={onCancel} />
       ) : (
         <Button variant="secondary" onClick={onBack}>
           {t.common.back}

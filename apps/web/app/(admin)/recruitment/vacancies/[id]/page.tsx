@@ -128,6 +128,9 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
               <GeneralInfo vacancy={v} />
               <PublicUrlCard vacancyId={id} vacancyStatus={v.status} />
               {v.jobProfile && <JobProfileCard jobProfile={v.jobProfile} />}
+              {/* The TIMS tests editor is a long form: it needs the wide column (layout.md › Adaptability). */}
+              <FitRequirementsCard vacancyId={id} fitRequirements={v.jobProfile?.fitRequirements ?? null} />
+              <VacancyAssessmentsCard vacancyId={id} />
               {v.status !== 'draft' && v.status !== 'pending_approval' && (
                 <ChannelsCard vacancyId={id} vacancyStatus={v.status} channels={v.channels} />
               )}
@@ -144,8 +147,6 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
               />
               <SlaCard vacancy={v} />
               <RoleFamilyCard vacancyId={id} roleFamily={v.roleFamily ?? null} />
-              <FitRequirementsCard vacancyId={id} fitRequirements={v.jobProfile?.fitRequirements ?? null} />
-              <VacancyAssessmentsCard vacancyId={id} />
               {!approvalFirst && approvalChain}
             </div>
           </div>

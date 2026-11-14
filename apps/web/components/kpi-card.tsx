@@ -17,6 +17,8 @@ interface KpiCardProps {
   label: string;
   value: string | number;
   subtitle?: string;
+  /** Keep a long subtitle (a list summary) on one line; the full text stays available as a tooltip. */
+  clampSubtitle?: boolean;
   /** Optional icon (outline svg, size-4, aria-hidden). Its tile is always brand tint. */
   icon?: React.ReactNode;
   /** @deprecated Still honoured; omit it to get the standard brand-tint tile (colour only for status: `tone`). */
@@ -36,6 +38,7 @@ export function KpiCard({
   label,
   value,
   subtitle,
+  clampSubtitle = false,
   icon,
   iconBg,
   highlight,
@@ -63,7 +66,12 @@ export function KpiCard({
       </div>
       <div className={`text-xl font-semibold tabular-nums md:text-2xl ${valueClass}`}>{unavailable ? '—' : value}</div>
       {(unavailable || subtitle) && (
-        <div className="mt-1 text-callout text-secondary">{unavailable ? unavailableReason : subtitle}</div>
+        <div
+          className={`mt-1 text-callout text-secondary ${clampSubtitle && !unavailable ? 'line-clamp-1' : ''}`}
+          title={clampSubtitle && !unavailable ? subtitle : undefined}
+        >
+          {unavailable ? unavailableReason : subtitle}
+        </div>
       )}
     </div>
   );

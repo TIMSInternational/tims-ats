@@ -81,7 +81,7 @@ export function FitRequirementsCard({ vacancyId, fitRequirements }: { vacancyId:
 
   return (
     <div className="rounded-xl bg-white p-4 shadow-card md:p-5">
-      <h3 className="mb-1 text-subheading font-semibold text-brand">{t.fitRequirements.title}</h3>
+      <h2 className="mb-1 text-heading font-semibold text-brand">{t.fitRequirements.title}</h2>
       <p className="mb-4 text-callout text-secondary">{t.fitRequirements.description}</p>
 
       <div className="space-y-4">

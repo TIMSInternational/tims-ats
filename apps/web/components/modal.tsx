@@ -5,6 +5,7 @@ import { useI18n } from '../lib/i18n';
 import { useDialogA11y } from '../lib/use-dialog-a11y';
 import { IconButton } from './icon-button';
 import { DiscardChangesPrompt } from './discard-changes-prompt';
+import { DialogCloseContext } from './dialog-close-context';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -26,13 +27,19 @@ interface ModalProps {
   description?: React.ReactNode;
   onClose: () => void;
   children: React.ReactNode;
-  /** Sticky action row: Cancel (secondary) first, the primary verb last. Stacks full width below sm. */
+  /**
+   * Sticky action row: Cancel (secondary) first, the primary verb last. Stacks full width below sm. Use
+   * `DialogCancelButton` for Cancel so it goes through the `dirty` guard.
+   */
   footer?: React.ReactNode;
   size?: ModalSize;
   /** Legacy width override (e.g. 'max-w-xl'); prefer `size`. */
   maxWidth?: string;
   /** Unsaved changes: closing (Esc, overlay, ✕) asks "¿Descartar los cambios?" first. */
   dirty?: boolean;
+  /** Optional wording for that prompt, naming what is lost ("¿Descartar la postulación?"). */
+  discardTitle?: string;
+  discardBody?: string;
   /** Phones: a full-screen sheet instead of a bottom sheet (multi-step flows like the apply form). */
   fullScreenOnMobile?: boolean;
   /** Extra classes for the body (e.g. to drop its padding for a full-bleed list). */
@@ -53,6 +60,8 @@ export function Modal({
   size = 'md',
   maxWidth,
   dirty = false,
+  discardTitle,
+  discardBody,
   fullScreenOnMobile = false,
   bodyClassName = '',
 }: ModalProps) {
@@ -80,60 +89,71 @@ export function Modal({
   const shape = fullScreenOnMobile ? SHAPE_FULL_SCREEN : SHAPE_SHEET;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-    >
-      <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={requestClose} aria-hidden="true" />
+    <DialogCloseContext.Provider value={requestClose}>
       <div
-        ref={dialogRef}
-        className={`relative flex w-full flex-col overflow-hidden bg-white shadow-2xl animate-sheet-up sm:mx-4 ${width} ${shape}`}
+        className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 px-6 pb-4 pt-5">
-          <div className="min-w-0">
-            <h2 id={titleId} className="text-heading font-semibold text-primary">
-              {title}
-            </h2>
-            {description && (
-              <p id={descriptionId} className="mt-1 text-callout text-secondary">
-                {description}
-              </p>
-            )}
-          </div>
-          <IconButton label={t.common.close} size="sm" onClick={requestClose} className="-mr-2 -mt-0.5">
-            <svg
-              className="size-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </IconButton>
-        </div>
+        <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={requestClose} aria-hidden="true" />
         <div
-          inert={confirmingDiscard || undefined}
-          className={`min-h-0 flex-1 overflow-y-auto px-6 pb-6 ${bodyClassName}`}
+          ref={dialogRef}
+          className={`relative flex w-full flex-col overflow-hidden bg-white shadow-2xl animate-sheet-up sm:mx-4 ${width} ${shape}`}
         >
-          {children}
-        </div>
-        {footer && (
+          <div className="flex shrink-0 items-start justify-between gap-4 px-6 pb-4 pt-5">
+            <div className="min-w-0">
+              <h2
+                id={titleId}
+                title={fullScreenOnMobile ? title : undefined}
+                className={`text-heading font-semibold text-primary ${fullScreenOnMobile ? 'max-sm:truncate' : ''}`}
+              >
+                {title}
+              </h2>
+              {description && (
+                <p id={descriptionId} className="mt-1 text-callout text-secondary">
+                  {description}
+                </p>
+              )}
+            </div>
+            <IconButton label={t.common.close} size="sm" onClick={requestClose} className="-mr-2 -mt-0.5">
+              <svg
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </IconButton>
+          </div>
           <div
             inert={confirmingDiscard || undefined}
-            className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-white px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end"
+            className={`min-h-0 flex-1 overflow-y-auto px-6 pb-6 ${bodyClassName}`}
           >
-            {footer}
+            {children}
           </div>
-        )}
-        {confirmingDiscard && (
-          <DiscardChangesPrompt onKeepEditing={() => setConfirmingDiscard(false)} onDiscard={onClose} />
-        )}
+          {footer && (
+            <div
+              inert={confirmingDiscard || undefined}
+              className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-white px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end"
+            >
+              {footer}
+            </div>
+          )}
+          {confirmingDiscard && (
+            <DiscardChangesPrompt
+              onKeepEditing={() => setConfirmingDiscard(false)}
+              onDiscard={onClose}
+              title={discardTitle}
+              body={discardBody}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </DialogCloseContext.Provider>
   );
 }

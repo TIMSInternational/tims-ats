@@ -4,12 +4,11 @@ import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
-import { Button, Drawer } from '../../../../../components';
+import { Button, DialogCancelButton, Drawer } from '../../../../../components';
 import { usePermissions } from '../../../../../lib/permissions';
 import { salaryBandStatus } from '../../../../../lib/money-amount';
 import { EditVacancyFields } from './edit-vacancy-fields';
 import { CompetenciesSection } from '../competencies-section';
-import { requestDialogClose } from '../request-dialog-close';
 import {
   competenciesChanged,
   draftsFromStored,
@@ -104,13 +103,7 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
           {!hasChanges && error === null && (
             <p className="text-callout text-secondary sm:mr-auto sm:self-center">{t.vacancies.editNoChanges}</p>
           )}
-          <Button
-            variant="secondary"
-            onClick={(e) => requestDialogClose(e, t.common.close, onClose)}
-            disabled={update.isPending}
-          >
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={update.isPending} />
           <Button
             onClick={save}
             disabled={error !== null || competencyError !== null || !hasChanges}

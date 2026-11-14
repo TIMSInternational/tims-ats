@@ -54,7 +54,7 @@ export function FitBreakdown({ fitScores }: { fitScores: FitScore[] }) {
 
   return (
     <div className="rounded-xl bg-white p-4 shadow-card md:p-5">
-      <h3 className="mb-1 text-subheading font-semibold text-brand">{t.candidates.fitBreakdown}</h3>
+      <h2 className="mb-1 text-heading font-semibold text-brand">{t.candidates.fitBreakdown}</h2>
       <p className="mb-2 text-callout text-secondary">{t.candidates.fitDroppedNote}</p>
       <AiSuggestionNotice className="mb-3" />
       {pending && (

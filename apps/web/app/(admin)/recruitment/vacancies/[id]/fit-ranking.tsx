@@ -92,7 +92,7 @@ export function FitRanking({ vacancyId }: { vacancyId: string }) {
   return (
     <div className="rounded-xl bg-white p-4 shadow-card md:p-5">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-subheading font-semibold text-brand">{t.fitRanking.title}</h3>
+        <h2 className="text-heading font-semibold text-brand">{t.fitRanking.title}</h2>
         {/* Secondary: recomputing is a maintenance action, not the page's main task (buttons.md › Style). */}
         <Button
           variant="secondary"

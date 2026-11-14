@@ -39,9 +39,9 @@ export function CandidateFitPanel({
   return (
     <div className="mt-1 rounded-xl bg-white p-4 shadow-card md:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h4 className="text-subheading font-semibold text-brand">
+        <h3 className="text-subheading font-semibold text-brand">
           {entry ? `${entry.firstName} ${entry.lastName}` : ''}
-        </h4>
+        </h3>
         <Button variant="tertiary" size="sm" onClick={onClose}>
           {t.fitRanking.closeDetail}
         </Button>

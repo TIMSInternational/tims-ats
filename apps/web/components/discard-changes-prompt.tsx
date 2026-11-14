@@ -13,9 +13,14 @@ import { BUTTON_GROUP_CLASSES } from './button-styles';
 export function DiscardChangesPrompt({
   onKeepEditing,
   onDiscard,
+  title,
+  body,
 }: {
   onKeepEditing: () => void;
   onDiscard: () => void;
+  /** Names what is lost ("¿Descartar la postulación?"); defaults to "¿Descartar los cambios?". */
+  title?: string;
+  body?: string;
 }) {
   const { t } = useI18n();
   const keepRef = useRef<HTMLButtonElement>(null);
@@ -31,10 +36,10 @@ export function DiscardChangesPrompt({
         className="w-full max-w-sm text-center"
       >
         <p id="discard-changes-title" className="text-heading font-semibold text-primary">
-          {t.common.discardTitle}
+          {title ?? t.common.discardTitle}
         </p>
         <p id="discard-changes-body" className="mt-1 text-body text-secondary">
-          {t.common.discardBody}
+          {body ?? t.common.discardBody}
         </p>
         <div className={`mt-5 ${BUTTON_GROUP_CLASSES} sm:justify-center`}>
           <Button variant="secondary" onClick={onKeepEditing} ref={keepRef}>

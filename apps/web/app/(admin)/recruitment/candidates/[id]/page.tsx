@@ -168,7 +168,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <ProviderResultsBoard candidateId={id} />
+              <ProviderResultsBoard candidateId={id} applications={c.applications} />
               <ProviderAssessmentsCard candidateId={id} applications={c.applications} />
             </div>
             {c.assessmentAssignments.length > 0 ? (

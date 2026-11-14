@@ -48,6 +48,8 @@ export interface StatusMapEntry {
   cls?: string;
   tone?: StatusTone;
   label: string;
+  /** A glyph that says what the state is beyond its tone (aria-hidden, size-3), e.g. a pause for "Congelada". */
+  icon?: React.ReactNode;
 }
 
 interface StatusBadgeProps {
@@ -77,7 +79,7 @@ export function StatusBadge({ tone, label, children, icon = 'auto', className = 
     const colour = legacyTone ? STATUS_TONE_CLASSES[legacyTone] : entry.cls;
     return (
       <span className={`${BASE} ${colour} ${className}`}>
-        {legacyTone && icon === 'auto' && <OutcomeIcon tone={legacyTone} />}
+        {icon === 'auto' && (entry.icon ?? (legacyTone && <OutcomeIcon tone={legacyTone} />))}
         {icon !== 'auto' && icon !== 'none' && icon}
         {entry.label}
       </span>

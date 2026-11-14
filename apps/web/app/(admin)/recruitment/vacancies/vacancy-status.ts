@@ -1,4 +1,6 @@
+import { createElement } from 'react';
 import type { StatusMapEntry } from '../../../../components';
+import { PauseGlyph } from './pause-glyph';
 
 // Badge tone + label for each stored vacancy status. One map for the list, the detail header and the
 // SLA card, so no screen falls back to printing the raw slug ("approved"). Tones follow foundation §12:
@@ -19,7 +21,7 @@ export function vacancyStatusMap(labels: VacancyStatusLabels): Record<string, St
     approved: { tone: 'brand', label: labels.statusApproved },
     published: { tone: 'success', label: labels.statusPublished },
     closed: { tone: 'neutral', label: labels.statusClosed },
-    frozen: { tone: 'info', label: labels.statusFrozen },
+    frozen: { tone: 'info', label: labels.statusFrozen, icon: createElement(PauseGlyph) },
   };
 }
 

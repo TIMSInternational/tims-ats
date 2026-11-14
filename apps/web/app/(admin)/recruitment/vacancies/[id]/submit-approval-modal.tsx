@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import { Button, IconButton, Modal, UserPicker } from '../../../../../components';
-import { requestDialogClose } from '../request-dialog-close';
+import { Button, DialogCancelButton, IconButton, Modal, UserPicker } from '../../../../../components';
 import type { PickedUser } from '../../../../../components/user-picker';
 import { isAssignablePeopleViaCSharp } from '../../../../../lib/platform-api/assignable-people';
 
@@ -44,13 +43,7 @@ export function SubmitApprovalModal({
       dirty={selected.length > 0 && !isPending}
       footer={
         <>
-          <Button
-            variant="secondary"
-            onClick={(e) => requestDialogClose(e, t.common.close, onClose)}
-            disabled={isPending}
-          >
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={isPending} />
           <Button
             onClick={() => onConfirm(selected.map((u) => u.id))}
             disabled={selected.length === 0}

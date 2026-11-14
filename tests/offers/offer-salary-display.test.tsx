@@ -199,7 +199,7 @@ describe('create offer form', () => {
       target: { value: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) },
     });
     // B-15: contract type is a select over the vacancy vocabulary; the offer stores the label.
-    fireEvent.change(screen.getByLabelText(/Tipo Contrato|Contract Type/), { target: { value: 'indefinido' } });
+    fireEvent.change(screen.getByLabelText(/Tipo de contrato|Contract type/), { target: { value: 'indefinido' } });
     const buttons = screen.getAllByRole('button');
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
 
@@ -516,7 +516,7 @@ describe('create offer form — the shared money input', () => {
     fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
       target: { value: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) },
     });
-    fireEvent.change(screen.getByLabelText(/Tipo Contrato|Contract Type/), { target: { value: 'indefinido' } });
+    fireEvent.change(screen.getByLabelText(/Tipo de contrato|Contract type/), { target: { value: 'indefinido' } });
   };
 
   it('accepts digit grouping, shows the amount grouped on blur and stores exactly 12 times the month', async () => {
