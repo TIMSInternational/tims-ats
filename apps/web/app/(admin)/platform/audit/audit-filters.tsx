@@ -3,6 +3,7 @@
 import { useI18n } from '../../../../lib/i18n';
 import { Button, ErrorState, FIELD_LABEL_CLASSES, Select, TextInput } from '../../../../components';
 import { ACTION_OPTIONS, ENTITY_OPTIONS } from './audit-options';
+import { AuditFilterChip as Chip } from './audit-filter-chip';
 
 export interface AuditFilterValues {
   action: string;
@@ -23,31 +24,6 @@ interface AuditFiltersProps {
 }
 
 const LABEL = FIELD_LABEL_CLASSES;
-
-function Chip({ label, removeLabel, onRemove }: { label: string; removeLabel: string; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint py-0.5 pl-2.5 pr-1 text-callout font-medium text-brand">
-      {label}
-      <button
-        type="button"
-        aria-label={removeLabel}
-        onClick={onRemove}
-        className="flex size-5 items-center justify-center rounded-full hover:bg-brand/10 pointer-coarse:size-8"
-      >
-        <svg
-          className="size-3"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <path d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </span>
-  );
-}
 
 /** The audit filters: a labelled date range, action, entity and organization; active filters as chips. */
 export function AuditFilters({
@@ -80,7 +56,6 @@ export function AuditFilters({
               id="audit-date-from"
               type="date"
               value={dateFrom}
-              max={dateTo || undefined}
               onChange={(e) => onChange({ dateFrom: e.target.value })}
             />
           </div>
@@ -92,7 +67,6 @@ export function AuditFilters({
               id="audit-date-to"
               type="date"
               value={dateTo}
-              min={dateFrom || undefined}
               onChange={(e) => onChange({ dateTo: e.target.value })}
             />
           </div>

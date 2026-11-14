@@ -8,7 +8,8 @@ import { Button, DataTable, EmptyState, ErrorState, PageHeader, Select, TextInpu
 import type { AiAgentItem } from '../../../../lib/trpc-types';
 import { AgentDetailDrawer } from './agent-detail-drawer';
 import { AiAgentKpis } from './ai-agent-kpis';
-import { AgentListItem, AgentRow } from './agent-row';
+import { AgentRow } from './agent-row';
+import { AgentListItem } from './agent-list-item';
 import { CATEGORY_FILTERS, MVP_SLUGS, type CategoryFilter } from './agent-catalog';
 
 type StatusFilter = '' | 'active' | 'stub' | 'disabled';
@@ -117,7 +118,7 @@ export default function PlatformAiAgentsPage() {
     },
   };
   const empty = registryEmpty ? (
-    <EmptyState title={ai.noAgents} description={ai.noAgentsDesc} action={seedAction} />
+    <EmptyState title={ai.noAgents} description={ai.noAgentsDesc} action={{ ...seedAction, variant: 'secondary' }} />
   ) : (
     <EmptyState
       title={ai.noMatches}

@@ -7,14 +7,23 @@ import { Button } from '../../../../components';
 
 interface HealthRefreshProps {
   dataUpdatedAt: number;
-  isFetching: boolean;
-  onRefresh: () => void;
+  onRefresh: () => Promise<unknown>;
 }
 
-/** "Actualizado hace 2 minutos" that keeps ticking between refetches, and a refresh button with a busy state. */
-export function HealthRefresh({ dataUpdatedAt, isFetching, onRefresh }: HealthRefreshProps) {
+/**
+ * "Actualizado hace 2 minutos" that keeps ticking between refetches, and a refresh button.
+ * The button shows its busy state only for a refresh the user asked for, never for the 30 s background poll.
+ */
+export function HealthRefresh({ dataUpdatedAt, onRefresh }: HealthRefreshProps) {
   const { t, locale } = useI18n();
   const [, setTick] = useState(0);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+
+  const handleRefresh = () => {
+    if (isManualRefreshing) return;
+    setIsManualRefreshing(true);
+    void onRefresh().finally(() => setIsManualRefreshing(false));
+  };
 
   useEffect(() => {
     const id = window.setInterval(() => setTick((n) => n + 1), 30_000);
@@ -28,7 +37,13 @@ export function HealthRefresh({ dataUpdatedAt, isFetching, onRefresh }: HealthRe
           {formatMessage(t.health.updatedAgo, { time: formatRelativeTimeLocale(new Date(dataUpdatedAt), locale) })}
         </span>
       )}
-      <Button variant="secondary" size="sm" onClick={onRefresh} loading={isFetching} loadingLabel={t.health.refreshing}>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={handleRefresh}
+        loading={isManualRefreshing}
+        loadingLabel={t.health.refreshing}
+      >
         {t.health.refresh}
       </Button>
     </>

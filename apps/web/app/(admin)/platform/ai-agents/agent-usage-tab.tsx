@@ -4,16 +4,7 @@ import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, formatNumber } from '../../../../lib/format-utils';
 import { ErrorState, Skeleton } from '../../../../components';
 import type { AgentUsageQuery as UsageQuery } from './query-state';
-
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-lg bg-surface p-3">
-      <dt className="text-callout text-secondary">{label}</dt>
-      <dd className="mt-0.5 text-title font-semibold tabular-nums text-brand">{value}</dd>
-    </div>
-  );
-}
+import { AgentUsageStat as Stat } from './agent-usage-stat';
 
 /** Last-30-day usage of one agent. */
 export function AgentUsageTab({ usage }: { usage: UsageQuery }) {
@@ -43,7 +34,7 @@ export function AgentUsageTab({ usage }: { usage: UsageQuery }) {
       <dl className="grid grid-cols-2 gap-3">
         <Stat value={formatNumber(data.totalCalls, locale)} label={ai.calls30d} />
         <Stat value={formatCurrency(data.totalCost, 'USD', 2)} label={ai.totalCost} />
-        <Stat value={`${formatNumber(data.avgLatencyMs, locale)} ms`} label={ai.avgLatency} />
+        <Stat value={`${formatNumber(data.avgLatencyMs, locale)} ${ai.units.ms}`} label={ai.avgLatency} />
         <Stat value={formatCurrency(data.avgCostPerCall, 'USD', 4)} label={ai.colCost} />
       </dl>
       <div className="rounded-lg bg-surface p-3">

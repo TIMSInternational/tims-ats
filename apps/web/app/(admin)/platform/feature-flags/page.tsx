@@ -19,6 +19,13 @@ import { FlagOverridesPanel } from './flag-overrides-panel';
 
 const TH = 'px-4 py-3 text-callout font-medium text-secondary';
 
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  if (!(key in record)) return record;
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
 export default function PlatformFeatureFlagsPage() {
   const { t } = useI18n();
   const ff = t.featureFlags;
@@ -27,8 +34,9 @@ export default function PlatformFeatureFlagsPage() {
   const { data: flagGroups, isLoading, isError, error, refetch } = trpc.platform.listAllFeatureFlags.useQuery();
 
   const [localToggles, setLocalToggles] = useState<Record<string, boolean>>({});
-  const [pendingToggle, setPendingToggle] = useState<string | null>(null);
-  const [toggleError, setToggleError] = useState<{ key: string; message: string } | null>(null);
+  // Keyed by `${orgId}:${key}` so several rows can save at once without clearing each other.
+  const [pendingToggles, setPendingToggles] = useState<Record<string, true>>({});
+  const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
   const [selectedFlagKey, setSelectedFlagKey] = useState<string>('');
   const [focusPanel, setFocusPanel] = useState(0);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -54,10 +62,20 @@ export default function PlatformFeatureFlagsPage() {
     utils.platform.listAllFeatureFlags.invalidate();
   };
 
+  // Hook-level callbacks run for every call (per-call mutate callbacks only run for the latest one).
   const updateFlag = trpc.platform.updateFeatureFlag.useMutation({
     onSuccess: () => {
       invalidateAll();
       toast(ff.updated, { type: 'success' });
+    },
+    // The save failed: drop the optimistic value so the row shows what is really stored.
+    onError: (err, vars) => {
+      const rowKey = `${vars.organizationId}:${vars.key}`;
+      setLocalToggles((prev) => withoutKey(prev, rowKey));
+      setToggleErrors((prev) => ({ ...prev, [rowKey]: err.message }));
+    },
+    onSettled: (_data, _err, vars) => {
+      setPendingToggles((prev) => withoutKey(prev, `${vars.organizationId}:${vars.key}`));
     },
   });
   const seedFlags = trpc.platform.seedFeatureFlags.useMutation({
@@ -93,24 +111,10 @@ export default function PlatformFeatureFlagsPage() {
   function handleToggle(orgId: string, key: string, currentEnabled: boolean) {
     const rowKey = `${orgId}:${key}`;
     const newEnabled = !currentEnabled;
-    setToggleError(null);
-    setPendingToggle(rowKey);
+    setToggleErrors((prev) => withoutKey(prev, rowKey));
+    setPendingToggles((prev) => ({ ...prev, [rowKey]: true }));
     setLocalToggles((prev) => ({ ...prev, [rowKey]: newEnabled }));
-    updateFlag.mutate(
-      { organizationId: orgId, key, enabled: newEnabled },
-      {
-        // The save failed: drop the optimistic value so the row shows what is really stored.
-        onError: (err) => {
-          setLocalToggles((prev) => {
-            const next = { ...prev };
-            delete next[rowKey];
-            return next;
-          });
-          setToggleError({ key: rowKey, message: err.message });
-        },
-        onSettled: () => setPendingToggle(null),
-      },
-    );
+    updateFlag.mutate({ organizationId: orgId, key, enabled: newEnabled });
   }
 
   function getEffectiveEnabled(orgId: string, key: string, dbEnabled: boolean): boolean {
@@ -235,8 +239,8 @@ export default function PlatformFeatureFlagsPage() {
             flagKey={activeFlagKey}
             entries={selectedFlagEntries}
             isEnabled={getEffectiveEnabled}
-            pendingToggle={pendingToggle}
-            toggleError={toggleError}
+            pendingToggles={pendingToggles}
+            toggleErrors={toggleErrors}
             onToggle={handleToggle}
           />
         )}

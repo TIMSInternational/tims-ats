@@ -23,10 +23,12 @@ const METRIC_TONE: Record<string, StatusTone> = { green: 'success', amber: 'warn
 
 export default function PlatformHealthPage() {
   const { t, locale } = useI18n();
-  const { data, isLoading, isError, error, refetch, isFetching, dataUpdatedAt } =
-    trpc.platform.getSystemHealth.useQuery(undefined, {
+  const { data, isLoading, isError, error, refetch, dataUpdatedAt } = trpc.platform.getSystemHealth.useQuery(
+    undefined,
+    {
       refetchInterval: 30000,
-    });
+    },
+  );
 
   const statusLabel: Record<ServiceStatus, string> = {
     operational: t.health.statusOperational,
@@ -51,9 +53,7 @@ export default function PlatformHealthPage() {
     <PageHeader
       title={t.platformSidebar.systemHealth}
       actions={
-        !isLoading && !isError ? (
-          <HealthRefresh dataUpdatedAt={dataUpdatedAt} isFetching={isFetching} onRefresh={() => refetch()} />
-        ) : undefined
+        !isLoading && !isError ? <HealthRefresh dataUpdatedAt={dataUpdatedAt} onRefresh={() => refetch()} /> : undefined
       }
     />
   );

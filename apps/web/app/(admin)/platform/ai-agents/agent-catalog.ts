@@ -36,9 +36,14 @@ export const STATUS_TONES: Record<string, StatusTone> = {
   disabled: 'danger',
 };
 
-export function formatCache(seconds: number, noCache: string) {
+/** Cache TTL as "30 s" / "5 min" / "2 h", with the unit words from t.aiAgents.units. */
+export function formatCache(
+  seconds: number,
+  noCache: string,
+  units: { seconds: string; minutes: string; hours: string },
+) {
   if (seconds === 0) return noCache;
-  if (seconds < 60) return `${seconds} s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
-  return `${Math.round(seconds / 3600)} h`;
+  if (seconds < 60) return `${seconds} ${units.seconds}`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} ${units.minutes}`;
+  return `${Math.round(seconds / 3600)} ${units.hours}`;
 }

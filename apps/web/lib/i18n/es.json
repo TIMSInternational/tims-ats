@@ -1062,7 +1062,10 @@
     "units": {
       "usdPerMonth": "USD / mes",
       "usdPerMinute": "USD / min",
-      "minutes": "min"
+      "minutes": "min",
+      "ms": "ms",
+      "seconds": "s",
+      "hours": "h"
     },
     "categories": {
       "all": "Todas las categorías",
