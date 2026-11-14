@@ -49,28 +49,28 @@ export function AssessmentProviderUnbindDialog({
 
   return (
     <Modal title={pa.unbindConfirmTitle.replace('{org}', organizationName)} onClose={onClose} maxWidth="max-w-md">
-      <div className="space-y-3 text-[13px] text-[#585858]" data-testid="provider-unbind-dialog">
+      <div className="space-y-3 text-body text-secondary" data-testid="provider-unbind-dialog">
         <p>{pa.unbindHelp}</p>
         <AssessmentProviderOpenWork work={blocked?.work ?? openWork} />
         {blocked && (
-          <p role="alert" className="text-[12px] text-[#B42318]">
+          <p role="alert" className="text-callout text-danger">
             {pa.unbindBlocked
               .replace('{cancelled}', String(blocked.cancelled))
               .replace('{failed}', String(blocked.failed))}
           </p>
         )}
         {errorKey && (
-          <p role="alert" className="text-[12px] text-[#B42318]">
+          <p role="alert" className="text-callout text-danger">
             {(pa.errors as Record<string, string>)[errorKey] ?? pa.errors.unknown}
           </p>
         )}
         {openWork.cancellable > 0 && (
-          <label className="flex items-start gap-2 text-[12px] text-[#1F114C]">
+          <label className="flex items-start gap-2 text-callout text-brand">
             <input type="checkbox" checked={cancelOpen} onChange={(event) => setCancelOpen(event.target.checked)} />
             <span>{pa.unbindCancelChoice.replace('{n}', String(openWork.cancellable))}</span>
           </label>
         )}
-        <label className="flex items-start gap-2 text-[12px] text-[#1F114C]">
+        <label className="flex items-start gap-2 text-callout text-brand">
           <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
           <span>{pa.unbindAcknowledge}</span>
         </label>
@@ -78,7 +78,7 @@ export function AssessmentProviderUnbindDialog({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858]"
+            className="flex-1 h-9 rounded-lg border border-field-border text-sm font-medium text-secondary"
           >
             {pa.cancel}
           </button>
@@ -86,7 +86,7 @@ export function AssessmentProviderUnbindDialog({
             type="button"
             disabled={!acknowledged || unbind.isPending}
             onClick={submit}
-            className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium disabled:opacity-50"
+            className="flex-1 h-9 rounded-lg bg-brand-red text-sm text-white font-medium disabled:opacity-50"
           >
             {unbind.isPending ? pa.unbindWorking : pa.unbindSubmit}
           </button>

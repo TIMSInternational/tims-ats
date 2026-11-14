@@ -51,36 +51,36 @@ export function AssessmentProviderBindingForm({
 
   return (
     <form onSubmit={submit} aria-labelledby="provider-bind-title" className="space-y-3">
-      <h4 id="provider-bind-title" className="text-[13px] font-semibold text-[#1F114C]">
+      <h4 id="provider-bind-title" className="text-body font-semibold text-brand">
         {pa.bindTitle}
       </h4>
       <fieldset className="space-y-1">
-        <legend className="text-[12px] font-medium text-[#585858] mb-1">{pa.instrumentsLegend}</legend>
+        <legend className="text-callout font-medium text-secondary mb-1">{pa.instrumentsLegend}</legend>
         <div className="flex flex-wrap gap-3">
           {PROVIDER_INSTRUMENTS.map((instrument) => (
-            <label key={instrument} className="flex items-center gap-1.5 text-[12px] text-[#1F114C]">
+            <label key={instrument} className="flex items-center gap-1.5 text-callout text-brand">
               <input type="checkbox" value={instrument} {...form.register('instruments')} />
               {pa.instrument[instrument]}
             </label>
           ))}
         </div>
       </fieldset>
-      <label className="flex flex-col gap-1 text-[12px] font-medium text-[#585858] max-w-xs">
+      <label className="flex flex-col gap-1 text-callout font-medium text-secondary max-w-xs">
         {pa.localeLabel}
-        <select {...form.register('defaultLocale')} className="h-9 rounded-lg border border-[#EDEDED] px-2 text-[13px]">
+        <select {...form.register('defaultLocale')} className="h-9 rounded-lg border border-field-border px-2 text-body">
           <option value="es">{pa.localeEs}</option>
           <option value="en">{pa.localeEn}</option>
         </select>
       </label>
       {errorText && (
-        <p role="alert" className="text-[12px] text-[#B42318]">
+        <p role="alert" className="text-callout text-danger">
           {errorText}
         </p>
       )}
       <button
         type="submit"
         disabled={bind.isPending}
-        className="h-9 rounded-lg bg-[#1F114C] px-4 text-[12px] font-semibold text-white disabled:opacity-50"
+        className="h-9 rounded-lg bg-brand px-4 text-callout font-semibold text-white disabled:opacity-50"
       >
         {bind.isPending ? pa.bindSaving : pa.bindSubmit}
       </button>

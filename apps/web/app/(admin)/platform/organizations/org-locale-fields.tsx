@@ -15,10 +15,10 @@ import {
   sanitizeCountryCode,
   type OrgLocaleForm,
 } from '../../../../lib/org-locale-form';
+import { FIELD_LABEL_CLASSES, inputClasses, selectClasses } from '../../../../components';
 
-const LABEL_CLS = 'text-xs font-medium text-[#585858] mb-1 block';
-const FIELD_CLS =
-  'w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20';
+const LABEL_CLS = FIELD_LABEL_CLASSES;
+const FIELD_CLS = selectClasses('md');
 
 const SAMPLE_AMOUNT = 1_234_567.5;
 
@@ -53,9 +53,9 @@ export function OrgLocaleFields({
   const countryName = (code: string) => (countryLabel(code, ui) ?? code).replace(/ \([A-Z]{2}\)$/, '');
 
   return (
-    <fieldset className="space-y-3 rounded-lg border border-[#EDEDED] p-3">
-      <legend className="px-1 text-xs font-semibold text-[#333]">{m.legend}</legend>
-      <p className="text-[11px] text-[#8B8B8B]">{hint ?? m.hint}</p>
+    <fieldset className="space-y-3 rounded-lg border border-border p-3">
+      <legend className="px-1 text-body font-semibold text-primary">{m.legend}</legend>
+      <p className="text-callout text-secondary">{hint ?? m.hint}</p>
       <div>
         <label htmlFor={`${idPrefix}-country`} className={LABEL_CLS}>
           {m.country}{required ? ' *' : ''}
@@ -91,7 +91,7 @@ export function OrgLocaleFields({
             value={value.country}
             onChange={(e) => set({ country: sanitizeCountryCode(e.target.value) })}
             placeholder={m.countryCodePlaceholder}
-            className={`${FIELD_CLS} font-mono uppercase`}
+            className={inputClasses('md', 'font-mono uppercase')}
           />
         </div>
       )}
@@ -158,7 +158,7 @@ export function OrgLocaleFields({
           ))}
         </select>
         {profile && (
-          <p className="mt-1 text-[11px] text-[#8B8B8B]">
+          <p className="mt-1 text-callout text-secondary">
             {m.sample.replace('{sample}', formatMoneyCode(SAMPLE_AMOUNT, profile.currency, profile.locale))}
           </p>
         )}

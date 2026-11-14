@@ -5,7 +5,18 @@ import { ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton, Modal, ErrorState } from '../../../../components';
+import { formatMessage } from '../../../../lib/i18n/format';
+import {
+  Button,
+  ConfirmDialog,
+  ErrorState,
+  KpiCard,
+  KpiCardSkeleton,
+  PageHeader,
+  SegmentedControl,
+  inputClasses,
+  selectClasses,
+} from '../../../../components';
 import { UserTable } from './user-table';
 import { RoleChangeModal } from './role-change-modal';
 import { InviteWizard } from './invite-wizard';
@@ -71,7 +82,7 @@ export default function PlatformUsersPage() {
   const handleExport = async () => {
     const result = await exportCsv.refetch();
     if (result.isError) {
-      toast(t.common.error, { type: 'error' });
+      toast(t.common.exportError, { type: 'error' });
       return;
     }
     if (result.data) {
@@ -82,7 +93,7 @@ export default function PlatformUsersPage() {
       a.download = `usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast(`${t.users.exportCsv}: ${result.data.count}`, { type: 'success' });
+      toast(formatMessage(t.users.rowsExported, { count: result.data.count }), { type: 'success' });
     }
   };
 
@@ -97,126 +108,120 @@ export default function PlatformUsersPage() {
     }
   };
 
+  const u = t.users;
+  const icon = (d: string) => (
+    <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d={d} /></svg>
+  );
+  const targetName = confirmTarget ? `${confirmTarget.user.firstName ?? ''} ${confirmTarget.user.lastName ?? ''}`.trim() || confirmTarget.user.email : '';
+
   return (
-    <div className="h-full flex flex-col overflow-hidden p-5">
+    <div className="flex flex-col lg:h-full lg:overflow-hidden">
+      <PageHeader
+        title={u.title}
+        actions={
+          <>
+            <Button variant="secondary" onClick={handleExport} icon={icon('M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')}>
+              {u.exportCsv}
+            </Button>
+            <Button onClick={() => setShowInviteWizard(true)} icon={icon('M12 4.5v15m7.5-7.5h-15')}>
+              {u.inviteUser}
+            </Button>
+          </>
+        }
+      />
+      <div className="flex min-h-0 flex-1 flex-col p-3 md:p-5">
       {/* KPI Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 flex-shrink-0">
+      <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 md:grid-cols-4">
         {kpis.isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : kpis.isError ? (
-          <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} />
+          <div className="col-span-2 rounded-xl bg-white shadow-card md:col-span-4">
+            <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} size="compact" />
           </div>
         ) : kpis.data ? (
           <>
             <KpiCard
-              label={t.users.kpiTotal}
+              label={u.kpiTotal}
               value={kpis.data.total.toLocaleString()}
-              subtitle={t.users.onPlatform}
-              icon={<svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></svg>}
-              iconBg="bg-[#1F114C]/10"
+              subtitle={u.onPlatform}
+              icon={icon('M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75')}
             />
             <KpiCard
-              label={t.users.activeToday}
+              label={u.activeToday}
               value={kpis.data.activeToday}
-              subtitle={`${kpis.data.total > 0 ? ((kpis.data.activeToday / kpis.data.total) * 100).toFixed(1) : 0}% ${t.users.ofTotal}`}
-              valueColor="text-green-600"
-              icon={<svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg>}
-              iconBg="bg-green-50"
+              subtitle={formatMessage(u.shareOfTotal, { pct: kpis.data.total > 0 ? ((kpis.data.activeToday / kpis.data.total) * 100).toFixed(1) : 0 })}
+              icon={icon('M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z')}
             />
             <KpiCard
-              label={t.users.kpiPlatformOwners}
+              label={u.kpiPlatformOwners}
               value={kpis.data.platformOwners}
-              subtitle={t.users.fullAccess}
-              icon={<svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>}
-              iconBg="bg-[#1F114C]/10"
+              subtitle={u.fullAccess}
+              icon={icon('M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z')}
             />
             <KpiCard
-              label={t.users.kpiInactive}
+              label={u.kpiInactive}
               value={kpis.data.inactive}
-              subtitle={t.users.noLogin30Days}
-              valueColor="text-amber-500"
-              icon={<svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01" /></svg>}
-              iconBg="bg-amber-50"
-              highlight={kpis.data.inactive > 0}
+              tone="warning"
+              subtitle={u.noLogin30Days}
+              icon={icon('M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01')}
             />
           </>
         ) : null}
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
-        <div className="relative flex-1 max-w-[280px]">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+      <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2 md:gap-3">
+        <div className="relative w-full sm:w-auto sm:min-w-56 sm:max-w-xs sm:flex-1">
+          <svg className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <input
-            className="w-full h-9 pl-9 pr-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white focus:outline-none focus:border-[#1F114C]"
-            placeholder={t.users.searchUser}
+            type="search"
+            aria-label={u.searchUserLabel}
+            className={inputClasses('md', 'pl-9')}
+            placeholder={u.searchUser}
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           />
         </div>
         {orgs.isError ? (
-          <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
+          <ErrorState size="inline" onRetry={() => orgs.refetch()} error={orgs.error} />
         ) : (
           <select
-            className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
+            aria-label={u.filterOrg}
+            className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
             value={orgFilter}
             onChange={(e) => { setOrgFilter(e.target.value); setPage(0); }}
           >
-            <option value="">{t.users.allOrgs}</option>
+            <option value="">{u.allOrgs}</option>
             {orgs.data?.map((org) => (
               <option key={org.id} value={org.id}>{org.name}</option>
             ))}
           </select>
         )}
         <select
-          className="h-9 px-3 border border-[#EDEDED] rounded-lg text-[12px] bg-white text-[#585858] focus:outline-none"
+          aria-label={u.filterRole}
+          className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
           value={roleFilter}
           onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
         >
-          <option value="">{t.users.allRoles}</option>
+          <option value="">{u.allRoles}</option>
           {ASSIGNABLE_STAFF_ROLES.map((slug) => <option key={slug} value={slug}>{t.roles[slug]}</option>)}
         </select>
-        <div className="flex items-center bg-white border border-[#EDEDED] rounded-lg overflow-hidden">
-          <button
-            className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'active' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
-            onClick={() => { setActiveFilter('active'); setPage(0); }}
-          >
-            {t.users.filterActive}
-          </button>
-          <button
-            className={`px-3 h-9 text-[12px] font-medium transition ${activeFilter === 'all' ? 'bg-[#1F114C] text-white' : 'text-[#585858]'}`}
-            onClick={() => { setActiveFilter('all'); setPage(0); }}
-          >
-            {t.users.filterAll}
-          </button>
-        </div>
-        <div className="flex-1" />
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-9 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-          </svg>
-          {t.users.export}
-        </button>
-        <button
-          onClick={() => setShowInviteWizard(true)}
-          className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#c40b13] transition"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          {t.users.inviteUser}
-        </button>
+        <SegmentedControl
+          label={u.filterStatusLabel}
+          options={[
+            { value: 'active' as const, label: u.filterActive },
+            { value: 'all' as const, label: u.filterAll },
+          ]}
+          value={activeFilter}
+          onChange={(next) => { setActiveFilter(next); setPage(0); }}
+        />
       </div>
 
       {/* Table */}
       {isError ? (
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-card">
           <ErrorState onRetry={() => refetch()} />
         </div>
       ) : (
@@ -232,45 +237,19 @@ export default function PlatformUsersPage() {
           onEditRole={setEditRoleTarget}
         />
       )}
+      </div>
 
-      {/* Confirm Modal */}
+      {/* Confirm */}
       {confirmTarget && (
-        <Modal
-          title={confirmTarget.action === 'deactivate' ? t.users.deactivate : t.users.activate}
-          onClose={() => setConfirmTarget(null)}
-        >
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-[#F6F6F6]">
-              <div className="w-10 h-10 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-sm font-bold">
-                {`${confirmTarget.user.firstName?.[0] || ''}${confirmTarget.user.lastName?.[0] || ''}`.toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-[#333]">{confirmTarget.user.firstName} {confirmTarget.user.lastName}</p>
-                <p className="text-xs text-[#8B8B8B]">{confirmTarget.user.email}</p>
-              </div>
-            </div>
-            <p className="text-sm text-[#585858]">
-              {confirmTarget.action === 'deactivate' ? t.users.confirmDeactivate : t.users.confirmActivate}
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setConfirmTarget(null)}
-                className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] font-medium hover:bg-[#F6F6F6] transition"
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={deactivateUser.isPending || activateUser.isPending}
-                className={`h-9 px-4 rounded-lg text-sm text-white font-medium transition disabled:opacity-50 ${
-                  confirmTarget.action === 'deactivate' ? 'bg-[#DD0C15] hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
-                }`}
-              >
-                {(deactivateUser.isPending || activateUser.isPending) ? t.common.saving : confirmTarget.action === 'deactivate' ? t.users.deactivate : t.users.activate}
-              </button>
-            </div>
-          </div>
-        </Modal>
+        <ConfirmDialog
+          title={formatMessage(confirmTarget.action === 'deactivate' ? u.confirmDeactivateTitle : u.confirmActivateTitle, { name: targetName })}
+          description={confirmTarget.action === 'deactivate' ? u.confirmDeactivateBody : u.confirmActivateBody}
+          confirmLabel={confirmTarget.action === 'deactivate' ? u.deactivateUser : u.activateUser}
+          destructive={confirmTarget.action === 'deactivate'}
+          loading={deactivateUser.isPending || activateUser.isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirmTarget(null)}
+        />
       )}
 
       {/* Invite Wizard */}

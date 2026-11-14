@@ -5,7 +5,8 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, formatDateLong } from '../../../../lib/format-utils';
-import { Skeleton, ErrorState } from '../../../../components';
+import { formatMessage } from '../../../../lib/i18n/format';
+import { Button, EmptyState, ErrorState, Skeleton } from '../../../../components';
 import { InvoiceStatusBadge } from './invoice-status-badge';
 import { ConfirmModal } from './confirm-modal';
 
@@ -16,12 +17,13 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
   const [confirmAction, setConfirmAction] = useState<'paid' | 'void' | 'pending' | null>(null);
 
   const updateStatus = trpc.platform.updateInvoiceStatus.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       invoice.refetch();
       utils.platform.listInvoices.invalidate();
       utils.platform.getInvoiceKpis.invalidate();
       setConfirmAction(null);
-      toast(t.invoices.statusUpdated, { type: 'success' });
+      const done = { paid: t.invoices.markedPaidToast, pending: t.invoices.revertedToast, void: t.invoices.voidedToast } as Record<string, string>;
+      toast(done[vars.status] ?? t.invoices.statusUpdated, { type: 'success' });
     },
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
@@ -30,137 +32,159 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
     onError: (err) => { toast(err.message, { type: 'error' }); },
   });
 
+  const iv = t.invoices;
+  const backButton = (
+    <button type="button" onClick={onBack} className="mb-0.5 inline-flex items-center gap-1 text-callout text-secondary transition-colors hover:text-brand pointer-coarse:min-h-11">
+      <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 19l-7-7 7-7" /></svg>
+      {iv.backToInvoices}
+    </button>
+  );
+
   if (invoice.isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center"><Skeleton className="h-8 w-32 mb-4 mx-auto" /><Skeleton className="h-4 w-48 mx-auto" /></div>
+      <div className="flex h-full items-center justify-center" aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
+        <div className="text-center" aria-hidden="true"><Skeleton className="mx-auto mb-4 h-8 w-32" /><Skeleton className="mx-auto h-4 w-48" /></div>
       </div>
     );
   }
   if (invoice.isError) {
-    return <div className="h-full flex items-center justify-center"><ErrorState onRetry={() => invoice.refetch()} error={invoice.error} /></div>;
+    return <div className="flex h-full flex-col p-4">{backButton}<ErrorState className="flex-1" title={iv.loadError} onRetry={() => invoice.refetch()} error={invoice.error} /></div>;
   }
   if (!invoice.data) {
-    return <div className="h-full flex items-center justify-center"><p className="text-[#8B8B8B]">{t.invoices.notFound}</p></div>;
+    return <div className="flex h-full flex-col p-4">{backButton}<EmptyState className="flex-1" title={iv.notFound} description={t.common.notFoundHint} /></div>;
   }
 
   const inv = invoice.data;
   const isVoid = inv.status === 'void';
   const isPaid = inv.status === 'paid';
   const isOverdue = inv.status === 'pending' && inv.dueDate && new Date(inv.dueDate) < new Date();
+  const n = inv.invoiceNumber;
 
   const confirmMeta = confirmAction ? {
-    paid: { title: t.invoices.markPaid, message: t.invoices.confirmMarkPaid, label: t.invoices.markPaidBtn, color: 'bg-green-600 hover:bg-green-700' },
-    pending: { title: t.invoices.revert, message: t.invoices.confirmRevert, label: t.invoices.revertBtn, color: 'bg-amber-600 hover:bg-amber-700' },
-    void: { title: t.invoices.void, message: t.invoices.confirmVoid, label: t.invoices.voidBtn, color: 'bg-[#DD0C15] hover:bg-red-700' },
+    paid: { title: formatMessage(iv.confirmMarkPaidTitle, { n }), message: iv.confirmMarkPaidBody, label: iv.markPaidConfirm, destructive: false },
+    pending: { title: formatMessage(iv.confirmRevertTitle, { n }), message: iv.confirmRevertBody, label: iv.revertConfirm, destructive: false },
+    void: { title: formatMessage(iv.confirmVoidTitle, { n }), message: iv.confirmVoidBody, label: iv.voidConfirm, destructive: true },
   }[confirmAction] : null;
+  const LABEL = 'mb-1 text-callout font-medium text-secondary';
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="flex flex-col lg:h-full lg:overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-[#EDEDED] flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <button aria-label={t.common.back} onClick={onBack} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" /></svg>
-          </button>
-          <div>
-            <h1 className="text-lg font-semibold text-[#333]">INV-{inv.invoiceNumber}</h1>
-            <p className="text-xs text-[#8B8B8B]">{inv.organization.name}</p>
+      <header className="shrink-0 border-b border-border bg-white px-4 py-3 md:px-6">
+        {backButton}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-display text-title font-semibold text-brand">INV-{n}</h1>
+              <InvoiceStatusBadge status={inv.status} dueDate={inv.dueDate} />
+            </div>
+            <p className="text-callout text-secondary">{inv.organization.name}</p>
           </div>
-          <div className="ml-2"><InvoiceStatusBadge status={inv.status} dueDate={inv.dueDate} /></div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!isVoid && (
+              <Button variant="destructive-secondary" onClick={() => setConfirmAction('void')}>{iv.voidEllipsis}</Button>
+            )}
+            {isPaid && <Button variant="secondary" onClick={() => setConfirmAction('pending')}>{iv.revertEllipsis}</Button>}
+            {!isPaid && !isVoid && (
+              <>
+                <Button variant="secondary" onClick={() => sendReminder.mutate({ id: inv.id })} loading={sendReminder.isPending}>{iv.sendReminderBtn}</Button>
+                <Button onClick={() => setConfirmAction('paid')}>{iv.markPaidEllipsis}</Button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {!isPaid && !isVoid && (
-            <>
-              <button onClick={() => sendReminder.mutate({ id: inv.id })} disabled={sendReminder.isPending} className="h-8 px-3 rounded-lg border border-[#EDEDED] text-xs font-medium text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-50">{t.invoices.sendReminderBtn}</button>
-              <button onClick={() => setConfirmAction('paid')} className="h-8 px-4 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 transition">{t.invoices.markPaidBtn}</button>
-            </>
-          )}
-          {isPaid && <button onClick={() => setConfirmAction('pending')} className="h-8 px-3 rounded-lg border border-amber-300 text-xs font-medium text-amber-700 hover:bg-amber-50 transition">{t.invoices.revertBtn}</button>}
-          {!isVoid && <button onClick={() => setConfirmAction('void')} className="h-8 px-3 rounded-lg border border-red-200 text-xs font-medium text-[#DD0C15] hover:bg-red-50 transition">{t.invoices.voidBtn}</button>}
-        </div>
-      </div>
+      </header>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto bg-[#F0F0F0] flex justify-center p-8">
-        <div className="bg-white rounded-xl shadow-lg p-10 w-full max-w-[700px] min-h-[700px]">
-          <div className="flex justify-between items-start mb-10">
-            <h3 className="text-3xl font-bold text-[#333]">Invoice</h3>
-            <div className="w-12 h-12 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span className="text-white text-lg font-bold">T</span></div>
-          </div>
-          <div className="grid grid-cols-3 gap-6 mb-10 text-sm">
+      {/* Body: the invoice document */}
+      <div className="flex flex-1 justify-center overflow-y-auto bg-surface p-3 md:p-8">
+        <article className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-card md:min-h-[700px] md:p-10" aria-label={formatMessage(iv.docLabel, { n })}>
+          <h2 className="mb-6 font-display text-display font-semibold text-primary md:mb-10">{iv.docTitle}</h2>
+          <div className="mb-8 grid grid-cols-1 gap-4 text-body sm:grid-cols-3 sm:gap-6 md:mb-10">
             <div>
-              <p className="text-[#8B8B8B] text-xs mb-1 font-medium">From</p>
-              <p className="font-semibold text-[#333]">{t.invoices.fromCompanyName}</p>
-              <p className="text-[#585858] text-xs">federico@nexadev.ai</p>
-              <p className="text-[#585858] text-xs mt-1">{t.invoices.fromAddress1}<br />{t.invoices.fromAddress2}<br />{t.invoices.fromCity}</p>
+              <p className={LABEL}>{iv.docFrom}</p>
+              <p className="font-semibold text-primary">{iv.fromCompanyName}</p>
+              <p className="break-all text-callout text-secondary">{iv.fromEmail}</p>
+              <p className="mt-1 text-callout text-secondary">{iv.fromAddress1}<br />{iv.fromAddress2}<br />{iv.fromCity}</p>
             </div>
             <div>
-              <p className="text-[#8B8B8B] text-xs mb-1 font-medium">To</p>
-              <p className="font-semibold text-[#333]">{inv.organization.name}</p>
-              <p className="text-[#585858] text-xs">{inv.emailTo || inv.organization.billingEmail || '\u2014'}</p>
+              <p className={LABEL}>{iv.docTo}</p>
+              <p className="font-semibold text-primary">{inv.organization.name}</p>
+              <p className="break-all text-callout text-secondary">{inv.emailTo || inv.organization.billingEmail || '\u2014'}</p>
               {inv.organization.billingProfile && (
-                <p className="text-[#585858] text-xs mt-1">
+                <p className="mt-1 text-callout text-secondary">
                   {[inv.organization.billingProfile.address, inv.organization.billingProfile.city, inv.organization.billingProfile.state, inv.organization.billingProfile.country].filter(Boolean).join(', ')}
                 </p>
               )}
             </div>
             <div>
-              <p className="text-[#8B8B8B] text-xs mb-1 font-medium">Details</p>
-              <table className="text-xs"><tbody>
-                <tr><td className="text-[#8B8B8B] pr-3 py-0.5">{t.invoices.colInvoiceNo}</td><td className="font-semibold">INV-{inv.invoiceNumber}</td></tr>
-                {inv.poNumber && <tr><td className="text-[#8B8B8B] pr-3 py-0.5">{t.invoices.colPoNo}</td><td className="font-semibold">{inv.poNumber}</td></tr>}
-              </tbody></table>
+              <p className={LABEL}>{iv.docDetails}</p>
+              <dl className="text-callout">
+                <div className="flex gap-3 py-0.5"><dt className="text-secondary">{iv.colInvoiceNo}</dt><dd className="font-semibold text-primary">INV-{n}</dd></div>
+                {inv.poNumber && <div className="flex gap-3 py-0.5"><dt className="text-secondary">{iv.colPoNo}</dt><dd className="font-semibold text-primary">{inv.poNumber}</dd></div>}
+              </dl>
             </div>
           </div>
-          {/* Line items */}
-          <table className="w-full text-sm mb-6">
+          {/* Line items: stacked rows on phones, a table from sm */}
+          <ul className="mb-6 divide-y divide-border border-y border-border sm:hidden">
+            {inv.lineItems.map((li) => (
+              <li key={li.id} className="py-3">
+                <p className="text-body text-primary">{li.description}</p>
+                <div className="mt-1 flex items-center justify-between gap-2 text-callout tabular-nums">
+                  <span className="text-secondary">{li.quantity} × {formatCurrency(li.unitPrice, inv.currency, 2)}</span>
+                  <span className="font-semibold text-primary">{formatCurrency(li.total, inv.currency, 2)}</span>
+                </div>
+              </li>
+            ))}
+            {inv.lineItems.length === 0 && <li className="py-4 text-center text-callout text-secondary">{iv.noLineItems}</li>}
+          </ul>
+          <table className="mb-6 hidden w-full text-body sm:table">
             <thead>
-              <tr className="border-b-2 border-[#EDEDED]">
-                <th className="text-left py-2 text-[#8B8B8B] text-xs font-medium">{t.invoices.item}</th>
-                <th className="text-center py-2 text-[#8B8B8B] text-xs font-medium">{t.invoices.quantity}</th>
-                <th className="text-right py-2 text-[#8B8B8B] text-xs font-medium">{t.invoices.unitPrice}</th>
-                <th className="text-right py-2 text-[#8B8B8B] text-xs font-medium">{t.invoices.total}</th>
+              <tr className="border-b-2 border-border">
+                <th scope="col" className="py-2 text-left text-callout font-medium text-secondary">{iv.item}</th>
+                <th scope="col" className="py-2 text-center text-callout font-medium text-secondary">{iv.quantity}</th>
+                <th scope="col" className="py-2 text-right text-callout font-medium text-secondary">{iv.unitPrice}</th>
+                <th scope="col" className="py-2 text-right text-callout font-medium text-secondary">{iv.total}</th>
               </tr>
             </thead>
             <tbody>
               {inv.lineItems.map((li) => (
-                <tr key={li.id} className="border-b border-[#F6F6F6]">
-                  <td className="py-3 text-[#333]">{li.description}</td>
-                  <td className="py-3 text-center text-[#585858]">{li.quantity}</td>
-                  <td className="py-3 text-right text-[#585858]">{formatCurrency(li.unitPrice, inv.currency, 2)}</td>
-                  <td className="py-3 text-right font-semibold text-[#333]">{formatCurrency(li.total, inv.currency, 2)}</td>
+                <tr key={li.id} className="border-b border-border">
+                  <td className="py-3 text-primary">{li.description}</td>
+                  <td className="py-3 text-center tabular-nums text-secondary">{li.quantity}</td>
+                  <td className="py-3 text-right tabular-nums text-secondary">{formatCurrency(li.unitPrice, inv.currency, 2)}</td>
+                  <td className="py-3 text-right font-semibold tabular-nums text-primary">{formatCurrency(li.total, inv.currency, 2)}</td>
                 </tr>
               ))}
               {inv.lineItems.length === 0 && (
-                <tr><td colSpan={4} className="py-4 text-center text-[#8B8B8B] text-xs">{t.invoices.noLineItems}</td></tr>
+                <tr><td colSpan={4} className="py-4 text-center text-callout text-secondary">{iv.noLineItems}</td></tr>
               )}
             </tbody>
           </table>
-          <div className="flex justify-end mb-8">
-            <div className="text-right">
-              <span className="text-base font-semibold text-[#333]">{t.invoices.total}</span>
-              <span className="text-2xl font-bold text-[#333] ml-6">{formatCurrency(inv.amount, inv.currency, 2)}</span>
-            </div>
+          <div className="mb-8 flex justify-end">
+            <p className="flex flex-wrap items-baseline justify-end gap-x-6 text-right">
+              <span className="text-subheading font-semibold text-primary">{iv.total}</span>
+              <span className={`text-2xl font-semibold tabular-nums ${isVoid ? 'text-muted line-through' : 'text-primary'}`}>{formatCurrency(inv.amount, inv.currency, 2)}</span>
+            </p>
           </div>
           {/* Terms */}
-          <div className="grid grid-cols-2 gap-6 pt-6 border-t border-[#EDEDED] text-sm">
+          <div className="grid grid-cols-1 gap-6 border-t border-border pt-6 text-body sm:grid-cols-2">
             <div>
-              <p className="text-[#8B8B8B] text-xs font-medium mb-2">Terms</p>
-              <table className="text-xs"><tbody>
-                <tr><td className="text-[#8B8B8B] pr-3 py-0.5">{t.invoices.invoiceDate}</td><td className="font-medium">{formatDateLong(inv.invoiceDate)}</td></tr>
-                <tr><td className="text-[#8B8B8B] pr-3 py-0.5">{t.invoices.dueDate}</td><td className={`font-medium ${isOverdue ? 'text-[#DD0C15]' : ''}`}>{formatDateLong(inv.dueDate)}</td></tr>
-                {isPaid && <tr><td className="text-[#8B8B8B] pr-3 py-0.5">{t.invoices.markPaid}</td><td className="font-medium text-green-600">{formatDateLong(inv.paidAt)}</td></tr>}
-              </tbody></table>
+              <p className={LABEL}>{iv.docTerms}</p>
+              <dl className="text-callout">
+                <div className="flex gap-3 py-0.5"><dt className="text-secondary">{iv.invoiceDate}</dt><dd className="font-medium text-primary">{formatDateLong(inv.invoiceDate)}</dd></div>
+                <div className="flex gap-3 py-0.5"><dt className="text-secondary">{iv.dueDate}</dt><dd className={`font-medium ${isOverdue ? 'text-danger' : 'text-primary'}`}>{formatDateLong(inv.dueDate)}</dd></div>
+                {isPaid && <div className="flex gap-3 py-0.5"><dt className="text-secondary">{iv.paidOn}</dt><dd className="font-medium text-success">{formatDateLong(inv.paidAt)}</dd></div>}
+              </dl>
             </div>
-            {inv.memo && <div><p className="text-[#8B8B8B] text-xs font-medium mb-2">{t.invoices.memo}</p><p className="text-xs text-[#585858]">{inv.memo}</p></div>}
+            {inv.memo && <div><p className={LABEL}>{iv.memo}</p><p className="text-callout text-primary">{inv.memo}</p></div>}
           </div>
           {inv.notes && (
-            <div className="mt-6 p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
-              <strong>{t.invoices.internalNoteLabel}:</strong> {inv.notes}
-            </div>
+            <p className="mt-6 rounded-lg bg-warning-bg p-3 text-callout text-warning">
+              <strong>{iv.internalNoteLabel}:</strong> {inv.notes}
+            </p>
           )}
-        </div>
+        </article>
       </div>
 
       {/* Confirm Modal */}
@@ -169,7 +193,7 @@ export function InvoiceDetail({ id, onBack }: { id: string; onBack: () => void }
           title={confirmMeta.title}
           message={confirmMeta.message}
           confirmLabel={confirmMeta.label}
-          confirmColor={confirmMeta.color}
+          destructive={confirmMeta.destructive}
           onConfirm={() => updateStatus.mutate({ id: inv.id, status: confirmAction })}
           onClose={() => setConfirmAction(null)}
           isPending={updateStatus.isPending}

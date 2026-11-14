@@ -4,7 +4,20 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { Modal } from '../../../../components';
+import { formatMessage } from '../../../../lib/i18n/format';
+import { formatCurrency } from '../../../../lib/format-utils';
+import {
+  BUTTON_GROUP_CLASSES,
+  Button,
+  ConfirmDialog,
+  FIELD_HELP_CLASSES,
+  FIELD_LABEL_CLASSES,
+  Modal,
+  StatusBadge,
+  inputClasses,
+  selectClasses,
+} from '../../../../components';
+import { PLAN_KEYS, planLabel } from './plan-label';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 import { orgLocalePatch, type OrgLocaleForm } from '../../../../lib/org-locale-form';
 import { OrgLocaleFields } from './org-locale-fields';
@@ -23,7 +36,10 @@ export function EditOrgModal({
   onClose,
   onSuccess,
 }: {
-  org: OrganizationListItem;
+  // Only the fields this modal reads, so both the list item and the getOrganization detail fit without a cast.
+  org: Pick<OrganizationListItem, 'id' | 'name' | 'plan' | 'isActive'> & {
+    subscription?: { plan: OrganizationListItem['plan'] } | null;
+  };
   localeInitial?: OrgLocaleForm;
   onClose: () => void;
   onSuccess: () => void;
@@ -45,7 +61,7 @@ export function EditOrgModal({
       toast(t.organizations.updated, { type: 'success' });
       onSuccess();
     },
-    onError: (err) => { toast(err.message || 'Error al actualizar organización', { type: 'error' }); },
+    onError: (err) => { toast(err.message || t.organizations.updateError, { type: 'error' }); },
   });
 
   const suspendOrg = trpc.platform.suspendOrganization.useMutation({
@@ -55,7 +71,7 @@ export function EditOrgModal({
       toast(t.organizations.statusUpdated, { type: 'success' });
       onClose();
     },
-    onError: (err) => { toast(err.message || 'Error al cambiar estado de organización', { type: 'error' }); },
+    onError: (err) => { toast(err.message || t.organizations.statusChangeError, { type: 'error' }); },
   });
 
   const handleEdit = (e: React.FormEvent) => {
@@ -69,123 +85,117 @@ export function EditOrgModal({
     });
   };
 
+  const o = t.organizations;
+  const isUpgrade = PLAN_ORDER[editPlan] > PLAN_ORDER[currentPlan];
+  const money = (plan: string) => formatCurrency(PLAN_MRR[plan] ?? 0, 'USD', 0);
+  const dirty = editName !== org.name || editPlan !== currentPlan || Object.keys(settingsPatch ?? {}).length > 0;
+
+  // One dialog at a time (modality.md): the suspend confirm replaces the edit dialog; Cancel brings it back.
+  if (showSuspendConfirm) {
+    return (
+      <ConfirmDialog
+        title={formatMessage(o.confirmSuspendTitle, { name: org.name })}
+        description={o.confirmSuspendBody}
+        confirmLabel={o.suspendOrg}
+        destructive
+        loading={suspendOrg.isPending}
+        onConfirm={() => suspendOrg.mutate({ id: org.id, suspend: true })}
+        onCancel={() => setShowSuspendConfirm(false)}
+      />
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-[#333]">{t.organizations.edit} {t.organizations.title}</h2>
-          <button aria-label={t.common.close} onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center transition">
-            <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" /></svg>
-          </button>
+    <Modal title={o.editTitle} description={org.name} onClose={onClose} dirty={dirty}>
+      <form onSubmit={handleEdit} className="space-y-4">
+        <div>
+          <label htmlFor="edit-org-name" className={FIELD_LABEL_CLASSES}>{t.common.name}</label>
+          <input
+            id="edit-org-name"
+            type="text"
+            required
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            className={inputClasses('md')}
+          />
         </div>
-        <form onSubmit={handleEdit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">Nombre</label>
-            <input
-              type="text"
-              required
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">Plan</label>
-            <select
-              value={editPlan}
-              onChange={(e) => setEditPlan(e.target.value as typeof editPlan)}
-              className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm bg-white focus:outline-none focus:border-[#1F114C]"
+        <div>
+          <label htmlFor="edit-org-plan" className={FIELD_LABEL_CLASSES}>{o.plan}</label>
+          <select
+            id="edit-org-plan"
+            value={editPlan}
+            onChange={(e) => setEditPlan(e.target.value as typeof editPlan)}
+            aria-describedby={editPlan !== currentPlan ? 'edit-org-plan-change' : undefined}
+            className={selectClasses('md')}
+          >
+            {PLAN_KEYS.map((p) => <option key={p} value={p}>{planLabel(p, t)}</option>)}
+          </select>
+          {editPlan !== currentPlan && (
+            <p
+              id="edit-org-plan-change"
+              className={`mt-2 rounded-lg px-3 py-2 text-callout font-medium ${isUpgrade ? 'bg-info-bg text-info' : 'bg-warning-bg text-warning'}`}
             >
-              <option value="trial">Trial</option>
-              <option value="starter">Starter</option>
-              <option value="professional">Professional</option>
-              <option value="enterprise">Enterprise</option>
-            </select>
-            {editPlan !== currentPlan && (
-              <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${
-                PLAN_ORDER[editPlan] > PLAN_ORDER[currentPlan]
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'bg-amber-50 text-amber-700'
-              }`}>
-                {PLAN_ORDER[editPlan] > PLAN_ORDER[currentPlan]
-                  ? `Upgrade a ${editPlan}: $${PLAN_MRR[currentPlan]}/mes -> $${PLAN_MRR[editPlan]}/mes`
-                  : `Downgrade a ${editPlan}: reducira funcionalidades. $${PLAN_MRR[currentPlan]}/mes -> $${PLAN_MRR[editPlan]}/mes`
-                }
-              </div>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[#585858] mb-1.5">Estado</label>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!org.isActive) {
-                    suspendOrg.mutate({ id: org.id, suspend: false });
-                  }
-                }}
-                className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${org.isActive ? 'bg-green-50 text-green-700 border border-green-200' : 'border border-[#EDEDED] text-[#585858] hover:bg-green-50'}`}
-              >
-                {t.organizations.statusActive}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (org.isActive) {
-                    setShowSuspendConfirm(true);
-                  }
-                }}
-                className={`flex-1 h-9 rounded-lg text-sm font-medium transition ${!org.isActive ? 'bg-red-50 text-[#DD0C15] border border-red-200' : 'border border-[#EDEDED] text-[#585858] hover:bg-red-50'}`}
-              >
-                {t.organizations.statusSuspended}
-              </button>
-            </div>
-          </div>
-          {localeForm && (
-            <OrgLocaleFields
-              idPrefix="edit-org"
-              required={false}
-              value={localeForm}
-              onChange={setLocaleForm}
-              hint={t.orgLocale.editHint}
-            />
+              {formatMessage(isUpgrade ? o.planUpgrade : o.planDowngrade, {
+                plan: planLabel(editPlan, t),
+                from: money(currentPlan),
+                to: money(editPlan),
+              })}
+            </p>
           )}
-          {settingsPatch === null && (
-            <div role="alert" className="p-2.5 rounded-lg bg-amber-50 text-xs text-amber-800 font-medium">{t.orgLocale.invalid}</div>
-          )}
-          {updateOrg.error && (
-            <div className="p-2.5 rounded-lg bg-red-50 text-xs text-[#DD0C15] font-medium">
-              Error: {updateOrg.error.message}
-            </div>
-          )}
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
+        </div>
+        {localeForm && (
+          <OrgLocaleFields
+            idPrefix="edit-org"
+            required={false}
+            value={localeForm}
+            onChange={setLocaleForm}
+            hint={t.orgLocale.editHint}
+          />
+        )}
+        {settingsPatch === null && (
+          <p role="alert" className="rounded-lg bg-warning-bg p-2.5 text-callout font-medium text-warning">{t.orgLocale.invalid}</p>
+        )}
+        {updateOrg.error && (
+          <p role="alert" className="rounded-lg bg-danger-bg p-2.5 text-callout font-medium text-danger">
+            {updateOrg.error.message}
+          </p>
+        )}
+        <div className={`${BUTTON_GROUP_CLASSES} pt-2`}>
+          <Button variant="secondary" onClick={onClose}>
+            {t.common.cancel}
+          </Button>
+          <Button type="submit" disabled={settingsPatch === null} loading={updateOrg.isPending} loadingLabel={t.common.saving}>
+            {t.common.save}
+          </Button>
+        </div>
+      </form>
+
+      {/* Status acts immediately, so it sits outside the saved fields (toggles.md, modality.md). */}
+      <section aria-labelledby="edit-org-status" className="mt-6 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 id="edit-org-status" className="text-body font-medium text-primary">{t.common.status}</h3>
+          <StatusBadge tone={org.isActive ? 'success' : 'danger'}>
+            {org.isActive ? o.statusActive : o.statusSuspended}
+          </StatusBadge>
+        </div>
+        <p id="edit-org-status-help" className={FIELD_HELP_CLASSES}>{o.statusAppliesNow}</p>
+        <div className="mt-3">
+          {org.isActive ? (
+            <Button variant="destructive-secondary" aria-describedby="edit-org-status-help" onClick={() => setShowSuspendConfirm(true)}>
+              {o.suspendOrgEllipsis}
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              aria-describedby="edit-org-status-help"
+              loading={suspendOrg.isPending}
+              onClick={() => suspendOrg.mutate({ id: org.id, suspend: false })}
             >
-              {t.common.cancel}
-            </button>
-            <button
-              type="submit"
-              disabled={updateOrg.isPending || settingsPatch === null}
-              className="flex-1 h-9 rounded-lg bg-[#1F114C] text-sm text-white font-medium hover:bg-[#1F114C]/90 transition disabled:opacity-60"
-            >
-              {updateOrg.isPending ? t.common.saving : t.common.save}
-            </button>
-          </div>
-        </form>
-      </div>
-      {showSuspendConfirm && (
-        <Modal title={`${t.organizations.suspend} ${org.name}?`} onClose={() => setShowSuspendConfirm(false)} maxWidth="max-w-sm">
-          <p className="text-sm text-[#585858] mb-4">{t.organizations.confirmBulkSuspend}</p>
-          <div className="flex gap-3">
-            <button onClick={() => setShowSuspendConfirm(false)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
-            <button onClick={() => { setShowSuspendConfirm(false); suspendOrg.mutate({ id: org.id, suspend: true }); }} className="flex-1 h-9 rounded-lg bg-[#DD0C15] text-sm text-white font-medium hover:bg-[#c40b13] transition">{t.organizations.suspend}</button>
-          </div>
-        </Modal>
-      )}
-    </div>
+              {o.reactivateOrg}
+            </Button>
+          )}
+        </div>
+      </section>
+    </Modal>
   );
 }

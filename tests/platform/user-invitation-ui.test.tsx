@@ -17,7 +17,9 @@ vi.mock('../../apps/web/lib/trpc', () => ({ trpc: { platform: {
   listOrganizations: { useQuery: () => ({ data: { organizations: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Target', slug: 'target' }] } }) },
   bulkInviteUsers: { useMutation: () => ({ mutate: vi.fn() }) },
 } } }));
-vi.mock('../../apps/web/components', () => ({
+// The real shared Button/field styles render; only Modal and ErrorState are stubbed.
+vi.mock('../../apps/web/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../apps/web/components')>()),
   Modal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ErrorState: ({ onRetry }: { onRetry: () => void }) => <button onClick={onRetry}>Retry roles</button>,
 }));
