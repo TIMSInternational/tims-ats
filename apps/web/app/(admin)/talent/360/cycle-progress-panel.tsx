@@ -1,8 +1,8 @@
 'use client';
 
 import { useEvaluation360CycleProgress } from '../../../../lib/platform-api/evaluation360';
-import { useI18n } from '../../../../lib/i18n';
-import { Skeleton, ErrorState } from '../../../../components';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
+import { Skeleton, ErrorState, ProgressBar } from '../../../../components';
 
 interface CycleProgressPanelProps {
   cycleId: string;
@@ -15,36 +15,50 @@ interface CycleProgressPanelProps {
 export function CycleProgressPanel({ cycleId }: CycleProgressPanelProps) {
   const { t } = useI18n();
   const progress = useEvaluation360CycleProgress(cycleId);
+  const rows = progress.data?.progress ?? [];
 
   return (
-    <div>
-      <h3 className="text-[12px] font-semibold text-[#1F114C] mb-2.5">{t.evaluation360.progressTitle}</h3>
+    <section aria-labelledby={`progress-${cycleId}`}>
+      <h3 id={`progress-${cycleId}`} className="mb-2.5 text-subheading font-semibold text-brand">
+        {t.evaluation360.progressTitle}
+      </h3>
       {progress.isLoading ? (
-        <Skeleton className="h-20 w-full rounded-lg" />
+        <div aria-busy="true" className="space-y-2">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-full" />
+        </div>
       ) : progress.isError ? (
-        <ErrorState onRetry={() => progress.refetch()} />
+        <ErrorState size="compact" error={progress.error} onRetry={() => progress.refetch()} />
+      ) : rows.length === 0 ? (
+        <p className="text-callout text-secondary">{t.evaluation360.progressEmpty}</p>
       ) : (
         <div className="space-y-2">
-          {(progress.data?.progress ?? []).map((row) => {
-            const pct = row.total > 0 ? Math.round((row.submitted / row.total) * 100) : 0;
+          {rows.map((row) => {
+            const label = t.evaluation360.relationshipLabels[row.relationship];
+            const valueText = formatMessage(t.evaluation360.progressSubmittedOfTotal, {
+              submitted: row.submitted,
+              total: row.total,
+            });
             return (
               <div key={row.relationship} className="flex items-center gap-3">
-                <span className="w-28 shrink-0 text-[11px] text-[#585858]">
-                  {t.evaluation360.relationshipLabels[row.relationship]}
-                </span>
-                <div className="flex-1 h-2 bg-[#F6F6F6] rounded-full overflow-hidden">
-                  <div className="h-full bg-[#1F114C] rounded-full" style={{ width: `${pct}%` }} />
-                </div>
-                <span className="w-24 shrink-0 text-right text-[11px] text-[#333] font-medium">
-                  {t.evaluation360.progressSubmittedOfTotal
-                    .replace('{submitted}', String(row.submitted))
-                    .replace('{total}', String(row.total))}
+                <span className="w-28 shrink-0 text-callout text-secondary">{label}</span>
+                <ProgressBar
+                  value={row.submitted}
+                  max={Math.max(row.total, 1)}
+                  label={label}
+                  hideLabel
+                  valueText={valueText}
+                  className="flex-1"
+                />
+                <span className="w-24 shrink-0 text-right text-callout font-medium tabular-nums text-primary">
+                  {valueText}
                 </span>
               </div>
             );
           })}
         </div>
       )}
-    </div>
+    </section>
   );
 }

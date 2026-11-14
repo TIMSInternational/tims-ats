@@ -92,8 +92,6 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:163:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:166:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-table.tsx:150:jsx-text',
-  'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:108:ternary',
-  'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:124:ternary',
   // Same pre-existing admin-only debt, newly VISIBLE (not new): these single-word literals were
   // already hardcoded but spelled without their accents ("Dia", "Telefono", "Atras"), and the
   // scanner only treats a single word as prose when it carries a Spanish accent. Restoring the
@@ -108,7 +106,6 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:44:placeholder',
   'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:227:jsx-text',
   'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.fields.tsx:44:placeholder',
-  'apps/web/app/(admin)/talent/team-intelligence/page.tsx:35:jsx-text',
 ]);
 
 // Exact trimmed literals that are allowed (not user-facing prose, or

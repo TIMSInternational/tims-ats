@@ -2,6 +2,14 @@
 
 import { useI18n } from '../../../../lib/i18n';
 import { useEngagementClimateHeatmap } from '../../../../lib/platform-api/engagement';
+import { EmptyState, ErrorState, ProgressBar, Skeleton } from '../../../../components';
+
+/** Absolute thresholds on the 0-100 scale, so the best dimension is not green at 40/100. */
+function tone(score: number): 'success' | 'warning' | 'danger' {
+  if (score >= 70) return 'success';
+  if (score >= 50) return 'warning';
+  return 'danger';
+}
 
 export function ClimateHeatmap() {
   const { t } = useI18n();
@@ -10,42 +18,51 @@ export function ClimateHeatmap() {
   // has a sub-floor distinct-respondent set, or the whole survey is < 5 respondents
   // (data empty). Drop null-score cells so a suppressed heatmap shows the empty state.
   const data = (q.data?.data ?? []).filter((d): d is { category: string; score: number } => d.score !== null);
-  const max = data.reduce((m, d) => Math.max(m, d.score), 0) || 1;
-
-  function color(score: number): string {
-    const r = score / max;
-    return r >= 0.7 ? '#22c55e' : r >= 0.5 ? '#f59e0b' : '#ef4444';
-  }
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[13px] font-semibold text-[#333]">{t.climate.dimensionScores}</h3>
-        <span className="text-[10px] text-[#8B8B8B]">{t.climate.scaleNote}</span>
+    <section
+      aria-labelledby="climate-dimensions"
+      className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5"
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="climate-dimensions" className="text-heading font-semibold text-brand">
+          {t.climate.dimensionScores}
+        </h2>
+        <span className="text-callout text-secondary">{t.climate.scaleNote}</span>
       </div>
       {q.isLoading ? (
-        <div className="h-32 bg-gray-50 rounded animate-pulse" />
-      ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{t.climate.errClimate}</p>
-      ) : data.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.climate.noClimateData}</p>
-      ) : (
-        <div className="space-y-2.5">
-          {data.map((d) => (
-            <div key={d.category} className="flex items-center gap-3">
-              <span className="text-[11px] text-[#585858] w-[120px] shrink-0 truncate capitalize">{d.category}</span>
-              <div className="flex-1 bg-[#EDEDED] rounded-full h-5 overflow-hidden">
-                <div
-                  className="h-full rounded-full flex items-center justify-end pr-2 text-[10px] text-white font-semibold"
-                  style={{ width: `${Math.max((d.score / max) * 100, 8)}%`, backgroundColor: color(d.score) }}
-                >
-                  {d.score}
-                </div>
-              </div>
-            </div>
+        <div aria-busy="true" className="space-y-3">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-5 w-full" />
           ))}
         </div>
+      ) : q.isError ? (
+        <ErrorState size="compact" title={t.climate.errClimate} error={q.error} onRetry={() => q.refetch()} />
+      ) : data.length === 0 ? (
+        <EmptyState size="compact" title={t.climate.noClimateData} />
+      ) : (
+        <ul className="space-y-2.5">
+          {data.map((d) => (
+            <li key={d.category} className="flex items-center gap-3">
+              <span className="w-28 shrink-0 truncate text-callout capitalize text-secondary sm:w-32">
+                {d.category}
+              </span>
+              <ProgressBar
+                value={d.score}
+                label={d.category}
+                hideLabel
+                kind="meter"
+                tone={tone(d.score)}
+                className="flex-1"
+              />
+              <span className="w-8 shrink-0 text-right text-callout font-semibold tabular-nums text-primary">
+                {d.score}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

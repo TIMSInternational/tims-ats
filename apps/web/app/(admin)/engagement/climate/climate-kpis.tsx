@@ -1,7 +1,8 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
-import { ErrorState } from '../../../../components';
+import { formatNumber, formatPercent } from '../../../../lib/format-utils';
+import { KpiCard, KpiCardSkeleton } from '../../../../components';
 
 interface ClimateKpisProps {
   enps: {
@@ -13,75 +14,65 @@ interface ClimateKpisProps {
     suppressed?: boolean;
   } | null;
   // totalResponses is nulled by min-5 suppression (round 6) when 1..4 org-wide responses.
-  dashKpis: { activeSurveys: number; totalResponses: number | null; totalResponsesSuppressed?: boolean; actionPlansOpen: number; highRiskCount: number } | null;
+  dashKpis: {
+    activeSurveys: number;
+    totalResponses: number | null;
+    totalResponsesSuppressed?: boolean;
+    actionPlansOpen: number;
+    highRiskCount: number;
+  } | null;
   loading: boolean;
-  isError?: boolean;
-  onRetry?: () => void;
 }
 
-function KpiSkeleton() {
-  return <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse"><div className="h-16 bg-gray-100 rounded" /></div>;
-}
+const GRID = 'mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5';
 
-function Card({ label, children, sub }: { label: string; children: React.ReactNode; sub?: string }) {
-  return (
-    <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-      <p className="text-[11px] text-[#8B8B8B] mb-1">{label}</p>
-      {children}
-      {sub && <p className="text-[10px] text-[#8B8B8B] mt-1">{sub}</p>}
-    </div>
-  );
-}
-
-export function ClimateKpis({ enps, dashKpis, loading, isError, onRetry }: ClimateKpisProps) {
-  const { t } = useI18n();
+/** Climate KPIs on the shared KpiCard. With no responses the eNPS reads "—", never a coloured 0. */
+export function ClimateKpis({ enps, dashKpis, loading }: ClimateKpisProps) {
+  const { t, locale } = useI18n();
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        {Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)}
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="mb-4">
-        <ErrorState onRetry={onRetry} />
+      <div className={GRID} aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <KpiCardSkeleton key={i} />
+        ))}
       </div>
     );
   }
 
   // eNPS is suppressed (min-5 k-anonymity) when the backend nulls its head-counts.
   const enpsSuppressed = enps?.suppressed === true || enps?.enps == null;
+  const noResponses = !enpsSuppressed && (enps?.totalResponses ?? 0) === 0;
   const enpsScore = enps?.enps ?? 0;
-  const enpsColor = enpsScore >= 30 ? 'text-green-600' : enpsScore >= 0 ? 'text-amber-500' : 'text-[#DD0C15]';
+  const enpsTone = enpsScore >= 30 ? 'success' : enpsScore >= 0 ? 'warning' : 'danger';
   const promoterPct =
     enps && enps.totalResponses && enps.promoters != null
       ? Math.round((enps.promoters / enps.totalResponses) * 100)
       : 0;
+  const unavailable = enpsSuppressed ? t.climate.enpsSuppressed : noResponses ? t.climate.noResponsesYet : undefined;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-      <Card label={t.climate.kpiEnps} sub={enpsSuppressed ? t.climate.enpsSuppressed : undefined}>
-        {enpsSuppressed ? (
-          <p className="text-[20px] md:text-[26px] font-bold text-[#8B8B8B]">—</p>
-        ) : (
-          <p className={`text-[20px] md:text-[26px] font-bold ${enpsColor}`}>{enpsScore > 0 ? '+' : ''}{enpsScore}</p>
-        )}
-      </Card>
-      <Card label={t.climate.kpiResponses}>
-        <p className="text-[20px] md:text-[26px] font-bold text-[#1F114C]">{enpsSuppressed ? '—' : enps?.totalResponses ?? 0}</p>
-      </Card>
-      <Card label={t.climate.kpiActiveSurveys}>
-        <p className="text-[20px] md:text-[26px] font-bold text-[#1F114C]">{dashKpis?.activeSurveys ?? 0}</p>
-      </Card>
-      <Card label={t.climate.kpiOpenPlans}>
-        <p className={`text-[20px] md:text-[26px] font-bold ${(dashKpis?.actionPlansOpen ?? 0) > 0 ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>{dashKpis?.actionPlansOpen ?? 0}</p>
-      </Card>
-      <Card label={t.climate.kpiPromoters} sub={enpsSuppressed ? undefined : `${promoterPct}%`}>
-        <p className="text-[20px] md:text-[26px] font-bold text-green-600">{enpsSuppressed ? '—' : enps?.promoters ?? 0}</p>
-      </Card>
+    <div className={GRID}>
+      <KpiCard
+        label={t.climate.kpiEnps}
+        value={`${enpsScore > 0 ? '+' : ''}${formatNumber(enpsScore, locale)}`}
+        tone={enpsTone}
+        unavailableReason={unavailable}
+      />
+      <KpiCard
+        label={t.climate.kpiResponses}
+        value={formatNumber(enps?.totalResponses ?? 0, locale)}
+        unavailableReason={enpsSuppressed ? t.climate.enpsSuppressed : undefined}
+      />
+      <KpiCard label={t.climate.kpiActiveSurveys} value={formatNumber(dashKpis?.activeSurveys ?? 0, locale)} />
+      <KpiCard label={t.climate.kpiOpenPlans} value={formatNumber(dashKpis?.actionPlansOpen ?? 0, locale)} />
+      <KpiCard
+        label={t.climate.kpiPromoters}
+        value={formatNumber(enps?.promoters ?? 0, locale)}
+        subtitle={formatPercent(promoterPct, locale)}
+        unavailableReason={unavailable}
+      />
     </div>
   );
 }
