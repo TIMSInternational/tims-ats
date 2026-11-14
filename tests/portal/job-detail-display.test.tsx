@@ -167,7 +167,7 @@ describe('public vacancy card', () => {
   });
 
   it('names a client company with its initial, and does not repeat the board organization', () => {
-    const client = render(<VacancyCard vacancy={{ ...BASE, company: { id: 'c2', name: 'Cliente SA' } }} orgSlug="acme" orgName="Instituto Ejemplo" />);
+    const client = render(<VacancyCard vacancy={{ ...BASE, company: { name: 'Cliente SA' } }} orgSlug="acme" orgName="Instituto Ejemplo" />);
     expect(screen.getByText('Cliente SA')).toBeInTheDocument();
     expect(screen.getByText('C')).toBeInTheDocument();
     client.unmount();

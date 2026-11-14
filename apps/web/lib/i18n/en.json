@@ -335,7 +335,7 @@
     },
     "/my-360": {
       "parent": "My home",
-      "label": "My 360"
+      "label": "My 360°"
     },
     "/talent/360": {
       "parent": "Talent",
@@ -6032,7 +6032,7 @@
     "buddyExplainer": "Your buddy helps you through your first weeks and answers day-to-day questions."
   },
   "my360": {
-    "pageTitle": "My 360",
+    "pageTitle": "My 360°",
     "tasksTitle": "Pending evaluations",
     "tasksEmpty": "You have no pending evaluations",
     "tasksEmptyDescription": "When you're assigned a 360 evaluation, it will appear here",

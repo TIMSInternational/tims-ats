@@ -335,7 +335,7 @@
     },
     "/my-360": {
       "parent": "Mi espacio",
-      "label": "Mi 360"
+      "label": "Mi 360°"
     },
     "/talent/360": {
       "parent": "Talento",
