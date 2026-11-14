@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { formatMessage, useI18n } from '../../../../lib/i18n';
+import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
 import { usePermissions } from '../../../../lib/permissions';
 import {

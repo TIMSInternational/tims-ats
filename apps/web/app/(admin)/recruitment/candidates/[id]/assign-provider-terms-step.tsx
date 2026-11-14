@@ -7,6 +7,14 @@ import {
   AGE_BANDS,
   TIME_MULTIPLIERS,
 } from '../../../../../lib/platform-api/assessment-providers-staff';
+import {
+  CHOICE_INPUT_CLASSES,
+  CHOICE_ROW_CLASSES,
+  FIELD_ERROR_CLASSES,
+  FIELD_HELP_CLASSES,
+  FIELD_LABEL_CLASSES,
+  selectClasses,
+} from '../../../../../components';
 
 export interface AssignTermsForm {
   /** One of AGE_BANDS once chosen; empty until HR attests it. */
@@ -34,39 +42,62 @@ export function AssignProviderTermsStep({
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-[12px] font-medium text-[#585858]">{ap.instrumentsLabel}</p>
-        <ul className="mt-1 list-disc pl-5 text-[13px] text-[#1F114C]" data-testid="assign-instruments">
+        <p className={FIELD_LABEL_CLASSES}>{ap.instrumentsLabel}</p>
+        <ul className="list-disc pl-5 text-body text-primary" data-testid="assign-instruments">
           {instrumentNames.map((name) => (
             <li key={name}>{name}</li>
           ))}
         </ul>
-        <p className="mt-1 text-[11px] text-[#8B8B8B]">{ap.instrumentsHint}</p>
+        <p className={FIELD_HELP_CLASSES}>{ap.instrumentsHint}</p>
         {notOffered > 0 && (
-          <p className="mt-1 text-[11px] text-amber-700">{ap.notOffered.replace('{count}', String(notOffered))}</p>
+          <p className="mt-1 text-callout text-warning">{ap.notOffered.replace('{count}', String(notOffered))}</p>
         )}
       </div>
 
-      <fieldset aria-describedby="assign-age-hint">
-        <legend className="text-[12px] font-medium text-[#585858]">{ap.ageBandLabel}</legend>
-        <div className="mt-1 flex gap-4">
+      <fieldset aria-describedby={ageError ? 'assign-age-hint assign-age-error' : 'assign-age-hint'}>
+        <legend className={FIELD_LABEL_CLASSES}>
+          {ap.ageBandLabel}
+          <span aria-hidden="true" className="ml-0.5 text-danger">
+            *
+          </span>
+        </legend>
+        <div className="flex flex-wrap gap-x-6">
           {AGE_BANDS.map((band) => (
-            <label key={band} className="flex items-center gap-1.5 text-[13px] text-[#333]">
-              <input type="radio" value={band} {...form.register('ageBand', { required: true })} />
+            <label key={band} className={CHOICE_ROW_CLASSES}>
+              <input
+                type="radio"
+                value={band}
+                className={CHOICE_INPUT_CLASSES}
+                {...form.register('ageBand', { required: true })}
+              />
               {band === '18_plus' ? ap.ageAdult : ap.ageMinor}
             </label>
           ))}
         </div>
-        <p id="assign-age-hint" className={`mt-1 text-[11px] ${ageError ? 'text-[#B42318]' : 'text-[#8B8B8B]'}`}>
+        <p id="assign-age-hint" className={FIELD_HELP_CLASSES}>
           {ap.ageHint}
         </p>
+        {ageError && (
+          <p id="assign-age-error" role="alert" className={FIELD_ERROR_CLASSES}>
+            <svg
+              className="mt-px size-3.5 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v4m0 4h.01" strokeLinecap="round" />
+            </svg>
+            <span>{ap.ageRequired}</span>
+          </p>
+        )}
       </fieldset>
 
-      <label className="block text-[12px] font-medium text-[#585858]">
+      <label className={FIELD_LABEL_CLASSES}>
         {ap.timeLabel}
-        <select
-          {...form.register('timeMultiplier')}
-          className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]"
-        >
+        <select {...form.register('timeMultiplier')} className={`mt-1.5 font-normal ${selectClasses()}`}>
           {TIME_MULTIPLIERS.map((multiplier) => (
             <option key={multiplier} value={String(multiplier)}>
               {multiplier === 1 ? ap.timeNone : `×${multiplier}`}
@@ -76,16 +107,16 @@ export function AssignProviderTermsStep({
       </label>
 
       <fieldset aria-describedby="assign-accommodation-hint">
-        <legend className="text-[12px] font-medium text-[#585858]">{ap.aidsLabel}</legend>
-        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-1">
+        <legend className={FIELD_LABEL_CLASSES}>{ap.aidsLabel}</legend>
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           {ACCOMMODATION_AIDS.map((aid) => (
-            <label key={aid} className="flex items-center gap-1.5 text-[12px] text-[#333]">
-              <input type="checkbox" value={aid} {...form.register('aids')} />
+            <label key={aid} className={CHOICE_ROW_CLASSES}>
+              <input type="checkbox" value={aid} className={CHOICE_INPUT_CLASSES} {...form.register('aids')} />
               {ap.aid[aid]}
             </label>
           ))}
         </div>
-        <p id="assign-accommodation-hint" className="mt-1 text-[11px] text-[#8B8B8B]">
+        <p id="assign-accommodation-hint" className={FIELD_HELP_CLASSES}>
           {ap.accommodationHint}
         </p>
       </fieldset>

@@ -267,7 +267,9 @@ describe('ProviderResultsBoard', () => {
     expect(within(fit).getByText('Position code 194225')).toBeTruthy();
     expect(within(fit).getByLabelText('Fit to the position: 78.5 percent').textContent).toBe('78.5%');
     expect(
-      within(fit).getByLabelText('Position profile: Dominance 62, Influence 40, Steadiness 55, Compliance 70, out of 100'),
+      within(fit).getByLabelText(
+        'Position profile: Dominance 62, Influence 40, Steadiness 55, Compliance 70, out of 100',
+      ),
     ).toBeTruthy();
     expect(within(fit).getByText(/Computed by TIMS/)).toBeTruthy();
   });
@@ -280,7 +282,9 @@ describe('ProviderResultsBoard', () => {
       mocks.attempts = {
         consentWithdrawn: false,
         attempts: [
-          attempt('pca', 4, { profile: { pca: { ...pca, jobFit: { jobCode: 'X1', status, fit: null, jobProfile: null } } } }),
+          attempt('pca', 4, {
+            profile: { pca: { ...pca, jobFit: { jobCode: 'X1', status, fit: null, jobProfile: null } } },
+          }),
         ],
       };
       const { unmount } = render(<ProviderResultsBoard candidateId="c" />);
@@ -350,9 +354,11 @@ describe('ProviderResultsBoard', () => {
     expect(mocks.reportsEnabled.every((enabled) => !enabled)).toBe(true); // nothing is read until it opens
     fireEvent.click(button);
     expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect(within(card).getByRole('button', { name: 'Informe PCA' })).toBeTruthy();
-    fireEvent.click(within(card).getByRole('button', { name: 'gd' })); // no title: the variant id
-    await waitFor(() => expect(mocks.download).toHaveBeenCalledWith('00000004-0000-4000-8000-000000000000', 'pca', 'gd'));
+    expect(within(card).getByRole('menuitem', { name: 'Informe PCA' })).toBeTruthy();
+    fireEvent.click(within(card).getByRole('menuitem', { name: 'gd' })); // no title: the variant id
+    await waitFor(() =>
+      expect(mocks.download).toHaveBeenCalledWith('00000004-0000-4000-8000-000000000000', 'pca', 'gd'),
+    );
     await waitFor(() => expect(button.getAttribute('aria-expanded')).toBe('false')); // closes once saved
   });
 
@@ -361,7 +367,7 @@ describe('ProviderResultsBoard', () => {
     mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, { profile: { lia } })] };
     const { unmount } = render(<ProviderResultsBoard candidateId="c" />);
     fireEvent.click(within(section(/LIA/)).getByRole('button', { name: 'PDF reports' }));
-    expect(within(section(/LIA/)).getByRole('button', { name: 'Results report' })).toBeTruthy();
+    expect(within(section(/LIA/)).getByRole('menuitem', { name: 'Results report' })).toBeTruthy();
     unmount();
 
     // C# says no: a narrow reader (no profile either), a voided result.
@@ -384,9 +390,7 @@ describe('ProviderResultsBoard', () => {
   it('ITC-IA: the level by name and as n of 5, the minimum, the evidence per category, flags and autonomy', () => {
     mocks.stored = {
       version: 1,
-      assessments: [
-        { instrument: 'itcia', use: 'scored', min: { level: 3 }, reason: 'r', weight: null },
-      ],
+      assessments: [{ instrument: 'itcia', use: 'scored', min: { level: 3 }, reason: 'r', weight: null }],
     };
     mocks.attempts = { consentWithdrawn: false, attempts: [attempt('itcia', 5, { level: 3, profile: { itcia } })] };
     render(<ProviderResultsBoard candidateId="c" />);
@@ -453,9 +457,8 @@ describe('ProviderResultsBoard', () => {
   });
 
   it('the attempts read accepts the ITC-IA and MI profiles and refuses one off their scales', async () => {
-    const { parseCandidateProviderAttempts } = await import(
-      '../../apps/web/lib/platform-api/assessment-providers-staff'
-    );
+    const { parseCandidateProviderAttempts } =
+      await import('../../apps/web/lib/platform-api/assessment-providers-staff');
     const read = (profile: unknown) => ({
       consentWithdrawn: false,
       attempts: [attempt('itcia', 5, { profile: profile as Record<string, unknown> })],
@@ -492,12 +495,15 @@ describe('ProviderResultsBoard', () => {
 
   it('PDF reports: a result lowered to summary has no profile but keeps its report (C# says it is available)', () => {
     mocks.reports = { data: [{ variant: null, title: null }], error: null, isPending: false, isError: false };
-    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 1, { profile: null, reportsAvailable: true })] };
+    mocks.attempts = {
+      consentWithdrawn: false,
+      attempts: [attempt('lia', 1, { profile: null, reportsAvailable: true })],
+    };
     render(<ProviderResultsBoard candidateId="c" />);
     const card = section(/LIA/);
     expect(within(card).getByText('This result has no detail to show.')).toBeTruthy();
     fireEvent.click(within(card).getByRole('button', { name: 'PDF reports' }));
-    expect(within(card).getByRole('button', { name: 'Results report' })).toBeTruthy();
+    expect(within(card).getByRole('menuitem', { name: 'Results report' })).toBeTruthy();
   });
 
   it('renders nothing for a withdrawn candidate or without attempts', () => {

@@ -1991,7 +1991,7 @@
     "rejectionReason": "Reason: {reason}",
     "rejectionNote": "Internal note: {note}",
     "openVacancy": "View vacancy",
-    "assessmentResults": "Assessment Results",
+    "assessmentResults": "Assessment results",
     "assessmentScorePending": "Score pending manual review",
     "activityTimeline": "Activity Timeline",
     "timelineApplied": "Applied to {vacancy}",
@@ -2085,7 +2085,7 @@
     "cvParsedByAi": "CV parsed by AI",
     "present": "Present",
     "education": "Education",
-    "fitBreakdown": "FIT Score Breakdown",
+    "fitBreakdown": "FIT score breakdown",
     "fitDimensionAssessment": "Assessment",
     "fitDimensionInterview": "Interview",
     "fitDimensionExperience": "Experience",
@@ -2156,7 +2156,18 @@
     "english": "English",
     "verified": "Verified",
     "applied": "Applied:",
-    "sourceLabel": "Source:"
+    "sourceLabel": "Source:",
+    "assessmentStatus": {
+      "assigned": "Not started",
+      "in_progress": "In progress",
+      "completed": "Completed",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    },
+    "pcaDiscRow": "PCA (DISC)",
+    "fitDroppedNote": "Dimensions with no data don't count; their weight is shared among the others.",
+    "levelValue": "Level {value}/100",
+    "fitReviewCompactSr": "{short}. {full}"
   },
   "pipeline": {
     "title": "Pipeline",
@@ -5140,7 +5151,7 @@
     "deletionPending": "Pending",
     "deletionCompleted": "Handled",
     "deletionRejected": "Rejected",
-    "recordWithdrawal": "Record withdrawal",
+    "recordWithdrawal": "Record withdrawal…",
     "modalTitle": "Record withdrawal of authorization",
     "modalDesc": "Use this when the candidate revokes their authorization through a channel other than the portal. They will receive no further emails and no new applications will be accepted with their email. No data is deleted automatically.",
     "reasonPlaceholder": "Optional. Do not include sensitive data.",
@@ -5148,14 +5159,15 @@
     "channelRequired": "Select how the withdrawal was received.",
     "reasonTooLong": "The reason allows at most 500 characters.",
     "submit": "Record withdrawal",
-    "submitting": "Recording...",
+    "submitting": "Recording…",
     "cancel": "Cancel",
     "success": "Withdrawal recorded",
     "loadError": "The data processing authorization could not be loaded.",
     "errorForbidden": "You do not have permission to manage the data processing authorization.",
     "errorNotFound": "Candidate not found.",
     "errorGeneric": "The action could not be completed. Please try again.",
-    "reopenHint": "A revoked authorization cannot be restored from here: the candidate must grant it again, and re-opening is handled through support (an audited change per the runbook)."
+    "reopenHint": "A revoked authorization cannot be restored from here: the candidate must grant it again, and re-opening is handled through support (an audited change per the runbook).",
+    "channelPlaceholder": "Choose a channel"
   },
   "portalConsentWithdrawal": {
     "title": "Privacy and your personal data",
@@ -5309,7 +5321,7 @@
     "title": "TIMS Assessments",
     "loading": "Loading the assessments…",
     "error": "The assessments could not be loaded.",
-    "noReadPermission": "Your role does not have the permission to see assessments (assessment:read), so neither the results nor whether the minimum was met are shown here. Ask an administrator of your organization to add it to your role.",
+    "noReadPermission": "Your role can't see assessment results. Ask an administrator to give you access.",
     "empty": "No assessments assigned yet.",
     "withdrawn": "The candidate withdrew consent: no assessment data is shown.",
     "assign": "Assign the vacancy's assessments",
@@ -5359,8 +5371,8 @@
       "ai_scoring": "AI scoring"
     },
     "pendingError": "Not created yet ({code}). Assign again to retry.",
-    "cancel": "Cancel",
-    "cancelAria": "Cancel {instrument}",
+    "cancel": "Cancel test…",
+    "cancelAria": "Cancel the {instrument} test…",
     "cancelled": "Assessment cancelled",
     "cancelError": "The assessment could not be cancelled.",
     "vacancyLabel": "Vacancy",
@@ -5385,7 +5397,8 @@
         "none": "This result has no reports to download.",
         "error": "The reports could not be loaded. Try again.",
         "downloading": "Downloading…",
-        "downloadError": "The report could not be downloaded. Try again."
+        "downloadError": "The report could not be downloaded. Try again.",
+        "downloaded": "Report downloaded"
       },
       "advisoryNote": "Describes style, not ability. No profile is better than another, and it is never a reason to reject.",
       "levelOf": "Level {value} of {max}",
@@ -5577,19 +5590,26 @@
         "consent_withdrawn": "the candidate withdrew consent",
         "provider_error": "provider error"
       }
-    }
+    },
+    "assignAgain": "Assign again…",
+    "assignAgainFor": "Assign {vacancy}'s again…",
+    "cancelConfirmTitle": "Cancel the {instrument} test?",
+    "cancelConfirmBody": "If the candidate is taking it, it closes and you'll have to assign it again.",
+    "cancelConfirm": "Cancel test",
+    "cancelKeep": "Go back",
+    "cancelling": "Cancelling…"
   },
   "assignProviderAssessments": {
     "title": "Assign assessments",
-    "stepTerms": "1. Tests and conditions",
-    "stepConsent": "2. Notice and consent",
+    "stepTerms": "Step 1 of 2 · Tests and conditions",
+    "stepConsent": "Step 2 of 2 · Notice and consent",
     "vacancyLabel": "Vacancy",
     "instrumentsLabel": "Tests the vacancy lists",
     "instrumentsHint": "Every candidate of the vacancy takes the same tests and versions.",
-    "noInstruments": "This vacancy lists no TIMS Assessments test. Configure them on the vacancy first.",
+    "noInstruments": "This vacancy includes no TIMS Assessments tests. Set them up on the vacancy first.",
     "notOffered": "{count} listed tests are not offered for this organization and will not be sent.",
     "loadError": "The vacancy's tests could not be loaded.",
-    "ageBandLabel": "Candidate's age band (attested by you)",
+    "ageBandLabel": "Candidate's age band (you declare it)",
     "ageAdult": "18 or older",
     "ageMinor": "16 or 17",
     "ageHint": "Only the band is sent, never an age or a date of birth.",
@@ -5616,16 +5636,19 @@
     "partial": "Some tests are still being created. Assign again to retry; nothing is duplicated.",
     "errors": {
       "consent_withdrawn": "The candidate withdrew consent: no assessment can be assigned.",
-      "open_attempt_terms_differ": "An open assessment has other conditions. Cancel it first, then assign again.",
-      "instrument_not_listed_by_vacancy": "The vacancy no longer lists one of these tests. Reload and try again.",
+      "open_attempt_terms_differ": "An open assessment has different terms. Cancel it first and assign again.",
+      "instrument_not_listed_by_vacancy": "The vacancy no longer lists one of these tests. Reload the page and try again.",
       "job_relatedness_reason_required": "A test has no job-relatedness reason. Add it on the vacancy first.",
       "no_active_application": "The candidate has no active application to this vacancy.",
       "assessment_provider_not_enabled": "This organization is not connected to TIMS Assessments.",
       "instrument_not_enabled": "A test is not enabled for this organization.",
-      "provider_unavailable": "TIMS Assessments could not be reached. Try again later.",
+      "provider_unavailable": "TIMS Assessments couldn't be reached. Try again later.",
       "provider_unconfigured": "TIMS Assessments is not configured.",
       "unknown": "The assessments could not be assigned."
-    }
+    },
+    "submitCount": "Assign {count} tests",
+    "submitOne": "Assign 1 test",
+    "ageRequired": "Choose the candidate's age band to continue."
   },
   "assessmentConsentNotice": {
     "title": "Notice: online assessments",

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import type { QuestionType, QuestionOption } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
-import { formatMessage, useI18n } from '../../../../lib/i18n';
+import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import {
   Button,
   ConfirmDialog,

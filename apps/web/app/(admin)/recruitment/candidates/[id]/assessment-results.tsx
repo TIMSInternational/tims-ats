@@ -1,7 +1,8 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n';
-import { DiscChart } from '../../../../../components';
+import { formatMessage } from '../../../../../lib/i18n/format';
+import { DiscChart, ProgressBar, StatusBadge, type StatusTone } from '../../../../../components';
 import { EssayGradingPanel } from './essay-grading-panel';
 import { isFitEngineV2Enabled } from '../../../../../lib/platform-api/fit-engine';
 import { assignmentsAwaitingReview } from '../../../../../lib/fit-v2-breakdown';
@@ -33,16 +34,21 @@ interface FitScore {
   calculatedAt: Date | string;
 }
 
+const STATUS_TONE: Record<string, StatusTone> = { completed: 'success', in_progress: 'info' };
+
+// An assignment's status as a word, never the raw status code (accessibility.md › Vision).
 function StatusLabel({ status }: { status: string }) {
   const { t } = useI18n();
-  const cls =
-    status === 'completed'
-      ? 'bg-green-50 text-green-600'
-      : status === 'in_progress'
-        ? 'bg-amber-50 text-amber-600'
-        : 'bg-gray-100 text-gray-600';
-  const label = status === 'completed' ? t.candidates.completed : status;
-  return <span className={`text-[12px] font-medium px-2 py-0.5 rounded ${cls}`}>{label}</span>;
+  const labels = t.candidates.assessmentStatus as Record<string, string>;
+  return <StatusBadge tone={STATUS_TONE[status] ?? 'neutral'}>{labels[status] ?? labels.assigned}</StatusBadge>;
+}
+
+// Breakdown keys are data names ("dominance"); show the DISC factor names where they exist, else a readable form.
+function useBreakdownLabel() {
+  const { t } = useI18n();
+  const f = t.providerAssessments.results.pca.factors;
+  const known: Record<string, string> = { dominance: f.d, influence: f.i, steadiness: f.s, compliance: f.c };
+  return (key: string) => known[key] ?? key.replace(/[_-]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
 }
 
 function DiscScoreBoxes({ breakdown }: { breakdown: Record<string, number> }) {
@@ -56,9 +62,9 @@ function DiscScoreBoxes({ breakdown }: { breakdown: Record<string, number> }) {
   return (
     <div className="flex gap-2">
       {dims.map((d) => (
-        <div key={d.key} className="flex-1 bg-[#F6F6F6] rounded p-2 text-center">
-          <p className="text-[10px] text-[#8B8B8B]">{d.key}</p>
-          <p className="text-[14px] font-bold text-[#1F114C]">{d.value}</p>
+        <div key={d.key} className="flex-1 rounded bg-surface p-2 text-center">
+          <p className="text-caption text-secondary">{d.key}</p>
+          <p className="text-subheading font-bold text-brand tabular-nums">{d.value}</p>
         </div>
       ))}
     </div>
@@ -66,13 +72,14 @@ function DiscScoreBoxes({ breakdown }: { breakdown: Record<string, number> }) {
 }
 
 function BreakdownGrid({ data }: { data: Record<string, number> }) {
+  const labelOf = useBreakdownLabel();
   const entries = Object.entries(data).slice(0, 6);
   return (
     <div className="grid grid-cols-3 gap-2 mt-2">
       {entries.map(([key, val]) => (
-        <div key={key} className="bg-[#F6F6F6] rounded p-2 text-center">
-          <p className="text-[9px] text-[#8B8B8B] capitalize">{key}</p>
-          <p className="text-[13px] font-bold text-[#1F114C]">{String(val)}</p>
+        <div key={key} className="rounded bg-surface p-2 text-center">
+          <p className="text-caption text-secondary">{labelOf(key)}</p>
+          <p className="text-body font-bold text-brand tabular-nums">{String(val)}</p>
         </div>
       ))}
     </div>
@@ -82,8 +89,8 @@ function BreakdownGrid({ data }: { data: Record<string, number> }) {
 function AssessmentRow({ name, status, children }: { name: string; status: string; children?: React.ReactNode }) {
   return (
     <div className="mt-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[12px] text-[#585858]">{name}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-body text-primary">{name}</span>
         <StatusLabel status={status} />
       </div>
       {children}
@@ -110,12 +117,12 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
   }
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.candidates.assessmentResults}</h3>
+    <div className="rounded-xl bg-white p-4 shadow-card md:p-5">
+      <h3 className="mb-4 text-subheading font-semibold text-brand">{t.candidates.assessmentResults}</h3>
 
       {/* DISC Chart */}
       {hasDisc && (
-        <div className="bg-[#F6F6F6] rounded-lg p-4 mb-4">
+        <div className="mb-4 rounded-lg bg-surface p-4">
           <DiscChart scores={breakdown} />
         </div>
       )}
@@ -124,7 +131,7 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
         {/* PCA / DISC with score boxes */}
         {hasDisc && (
           <>
-            <AssessmentRow name="PCA (DISC)" status="completed">
+            <AssessmentRow name={t.candidates.pcaDiscRow} status="completed">
               <div className="mt-2">
                 <DiscScoreBoxes breakdown={breakdown} />
               </div>
@@ -140,32 +147,34 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
           return (
             <AssessmentRow key={a.id} name={a.assessmentType.name} status={a.status}>
               {underReview.has(a.id) && (
-                <p data-testid="assessment-review-pending" className="text-[11px] text-amber-700 mt-1">
+                <p data-testid="assessment-review-pending" className="mt-1 text-callout text-warning">
                   {t.candidates.assessmentReviewPending}
                 </p>
               )}
               {a.result?.normalizedScore === null && a.status === 'completed' && (
-                <p className="text-[11px] text-amber-700 mt-1">{t.candidates.assessmentScorePending}</p>
+                <p className="mt-1 text-callout text-warning">{t.candidates.assessmentScorePending}</p>
               )}
               {a.result?.normalizedScore != null && (
                 <div className="mt-1">
-                  <div className="w-full bg-[#F6F6F6] rounded-full h-2">
-                    <div
-                      className="bg-[#1F114C] h-2 rounded-full transition-all"
-                      style={{ width: `${Math.min(a.result.normalizedScore, 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-[#585858] mt-1">
+                  <ProgressBar
+                    kind="meter"
+                    value={Math.min(a.result.normalizedScore, 100)}
+                    max={100}
+                    label={a.assessmentType.name}
+                    hideLabel
+                    valueText={formatMessage(t.candidates.levelValue, { value: a.result.normalizedScore })}
+                  />
+                  <p className="mt-1 text-callout text-secondary">
                     {t.candidates.level}{' '}
-                    <span className="font-medium text-[#1F114C]">{a.result.normalizedScore}/100</span>
+                    <span className="font-medium text-brand tabular-nums">{a.result.normalizedScore}/100</span>
                   </p>
                 </div>
               )}
               {a.result?.band != null && (
-                <p className="text-[11px] font-medium text-[#1F114C] mt-1">
+                <p className="mt-1 text-callout font-medium text-brand">
                   {t.assessmentPlayer.bandLabels[a.result.band]}
                   {a.result?.normSampleSize != null && (
-                    <span className="font-normal text-[#8B8B8B]">
+                    <span className="font-normal text-secondary">
                       {' '}
                       {t.assessmentPlayer.resultSampleSizeLabel.replace(
                         '{sampleSize}',

@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n';
+import { StatusBadge } from '../../../../../components';
 import type {
   CountsIn,
   ProviderInstrument,
@@ -39,37 +40,37 @@ export function ProviderResultDetail({
           : null;
 
   return (
-    <div className="mt-1 space-y-1 text-[12px]" data-testid="provider-result">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={
-            result.validity === 'valid'
-              ? 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-green-50 text-green-700'
-              : 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200'
-          }
-        >
-          {pa.validity[result.validity]}
-        </span>
+    <div className="mt-1 space-y-1 text-callout" data-testid="provider-result">
+      {/* One line: level · minimum · where it counts. A valid result needs no "Válido" chip; anything else does. */}
+      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        {result.validity !== 'valid' && (
+          <StatusBadge tone={result.validity === 'voided' ? 'danger' : 'warning'}>
+            {pa.validity[result.validity]}
+          </StatusBadge>
+        )}
         {level && !result.reviewPending && (
-          <span className="text-[#1F114C] font-medium" data-testid="provider-result-level">
+          <span className="font-medium text-brand" data-testid="provider-result-level">
             {level}
           </span>
         )}
         {minimum && (
           <span
             data-testid="provider-result-minimum"
-            className={result.minimum === 'not_met' ? 'text-[#DD0C15] font-medium' : 'text-[#585858]'}
+            className={result.minimum === 'not_met' ? 'font-semibold text-danger' : 'text-secondary'}
           >
             {minimum}
           </span>
         )}
-      </div>
+        <span aria-hidden="true" className="text-muted">
+          ·
+        </span>
+        <span className="text-secondary">{pa.countsIn[countsIn]}</span>
+      </p>
       {result.reviewPending && (
-        <p className="text-amber-700" data-testid="provider-result-review">
+        <p className="text-warning" data-testid="provider-result-review">
           {pa.reviewPending}. {pa.reviewByProvider}
         </p>
       )}
-      <p className="text-[11px] text-[#8B8B8B]">{pa.countsIn[countsIn]}</p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useState } from 'react';
 import { useI18n } from '../../../../../../lib/i18n';
 import { PlatformApiError } from '../../../../../../lib/platform-api/client';
 import {
@@ -8,6 +8,7 @@ import {
   useProviderReports,
 } from '../../../../../../lib/platform-api/assessment-provider-reports';
 import { toast } from '../../../../../../lib/toast';
+import { Menu, buttonClasses, type MenuEntry } from '../../../../../../components';
 
 /**
  * "PDF reports" on a result card: opens a short list of the reports TIMS offers for the result (the results report of a
@@ -18,68 +19,77 @@ export function ProviderReportMenu({ attemptId, instrument }: { attemptId: strin
   const { t } = useI18n();
   const r = t.providerAssessments.results.reports;
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const panelId = useId();
+  const [busy, setBusy] = useState(false);
   const reports = useProviderReports(attemptId, open);
 
   if (reports.error instanceof PlatformApiError && reports.error.status === 403) return null;
 
   async function download(variant: string | null) {
-    const key = variant ?? 'native';
-    setBusy(key);
+    setBusy(true);
     try {
       await downloadProviderReport(attemptId, instrument, variant);
-      setOpen(false);
+      toast(r.downloaded, { type: 'success' });
     } catch {
       toast(r.downloadError, { type: 'error' });
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
+  // The shared menu pattern (foundation §9): role=menu, arrow keys, Escape and outside click close and return focus.
+  // The list loads when it opens; until then (or when it fails or is empty) one disabled row says why.
+  const status = (key: string, label: string): MenuEntry[] => [{ key, label, disabled: true }];
+  const items: MenuEntry[] = reports.isPending
+    ? status('loading', r.loading)
+    : reports.isError
+      ? status('error', r.error)
+      : !reports.data || reports.data.length === 0
+        ? status('none', r.none)
+        : reports.data.map((report) => ({
+            key: report.variant ?? 'native',
+            label: report.title ?? (report.variant === null ? r.native : report.variant),
+            icon: <DownloadIcon />,
+            disabled: busy,
+            onSelect: () => void download(report.variant),
+          }));
+
   return (
-    <div className="relative">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
-        className="rounded-lg border border-[#DADADA] px-3 py-1.5 text-[13px] font-medium text-[#1F114C] hover:bg-[#F6F5FA] focus-visible:outline-2 focus-visible:outline-[#1F114C]"
-      >
-        {r.button}
-      </button>
-      {open && (
-        <div
-          id={panelId}
-          onKeyDown={(event) => event.key === 'Escape' && setOpen(false)}
-          className="absolute right-0 z-10 mt-1 w-64 rounded-lg border border-[#EDEDED] bg-white p-1 shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
-        >
-          {reports.isPending && <p className="px-3 py-2 text-[13px] text-[#6B6B6B]">{r.loading}</p>}
-          {reports.isError && <p className="px-3 py-2 text-[13px] text-red-700">{r.error}</p>}
-          {reports.data?.length === 0 && <p className="px-3 py-2 text-[13px] text-[#6B6B6B]">{r.none}</p>}
-          {reports.data && reports.data.length > 0 && (
-            <ul className="max-h-72 overflow-y-auto">
-              {reports.data.map((report) => {
-                const key = report.variant ?? 'native';
-                return (
-                  <li key={key}>
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() => void download(report.variant)}
-                      className="w-full rounded-md px-3 py-2 text-left text-[13px] text-[#1F114C] hover:bg-[#F6F5FA] disabled:opacity-60"
-                    >
-                      {busy === key
-                        ? r.downloading
-                        : (report.title ?? (report.variant === null ? r.native : report.variant))}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
+    <Menu
+      items={items}
+      label={r.button}
+      onOpenChange={setOpen}
+      panelClassName="w-64"
+      triggerClassName={buttonClasses({ variant: 'secondary', size: 'sm' })}
+      trigger={
+        <>
+          <span aria-live="polite">{busy ? r.downloading : r.button}</span>
+          <svg
+            className="size-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M19 9l-7 7-7-7" />
+          </svg>
+        </>
+      }
+    />
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      className="size-4 text-secondary"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14" />
+    </svg>
   );
 }

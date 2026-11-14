@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal } from '../../../../../components';
+import { Button, CHOICE_INPUT_CLASSES, ErrorState, Modal, Skeleton } from '../../../../../components';
 import { AssessmentConsentNotice } from '../../../../../components/assessment-consent-notice';
 import { useI18n } from '../../../../../lib/i18n';
+import { formatMessage } from '../../../../../lib/i18n/format';
 import { toast } from '../../../../../lib/toast';
 import { trpc } from '../../../../../lib/trpc';
 import { useVacancyAssessments } from '../../../../../lib/platform-api/vacancy-assessments';
@@ -57,6 +58,7 @@ export function AssignProviderAssessmentsModal({
   const [step, setStep] = useState<'terms' | 'consent'>('terms');
   const [acknowledged, setAcknowledged] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const termsRef = useRef<HTMLDivElement>(null);
   const form = useForm<AssignTermsForm>({
     resolver: zodResolver(termsSchema),
     defaultValues: { ageBand: '', timeMultiplier: '1', aids: [] },
@@ -85,8 +87,8 @@ export function AssignProviderAssessmentsModal({
         },
         onError: (error) => {
           const code = assignErrorCode(error);
+          // The dialog stays open, so the specific message shows inline (role="alert"); no second, vaguer toast.
           setFailure(code in ap.errors ? ap.errors[code as keyof typeof ap.errors] : ap.errors.unknown);
-          toast(ap.errors.unknown, { type: 'error' });
         },
       },
     );
@@ -94,18 +96,36 @@ export function AssignProviderAssessmentsModal({
 
   const body = () => {
     if (requirements.isLoading || catalog.isLoading)
-      return <p className="text-[12px] text-[#8B8B8B]">{t.common.loading}</p>;
+      return (
+        <div aria-busy="true" className="space-y-2">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      );
     if (requirements.isError || catalog.isError) {
       return (
-        <p role="alert" className="text-[12px] text-[#B42318]">
-          {ap.loadError}
-        </p>
+        <ErrorState
+          size="compact"
+          title={ap.loadError}
+          onRetry={() => {
+            if (requirements.isError) void requirements.refetch();
+            if (catalog.isError) void catalog.refetch();
+          }}
+        />
       );
     }
-    if (instruments.length === 0) return <p className="text-[12px] text-[#585858]">{ap.noInstruments}</p>;
+    if (instruments.length === 0) return <p className="text-body text-secondary">{ap.noInstruments}</p>;
     if (step === 'terms') {
       return (
-        <AssignProviderTermsStep form={form} instrumentNames={names} notOffered={listed.length - instruments.length} />
+        <div ref={termsRef}>
+          <AssignProviderTermsStep
+            form={form}
+            instrumentNames={names}
+            notOffered={listed.length - instruments.length}
+          />
+        </div>
       );
     }
     return (
@@ -115,8 +135,13 @@ export function AssignProviderAssessmentsModal({
           vacancyTitle={vacancy.title}
           instruments={names}
         />
-        <label className="flex items-start gap-2 text-[12px] text-[#1F114C]">
-          <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
+        <label className="flex items-start gap-2 text-body text-primary pointer-coarse:min-h-11">
+          <input
+            type="checkbox"
+            checked={acknowledged}
+            onChange={(event) => setAcknowledged(event.target.checked)}
+            className={`${CHOICE_INPUT_CLASSES} mt-0.5`}
+          />
           <span>{ap.consentAck}</span>
         </label>
       </div>
@@ -124,48 +149,53 @@ export function AssignProviderAssessmentsModal({
   };
 
   const ready = instruments.length > 0 && !requirements.isError && !catalog.isError;
+  const submitLabel =
+    instruments.length === 1 ? ap.submitOne : formatMessage(ap.submitCount, { count: instruments.length });
+  const goToConsent = async () => {
+    if (await form.trigger()) {
+      setStep('consent');
+      return;
+    }
+    // A missing age band: focus its first radio so the error under it is the next thing read.
+    termsRef.current?.querySelector<HTMLInputElement>('input[name="ageBand"]')?.focus();
+  };
   return (
-    <Modal title={`${ap.title}: ${vacancy.title}`} onClose={onClose} maxWidth="max-w-xl">
-      <p className="mb-3 text-[11px] font-medium text-[#8B8B8B]" aria-live="polite">
+    <Modal
+      title={`${ap.title}: ${vacancy.title}`}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <Button
+            variant="secondary"
+            onClick={step === 'consent' ? () => setStep('terms') : onClose}
+            disabled={assign.isPending}
+          >
+            {step === 'consent' ? ap.back : t.common.cancel}
+          </Button>
+          {ready && step === 'terms' && <Button onClick={() => void goToConsent()}>{ap.next}</Button>}
+          {ready && step === 'consent' && (
+            <Button
+              onClick={() => void submit()}
+              disabled={!acknowledged || !organization.data}
+              loading={assign.isPending}
+              loadingLabel={ap.submitting}
+            >
+              {submitLabel}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <p className="mb-3 text-callout text-secondary" aria-live="polite">
         {step === 'terms' ? ap.stepTerms : ap.stepConsent}
       </p>
       {body()}
       {failure && (
-        <p role="alert" className="mt-3 text-[12px] text-[#B42318]">
+        <p role="alert" className="mt-3 text-callout text-danger">
           {failure}
         </p>
       )}
-      <div className="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={step === 'consent' ? () => setStep('terms') : onClose}
-          disabled={assign.isPending}
-          className="rounded-lg border border-[#EDEDED] px-4 py-2 text-[12px]"
-        >
-          {step === 'consent' ? ap.back : t.common.cancel}
-        </button>
-        {ready && step === 'terms' && (
-          <button
-            type="button"
-            onClick={async () => {
-              if (await form.trigger()) setStep('consent');
-            }}
-            className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white"
-          >
-            {ap.next}
-          </button>
-        )}
-        {ready && step === 'consent' && (
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={!acknowledged || assign.isPending || !organization.data}
-            className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
-          >
-            {assign.isPending ? ap.submitting : ap.submit}
-          </button>
-        )}
-      </div>
     </Modal>
   );
 }

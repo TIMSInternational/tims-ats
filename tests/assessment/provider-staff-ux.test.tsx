@@ -263,7 +263,8 @@ describe('ProviderAssessmentsCard', () => {
     const chips = screen.getAllByTestId('provider-status-chip');
     expect(chips.map((c) => c.getAttribute('data-status'))).toEqual(['consent_needed', 'in_progress']);
     expect(screen.getByText(pa.status.consent_needed)).toBeInTheDocument();
-    expect(screen.getByText(pa.awaitingConsent.replace('{purposes}', pa.purpose.assessment))).toBeInTheDocument();
+    // The required "assessment" consent is already the chip's word; only optional purposes get their own line.
+    expect(screen.queryByText(pa.awaitingConsent.replace('{purposes}', pa.purpose.assessment))).not.toBeInTheDocument();
     expect(screen.getByText(pa.countsIn.languages)).toBeInTheDocument(); // D3
   });
 
@@ -402,7 +403,7 @@ describe('ProviderAssessmentsCard', () => {
     expect(notice).toHaveTextContent(en.assessmentConsentNotice.decisionTitle);
     expect(notice).toHaveTextContent(en.assessmentConsentNotice.withdrawTitle);
     expect(notice).not.toHaveTextContent(/draft|counsel|D22/i);
-    const submit = within(dialog).getByRole('button', { name: ap.submit });
+    const submit = within(dialog).getByRole('button', { name: ap.submitCount.replace('{count}', '2') });
     expect(submit).toBeDisabled();
     fireEvent.click(within(dialog).getByLabelText(ap.consentAck));
     expect(submit).toBeEnabled();
@@ -432,7 +433,7 @@ describe('ProviderAssessmentsCard', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: ap.next }));
     });
     fireEvent.click(await within(dialog).findByLabelText(ap.consentAck));
-    fireEvent.click(within(dialog).getByRole('button', { name: ap.submit }));
+    fireEvent.click(within(dialog).getByRole('button', { name: ap.submitOne }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(ap.errors.open_attempt_terms_differ);
   });
 
@@ -441,6 +442,26 @@ describe('ProviderAssessmentsCard', () => {
     renderCard();
     fireEvent.click(screen.getByRole('button', { name: pa.assign }));
     expect(await within(await screen.findByRole('dialog')).findByText(ap.noInstruments)).toBeInTheDocument();
+  });
+
+  it('cancels a test only after a confirmation that names it', async () => {
+    mocks.cancelMutate.mockClear();
+    const running = attempt('lia', 'in_progress');
+    mocks.attempts = { consentWithdrawn: false, attempts: [running] };
+    renderCard();
+    fireEvent.click(screen.getByRole('button', { name: pa.cancelAria.replace('{instrument}', 'LIA') }));
+    expect(mocks.cancelMutate).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog', { name: pa.cancelConfirmTitle.replace('{instrument}', 'LIA') });
+    fireEvent.click(within(dialog).getByRole('button', { name: pa.cancelConfirm }));
+    expect(mocks.cancelMutate).toHaveBeenCalledTimes(1);
+    expect(mocks.cancelMutate.mock.calls[0]![0]).toBe(running.attemptId);
+  });
+
+  it('offers "assign again" once the vacancy already has tests in the card', () => {
+    mocks.attempts = { consentWithdrawn: false, attempts: [attempt('lia', 'result_ready', result())] };
+    renderCard();
+    expect(screen.getByRole('button', { name: pa.assignAgain })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: pa.assign })).not.toBeInTheDocument();
   });
 
   it('is in Spanish', () => {

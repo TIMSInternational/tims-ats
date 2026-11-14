@@ -1991,7 +1991,7 @@
     "rejectionReason": "Motivo: {reason}",
     "rejectionNote": "Nota interna: {note}",
     "openVacancy": "Ver vacante",
-    "assessmentResults": "Resultados de Evaluación",
+    "assessmentResults": "Resultados de evaluación",
     "assessmentScorePending": "Puntuación pendiente de revisión manual",
     "activityTimeline": "Línea de Tiempo",
     "timelineApplied": "Se postuló a {vacancy}",
@@ -2085,7 +2085,7 @@
     "cvParsedByAi": "CV parseado por IA",
     "present": "Presente",
     "education": "Educación",
-    "fitBreakdown": "FIT Score Desglose",
+    "fitBreakdown": "Desglose de la puntuación FIT",
     "fitDimensionAssessment": "Evaluación",
     "fitDimensionInterview": "Entrevista",
     "fitDimensionExperience": "Experiencia",
@@ -2156,7 +2156,18 @@
     "english": "Inglés",
     "verified": "Verificado",
     "applied": "Aplicado:",
-    "sourceLabel": "Fuente:"
+    "sourceLabel": "Fuente:",
+    "assessmentStatus": {
+      "assigned": "Sin iniciar",
+      "in_progress": "En curso",
+      "completed": "Completada",
+      "expired": "Vencida",
+      "cancelled": "Cancelada"
+    },
+    "pcaDiscRow": "PCA (DISC)",
+    "fitDroppedNote": "Las dimensiones sin datos no cuentan; su peso se reparte entre las demás.",
+    "levelValue": "Nivel {value}/100",
+    "fitReviewCompactSr": "{short}. {full}"
   },
   "pipeline": {
     "title": "Pipeline",
@@ -5140,7 +5151,7 @@
     "deletionPending": "Pendiente",
     "deletionCompleted": "Atendida",
     "deletionRejected": "Rechazada",
-    "recordWithdrawal": "Registrar revocación",
+    "recordWithdrawal": "Registrar revocación…",
     "modalTitle": "Registrar revocación de la autorización",
     "modalDesc": "Usa esta opción cuando el candidato revoque su autorización por un medio distinto al portal. Dejaremos de enviarle correos y de recibir nuevas postulaciones con su correo. Ningún dato se elimina automáticamente.",
     "reasonPlaceholder": "Opcional. No incluyas datos sensibles.",
@@ -5148,14 +5159,15 @@
     "channelRequired": "Selecciona el medio por el que se recibió la revocación.",
     "reasonTooLong": "El motivo admite máximo 500 caracteres.",
     "submit": "Registrar revocación",
-    "submitting": "Registrando...",
+    "submitting": "Registrando…",
     "cancel": "Cancelar",
     "success": "Revocación registrada",
     "loadError": "No se pudo cargar la autorización de tratamiento de datos.",
     "errorForbidden": "No tienes permiso para gestionar la autorización de tratamiento de datos.",
     "errorNotFound": "Candidato no encontrado.",
     "errorGeneric": "No se pudo completar la acción. Intenta de nuevo.",
-    "reopenHint": "La autorización revocada no se puede restablecer desde aquí: el candidato debe otorgarla de nuevo y la reapertura se gestiona con soporte (cambio auditado según el runbook)."
+    "reopenHint": "La autorización revocada no se puede restablecer desde aquí: el candidato debe otorgarla de nuevo y la reapertura se gestiona con soporte (cambio auditado según el runbook).",
+    "channelPlaceholder": "Elige un canal"
   },
   "portalConsentWithdrawal": {
     "title": "Privacidad y tus datos personales",
@@ -5309,7 +5321,7 @@
     "title": "TIMS Assessments",
     "loading": "Cargando las evaluaciones…",
     "error": "No se pudieron cargar las evaluaciones.",
-    "noReadPermission": "Tu rol no tiene el permiso para ver evaluaciones (assessment:read), así que aquí no se muestran sus resultados ni si se alcanzó el mínimo. Pide a un administrador de tu organización que lo agregue a tu rol.",
+    "noReadPermission": "Tu rol no permite ver resultados de evaluaciones. Pide a un administrador que te dé acceso.",
     "empty": "Aún no hay evaluaciones asignadas.",
     "withdrawn": "El candidato retiró su consentimiento: no se muestran datos de evaluaciones.",
     "assign": "Asignar las evaluaciones de la vacante",
@@ -5358,9 +5370,9 @@
       "voice": "grabación de voz",
       "ai_scoring": "calificación con IA"
     },
-    "pendingError": "Aún no creada ({code}). Vuelva a asignar para reintentar.",
-    "cancel": "Cancelar",
-    "cancelAria": "Cancelar {instrument}",
+    "pendingError": "Aún no creada ({code}). Vuelve a asignar para reintentar.",
+    "cancel": "Cancelar prueba…",
+    "cancelAria": "Cancelar la prueba {instrument}…",
     "cancelled": "Evaluación cancelada",
     "cancelError": "No se pudo cancelar la evaluación.",
     "vacancyLabel": "Vacante",
@@ -5385,7 +5397,8 @@
         "none": "Este resultado no tiene informes para descargar.",
         "error": "No se pudieron cargar los informes. Inténtalo de nuevo.",
         "downloading": "Descargando…",
-        "downloadError": "No se pudo descargar el informe. Inténtalo de nuevo."
+        "downloadError": "No se pudo descargar el informe. Inténtalo de nuevo.",
+        "downloaded": "Informe descargado"
       },
       "advisoryNote": "Describe un estilo, no una capacidad. Ningún perfil es mejor que otro y nunca es motivo de rechazo.",
       "levelOf": "Nivel {value} de {max}",
@@ -5577,19 +5590,26 @@
         "consent_withdrawn": "el candidato retiró su consentimiento",
         "provider_error": "error del proveedor"
       }
-    }
+    },
+    "assignAgain": "Asignar de nuevo…",
+    "assignAgainFor": "Asignar de nuevo las de {vacancy}…",
+    "cancelConfirmTitle": "¿Cancelar la prueba {instrument}?",
+    "cancelConfirmBody": "Si el candidato la está presentando, se cierra y tendrás que asignarla de nuevo.",
+    "cancelConfirm": "Cancelar prueba",
+    "cancelKeep": "Volver",
+    "cancelling": "Cancelando…"
   },
   "assignProviderAssessments": {
     "title": "Asignar evaluaciones",
-    "stepTerms": "1. Pruebas y condiciones",
-    "stepConsent": "2. Aviso y consentimiento",
+    "stepTerms": "Paso 1 de 2 · Pruebas y condiciones",
+    "stepConsent": "Paso 2 de 2 · Aviso y consentimiento",
     "vacancyLabel": "Vacante",
     "instrumentsLabel": "Pruebas que incluye la vacante",
     "instrumentsHint": "Todos los candidatos de la vacante presentan las mismas pruebas y versiones.",
-    "noInstruments": "Esta vacante no incluye pruebas de TIMS Assessments. Configúrelas primero en la vacante.",
+    "noInstruments": "Esta vacante no incluye pruebas de TIMS Assessments. Configúralas primero en la vacante.",
     "notOffered": "{count} pruebas de la vacante no se ofrecen a esta organización y no se enviarán.",
     "loadError": "No se pudieron cargar las pruebas de la vacante.",
-    "ageBandLabel": "Rango de edad del candidato (lo declara usted)",
+    "ageBandLabel": "Rango de edad del candidato (lo declaras tú)",
     "ageAdult": "18 años o más",
     "ageMinor": "16 o 17 años",
     "ageHint": "Solo se envía el rango, nunca una edad ni una fecha de nacimiento.",
@@ -5613,19 +5633,22 @@
     "submitting": "Asignando…",
     "consentAck": "Revisé este aviso. El candidato lo verá y deberá aceptarlo, junto con los textos de consentimiento de TIMS Assessments, antes de iniciar cualquier prueba.",
     "assigned": "Evaluaciones asignadas",
-    "partial": "Algunas pruebas aún se están creando. Vuelva a asignar para reintentar; nada se duplica.",
+    "partial": "Algunas pruebas aún se están creando. Vuelve a asignar para reintentar; nada se duplica.",
     "errors": {
       "consent_withdrawn": "El candidato retiró su consentimiento: no se puede asignar ninguna evaluación.",
-      "open_attempt_terms_differ": "Una evaluación abierta tiene otras condiciones. Cancélela primero y vuelva a asignar.",
-      "instrument_not_listed_by_vacancy": "La vacante ya no incluye una de estas pruebas. Recargue e intente de nuevo.",
-      "job_relatedness_reason_required": "Una prueba no tiene motivo de relación con el puesto. Agréguelo primero en la vacante.",
+      "open_attempt_terms_differ": "Una evaluación abierta tiene otras condiciones. Cancélala primero y vuelve a asignar.",
+      "instrument_not_listed_by_vacancy": "La vacante ya no incluye una de estas pruebas. Recarga la página e inténtalo de nuevo.",
+      "job_relatedness_reason_required": "Una prueba no tiene motivo de relación con el puesto. Agrégalo primero en la vacante.",
       "no_active_application": "El candidato no tiene una postulación activa a esta vacante.",
       "assessment_provider_not_enabled": "Esta organización no está conectada a TIMS Assessments.",
       "instrument_not_enabled": "Una prueba no está habilitada para esta organización.",
-      "provider_unavailable": "No se pudo conectar con TIMS Assessments. Intente más tarde.",
+      "provider_unavailable": "No se pudo conectar con TIMS Assessments. Inténtalo más tarde.",
       "provider_unconfigured": "TIMS Assessments no está configurado.",
       "unknown": "No se pudieron asignar las evaluaciones."
-    }
+    },
+    "submitCount": "Asignar {count} pruebas",
+    "submitOne": "Asignar 1 prueba",
+    "ageRequired": "Elige el rango de edad del candidato para continuar."
   },
   "assessmentConsentNotice": {
     "title": "Aviso: evaluaciones en línea",
