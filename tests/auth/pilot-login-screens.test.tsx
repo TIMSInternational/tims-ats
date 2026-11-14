@@ -61,6 +61,12 @@ const fillAndSubmit = () => {
 };
 
 describe('staff /login', () => {
+  it('keeps the email and password natively required', () => {
+    render(<LoginPage />);
+    expect(screen.getByLabelText(es.auth.email)).toBeRequired();
+    expect(screen.getByLabelText(es.auth.password)).toBeRequired();
+  });
+
   it('hides Google / Microsoft in the pilot scope', () => {
     vi.stubEnv('NEXT_PUBLIC_LAUNCH_SCOPE', 'pilot');
     render(<LoginPage />);
@@ -151,6 +157,11 @@ describe('auth side panel', () => {
 });
 
 describe('/forgot-password', () => {
+  it('keeps the email natively required', () => {
+    render(<ForgotPasswordPage />);
+    expect(screen.getByLabelText(es.auth.email)).toBeRequired();
+  });
+
   it('has a visible title and shows a Spanish, announced error for a rate limit', async () => {
     state.resetPasswordForEmail.mockResolvedValue({
       error: {

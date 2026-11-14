@@ -103,16 +103,19 @@ export function LoginForm({ showSignup }: { showSignup: boolean }) {
         )}
 
         <Field label={t.auth.email} id="login-email">
-          <TextInput
-            size="lg"
-            name="email"
-            autoComplete="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            placeholder="tu@empresa.com"
-          />
+          {(control) => (
+            <TextInput
+              {...control}
+              size="lg"
+              name="email"
+              autoComplete="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="tu@empresa.com"
+            />
+          )}
         </Field>
 
         <div>

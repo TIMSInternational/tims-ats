@@ -3,6 +3,7 @@
 import { useI18n } from '../../lib/i18n';
 import { Button } from '../../components/button';
 import { buttonClasses } from '../../components/button-styles';
+import { AUTH_ERROR_CLASSES } from '../(auth)/auth-card';
 import { MfaSuccessIcon } from './mfa-success-icon';
 
 // MFA is on: go back, or (when the role allows it) turn it off after a confirmation that names the
@@ -32,7 +33,7 @@ export function MfaEnabledPanel({
         {t.mfa.backToDashboard}
       </a>
       {error && (
-        <div role="alert" className="mb-3 rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-body text-danger">
+        <div role="alert" className={`mb-3 ${AUTH_ERROR_CLASSES}`}>
           {error}
         </div>
       )}

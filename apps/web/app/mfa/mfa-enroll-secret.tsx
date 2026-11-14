@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useI18n } from '../../lib/i18n';
 import { Button } from '../../components/button';
 
@@ -10,6 +10,7 @@ import { Button } from '../../components/button';
 export function MfaEnrollSecret({ qr, secret }: { qr: string; secret: string | null }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const labelId = useId();
 
   useEffect(() => {
     if (!copied) return;
@@ -33,12 +34,11 @@ export function MfaEnrollSecret({ qr, secret }: { qr: string; secret: string | n
       <img src={qr} alt={t.mfa.qrAlt} className="size-44 rounded-xl border border-border" />
       {secret && (
         <div className="w-full max-sm:order-first">
-          <p className="mb-1.5 text-callout text-secondary">{t.mfa.secretLabel}</p>
-          <div className="flex items-center gap-2">
-            <code
-              aria-label={t.mfa.secretGroupsLabel}
-              className="block min-w-0 flex-1 rounded-lg bg-surface px-3 py-2 text-center font-mono text-body tracking-wider text-primary tabular-nums break-all"
-            >
+          <p id={labelId} className="mb-1.5 text-callout text-secondary">
+            {t.mfa.secretLabel}
+          </p>
+          <div role="group" aria-labelledby={labelId} className="flex items-center gap-2">
+            <code className="block min-w-0 flex-1 rounded-lg bg-surface px-3 py-2 text-center font-mono text-body tracking-wider text-primary tabular-nums break-all">
               {secret.match(/.{1,4}/g)?.join(' ')}
             </code>
             <Button variant="secondary" size="sm" onClick={() => void copy()}>

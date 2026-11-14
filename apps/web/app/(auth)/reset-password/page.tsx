@@ -45,6 +45,15 @@ function ResetPasswordForm() {
   const [confirmError, setConfirmError] = useState('');
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The automatic redirect must not fire after the user left (Continuar, or any other navigation).
+  useEffect(
+    () => () => {
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    },
+    [],
+  );
   // Where the success view goes, by timer or by its "Continuar" button (the same destination).
   const destination = (() => {
     const invitation = searchParams.get('invitation');
@@ -124,7 +133,7 @@ function ResetPasswordForm() {
 
       clearPasswordSetupAuthorization();
       setSuccess(true);
-      setTimeout(() => router.push(destination), 2000);
+      redirectTimer.current = setTimeout(() => router.push(destination), 2000);
     } catch {
       setError(t.auth.passwordUpdateFailed);
     } finally {
@@ -137,7 +146,14 @@ function ResetPasswordForm() {
       {success ? (
         <AuthSuccess title={t.auth.passwordUpdated}>
           <p className="mb-6 text-body text-secondary">{t.auth.redirectingToDashboard}</p>
-          <Button href={destination} size="lg" fullWidth>
+          <Button
+            href={destination}
+            size="lg"
+            fullWidth
+            onClick={() => {
+              if (redirectTimer.current) clearTimeout(redirectTimer.current);
+            }}
+          >
             {t.auth.continue}
           </Button>
         </AuthSuccess>
@@ -198,7 +214,8 @@ function ResetPasswordForm() {
                   if (passwordError) setPasswordError(passwordLengthOk(e.target.value) ? '' : t.auth.passwordMinLength);
                 }}
                 onBlur={(e) => {
-                  if (e.target.value) setPasswordError(passwordLengthOk(e.target.value) ? '' : t.auth.passwordMinLength);
+                  if (e.target.value)
+                    setPasswordError(passwordLengthOk(e.target.value) ? '' : t.auth.passwordMinLength);
                 }}
                 required
                 minLength={12}
@@ -208,26 +225,36 @@ function ResetPasswordForm() {
           </Field>
 
           <Field label={t.auth.confirmPasswordLabel} id="confirm-password" error={confirmError}>
-            <TextInput
-              ref={confirmRef}
-              size="lg"
-              autoComplete="new-password"
-              type={showPassword ? 'text' : 'password'}
-              value={confirmPassword}
-              onChange={(e) => {
-                setConfirmPassword(e.target.value);
-                if (confirmError && e.target.value === password) setConfirmError('');
-              }}
-              onBlur={(e) => {
-                if (e.target.value) setConfirmError(e.target.value === password ? '' : t.auth.passwordsDontMatch);
-              }}
-              required
-              minLength={12}
-              maxLength={128}
-            />
+            {(control) => (
+              <TextInput
+                {...control}
+                ref={confirmRef}
+                size="lg"
+                autoComplete="new-password"
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  if (confirmError && e.target.value === password) setConfirmError('');
+                }}
+                onBlur={(e) => {
+                  if (e.target.value) setConfirmError(e.target.value === password ? '' : t.auth.passwordsDontMatch);
+                }}
+                required
+                minLength={12}
+                maxLength={128}
+              />
+            )}
           </Field>
 
-          <Button type="submit" size="lg" fullWidth loading={loading} loadingLabel={t.auth.updatingPassword} disabled={loading || !setupUserId}>
+          <Button
+            type="submit"
+            size="lg"
+            fullWidth
+            loading={loading}
+            loadingLabel={t.auth.updatingPassword}
+            disabled={loading || !setupUserId}
+          >
             {t.auth.updatePassword}
           </Button>
         </form>

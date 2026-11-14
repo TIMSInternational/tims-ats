@@ -5,7 +5,7 @@ import { isMfaPrivileged } from '@tims/shared';
 import { useI18n } from '../../lib/i18n';
 import { isSsoSignInOffered } from '../../lib/auth/sso-sign-in';
 import { Button } from '../../components/button';
-import { AuthCard, AUTH_TITLE_CLASSES } from '../(auth)/auth-card';
+import { AuthCard, AUTH_ERROR_CLASSES, AUTH_TITLE_CLASSES } from '../(auth)/auth-card';
 import { InvitationHeader } from './invitation-header';
 import { InvitationSummary } from './invitation-summary';
 import { InvitationNotice } from './invitation-notice';
@@ -88,10 +88,7 @@ export function InvitationSetup() {
               busy={setup.busy}
             />
             {setup.error && (
-              <p
-                role="alert"
-                className="mt-4 rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-body text-danger"
-              >
+              <p role="alert" className={`mt-4 ${AUTH_ERROR_CLASSES}`}>
                 {setup.error}
               </p>
             )}

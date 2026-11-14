@@ -3765,8 +3765,7 @@
     "errorGeneric": "No se pudo completar la acción. Revisa tu conexión e inténtalo de nuevo.",
     "enrollFailedTitle": "No se pudo preparar la verificación en dos pasos",
     "enrollFailedDesc": "Revisa tu conexión e inténtalo de nuevo. Si sigue fallando, contacta al administrador de tu empresa.",
-    "qrAlt": "Código QR para tu app de autenticación",
-    "secretGroupsLabel": "Clave de configuración"
+    "qrAlt": "Código QR para tu app de autenticación"
   },
   "alertRules": {
     "title": "Reglas de alerta",

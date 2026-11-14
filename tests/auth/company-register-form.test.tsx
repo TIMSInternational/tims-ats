@@ -9,6 +9,20 @@ vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: en }) }));
 import { RegisterForm } from '../../apps/web/app/(auth)/register/register-form';
 
 describe('company registration password policy', () => {
+  // Field must not strip the native `required` (an empty submit is stopped by the browser, as before).
+  it('keeps every field natively required', () => {
+    render(<RegisterForm accountType="company" />);
+    for (const label of [
+      en.auth.firstName,
+      en.auth.lastName,
+      en.auth.companyName,
+      en.auth.corporateEmail,
+      en.auth.password,
+    ]) {
+      expect(screen.getByLabelText(label)).toBeRequired();
+    }
+  });
+
   it('rejects an eleven-character password before calling Supabase', () => {
     mocks.signUp.mockReset();
     render(<RegisterForm accountType="company" />);

@@ -1,4 +1,5 @@
 import { Button } from '../../components/button';
+import { AUTH_NOTICE_CLASSES } from '../(auth)/auth-card';
 
 /** A blocking message with one way forward (retry a failed load, or sign out another session first). */
 export function InvitationNotice({
@@ -16,7 +17,7 @@ export function InvitationNotice({
 }) {
   return (
     <div className="mt-6">
-      <p role="alert" className="rounded-xl border border-warning/20 bg-warning-bg px-4 py-3 text-body text-warning">
+      <p role="alert" className={AUTH_NOTICE_CLASSES}>
         {message}
       </p>
       <Button variant={variant} size="lg" fullWidth disabled={busy} onClick={onAction} className="mt-4">

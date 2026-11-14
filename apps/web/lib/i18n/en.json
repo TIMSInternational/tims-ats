@@ -3765,8 +3765,7 @@
     "errorGeneric": "Couldn't complete that. Check your connection and try again.",
     "enrollFailedTitle": "Couldn't set up two-step verification",
     "enrollFailedDesc": "Check your connection and try again. If it keeps failing, contact your company administrator.",
-    "qrAlt": "QR code for your authenticator app",
-    "secretGroupsLabel": "Setup key"
+    "qrAlt": "QR code for your authenticator app"
   },
   "alertRules": {
     "title": "Alert rules",

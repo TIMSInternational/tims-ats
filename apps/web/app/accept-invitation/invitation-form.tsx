@@ -8,6 +8,7 @@ import { Button } from '../../components/button';
 import { TEXT_LINK_CLASSES } from '../../components/button-styles';
 import { Field } from '../../components/field';
 import { TextInput } from '../../components/text-input';
+import { AUTH_ERROR_CLASSES } from '../(auth)/auth-card';
 import { CaptchaHint } from '../(auth)/captcha-hint';
 import { InvitationExistingControls } from './invitation-existing-controls';
 import type { useInvitationSetup } from './use-invitation-setup';
@@ -44,24 +45,30 @@ export function InvitationForm({
     <form onSubmit={setup.submit} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
         <Field label={t.first}>
-          <TextInput
-            size="lg"
-            value={fields.firstName}
-            onChange={(e) => fields.setFirstName(e.target.value)}
-            required
-            maxLength={100}
-            autoComplete="given-name"
-          />
+          {(control) => (
+            <TextInput
+              {...control}
+              size="lg"
+              value={fields.firstName}
+              onChange={(e) => fields.setFirstName(e.target.value)}
+              required
+              maxLength={100}
+              autoComplete="given-name"
+            />
+          )}
         </Field>
         <Field label={t.last}>
-          <TextInput
-            size="lg"
-            value={fields.lastName}
-            onChange={(e) => fields.setLastName(e.target.value)}
-            required
-            maxLength={100}
-            autoComplete="family-name"
-          />
+          {(control) => (
+            <TextInput
+              {...control}
+              size="lg"
+              value={fields.lastName}
+              onChange={(e) => fields.setLastName(e.target.value)}
+              required
+              maxLength={100}
+              autoComplete="family-name"
+            />
+          )}
         </Field>
       </div>
 
@@ -79,16 +86,19 @@ export function InvitationForm({
       {!sessionToken && (
         <div>
           <Field label={t.secret} help={passwordHelp}>
-            <TextInput
-              size="lg"
-              type="password"
-              value={fields.secret}
-              onChange={(e) => fields.setSecret(e.target.value)}
-              required
-              minLength={existing ? 1 : 12}
-              maxLength={128}
-              autoComplete={existing ? 'current-password' : 'new-password'}
-            />
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                type="password"
+                value={fields.secret}
+                onChange={(e) => fields.setSecret(e.target.value)}
+                required
+                minLength={existing ? 1 : 12}
+                maxLength={128}
+                autoComplete={existing ? 'current-password' : 'new-password'}
+              />
+            )}
           </Field>
           {existing && (
             <div className="mt-1.5 flex justify-end">
@@ -107,22 +117,25 @@ export function InvitationForm({
 
       {!existing && (
         <Field label={t.confirm} error={mismatch ? error : undefined}>
-          <TextInput
-            ref={confirmRef}
-            size="lg"
-            type="password"
-            value={fields.confirmation}
-            onChange={(e) => fields.setConfirmation(e.target.value)}
-            required
-            minLength={12}
-            maxLength={128}
-            autoComplete="new-password"
-          />
+          {(control) => (
+            <TextInput
+              {...control}
+              ref={confirmRef}
+              size="lg"
+              type="password"
+              value={fields.confirmation}
+              onChange={(e) => fields.setConfirmation(e.target.value)}
+              required
+              minLength={12}
+              maxLength={128}
+              autoComplete="new-password"
+            />
+          )}
         </Field>
       )}
 
       {error && !mismatch && (
-        <p role="alert" className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-body text-danger">
+        <p role="alert" className={AUTH_ERROR_CLASSES}>
           {error}
         </p>
       )}

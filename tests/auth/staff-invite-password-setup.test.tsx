@@ -71,6 +71,8 @@ describe('staff invitation password setup', () => {
     });
     expect(window.location.hash).toBe('');
     expect(state.getSession).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('New password')).toBeRequired();
+    expect(screen.getByLabelText('Confirm password')).toBeRequired();
 
     fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-private-staff-password' } });
     fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'a-private-staff-password' } });

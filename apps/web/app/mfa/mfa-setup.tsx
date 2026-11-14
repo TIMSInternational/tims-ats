@@ -10,6 +10,7 @@ import { Button } from '../../components/button';
 import { TEXT_LINK_CLASSES } from '../../components/button-styles';
 import { Field } from '../../components/field';
 import { TextInput } from '../../components/text-input';
+import { AUTH_ERROR_CLASSES, AUTH_NOTICE_CLASSES } from '../(auth)/auth-card';
 import { MfaEnabledPanel } from './mfa-enabled-panel';
 import { MfaEnrollSecret } from './mfa-enroll-secret';
 import { MfaSuccessIcon } from './mfa-success-icon';
@@ -152,7 +153,14 @@ export function MfaSetup({ returnTo, required }: { returnTo?: string; required: 
     <div className="w-full max-w-md">
       <div className="mb-6 text-center">
         <div className="mb-4 inline-flex size-14 items-center justify-center rounded-2xl bg-brand">
-          <svg className="size-7 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+          <svg
+            className="size-7 text-white"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
             <path d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
           </svg>
         </div>
@@ -198,10 +206,7 @@ export function MfaSetup({ returnTo, required }: { returnTo?: string; required: 
         ) : (
           <div className="space-y-4">
             {required && (
-              <div
-                role="status"
-                className="rounded-xl border border-warning/20 bg-warning-bg px-4 py-3 text-body text-warning"
-              >
+              <div role="status" className={AUTH_NOTICE_CLASSES}>
                 {t.mfa.enforcedNotice}
               </div>
             )}
@@ -215,7 +220,7 @@ export function MfaSetup({ returnTo, required }: { returnTo?: string; required: 
             {mode === 'enroll' && qr && <MfaEnrollSecret qr={qr} secret={secret} />}
 
             {error && (
-              <div role="alert" className="rounded-xl border border-danger/20 bg-danger-bg px-4 py-3 text-body text-danger">
+              <div role="alert" className={AUTH_ERROR_CLASSES}>
                 {error}
               </div>
             )}

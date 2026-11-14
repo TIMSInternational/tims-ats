@@ -80,7 +80,11 @@ export default function ForgotPasswordPage() {
             <Link href="/login" className={`${TEXT_LINK_CLASSES} min-h-7`}>
               {t.auth.backToLogin}
             </Link>
-            <button type="button" onClick={() => setSent(false)} className={`${TEXT_LINK_CLASSES} min-h-7 text-callout`}>
+            <button
+              type="button"
+              onClick={() => setSent(false)}
+              className={`${TEXT_LINK_CLASSES} min-h-7 text-callout`}
+            >
               {t.auth.useAnotherEmail}
             </button>
           </div>
@@ -97,15 +101,18 @@ export default function ForgotPasswordPage() {
             </div>
           )}
           <Field label={t.auth.email} id="forgot-email">
-            <TextInput
-              size="lg"
-              autoComplete="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="tu@empresa.com"
-            />
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                autoComplete="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="tu@empresa.com"
+              />
+            )}
           </Field>
           <AuthCaptcha captcha={captcha} />
           <div>

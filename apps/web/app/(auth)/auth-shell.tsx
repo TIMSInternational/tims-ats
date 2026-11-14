@@ -44,7 +44,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             <p className="mb-4 text-callout font-semibold tracking-[0.2em] text-white/80 uppercase">
               {t.auth.platformName}
             </p>
-            <p className="mb-3 font-display text-4xl leading-tight font-bold tracking-tight text-balance text-white">
+            <p className="mb-3 font-display text-display font-bold tracking-tight text-balance text-white">
               <span className="block">{t.auth.humanCapitalMgmt}</span>
               <span className="block">{t.auth.humanDriving}</span>
               <span className="block text-white/70">{t.auth.growth}</span>

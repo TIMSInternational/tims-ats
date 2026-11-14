@@ -162,48 +162,60 @@ export function RegisterForm({ accountType }: { accountType: AccountType }) {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
           <Field label={t.auth.firstName} id="register-first-name">
-            <TextInput
-              size="lg"
-              autoComplete="given-name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-            />
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                autoComplete="given-name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
+            )}
           </Field>
           <Field label={t.auth.lastName} id="register-last-name">
-            <TextInput
-              size="lg"
-              autoComplete="family-name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              required
-            />
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                autoComplete="family-name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
+            )}
           </Field>
         </div>
 
         {accountType === 'company' && (
           <Field label={t.auth.companyName} id="register-company">
-            <TextInput
-              size="lg"
-              autoComplete="organization"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              required
-              placeholder={t.auth.companyNamePlaceholder}
-            />
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
+                autoComplete="organization"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+                placeholder={t.auth.companyNamePlaceholder}
+              />
+            )}
           </Field>
         )}
 
         <Field label={accountType === 'company' ? t.auth.corporateEmail : t.auth.email} id="register-email">
-          <TextInput
-            size="lg"
-            autoComplete="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            placeholder="tu@empresa.com"
-          />
+          {(control) => (
+            <TextInput
+              {...control}
+              size="lg"
+              autoComplete="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="tu@empresa.com"
+            />
+          )}
         </Field>
 
         <Field label={t.auth.password} id="register-password" help={t.auth.passwordHelp} error={passwordError}>
