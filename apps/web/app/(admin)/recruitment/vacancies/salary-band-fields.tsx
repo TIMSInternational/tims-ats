@@ -5,6 +5,7 @@ import { MoneyInput } from '../../../../components/money-input';
 import { currencyOptions } from '../../../../lib/currency-options';
 import type { SalaryBandStatus } from '../../../../lib/money-amount';
 import { inputCls, labelCls } from './create-modal.helpers';
+import { CHOICE_INPUT_CLASSES, CHOICE_ROW_CLASSES } from '../../../../components';
 
 export type SalaryBandPeriod = 'monthly' | 'yearly';
 export type SalaryBandPatch = Partial<{
@@ -84,7 +85,7 @@ export function SalaryBandFields({
           <select
             id={`${idPrefix}-currency`}
             value={currency}
-            className={`${inputCls} bg-white`}
+            className={`${inputCls} pr-8`}
             onChange={(e) => onChange({ currency: e.target.value })}
           >
             {/* A legacy currency outside today's list stays selectable, so an unrelated edit never drops it. */}
@@ -103,7 +104,7 @@ export function SalaryBandFields({
           <select
             id={`${idPrefix}-period`}
             value={salaryPeriod}
-            className={`${inputCls} bg-white`}
+            className={`${inputCls} pr-8`}
             onChange={(e) => onChange({ salaryPeriod: e.target.value === 'yearly' ? 'yearly' : 'monthly' })}
           >
             <option value="monthly">{t.vacancies.monthly}</option>
@@ -112,19 +113,19 @@ export function SalaryBandFields({
         </div>
       </div>
       {status.range.error === 'minAboveMax' && (
-        <p role="alert" className="mt-2 text-[11px] text-[#991b1b]">
+        <p role="alert" className="mt-2 text-callout text-danger">
           {t.vacancies.editSalaryRange}
         </p>
       )}
       {status.range.wide && (
-        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-[#92400e]">
+        <div className="mt-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-callout text-warning">
           <p>{t.money.wideRange}</p>
-          <label className="mt-1 flex items-center gap-2">
+          <label className={`mt-1 ${CHOICE_ROW_CLASSES} text-callout text-warning`}>
             <input
               type="checkbox"
               checked={wideConfirmed}
               onChange={(e) => onConfirmWide(e.target.checked)}
-              className="h-4 w-4 rounded border-[#EDEDED]"
+              className={CHOICE_INPUT_CLASSES}
             />
             <span>{t.money.confirmWideRange}</span>
           </label>

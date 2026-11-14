@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { UserPicker } from '../../../../components';
+import { Button, UserPicker } from '../../../../components';
 import type { PickedUser } from '../../../../components/user-picker';
 import { useVacancyOrgOptions } from '../../../../lib/platform-api/org-structure-options';
-import { inputCls, labelCls } from './create-modal.helpers';
+import { hintCls, inputCls, labelCls } from './create-modal.helpers';
 
 interface VacancyOrgFieldsProps {
   businessUnitId: string | null;
@@ -15,8 +15,6 @@ interface VacancyOrgFieldsProps {
   onTeamChange: (id: string | null) => void;
   onHiringManagerChange: (user: PickedUser | null) => void;
 }
-
-const hintCls = 'text-[11px] text-[#8B8B8B] mt-1';
 
 /**
  * Business unit, team and hiring manager for a new vacancy — the anchors leader (team) and unit-scoped
@@ -37,13 +35,15 @@ export function VacancyOrgFields({
   const selectedTeam = options.teams.find((team) => team.id === teamId);
 
   return (
-    <div className="border-t border-[#EDEDED] pt-4 space-y-3">
-      <p className="text-[13px] font-medium text-[#1F114C]">{t.vacancies.orgPlacementTitle}</p>
+    <section aria-labelledby="vacancy-org-title" className="space-y-3 border-t border-border pt-4">
+      <h3 id="vacancy-org-title" className="text-subheading font-semibold text-brand">
+        {t.vacancies.orgPlacementTitle}
+      </h3>
 
       {options.failure === 'forbidden' ? (
         <p className={hintCls}>{t.vacancies.orgPlacementForbidden}</p>
       ) : options.failure === 'unavailable' ? (
-        <p role="alert" className="text-[11px] text-[#DD0C15]">
+        <p role="alert" className="text-callout text-danger">
           {t.vacancies.orgPlacementLoadError}
         </p>
       ) : options.isLoading ? (
@@ -51,7 +51,7 @@ export function VacancyOrgFields({
       ) : options.units.length === 0 ? (
         <p className={hintCls}>{t.vacancies.orgPlacementNoUnits}</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="vacancy-business-unit" className={labelCls}>
               {t.vacancies.businessUnitField}
@@ -63,7 +63,7 @@ export function VacancyOrgFields({
                 onBusinessUnitChange(e.target.value || null);
                 onTeamChange(null);
               }}
-              className={`${inputCls} bg-white`}
+              className={`${inputCls} pr-8`}
             >
               <option value="">{t.vacancies.noBusinessUnit}</option>
               {options.units.map((unit) => (
@@ -82,7 +82,8 @@ export function VacancyOrgFields({
               value={teamId ?? ''}
               onChange={(e) => onTeamChange(e.target.value || null)}
               disabled={!businessUnitId}
-              className={`${inputCls} bg-white disabled:bg-[#F6F6F6] disabled:text-[#B8B8B8]`}
+              aria-describedby={selectedTeam && !selectedTeam.hasLeader ? 'vacancy-team-hint' : undefined}
+              className={`${inputCls} pr-8`}
             >
               <option value="">{businessUnitId ? t.vacancies.noTeam : t.vacancies.pickUnitFirst}</option>
               {options.teams.map((team) => (
@@ -91,31 +92,34 @@ export function VacancyOrgFields({
                 </option>
               ))}
             </select>
-            {selectedTeam && !selectedTeam.hasLeader && <p className={hintCls}>{t.vacancies.teamWithoutLeader}</p>}
+            {selectedTeam && !selectedTeam.hasLeader && (
+              <p id="vacancy-team-hint" className={hintCls}>
+                {t.vacancies.teamWithoutLeader}
+              </p>
+            )}
           </div>
         </div>
       )}
 
       <div>
-        <p className={labelCls}>{t.vacancies.hiringManager}</p>
+        <p id="vacancy-hiring-manager-label" className={labelCls}>
+          {t.vacancies.hiringManager}
+        </p>
         {hiringManager ? (
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-[#EDEDED] px-3 h-10">
-            <span className="text-sm text-[#333] truncate">
+          <div className="flex min-h-9 items-center justify-between gap-2 rounded-lg border border-field-border px-3">
+            <span className="truncate text-body text-primary">
               {hiringManager.firstName} {hiringManager.lastName}
             </span>
-            <button
-              type="button"
-              onClick={() => onHiringManagerChange(null)}
-              className="text-[12px] text-[#DD0C15] font-medium"
-            >
+            <Button variant="tertiary" size="sm" onClick={() => onHiringManagerChange(null)}>
               {t.vacancies.clearHiringManager}
-            </button>
+            </Button>
           </div>
         ) : pickingManager ? (
           <UserPicker
             // Not vacancy_approver: a hiring manager need not hold vacancy:approve, and that picker is gated on
             // vacancy:update. vacancy_assignee lists any active member, like vacancy.create accepts.
             purpose="vacancy_assignee"
+            ariaLabelledBy="vacancy-hiring-manager-label"
             onSelect={(_id, user) => {
               onHiringManagerChange(user);
               setPickingManager(false);
@@ -125,16 +129,18 @@ export function VacancyOrgFields({
             emptyLabel={t.vacancies.noApproversFound}
           />
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => setPickingManager(true)}
-            className="h-9 px-3 rounded-lg border border-[#EDEDED] text-[12px] text-[#1F114C] font-medium hover:bg-[#F6F6F6] transition"
+            aria-describedby="vacancy-hiring-manager-hint"
           >
             {t.vacancies.pickHiringManager}
-          </button>
+          </Button>
         )}
-        <p className={hintCls}>{t.vacancies.hiringManagerHint}</p>
+        <p id="vacancy-hiring-manager-hint" className={hintCls}>
+          {t.vacancies.hiringManagerHint}
+        </p>
       </div>
-    </div>
+    </section>
   );
 }

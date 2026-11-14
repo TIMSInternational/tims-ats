@@ -4,11 +4,12 @@ import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
-import { Drawer } from '../../../../../components';
+import { Button, Drawer } from '../../../../../components';
 import { usePermissions } from '../../../../../lib/permissions';
 import { salaryBandStatus } from '../../../../../lib/money-amount';
 import { EditVacancyFields } from './edit-vacancy-fields';
 import { CompetenciesSection } from '../competencies-section';
+import { requestDialogClose } from '../request-dialog-close';
 import {
   competenciesChanged,
   draftsFromStored,
@@ -93,9 +94,36 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
   };
 
   return (
-    <Drawer title={t.vacancies.editVacancyTitle} onClose={onClose}>
+    <Drawer
+      title={t.vacancies.editVacancyTitle}
+      onClose={onClose}
+      size="lg"
+      dirty={hasChanges && !update.isPending}
+      footer={
+        <>
+          {!hasChanges && error === null && (
+            <p className="text-callout text-secondary sm:mr-auto sm:self-center">{t.vacancies.editNoChanges}</p>
+          )}
+          <Button
+            variant="secondary"
+            onClick={(e) => requestDialogClose(e, t.common.close, onClose)}
+            disabled={update.isPending}
+          >
+            {t.common.cancel}
+          </Button>
+          <Button
+            onClick={save}
+            disabled={error !== null || competencyError !== null || !hasChanges}
+            loading={update.isPending}
+            loadingLabel={t.common.saving}
+          >
+            {t.vacancies.editSave}
+          </Button>
+        </>
+      }
+    >
       {(vacancyStatus === 'published' || vacancyStatus === 'frozen') && (
-        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-[#92400e]">
+        <p className="mb-4 rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-callout text-warning">
           {vacancyStatus === 'published' ? t.vacancies.editPublishedNotice : t.vacancies.editFrozenNotice}
         </p>
       )}
@@ -125,7 +153,7 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
       {errorText && (
         <p
           role="alert"
-          className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-[#991b1b]"
+          className="mt-4 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-callout text-danger"
         >
           {errorText}
         </p>
@@ -133,32 +161,11 @@ export function EditVacancyDrawer({ vacancyId, vacancyStatus, vacancy, onClose }
       {update.error && (
         <p
           role="alert"
-          className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-[#991b1b]"
+          className="mt-4 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-callout text-danger"
         >
           {t.vacancies.editFailed}: {update.error.message}
         </p>
       )}
-
-      <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-[#EDEDED]">
-        {!hasChanges && error === null && (
-          <p className="mr-auto text-[11px] text-[#8B8B8B]">{t.vacancies.editNoChanges}</p>
-        )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition"
-        >
-          {t.common.cancel}
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={update.isPending || error !== null || competencyError !== null || !hasChanges}
-          className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
-        >
-          {update.isPending ? t.common.saving : t.vacancies.editSave}
-        </button>
-      </div>
     </Drawer>
   );
 }

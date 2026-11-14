@@ -10,13 +10,11 @@ import { FreezeVacancyConfirm } from '../freeze-vacancy-confirm';
 import { ResumeVacancyConfirm } from '../resume-vacancy-confirm';
 import { EditVacancyDrawer } from './edit-vacancy-drawer';
 import { isVacancyEditable } from './edit-vacancy-form';
+import { Button } from '../../../../../components';
 
 interface VacancyLifecycleActionsProps {
   vacancy: VacancyDetail;
 }
-
-const secondaryBtn =
-  'flex items-center gap-1.5 border border-[#EDEDED] text-[#1F114C] px-3 h-8 rounded-lg text-[12px] font-medium hover:bg-[#F6F6F6] transition';
 
 /**
  * Vacancy detail header actions: "Editar" (vacancy.update, vacancy:update, editable statuses only),
@@ -72,29 +70,18 @@ export function VacancyLifecycleActions({ vacancy: v }: VacancyLifecycleActionsP
 
   return (
     <>
-      {canResume && (
-        <button
-          type="button"
-          onClick={() => setConfirm('resume')}
-          className="flex items-center gap-1.5 bg-[#1F114C] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#2a1a5c] transition"
-        >
-          {t.vacancies.resumeVacancy}
-        </button>
-      )}
+      {/* Secondary actions first; "Reanudar" is the frozen vacancy's one primary, so it trails. */}
       {canEdit && (
-        <button type="button" onClick={() => setEditing(true)} className={secondaryBtn}>
+        <Button variant="secondary" onClick={() => setEditing(true)}>
           {t.vacancies.editVacancy}
-        </button>
+        </Button>
       )}
       {canFreeze && (
-        <button
-          type="button"
-          onClick={() => setConfirm('freeze')}
-          className="flex items-center gap-1.5 border border-purple-200 text-purple-600 px-3 h-8 rounded-lg text-[12px] font-medium hover:bg-purple-50 transition"
-        >
+        <Button variant="secondary" onClick={() => setConfirm('freeze')}>
           {t.vacancies.freezeVacancy}
-        </button>
+        </Button>
       )}
+      {canResume && <Button onClick={() => setConfirm('resume')}>{t.vacancies.resumeVacancy}</Button>}
 
       {editing && (
         <EditVacancyDrawer vacancyId={v.id} vacancyStatus={v.status} vacancy={v} onClose={() => setEditing(false)} />

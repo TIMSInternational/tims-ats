@@ -48,8 +48,10 @@ beforeEach(() => {
 });
 
 async function openSubmitModal() {
-  const { ApprovalChain } = await import('../../apps/web/app/(admin)/recruitment/vacancies/[id]/approval-chain');
-  render(<ApprovalChain vacancyId={VACANCY} vacancyStatus="draft" approvals={[]} />, { wrapper });
+  // The one way to submit is the header's primary "Enviar para aprobación" (the approval card no longer repeats it).
+  const { SubmitForApprovalCta } =
+    await import('../../apps/web/app/(admin)/recruitment/vacancies/[id]/submit-for-approval-cta');
+  render(<SubmitForApprovalCta vacancyId={VACANCY} vacancyStatus="draft" />, { wrapper });
   fireEvent.click(screen.getByRole('button', { name: 'Enviar para aprobación' }));
 }
 

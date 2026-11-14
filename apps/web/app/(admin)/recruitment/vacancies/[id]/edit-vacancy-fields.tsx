@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import { UserPicker } from '../../../../../components';
+import { Button, UserPicker } from '../../../../../components';
+import { VacancyChoiceGroups } from '../vacancy-choice-groups';
 import type { SalaryBandStatus } from '../../../../../lib/money-amount';
-import { CONTRACT_TYPES, inputCls, labelCls, textareaCls } from '../create-modal.helpers';
+import { CONTRACT_TYPES, hintCls, inputCls, labelCls, textareaCls } from '../create-modal.helpers';
 import { SalaryBandFields } from '../salary-band-fields';
-import type { EditVacancyForm, Priority, RemotePolicy } from './edit-vacancy-form';
+import type { EditVacancyForm } from './edit-vacancy-form';
 
 interface EditVacancyFieldsProps {
   form: EditVacancyForm;
@@ -16,8 +17,6 @@ interface EditVacancyFieldsProps {
   wideConfirmed: boolean;
   onConfirmWide: (confirmed: boolean) => void;
 }
-
-const hintCls = 'text-[11px] text-[#8B8B8B] mt-1';
 
 /** The editable fields of the vacancy "Editar" drawer, laid out for the drawer's single column. */
 export function EditVacancyFields({
@@ -66,23 +65,7 @@ export function EditVacancyFields({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label htmlFor="edit-vacancy-modality" className={labelCls}>
-            {t.vacancies.workModality}
-          </label>
-          <select
-            id="edit-vacancy-modality"
-            value={form.remotePolicy}
-            className={`${inputCls} bg-white`}
-            onChange={(e) => onChange({ remotePolicy: e.target.value as RemotePolicy | '' })}
-          >
-            {form.remotePolicy === '' && <option value="">—</option>}
-            <option value="onsite">{t.vacancies.onsite}</option>
-            <option value="hybrid">{t.vacancies.hybrid}</option>
-            <option value="remote">{t.vacancies.remote}</option>
-          </select>
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label htmlFor="edit-vacancy-contract" className={labelCls}>
             {t.vacancies.contractTypeLabel}
@@ -90,7 +73,7 @@ export function EditVacancyFields({
           <select
             id="edit-vacancy-contract"
             value={form.contractType}
-            className={`${inputCls} bg-white`}
+            className={`${inputCls} pr-8`}
             onChange={(e) => onChange({ contractType: e.target.value })}
           >
             {form.contractType === '' && <option value="">—</option>}
@@ -108,6 +91,7 @@ export function EditVacancyFields({
           <input
             id="edit-vacancy-positions"
             type="number"
+            inputMode="numeric"
             min={1}
             max={100}
             value={form.positions}
@@ -115,23 +99,15 @@ export function EditVacancyFields({
             onChange={(e) => onChange({ positions: Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 1)) })}
           />
         </div>
-        <div>
-          <label htmlFor="edit-vacancy-priority" className={labelCls}>
-            {t.vacancies.priority}
-          </label>
-          <select
-            id="edit-vacancy-priority"
-            value={form.priority}
-            className={`${inputCls} bg-white`}
-            onChange={(e) => onChange({ priority: e.target.value as Priority })}
-          >
-            <option value="low">{t.vacancies.priorityLow}</option>
-            <option value="medium">{t.vacancies.priorityMedium}</option>
-            <option value="high">{t.vacancies.priorityHigh}</option>
-            <option value="urgent">{t.vacancies.priorityUrgent}</option>
-          </select>
-        </div>
       </div>
+
+      {/* The same segmented groups as the create wizard (one way to set modality and priority). */}
+      <VacancyChoiceGroups
+        remotePolicy={form.remotePolicy}
+        onRemotePolicyChange={(remotePolicy) => onChange({ remotePolicy })}
+        priority={form.priority}
+        onPriorityChange={(priority) => onChange({ priority })}
+      />
 
       <div>
         <label htmlFor="edit-vacancy-description" className={labelCls}>
@@ -142,14 +118,17 @@ export function EditVacancyFields({
           value={form.description}
           maxLength={5000}
           rows={10}
+          aria-describedby="edit-vacancy-description-hint"
           className={textareaCls}
           onChange={(e) => onChange({ description: e.target.value })}
         />
-        <p className={hintCls}>{t.vacancies.editDescriptionHint}</p>
+        <p id="edit-vacancy-description-hint" className={hintCls}>
+          {t.vacancies.editDescriptionHint}
+        </p>
       </div>
 
-      <div className="border-t border-[#EDEDED] pt-4">
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.vacancies.salaryRange}</p>
+      <div className="border-t border-border pt-4">
+        <h3 className="mb-3 text-subheading font-semibold text-brand">{t.vacancies.salaryRange}</h3>
         <SalaryBandFields
           idPrefix="edit-vacancy"
           salaryMin={form.salaryMin}
@@ -160,30 +139,29 @@ export function EditVacancyFields({
           status={salaryStatus}
           wideConfirmed={wideConfirmed}
           onConfirmWide={onConfirmWide}
-          gridClassName="grid grid-cols-2 gap-3"
+          gridClassName="grid grid-cols-1 gap-3 sm:grid-cols-2"
         />
       </div>
 
-      <div className="border-t border-[#EDEDED] pt-4">
-        <p className={labelCls}>{t.vacancies.hiringManager}</p>
+      <div className="border-t border-border pt-4">
+        <p id="edit-vacancy-hiring-manager-label" className={labelCls}>
+          {t.vacancies.hiringManager}
+        </p>
         {form.hiringManager ? (
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-[#EDEDED] px-3 h-10">
-            <span className="text-sm text-[#333] truncate">
+          <div className="flex min-h-9 items-center justify-between gap-2 rounded-lg border border-field-border px-3">
+            <span className="truncate text-body text-primary">
               {form.hiringManager.firstName} {form.hiringManager.lastName}
             </span>
-            <button
-              type="button"
-              onClick={() => onChange({ hiringManager: null })}
-              className="text-[12px] text-[#DD0C15] font-medium"
-            >
+            <Button variant="tertiary" size="sm" onClick={() => onChange({ hiringManager: null })}>
               {t.vacancies.clearHiringManager}
-            </button>
+            </Button>
           </div>
         ) : pickingManager ? (
           <UserPicker
             // Same directory as the create wizard (every active member may be the vacancy's hiring manager).
             purpose="vacancy_assignee"
             autoFocus={false}
+            ariaLabelledBy="edit-vacancy-hiring-manager-label"
             onSelect={(_id, user) => {
               onChange({ hiringManager: user });
               setPickingManager(false);
@@ -193,13 +171,9 @@ export function EditVacancyFields({
             emptyLabel={t.vacancies.noApproversFound}
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => setPickingManager(true)}
-            className="h-9 px-3 rounded-lg border border-[#EDEDED] text-[12px] text-[#1F114C] font-medium hover:bg-[#F6F6F6] transition"
-          >
+          <Button variant="secondary" onClick={() => setPickingManager(true)}>
             {t.vacancies.pickHiringManager}
-          </button>
+          </Button>
         )}
         <p className={hintCls}>{t.vacancies.editHiringManagerHint}</p>
       </div>

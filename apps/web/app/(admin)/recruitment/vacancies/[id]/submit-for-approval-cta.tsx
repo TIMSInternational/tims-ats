@@ -7,6 +7,7 @@ import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { canSubmitForApproval } from '../../../../../lib/vacancy-approval-helpers';
 import { SubmitApprovalModal } from './submit-approval-modal';
+import { Button } from '../../../../../components';
 
 interface SubmitForApprovalCtaProps {
   vacancyId: string;
@@ -42,16 +43,14 @@ export function SubmitForApprovalCta({ vacancyId, vacancyStatus }: SubmitForAppr
 
   return (
     <>
-      <button
-        type="button"
+      <Button
         onClick={() => {
           submit.reset();
           setOpen(true);
         }}
-        className="flex items-center gap-1.5 bg-[#1F114C] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#2a1a5c] transition"
       >
         {t.vacancies.submitForApproval}
-      </button>
+      </Button>
       {open && (
         <SubmitApprovalModal
           vacancyId={vacancyId}
