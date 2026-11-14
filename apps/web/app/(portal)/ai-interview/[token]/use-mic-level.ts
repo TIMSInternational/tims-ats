@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react';
 import { computeRmsLevel } from './audio-level';
 
+export interface MicLevel {
+  /** Current input level, 0..1. */
+  level: number;
+  /** The browser refused the microphone (permission denied or no device): the lobby says how to fix it. */
+  blocked: boolean;
+}
+
 /**
- * Returns the current microphone input level (0..1) while `active`.
- * Opens its own preview stream + AudioContext and tears everything down
- * when `active` flips false or the component unmounts.
+ * Returns the current microphone input level (0..1) while `active`, and whether the microphone could not be
+ * opened. Opens its own preview stream + AudioContext and tears everything down when `active` flips false or
+ * the component unmounts.
  */
-export function useMicLevel(active: boolean): number {
+export function useMicLevel(active: boolean): MicLevel {
   const [level, setLevel] = useState(0);
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     if (!active) {
@@ -26,6 +34,7 @@ export function useMicLevel(active: boolean): number {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
+        setBlocked(false);
         ctx = new AudioContext();
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -40,6 +49,7 @@ export function useMicLevel(active: boolean): number {
         tick();
       } catch {
         setLevel(0);
+        if (!cancelled) setBlocked(true);
       }
     })();
 
@@ -51,5 +61,5 @@ export function useMicLevel(active: boolean): number {
     };
   }, [active]);
 
-  return level;
+  return { level, blocked };
 }

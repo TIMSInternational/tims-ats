@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useI18n } from '../../../../../lib/i18n';
+import { StatusBadge } from '../../../../../components/status-badge';
+import { buttonClasses } from '../../../../../components/button-styles';
 import { markdownToPlainText } from '../../../../../lib/markdown-lite';
 import { enumLabel, formatSalaryAmount, parsePortalSalary, salaryPeriodLabel } from '../_lib/vacancy-display';
 
@@ -35,6 +37,9 @@ export function VacancyCard({ vacancy, orgSlug, orgName }: VacancyCardProps) {
   const p = t.portal;
   const employerName = vacancy.company?.name || orgName || p.companyFallback;
   const initial = employerName.charAt(0).toUpperCase();
+  // On a single-employer board the nav already shows the organization: repeat it only for a client company.
+  const showEmployer = Boolean(vacancy.company?.name && vacancy.company.name !== orgName);
+  const href = `/careers/${orgSlug}/${vacancy.id}`;
   const tags = [
     enumLabel(vacancy.contractType, p.contractTypes),
     enumLabel(vacancy.remotePolicy, p.remotePolicies),
@@ -44,65 +49,71 @@ export function VacancyCard({ vacancy, orgSlug, orgName }: VacancyCardProps) {
   const period = salary ? salaryPeriodLabel(salary.period, p) : null;
   const preview = vacancy.description ? markdownToPlainText(vacancy.description) : '';
 
+  // Stretched link: the job title is the link's name, and its ::after covers the card, so the whole card
+  // stays clickable without reading every line of it as one link (accessibility.md › Vision).
   return (
-    <Link href={`/careers/${orgSlug}/${vacancy.id}`} className="group block">
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5 transition-all duration-200 group-hover:border-[#1F114C]/20 group-hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
-        {/* Top row */}
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1F114C]">
-              <span className="text-[11px] font-bold text-white">{initial}</span>
+    <article className="group relative rounded-xl border border-border bg-white p-5 shadow-card transition-[border-color,box-shadow] duration-200 hover:border-brand/20 hover:shadow-popover motion-reduce:transition-none">
+      {/* Top row */}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        {showEmployer ? (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand" aria-hidden="true">
+              <span className="text-subheading font-bold text-white">{initial}</span>
             </div>
-            <div>
-              <p className="text-[12px] font-medium text-[#333]">{employerName}</p>
-              {vacancy.location && <p className="text-[11px] text-muted">{vacancy.location}</p>}
+            <div className="min-w-0">
+              <p className="truncate text-callout font-medium text-primary">{employerName}</p>
+              {vacancy.location && <p className="text-caption text-secondary">{vacancy.location}</p>}
             </div>
           </div>
-          {vacancy.priority === 'urgent' ? (
-            <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-semibold text-amber-600">
-              {p.urgentBadge}
-            </span>
-          ) : isNew(vacancy.createdAt) ? (
-            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-600">
-              {p.newBadge}
-            </span>
-          ) : null}
-        </div>
-
-        {/* Title & description */}
-        <h3 className="text-[15px] font-semibold text-[#1F114C] transition-colors group-hover:text-[#DD0C15]">
-          {vacancy.title}
-        </h3>
-        {preview && <p className="mt-1 line-clamp-2 text-[12px] text-[#585858]">{preview}</p>}
-
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {tags.map((tag) => (
-              <span key={tag} className="rounded-full bg-[#F6F6F6] px-2 py-0.5 text-[10px] text-[#585858]">
-                {tag}
-              </span>
-            ))}
-          </div>
+        ) : (
+          <p className="min-w-0 text-callout text-secondary">{vacancy.location}</p>
         )}
-
-        {/* Bottom */}
-        <div className="mt-4 flex items-center justify-between border-t border-[#EDEDED] pt-4">
-          <div>
-            {salary ? (
-              <>
-                <p className="text-[13px] font-semibold text-[#1F114C]">{formatSalaryAmount(salary, locale, p)}</p>
-                {period && <p className="text-[10px] text-muted">{period}</p>}
-              </>
-            ) : (
-              <p className="text-[12px] text-muted">{p.salaryNegotiable}</p>
-            )}
-          </div>
-          <span className="rounded-lg bg-[#1F114C] px-4 py-1.5 text-[12px] font-medium text-white transition-colors group-hover:bg-[#DD0C15]">
-            {p.applyCta}
-          </span>
-        </div>
+        {vacancy.priority === 'urgent' ? (
+          <StatusBadge tone="warning">{p.urgentBadge}</StatusBadge>
+        ) : isNew(vacancy.createdAt) ? (
+          <StatusBadge tone="info">{p.newBadge}</StatusBadge>
+        ) : null}
       </div>
-    </Link>
+
+      {/* Title & description */}
+      <h3 className="text-heading font-semibold text-brand">
+        <Link
+          href={href}
+          className="underline-offset-2 after:absolute after:inset-0 after:rounded-xl after:content-[''] group-hover:underline"
+        >
+          {vacancy.title}
+        </Link>
+      </h3>
+      {preview && <p className="mt-1 line-clamp-2 text-callout text-secondary">{preview}</p>}
+
+      {/* Tags */}
+      {tags.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <li key={tag} className="rounded-full bg-surface px-2 py-0.5 text-caption text-secondary">
+              {tag}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Bottom */}
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+        <div>
+          {salary ? (
+            <>
+              <p className="text-body font-semibold text-brand tabular-nums">{formatSalaryAmount(salary, locale, p)}</p>
+              {period && <p className="text-caption text-secondary">{period}</p>}
+            </>
+          ) : (
+            <p className="text-callout text-secondary">{p.salaryNegotiable}</p>
+          )}
+        </div>
+        {/* Decorative: the title link above is the one way in; this repeats it visually. */}
+        <span aria-hidden="true" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+          {p.applyCta}
+        </span>
+      </div>
+    </article>
   );
 }

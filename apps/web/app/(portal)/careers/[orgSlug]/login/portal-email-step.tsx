@@ -2,6 +2,8 @@
 
 import { TurnstileWidget } from '../../../../../components/turnstile-widget';
 import { useI18n } from '../../../../../lib/i18n';
+import { Button } from '../../../../../components/button';
+import { FIELD_LABEL_CLASSES, inputClasses } from '../../../../../components/field-styles';
 
 interface PortalEmailStepProps {
   email: string;
@@ -45,20 +47,17 @@ export function PortalEmailStep({
       className="space-y-4"
     >
       {!error && showLinkFailed && (
-        <div
-          role="alert"
-          className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-800"
-        >
+        <div role="alert" className="rounded-lg bg-warning-bg p-3 text-callout text-warning">
           {m.linkExpired}
         </div>
       )}
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+        <div role="alert" className="rounded-lg bg-danger-bg p-3 text-callout text-danger">
           {error}
         </div>
       )}
       <div>
-        <label htmlFor="portal-login-email" className="block text-[12px] font-medium text-[#585858] mb-1.5">
+        <label htmlFor="portal-login-email" className={FIELD_LABEL_CLASSES}>
           {m.emailLabel}
         </label>
         <input
@@ -70,25 +69,23 @@ export function PortalEmailStep({
           value={email}
           onChange={(e) => onEmailChange(e.target.value)}
           placeholder={m.emailPlaceholder}
-          className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
+          className={inputClasses('lg')}
         />
       </div>
       {turnstileSiteKey && <TurnstileWidget key={captchaKey} siteKey={turnstileSiteKey} onToken={onCaptchaToken} />}
-      <button
+      <Button
         type="submit"
-        disabled={sending || !email.trim() || !captchaSatisfied}
-        className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
+        size="lg"
+        fullWidth
+        disabled={!email.trim() || !captchaSatisfied}
+        loading={sending}
+        loadingLabel={m.sending}
       >
-        {sending ? m.sending : m.sendLink}
-      </button>
-      <button
-        type="button"
-        onClick={onHaveCode}
-        disabled={sending || !email.includes('@')}
-        className="w-full text-[13px] font-semibold text-[#1F114C] hover:underline disabled:text-muted disabled:no-underline disabled:cursor-not-allowed"
-      >
+        {m.sendLink}
+      </Button>
+      <Button variant="tertiary" fullWidth onClick={onHaveCode} disabled={sending || !email.includes('@')}>
         {m.haveCode}
-      </button>
+      </Button>
     </form>
   );
 }

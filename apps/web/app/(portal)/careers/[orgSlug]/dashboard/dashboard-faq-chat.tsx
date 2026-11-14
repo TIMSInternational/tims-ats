@@ -3,6 +3,9 @@
 import { useState, type FormEvent } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { Button } from '../../../../../components/button';
+import { TextArea } from '../../../../../components/text-area';
+import { DASHBOARD_CARD } from './dashboard-styles';
 
 type Source = 'profile' | 'applications' | 'interviews' | 'offers';
 
@@ -65,12 +68,16 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
   };
 
   return (
-    <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <h2 className="text-[14px] font-semibold text-[#1F114C]">{t.portalDashboard.faqTitle}</h2>
-          <p className="text-[12px] text-muted mt-1">{t.portalDashboard.faqSubtitle}</p>
-        </div>
+    <section aria-labelledby="dashboard-faq-title" className={DASHBOARD_CARD}>
+      {/* The answers are generated: the title, the subtitle and every reply label say so (generative-ai.md). */}
+      <div className="mb-4">
+        <h2 id="dashboard-faq-title" className="flex items-center gap-2 text-heading font-semibold text-brand">
+          <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+          </svg>
+          {t.portalDashboard.faqTitle}
+        </h2>
+        <p className="mt-1 text-base text-secondary sm:text-body">{t.portalDashboard.faqSubtitle}</p>
       </div>
 
       {messages.length === 0 ? (
@@ -81,7 +88,7 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
               type="button"
               onClick={() => submitQuestion(suggestion)}
               disabled={ask.isPending}
-              className="rounded-full border border-[#EDEDED] px-3 py-1.5 text-[12px] font-medium text-[#1F114C] hover:bg-[#F6F6F6] disabled:opacity-50"
+              className="min-h-7 rounded-full border border-field-border px-3 py-1.5 text-callout font-medium text-brand hover:bg-surface disabled:opacity-50 pointer-coarse:min-h-11"
             >
               {suggestion}
             </button>
@@ -93,19 +100,19 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
             const mine = message.role === 'user';
             return (
               <div key={`${message.role}-${index}`} className={mine ? 'text-right' : 'text-left'}>
-                <p className="text-[11px] font-medium text-muted mb-1">
+                <p className="mb-1 text-caption font-medium text-secondary">
                   {mine ? t.portalDashboard.faqYouLabel : t.portalDashboard.faqAssistantLabel}
                 </p>
                 <div
                   className={
                     mine
-                      ? 'inline-block max-w-[85%] rounded-2xl bg-[#1F114C] px-4 py-2 text-left text-[13px] text-white'
-                      : 'inline-block max-w-[85%] rounded-2xl bg-[#F6F6F6] px-4 py-2 text-left text-[13px] text-[#333]'
+                      ? 'inline-block max-w-[85%] rounded-2xl bg-brand px-4 py-2 text-left text-base text-white sm:text-body'
+                      : 'inline-block max-w-[85%] rounded-2xl bg-surface px-4 py-2 text-left text-base text-primary sm:text-body'
                   }
                 >
                   <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
                   {message.sources && message.sources.length > 0 && (
-                    <p className="mt-2 text-[11px] text-muted">
+                    <p className={`mt-2 text-caption ${mine ? 'text-white/80' : 'text-secondary'}`}>
                       {t.portalDashboard.faqSources}: {message.sources.map((s) => sourceLabel(s, t)).join(', ')}
                     </p>
                   )}
@@ -117,24 +124,26 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
       )}
 
       <form onSubmit={onSubmit} className="flex flex-col gap-2">
-        <textarea
+        <TextArea
           value={question}
           onChange={(event) => setQuestion(event.target.value.slice(0, 800))}
           rows={3}
           maxLength={800}
           placeholder={t.portalDashboard.faqPlaceholder}
           aria-label={t.portalDashboard.faqInputLabel}
-          className="w-full resize-none rounded-xl border border-[#EDEDED] px-3 py-2 text-[13px] text-[#333] placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
+          className="resize-none"
         />
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] text-muted">{t.portalDashboard.faqPrivacy}</p>
-          <button
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-callout text-secondary">{t.portalDashboard.faqPrivacy}</p>
+          <Button
             type="submit"
-            disabled={question.trim().length < 3 || ask.isPending}
-            className="h-9 shrink-0 rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] disabled:opacity-50"
+            disabled={question.trim().length < 3}
+            loading={ask.isPending}
+            loadingLabel={t.portalDashboard.faqSending}
+            className="shrink-0"
           >
-            {ask.isPending ? t.portalDashboard.faqSending : t.portalDashboard.faqSend}
-          </button>
+            {t.portalDashboard.faqSend}
+          </Button>
         </div>
       </form>
     </section>

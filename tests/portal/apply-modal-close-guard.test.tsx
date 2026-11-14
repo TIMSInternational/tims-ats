@@ -19,17 +19,48 @@ vi.mock('../../apps/web/lib/trpc', () => ({
     },
   },
 }));
-// The real Modal routes Escape, backdrop and X to onClose; expose that path as one button.
-vi.mock('../../apps/web/components', () => ({
-  Modal: ({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) => (
-    <div role="dialog" aria-label={title}>
-      <button type="button" onClick={onClose}>
-        modal-dismiss
-      </button>
-      {children}
-    </div>
-  ),
-}));
+// The real Modal routes Escape, backdrop and X to its close request, and — when `dirty` — shows its own
+// in-dialog "¿Descartar los cambios?" prompt instead of closing (components/modal.tsx). Emulate exactly that
+// contract: one dismiss button, plus the prompt's two choices while it is open.
+vi.mock('../../apps/web/components', async () => {
+  const { useState } = await import('react');
+  function Modal({
+    title,
+    onClose,
+    dirty,
+    children,
+    footer,
+  }: {
+    title: string;
+    onClose: () => void;
+    dirty?: boolean;
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+  }) {
+    const [asking, setAsking] = useState(false);
+    return (
+      <div role="dialog" aria-label={title}>
+        <h2>{title}</h2>
+        <button type="button" onClick={() => (dirty ? setAsking(true) : onClose())}>
+          modal-dismiss
+        </button>
+        {asking && (
+          <div role="alertdialog" aria-label="discard-prompt">
+            <button type="button" onClick={() => setAsking(false)}>
+              keep-editing
+            </button>
+            <button type="button" onClick={onClose}>
+              discard
+            </button>
+          </div>
+        )}
+        {children}
+        {footer}
+      </div>
+    );
+  }
+  return { Modal };
+});
 vi.mock('../../apps/web/components/turnstile-widget', () => ({ TurnstileWidget: () => null }));
 
 import { ApplyModal } from '../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_components/apply-modal';
@@ -50,12 +81,7 @@ function renderModal() {
 
 const dismiss = () => fireEvent.click(screen.getByRole('button', { name: 'modal-dismiss' }));
 
-// jsdom here has no window.confirm; install a controllable one per test.
-function stubConfirm() {
-  const confirm = vi.fn<(message?: string) => boolean>(() => true);
-  vi.stubGlobal('confirm', confirm);
-  return confirm;
-}
+const prompt = () => screen.queryByRole('alertdialog', { name: 'discard-prompt' });
 
 beforeEach(() => {
   mocks.applyMutateAsync.mockReset();
@@ -69,28 +95,49 @@ afterEach(() => {
 
 describe('apply modal close guard', () => {
   it('closes an untouched form without asking', () => {
-    const confirm = stubConfirm();
     renderModal();
     dismiss();
-    expect(confirm).not.toHaveBeenCalled();
+    expect(prompt()).toBeNull();
     expect(mocks.onClose).toHaveBeenCalledOnce();
   });
 
   it('asks before discarding typed data, and keeps the form when the candidate says no', () => {
-    const confirm = stubConfirm().mockReturnValue(false);
     renderModal();
     fireEvent.change(screen.getAllByRole('textbox')[0]!, { target: { value: 'Ana' } });
     dismiss();
-    expect(confirm).toHaveBeenCalledWith(p.discardConfirm);
+    expect(prompt()).not.toBeNull();
     expect(mocks.onClose).not.toHaveBeenCalled();
 
-    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: 'keep-editing' }));
+    expect(prompt()).toBeNull();
+    expect(mocks.onClose).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('textbox')[0]).toHaveValue('Ana');
+
     dismiss();
+    fireEvent.click(screen.getByRole('button', { name: 'discard' }));
+    expect(mocks.onClose).toHaveBeenCalledOnce();
+  });
+
+  it('"Cancelar" on step 1 asks the same question before discarding typed data', () => {
+    renderModal();
+    fireEvent.click(screen.getByRole('button', { name: p.cancel }));
+    expect(mocks.onClose).toHaveBeenCalledOnce();
+
+    mocks.onClose.mockReset();
+    fireEvent.change(screen.getAllByRole('textbox')[0]!, { target: { value: 'Ana' } });
+    fireEvent.click(screen.getByRole('button', { name: p.cancel }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(en.common.discardTitle);
+    expect(mocks.onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: en.common.keepEditing }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getAllByRole('textbox')[0]).toHaveValue('Ana');
+
+    fireEvent.click(screen.getByRole('button', { name: p.cancel }));
+    fireEvent.click(screen.getByRole('button', { name: en.common.discard }));
     expect(mocks.onClose).toHaveBeenCalledOnce();
   });
 
   it('ignores every close request while the application is being sent', async () => {
-    stubConfirm().mockReturnValue(true);
     mocks.applyMutateAsync.mockReturnValue(new Promise(() => undefined)); // never settles
     renderModal();
     const inputs = screen.getAllByRole('textbox');
@@ -104,11 +151,11 @@ describe('apply modal close guard', () => {
     await waitFor(() => expect(mocks.applyMutateAsync).toHaveBeenCalledOnce());
 
     dismiss();
+    expect(prompt()).toBeNull();
     expect(mocks.onClose).not.toHaveBeenCalled();
   });
 
   it('after a successful application, points the candidate to the portal and closes without asking', async () => {
-    const confirm = stubConfirm();
     mocks.applyMutateAsync.mockResolvedValue({ received: true });
     renderModal();
     const inputs = screen.getAllByRole('textbox');
@@ -125,7 +172,7 @@ describe('apply modal close guard', () => {
     expect(screen.getByRole('link', { name: p.trackApplications })).toHaveAttribute('href', '/careers/acme/dashboard');
 
     dismiss();
-    expect(confirm).not.toHaveBeenCalled();
+    expect(prompt()).toBeNull();
     expect(mocks.onClose).toHaveBeenCalledOnce();
   });
 });

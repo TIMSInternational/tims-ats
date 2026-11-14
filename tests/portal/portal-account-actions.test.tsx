@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import es from '../../apps/web/lib/i18n/es.json';
 
 // Audit C-33 — the candidate portal's account actions: "Retirar mi postulación" on an application still in
@@ -111,13 +111,13 @@ describe('Retirar mi postulación', () => {
     expect(mocks.withdrawMutate).not.toHaveBeenCalled();
   });
 
-  it('explains an open offer inside the dialog (and as a toast)', async () => {
+  it('explains an open offer inside the dialog, once (no toast: the dialog is still open)', async () => {
     render(<DashboardApplications orgSlug="acme" orgName="Acme" />);
     fireEvent.click(screen.getByRole('button', { name: pd.withdrawAction }));
     await mocks.withdrawOptions.onError?.({ data: { code: 'PRECONDITION_FAILED' } });
     const expected = pd.withdrawErrorOpenOffer.replace('{org}', 'Acme');
     expect((await screen.findByRole('alert')).textContent).toBe(expected);
-    expect(mocks.toast).toHaveBeenCalledWith(expected, { type: 'error' });
+    expect(mocks.toast).not.toHaveBeenCalled();
   });
 
   it('maps every server outcome to candidate copy, never a raw server message', () => {
@@ -175,7 +175,10 @@ describe('Mis datos', () => {
     render(<DashboardProfile orgSlug="acme" profile={profile} />);
     fireEvent.click(screen.getByRole('button', { name: pd.profileEdit }));
     fireEvent.change(screen.getByLabelText(pd.profilePhone), { target: { value: 'llámeme' } });
-    fireEvent.change(screen.getByLabelText(`${pd.profileFirstName} *`), { target: { value: '   ' } });
+    // A required field: the label carries an aria-hidden "*" and the input is marked required.
+    const firstName = screen.getByLabelText(`${pd.profileFirstName}*`);
+    expect(firstName).toBeRequired();
+    fireEvent.change(firstName, { target: { value: '   ' } });
     fireEvent.click(screen.getByRole('button', { name: pd.profileSave }));
 
     const alerts = await screen.findAllByRole('alert');
@@ -188,8 +191,10 @@ describe('Mis datos', () => {
   it('a failed save keeps the form open and says so', async () => {
     render(<DashboardProfile orgSlug="acme" profile={profile} />);
     fireEvent.click(screen.getByRole('button', { name: pd.profileEdit }));
-    mocks.profileOptions.onError?.(new Error('boom'));
-    expect(mocks.toast).toHaveBeenCalledWith(pd.profileError, { type: 'error' });
+    act(() => mocks.profileOptions.onError?.(new Error('boom')));
+    // Said inline, inside the still-open form (not a toast that disappears while the form waits).
+    expect(screen.getByRole('alert')).toHaveTextContent(pd.profileError);
+    expect(mocks.toast).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: pd.profileSave })).toBeTruthy();
   });
 });

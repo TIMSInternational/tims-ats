@@ -12,6 +12,9 @@ import { ApplyModalStep2 } from './apply-modal-step2';
 import { ApplyModalReview } from './apply-modal-review';
 import { ApplySuccess } from './apply-success';
 import { ApplyStepIndicator } from './apply-step-indicator';
+import { ApplyModalFooter } from './apply-modal-footer';
+import { ApplySubmitError } from './apply-submit-error';
+import { DiscardChangesPrompt } from '../../../../../../components/discard-changes-prompt';
 import { useCvUpload } from '../_lib/use-cv-upload';
 import {
   applyErrorField,
@@ -64,6 +67,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   const [consentAccepted, setConsentAccepted] = useState(false);
   // A field the server rejected: its step shows the field error until the value changes.
   const [rejectedField, setRejectedField] = useState<ApplyErrorField | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const cv = useCvUpload(vacancyId);
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -77,22 +81,24 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   const cvUploadFailed = cv.error === 'upload_failed';
 
   // Something typed is lost when the modal unmounts (there is no draft), so closing a filled form
-  // asks first — and nothing closes it while the application is being sent.
+  // asks first (the Modal's in-dialog "¿Descartar los cambios?") — and nothing closes it while the
+  // application is being sent.
   const hasInput = [firstName, lastName, email, phone, location, currentTitle, currentCompany, yearsExperience, linkedinUrl, coverLetter]
     .some((value) => value.trim().length > 0) || cv.file !== null || consentAccepted;
   // A STABLE callback: Modal re-runs its focus effect whenever onClose changes identity, so a fresh
   // function per keystroke would pull focus out of the field being typed in. The guard reads the
   // latest state from a ref instead.
-  const closeState = useRef({ submitting, success, hasInput, onClose, message: p.discardConfirm });
+  const closeState = useRef({ submitting, onClose });
   useEffect(() => {
-    closeState.current = { submitting, success, hasInput, onClose, message: p.discardConfirm };
+    closeState.current = { submitting, onClose };
   });
   const requestClose = useCallback(() => {
-    const s = closeState.current;
-    if (s.submitting) return;
-    if (!s.success && s.hasInput && !window.confirm(s.message)) return;
-    s.onClose();
+    if (closeState.current.submitting) return;
+    closeState.current.onClose();
   }, []);
+  // "Cancelar" is a close request too: with typed data it asks first, with the same in-dialog prompt.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const cancel = () => (hasInput ? setConfirmingCancel(true) : requestClose());
 
   // The vacancy stopped taking applications while the form was open: say so, and refetch the page so
   // it shows the closed state.
@@ -104,6 +110,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
 
   const submit = async ({ skipCv }: { skipCv: boolean }) => {
     if (!isStep1Valid || !isStep2Valid || !consentAccepted) return;
+    setSubmitError(null);
     setSubmitting(true);
     let cvFields: { cvFileKey?: string; cvFileName?: string } = {};
     if (!skipCv) {
@@ -151,15 +158,22 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         handleVacancyClosed();
         return;
       }
-      toast(applyErrorMessage(err, p), { type: 'error' });
-      // A field the candidate can fix: take them back to the step that holds it.
+      // A field the candidate can fix: take them back to the step that holds it, where the field shows
+      // the error. Anything else is said inline, inside the dialog, until the next attempt.
       const field = applyErrorField(err);
       if (field) {
         setRejectedField(field);
         setStep(applyErrorStep(field));
+      } else {
+        setSubmitError(applyErrorMessage(err, p));
       }
       setSubmitting(false);
     }
+  };
+
+  const goToStep = (next: Step) => {
+    setSubmitError(null);
+    setStep(next);
   };
 
   const removeCvAndContinue = () => {
@@ -172,11 +186,37 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   }
 
   return (
-    <Modal title={`${p.applyTitlePrefix} ${vacancyTitle}`} onClose={requestClose} maxWidth="max-w-2xl">
+    <Modal
+      title={`${p.applyTitlePrefix} ${vacancyTitle}`}
+      onClose={requestClose}
+      size="lg"
+      fullScreenOnMobile
+      dirty={hasInput && !submitting}
+      footer={
+        confirmingCancel ? undefined : (
+        <ApplyModalFooter
+          step={step}
+          submitting={submitting}
+          canContinue={
+            step === 1
+              ? isStep1Valid
+              : step === 2
+                ? isStep2Valid
+                : isStep1Valid && isStep2Valid && !submitting && captchaSatisfied && consentAccepted && !cvUploadFailed
+          }
+          onBack={() => goToStep((step - 1) as Step)}
+          onCancel={cancel}
+          onNext={() => goToStep((step + 1) as Step)}
+          onSubmit={() => void submit({ skipCv: false })}
+        />
+        )
+      }
+    >
       <ApplyStepIndicator step={step} labels={[p.stepPersonal, p.stepProfile, p.stepReview]} />
 
       {step === 1 && (
         <ApplyModalStep1
+          showRequiredHint={!isStep1Valid}
           firstName={firstName}
           setFirstName={setFirstName}
           lastName={lastName}
@@ -247,60 +287,11 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         />
       )}
 
-      {/* Navigation */}
-      <div className="mt-6 flex items-center justify-between border-t border-[#EDEDED] pt-4">
-        <div>
-          {step > 1 && !submitting && (
-            <button
-              onClick={() => setStep((step - 1) as Step)}
-              className="flex items-center gap-1 text-[12px] text-[#585858] transition hover:text-[#1F114C]"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-              {p.previousStep}
-            </button>
-          )}
-          {submitting && (
-            <span className="flex items-center gap-1.5 text-[11px] text-muted">
-              <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#DD0C15]/30 border-t-[#DD0C15]" />
-              {p.submittingApplication}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={requestClose}
-            disabled={submitting}
-            className="h-9 rounded-lg border border-[#EDEDED] px-4 text-sm text-[#585858] transition hover:bg-[#F6F6F6] disabled:opacity-50"
-          >
-            {p.cancel}
-          </button>
-          {step < 3 ? (
-            <button
-              type="button"
-              onClick={() => setStep((step + 1) as Step)}
-              disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid)}
-              className="flex h-9 items-center gap-1 rounded-lg bg-[#1F114C] px-5 text-sm font-medium text-white transition hover:bg-[#2a1a5c] disabled:opacity-50"
-            >
-              {p.nextStep}
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void submit({ skipCv: false })}
-              disabled={!isStep1Valid || !isStep2Valid || submitting || !captchaSatisfied || !consentAccepted || cvUploadFailed}
-              className="flex h-9 items-center gap-2 rounded-lg bg-[#DD0C15] px-5 text-sm font-medium text-white transition hover:bg-[#c00b13] disabled:opacity-50"
-            >
-              {submitting ? p.sendingShort : p.submitApplication}
-            </button>
-          )}
-        </div>
-      </div>
+      {confirmingCancel && (
+        <DiscardChangesPrompt onKeepEditing={() => setConfirmingCancel(false)} onDiscard={requestClose} />
+      )}
+
+      {submitError && <ApplySubmitError message={submitError} />}
     </Modal>
   );
 }

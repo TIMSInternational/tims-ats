@@ -61,17 +61,24 @@ describe('portal login tile (C-25)', () => {
         <PortalLoginPage />
       </PortalOrgBrandProvider>,
     );
-    expect(screen.getByRole('img', { name: 'INVU' })).toHaveTextContent('I');
+    // The organization is named in text above the title (a candidate arriving from an email sees which company
+    // this is), so the initial tile beside it is decorative.
+    expect(screen.getByText('INVU')).toBeInTheDocument();
+    expect(screen.getByText('I')).toHaveAttribute('aria-hidden', 'true');
     expect(screen.queryByText('T')).toBeNull();
   });
 
   it('shows the organization logo when it has one', () => {
-    render(
+    const { container } = render(
       <PortalOrgBrandProvider brand={{ name: 'INVU', logo: 'https://abc.supabase.co/storage/v1/object/public/logos/invu.png' }}>
         <PortalLoginPage />
       </PortalOrgBrandProvider>,
     );
-    expect(screen.getByRole('img', { name: 'INVU' })).toHaveAttribute('src', 'https://abc.supabase.co/storage/v1/object/public/logos/invu.png');
+    const logo = container.querySelector('img');
+    expect(logo).toHaveAttribute('src', 'https://abc.supabase.co/storage/v1/object/public/logos/invu.png');
+    // Decorative next to the written name, which is what assistive tech reads.
+    expect(logo).toHaveAttribute('alt', '');
+    expect(screen.getByText('INVU')).toBeInTheDocument();
   });
 });
 

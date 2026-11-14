@@ -166,12 +166,26 @@ describe('public vacancy card', () => {
     expect(screen.getByText(es.portal.salaryNegotiable)).toBeInTheDocument();
   });
 
-  it('falls back to the organization name and initial when the vacancy has no client company', () => {
+  it('names a client company with its initial, and does not repeat the board organization', () => {
+    const client = render(<VacancyCard vacancy={{ ...BASE, company: { id: 'c2', name: 'Cliente SA' } }} orgSlug="acme" orgName="Instituto Ejemplo" />);
+    expect(screen.getByText('Cliente SA')).toBeInTheDocument();
+    expect(screen.getByText('C')).toBeInTheDocument();
+    client.unmount();
+
+    // A single-employer board: the nav already shows the organization, so the card starts at the location.
     const { container } = render(
       <VacancyCard vacancy={{ ...BASE, company: null }} orgSlug="acme" orgName="Instituto Ejemplo" />,
     );
-    expect(screen.getByText('Instituto Ejemplo')).toBeInTheDocument();
-    expect(screen.getByText('I')).toBeInTheDocument();
+    expect(screen.queryByText('Instituto Ejemplo')).toBeNull();
+    expect(screen.getByText('Bogotá')).toBeInTheDocument();
     expect(container.textContent).not.toContain(es.portal.companyFallback);
+  });
+
+  it('is one link named by the job title, not the whole card', () => {
+    render(<VacancyCard vacancy={{ ...BASE }} orgSlug="acme" orgName="Acme" />);
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAccessibleName(BASE.title);
+    expect(links[0]).toHaveAttribute('href', `/careers/acme/${BASE.id}`);
   });
 });

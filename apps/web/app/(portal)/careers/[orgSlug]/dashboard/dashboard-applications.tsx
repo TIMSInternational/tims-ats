@@ -7,6 +7,11 @@ import { formatCandidateDate } from '../../../../../lib/candidate-format';
 import { DashboardApplicationTimeline } from './dashboard-application-timeline';
 import { DashboardWithdrawApplication } from './dashboard-withdraw-application';
 import { candidatePhase, phaseText } from './candidate-phase';
+import { Button } from '../../../../../components/button';
+import { ErrorState } from '../../../../../components/error-state';
+import { StatusBadge, type StatusTone } from '../../../../../components/status-badge';
+import { DashboardCardSkeleton } from './dashboard-card-skeleton';
+import { DASHBOARD_CARD, DASHBOARD_ITEM, DASHBOARD_TITLE } from './dashboard-styles';
 
 // "My Applications" section of the candidate dashboard (Wave 1 Slice 2). Lists the
 // signed-in candidate's applications at this org with status + current stage, and
@@ -24,106 +29,91 @@ export function DashboardApplications({
   timeZone?: string | null;
 }) {
   const { t, locale } = useI18n();
+  const pd = t.portalDashboard;
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { data, isLoading, isError } = trpc.candidatePortal.myApplications.useQuery({ orgSlug });
+  const { data, isLoading, isError, refetch } = trpc.candidatePortal.myApplications.useQuery({ orgSlug });
 
-  // Map the raw application status to a localized, color-coded label. Unknown
-  // statuses fall back to the raw value rather than rendering a blank pill.
-  const statusLabel = (s: string) => {
+  // Map the raw application status to a localized label and tone. Unknown statuses fall back to the raw
+  // value (neutral) rather than rendering a blank pill. Withdrawn is the candidate's own choice: neutral,
+  // not the error red of a rejection.
+  const status = (s: string): { label: string; tone: StatusTone } => {
     switch (s) {
       case 'active':
-        return t.portalDashboard.statusActive;
+        return { label: pd.statusActive, tone: 'brand' };
       case 'rejected':
-        return t.portalDashboard.statusRejected;
+        return { label: pd.statusRejected, tone: 'danger' };
       case 'hired':
-        return t.portalDashboard.statusHired;
+        return { label: pd.statusHired, tone: 'success' };
       case 'withdrawn':
-        return t.portalDashboard.statusWithdrawn;
+        return { label: pd.statusWithdrawn, tone: 'neutral' };
       default:
-        return s;
+        return { label: s, tone: 'neutral' };
     }
   };
-  const statusClasses = (s: string) => {
-    if (s === 'hired') return 'bg-[#ECFDF3] text-[#067647]';
-    if (s === 'rejected' || s === 'withdrawn') return 'bg-[#FEF3F2] text-[#B42318]';
-    return 'bg-[#F4F1FF] text-[#1F114C]';
-  };
-
-  if (isLoading) {
-    return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-        <h2 className="text-[14px] font-semibold text-[#1F114C] mb-2">{t.portalDashboard.applications}</h2>
-        <p className="text-[12px] text-muted">{t.portalDashboard.listLoading}</p>
-      </section>
-    );
-  }
-  if (isError) {
-    return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-        <h2 className="text-[14px] font-semibold text-[#1F114C] mb-2">{t.portalDashboard.applications}</h2>
-        <p className="text-[12px] text-[#B42318]">{t.portalDashboard.listError}</p>
-      </section>
-    );
-  }
 
   const applications = data ?? [];
 
   return (
-    <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-      <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.applications}</h2>
+    <section aria-labelledby="dashboard-applications-title" className={DASHBOARD_CARD}>
+      <h2 id="dashboard-applications-title" className={DASHBOARD_TITLE}>
+        {pd.applications}
+      </h2>
 
-      {applications.length === 0 ? (
-        <p className="text-[12px] text-muted">{t.portalDashboard.listEmpty}</p>
+      {isLoading ? (
+        <DashboardCardSkeleton label={pd.listLoading} />
+      ) : isError ? (
+        <ErrorState size="compact" title={pd.listError} onRetry={() => void refetch()} />
+      ) : applications.length === 0 ? (
+        <p className="text-body text-secondary">{pd.listEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {applications.map((app) => {
             const isOpen = expandedId === app.id;
-            const phase = phaseText(candidatePhase(app.currentStage?.name, app.status), t.portalDashboard);
+            const phase = phaseText(candidatePhase(app.currentStage?.name, app.status), pd);
+            const chip = status(app.status);
             return (
-              <li key={app.id} className="rounded-xl border border-[#EDEDED] p-4">
-                <div className="flex items-start justify-between gap-3">
+              <li key={app.id} className={DASHBOARD_ITEM}>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                   <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-[#1F114C] truncate">{app.vacancy.title}</p>
+                    <h3 className="break-words text-subheading font-semibold text-brand">{app.vacancy.title}</h3>
                     {app.vacancy.company?.name && (
-                      <p className="text-[12px] text-muted truncate">{app.vacancy.company.name}</p>
+                      <p className="break-words text-callout text-secondary">{app.vacancy.company.name}</p>
                     )}
-                    <p className="text-[11px] text-muted mt-1">
-                      {t.portalDashboard.appliedOn} {formatCandidateDate(app.appliedAt, locale, timeZone)}
-                    </p>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${statusClasses(app.status)}`}
-                  >
-                    {statusLabel(app.status)}
-                  </span>
+                  <StatusBadge tone={chip.tone} className="self-start">
+                    {chip.label}
+                  </StatusBadge>
+                </div>
+                <p className="mt-1 text-callout text-secondary">
+                  {pd.appliedOn} {formatCandidateDate(app.appliedAt, locale, timeZone)}
+                </p>
+
+                <div className="mt-3">
+                  <p className="text-subheading font-medium text-primary">
+                    <span className="font-normal text-secondary">{pd.currentStage}: </span>
+                    {phase.label}
+                  </p>
+                  <p className="text-callout leading-relaxed text-secondary">{phase.description}</p>
                 </div>
 
-                <div className="mt-2 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[12px] text-[#585858]">
-                      <span className="text-muted">{t.portalDashboard.currentStage}: </span>
-                      {phase.label}
-                    </p>
-                    <p className="text-[11px] text-muted">{phase.description}</p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedId(isOpen ? null : app.id)}
-                      aria-expanded={isOpen}
-                      className="text-[12px] font-medium text-[#1F114C] hover:underline shrink-0"
-                    >
-                      {isOpen ? t.portalDashboard.hideTimeline : t.portalDashboard.viewTimeline}
-                    </button>
-                    {app.status === 'active' && (
-                      <DashboardWithdrawApplication
-                        orgSlug={orgSlug}
-                        orgName={orgName}
-                        applicationId={app.id}
-                        vacancyTitle={app.vacancy.title}
-                      />
-                    )}
-                  </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    onClick={() => setExpandedId(isOpen ? null : app.id)}
+                    aria-expanded={isOpen}
+                    className="-ml-3"
+                  >
+                    {isOpen ? pd.hideTimeline : pd.viewTimeline}
+                  </Button>
+                  {app.status === 'active' && (
+                    <DashboardWithdrawApplication
+                      orgSlug={orgSlug}
+                      orgName={orgName}
+                      applicationId={app.id}
+                      vacancyTitle={app.vacancy.title}
+                    />
+                  )}
                 </div>
 
                 {isOpen && <DashboardApplicationTimeline orgSlug={orgSlug} applicationId={app.id} timeZone={timeZone} />}
