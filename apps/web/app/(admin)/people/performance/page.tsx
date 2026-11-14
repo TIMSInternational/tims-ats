@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { usePermissions } from '../../../../lib/permissions';
+import { manifestFor } from '../../../../lib/nav/manifest';
+import { Button, PageHeader, TabPanel, Tabs } from '../../../../components';
 import { PerformanceKpis } from './performance-kpis';
 import { LowProgressAlertsPanel } from './low-progress-alerts';
 import { OkrTable } from './okr-table';
@@ -13,9 +15,11 @@ import { CreateOkrModal } from './create-okr-modal';
 
 type Tab = 'okrs' | 'coaching' | 'feedback';
 
+const TABS_ID = 'performance';
+
 export default function PerformancePage() {
   const { t } = useI18n();
-  const { roles } = usePermissions();
+  const { roles, can } = usePermissions();
   const [tab, setTab] = useState<Tab>('okrs');
   const [showOkr, setShowOkr] = useState(false);
 
@@ -27,6 +31,10 @@ export default function PerformancePage() {
   // finding) — gate it to the same two roles the org-rollup KPI widgets on
   // the main dashboard use (pickPrimaryDashboard's 'org'/'hrExec' keys).
   const showLowProgressAlerts = roles.includes('super_admin') || roles.includes('hr_admin');
+  // Display only: actions this role cannot complete are not offered (the API still decides).
+  const canCreate = can('performance', 'create');
+  // Employees reach this page from "Mi desempeño": the title follows the link they tapped.
+  const isSelfView = manifestFor(roles).shell === 'participant';
 
   // --- tRPC queries ---
   const kpisQuery = trpc.performance.getDashboardKpis.useQuery();
@@ -36,69 +44,41 @@ export default function PerformancePage() {
   const feedbackQuery = trpc.performance.listFeedback.useQuery({ limit: 25 });
   const recognitionsQuery = trpc.performance.listRecognitions.useQuery({ limit: 25 });
 
-  // --- Derived KPI cards ---
-  const kpiData = kpisQuery.data;
-  const kpis = kpiData ? buildKpisFromApi(t, kpiData) : [];
-
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'okrs', label: t.performance.tabOkrs },
-    { key: 'coaching', label: t.performance.tabCoaching },
-    { key: 'feedback', label: t.performance.tabFeedback },
-  ];
+  const tabs = [
+    { id: 'okrs', label: t.performance.tabOkrs },
+    { id: 'coaching', label: t.performance.tabCoaching },
+    { id: 'feedback', label: t.performance.tabFeedback },
+  ] as const;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between px-7 h-[56px] bg-white border-b border-[#EDEDED] shrink-0">
-        <div className="flex items-center gap-2 text-[13px]">
-          <span className="text-[#8B8B8B]">{t.sidebar.people}</span>
-          <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M9 5l7 7-7 7" />
-          </svg>
-          <span className="text-[#333] font-semibold">{t.performance.title}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <select className="text-[12px] border border-[#EDEDED] rounded-lg px-3 py-1.5 text-[#585858] bg-white">
-            <option>{t.performance.quarterQ2_2026}</option>
-            <option>{t.performance.quarterQ1_2026}</option>
-            <option>{t.performance.quarterQ4_2025}</option>
-          </select>
-          <select className="text-[12px] border border-[#EDEDED] rounded-lg px-3 py-1.5 text-[#585858] bg-white">
-            <option>{t.performance.allTeams}</option>
-            <option>Logística</option>
-            <option>Comercial</option>
-            <option>Operaciones</option>
-          </select>
-          <button onClick={() => setShowOkr(true)} className="text-[12px] bg-[#DD0C15] text-white rounded-lg px-4 py-1.5 font-medium hover:bg-red-700">
-            {t.performance.newOkr}
-          </button>
-        </div>
-      </div>
+    <div className="flex h-full min-w-0 flex-col overflow-hidden">
+      <PageHeader
+        title={isSelfView ? t.sidebar.myPerformance : t.performance.title}
+        actions={
+          tab === 'okrs' && canCreate ? (
+            <Button icon={<PlusIcon />} onClick={() => setShowOkr(true)}>
+              {t.performance.newOkr}
+            </Button>
+          ) : undefined
+        }
+      >
+        <Tabs
+          label={t.performance.tabsLabel}
+          tabs={tabs}
+          selectedId={tab}
+          onSelect={(id) => setTab(id as Tab)}
+          idPrefix={TABS_ID}
+          className="-mx-1 border-b-0"
+        />
+      </PageHeader>
 
-      {/* Tabs */}
-      <div className="flex gap-1 px-4 md:px-7 pt-3 overflow-x-auto border-b border-[#EDEDED] bg-white shrink-0">
-        {tabs.map((tb) => (
-          <button
-            key={tb.key}
-            onClick={() => setTab(tb.key)}
-            className={`px-4 py-2.5 text-[13px] font-medium transition ${
-              tab === tb.key
-                ? 'text-[#1F114C] border-b-2 border-[#DD0C15]'
-                : 'text-[#8B8B8B] hover:text-[#585858]'
-            }`}
-          >
-            {tb.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="flex-1 space-y-4 overflow-y-auto p-4 md:p-5">
         {/* KPIs - visible on all tabs */}
         <PerformanceKpis
-          kpis={kpis}
+          data={kpisQuery.data}
           isLoading={kpisQuery.isLoading}
           isError={kpisQuery.isError}
+          error={kpisQuery.error}
           onRetry={() => kpisQuery.refetch()}
         />
 
@@ -106,39 +86,48 @@ export default function PerformancePage() {
             Gated to super_admin/hr_admin: the only roles with an org-scoped
             performance:read grant that getLowProgressAlerts requires. */}
         {showLowProgressAlerts && (
-          <LowProgressAlertsPanel
-            onSelectOkr={() => setTab('okrs')}
-            onSelectCommitment={() => setTab('coaching')}
-          />
+          <LowProgressAlertsPanel onSelectOkr={() => setTab('okrs')} onSelectCommitment={() => setTab('coaching')} />
         )}
 
-        {/* Tab Content */}
-        {tab === 'okrs' && (
-          <OkrTable
-            okrs={okrsQuery.data?.okrs ?? []}
-            isLoading={okrsQuery.isLoading}
-            isError={okrsQuery.isError}
-            onRetry={() => okrsQuery.refetch()}
-          />
-        )}
-        {tab === 'coaching' && (
-          <CoachingPanel
-            sessions={sessionsQuery.data?.sessions ?? []}
-            commitments={commitmentsQuery.data?.commitments ?? []}
-            isLoading={sessionsQuery.isLoading || commitmentsQuery.isLoading}
-            isError={sessionsQuery.isError || commitmentsQuery.isError}
-            onRetry={() => { sessionsQuery.refetch(); commitmentsQuery.refetch(); }}
-          />
-        )}
-        {tab === 'feedback' && (
-          <FeedbackPanel
-            feedbacks={feedbackQuery.data?.feedbacks ?? []}
-            recognitions={recognitionsQuery.data?.recognitions ?? []}
-            isLoading={feedbackQuery.isLoading || recognitionsQuery.isLoading}
-            isError={feedbackQuery.isError || recognitionsQuery.isError}
-            onRetry={() => { feedbackQuery.refetch(); recognitionsQuery.refetch(); }}
-          />
-        )}
+        <TabPanel idPrefix={TABS_ID} tabId={tab} className="rounded-xl">
+          {tab === 'okrs' && (
+            <OkrTable
+              okrs={okrsQuery.data?.okrs ?? []}
+              isLoading={okrsQuery.isLoading}
+              isError={okrsQuery.isError}
+              error={okrsQuery.error}
+              onRetry={() => okrsQuery.refetch()}
+              onCreate={canCreate ? () => setShowOkr(true) : undefined}
+            />
+          )}
+          {tab === 'coaching' && (
+            <CoachingPanel
+              sessions={sessionsQuery.data?.sessions ?? []}
+              commitments={commitmentsQuery.data?.commitments ?? []}
+              isLoading={sessionsQuery.isLoading || commitmentsQuery.isLoading}
+              isError={sessionsQuery.isError || commitmentsQuery.isError}
+              error={sessionsQuery.error ?? commitmentsQuery.error}
+              onRetry={() => {
+                sessionsQuery.refetch();
+                commitmentsQuery.refetch();
+              }}
+              canCreate={canCreate}
+            />
+          )}
+          {tab === 'feedback' && (
+            <FeedbackPanel
+              feedbacks={feedbackQuery.data?.feedbacks ?? []}
+              recognitions={recognitionsQuery.data?.recognitions ?? []}
+              isLoading={feedbackQuery.isLoading || recognitionsQuery.isLoading}
+              isError={feedbackQuery.isError || recognitionsQuery.isError}
+              error={feedbackQuery.error ?? recognitionsQuery.error}
+              onRetry={() => {
+                feedbackQuery.refetch();
+                recognitionsQuery.refetch();
+              }}
+            />
+          )}
+        </TabPanel>
       </div>
 
       {showOkr && <CreateOkrModal onClose={() => setShowOkr(false)} />}
@@ -146,84 +135,10 @@ export default function PerformancePage() {
   );
 }
 
-interface DashboardKpis {
-  activeOkrs: number;
-  averageOkrProgress: number;
-  scheduledSessions: number;
-  completedSessions: number;
-  pendingCommitments: number;
-  completedCommitments: number;
-  commitmentCompletionRate: number;
-  totalFeedback: number;
-  totalRecognitions: number;
-}
-
-function buildKpisFromApi(t: ReturnType<typeof useI18n>['t'], d: DashboardKpis) {
-  const onTarget = Math.round(d.activeOkrs * 0.53);
-  const atRisk = Math.round(d.activeOkrs * 0.32);
-  const critical = d.activeOkrs - onTarget - atRisk;
-
-  return [
-    {
-      label: t.performance.kpiOkrCompletion,
-      value: `${d.averageOkrProgress}%`,
-      change: { text: `${t.performance.vsQ1}`, color: 'text-[#585858]' },
-      progressBar: {
-        pct: d.averageOkrProgress,
-        color: d.averageOkrProgress >= 70 ? 'bg-green-500' : d.averageOkrProgress >= 40 ? 'bg-amber-400' : 'bg-red-500',
-      },
-    },
-    {
-      label: t.performance.kpiActiveOkrs,
-      value: String(d.activeOkrs),
-      change: { text: `${d.activeOkrs} activos`, color: 'text-[#585858]' },
-      extra: (
-        <div className="flex gap-1.5">
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700">
-            {onTarget} {t.performance.onTarget}
-          </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
-            {atRisk} {t.performance.atRisk}
-          </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700">
-            {critical} {t.performance.critical}
-          </span>
-        </div>
-      ),
-    },
-    {
-      label: t.performance.kpiCoachingSessions,
-      value: String(d.scheduledSessions + d.completedSessions),
-      change: { text: t.performance.thisMonth, color: 'text-[#585858]' },
-      extra: (
-        <div className="text-[10px] text-[#8B8B8B]">
-          {t.performance.pendingThisWeek.replace('{n}', String(d.scheduledSessions))}
-        </div>
-      ),
-    },
-    {
-      label: t.performance.kpiPendingCommitments,
-      value: String(d.pendingCommitments),
-      valueColor: d.pendingCommitments > 0 ? 'text-[#DD0C15]' : undefined,
-      change: {
-        text: `${d.commitmentCompletionRate}% ${t.performance.completed}`,
-        color: d.pendingCommitments > 0 ? 'text-red-500' : 'text-green-600',
-      },
-      extra: (
-        <div className="text-[10px] text-[#8B8B8B]">
-          {t.performance.completedInQ2.replace('{n}', String(d.completedCommitments))}
-        </div>
-      ),
-    },
-    {
-      label: t.performance.kpiRecognitions,
-      value: String(d.totalRecognitions),
-      change: { text: `${d.totalFeedback} feedback`, color: 'text-[#585858]' },
-      extra: (
-        <div className="text-[10px] text-[#8B8B8B]">
-          {d.totalRecognitions} {t.performance.recognized.replace('{n}', String(d.totalRecognitions))}
-        </div>
-      ),
-    },
-  ];
+function PlusIcon() {
+  return (
+    <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
+  );
 }

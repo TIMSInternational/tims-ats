@@ -3,6 +3,8 @@
 import { useI18n } from '../../../lib/i18n';
 import { onboardingPhaseLabel, onboardingStatusLabel } from '../../../lib/onboarding-labels';
 import { derivedOnboardingPhase } from '../../../lib/onboarding-schedule';
+import { intlLocale } from '../../../lib/format-utils';
+import { ProgressBar } from '../../../components';
 
 interface BuddyInfo {
   firstName: string;
@@ -21,11 +23,11 @@ interface MyPlanSummaryProps {
 export function MyPlanSummary({ jobTitle, startDate, status, phase, progress, buddy }: MyPlanSummaryProps) {
   const { t, locale } = useI18n();
   const m = t.myOnboarding;
-  const dateLocale = locale === 'EN' ? 'en' : 'es';
+  const dateFormat = new Intl.DateTimeFormat(intlLocale(locale), { day: '2-digit', month: 'short', year: 'numeric' });
 
   const facts: { label: string; value: string }[] = [
     { label: m.jobTitle, value: jobTitle?.trim() || m.noJobTitle },
-    { label: m.startDate, value: new Date(startDate).toLocaleDateString(dateLocale) },
+    { label: m.startDate, value: dateFormat.format(new Date(startDate)) },
     { label: m.status, value: onboardingStatusLabel(m.labels, status) },
     // The stored phase is set once at creation; the start date says where the hire is today.
     { label: m.phase, value: onboardingPhaseLabel(m.labels, status === 'active' ? derivedOnboardingPhase(startDate) : phase) },
@@ -33,32 +35,22 @@ export function MyPlanSummary({ jobTitle, startDate, status, phase, progress, bu
 
   return (
     <section className="grid gap-4 md:grid-cols-3">
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5 md:col-span-2">
-        <h2 className="text-sm font-semibold text-[#1F114C]">{m.planTitle}</h2>
+      <div className="rounded-xl border border-border bg-white p-4 shadow-card md:col-span-2 md:p-5">
+        <h2 className="text-subheading font-semibold text-primary">{m.planTitle}</h2>
         <dl className="mt-3 grid grid-cols-2 gap-3">
           {facts.map((fact) => (
             <div key={fact.label}>
-              <dt className="text-[11px] uppercase tracking-wide text-[#8B8B8B]">{fact.label}</dt>
-              <dd className="text-[13px] font-medium text-[#333]">{fact.value}</dd>
+              <dt className="text-callout text-secondary">{fact.label}</dt>
+              <dd className="text-body font-medium text-primary">{fact.value}</dd>
             </div>
           ))}
         </dl>
-        <div className="mt-4">
-          <div className="flex justify-between text-[11px] text-[#585858]">
-            <span>{m.progress}</span>
-            <span>{progress}%</span>
-          </div>
-          <progress
-            value={progress}
-            max={100}
-            aria-label={m.progress}
-            className="mt-1 h-2 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-[#F0F0F0] [&::-webkit-progress-value]:bg-[#1F114C] [&::-moz-progress-bar]:bg-[#1F114C]"
-          />
-        </div>
+        <ProgressBar value={progress} label={m.progress} valueText={`${progress}%`} className="mt-4" />
       </div>
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <h2 className="text-sm font-semibold text-[#1F114C]">{m.buddyTitle}</h2>
-        <p className="mt-3 text-[13px] text-[#333]">{buddy ? `${buddy.firstName} ${buddy.lastName}` : m.noBuddy}</p>
+      <div className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5">
+        <h2 className="text-subheading font-semibold text-primary">{m.buddyTitle}</h2>
+        <p className="mt-3 text-body text-primary">{buddy ? `${buddy.firstName} ${buddy.lastName}` : m.noBuddy}</p>
+        <p className="mt-1 text-callout text-secondary">{m.buddyExplainer}</p>
       </div>
     </section>
   );

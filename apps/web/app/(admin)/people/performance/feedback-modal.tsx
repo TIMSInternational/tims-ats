@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
-import { useI18n } from '../../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal, UserPicker } from '../../../../components';
+import { CHOICE_INPUT_CLASSES, CHOICE_ROW_CLASSES, Field, Modal, Select, TextArea, UserPicker } from '../../../../components';
 import type { PickedUser } from '../../../../components/user-picker';
+import { PersonField } from './person-field';
+import { ModalActions } from './modal-actions';
 
 interface FeedbackModalProps {
   onClose: () => void;
@@ -43,35 +45,33 @@ export function FeedbackModal({ onClose }: FeedbackModalProps) {
   const canSubmit = !!recipient && trimmed.length > 0 && !submit.isPending;
 
   const onSubmit = () => {
-    if (!recipient || trimmed.length === 0) return;
+    if (!recipient || !canSubmit) return;
     submit.mutate({ toUserId: recipient.id, type, message: trimmed, isAnonymous });
   };
 
   return (
-    <Modal title={t.performance.giveFeedbackTitle} onClose={onClose}>
+    <Modal
+      title={t.performance.giveFeedbackTitle}
+      onClose={onClose}
+      dirty={(!!recipient || message.length > 0) && !submit.isPending}
+      footer={
+        <ModalActions
+          onCancel={onClose}
+          onSubmit={onSubmit}
+          submitLabel={t.performance.submit}
+          isComplete={!!recipient && trimmed.length > 0}
+          isPending={submit.isPending}
+          pendingLabel={t.performance.sending}
+          hint={t.performance.messageHint}
+        />
+      }
+    >
       <div className="space-y-4">
-        {/* Recipient */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.recipientLabel}
-          </label>
-          {recipient ? (
-            <div className="flex items-center justify-between border border-[#EDEDED] rounded-lg px-3 py-2.5">
-              <span className="text-[12px] text-[#333] font-medium">
-                {recipient.firstName} {recipient.lastName}
-              </span>
-              <button
-                type="button"
-                onClick={() => setRecipient(null)}
-                disabled={submit.isPending}
-                className="text-[11px] text-[#DD0C15] hover:underline disabled:opacity-50"
-              >
-                {t.performance.cancel}
-              </button>
-            </div>
-          ) : (
+        <PersonField label={t.performance.recipientLabel} value={recipient} onChange={setRecipient} disabled={submit.isPending} required>
+          {(inputId) => (
             <UserPicker
               purpose="colleague"
+              inputId={inputId}
               onSelect={(_userId, user) => setRecipient(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}
@@ -79,76 +79,44 @@ export function FeedbackModal({ onClose }: FeedbackModalProps) {
               emptyLabel={t.committee.noUsers}
             />
           )}
-        </div>
+        </PersonField>
 
-        {/* Type */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.feedbackTypeLabel}
-          </label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
-          >
+        <Field label={t.performance.feedbackTypeLabel}>
+          <Select value={type} onChange={(e) => setType(e.target.value)} disabled={submit.isPending}>
             {TYPE_KEYS.map((ty) => (
               <option key={ty.value} value={ty.value}>
                 {t.performance[ty.labelKey]}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        {/* Message */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.messageLabel}
-          </label>
-          <textarea
+        <Field
+          label={t.performance.messageLabel}
+          required
+          help={formatMessage(t.performance.charCount, { n: message.length, max: MAX_MESSAGE })}
+        >
+          <TextArea
             value={message}
             onChange={(e) => setMessage(e.target.value.slice(0, MAX_MESSAGE))}
             maxLength={MAX_MESSAGE}
             rows={4}
             placeholder={t.performance.messagePlaceholder}
             disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] placeholder:text-[#B8B8B8] resize-none focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
+            className="resize-none"
           />
-          <p className="text-[10px] text-[#8B8B8B] text-right mt-1">
-            {message.length}/{MAX_MESSAGE}
-          </p>
-        </div>
+        </Field>
 
-        {/* Anonymous */}
-        <label className="flex items-center gap-2 text-[12px] text-[#585858] cursor-pointer">
+        <label className={CHOICE_ROW_CLASSES}>
           <input
             type="checkbox"
             checked={isAnonymous}
             onChange={(e) => setIsAnonymous(e.target.checked)}
             disabled={submit.isPending}
-            className="h-4 w-4 rounded border-[#EDEDED] text-[#DD0C15] focus:ring-[#1F114C]/40 disabled:opacity-50"
+            className={CHOICE_INPUT_CLASSES}
           />
           {t.performance.anonymousLabel}
         </label>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submit.isPending}
-            className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition disabled:opacity-50"
-          >
-            {t.performance.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!canSubmit}
-            className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {t.performance.submit}
-          </button>
-        </div>
       </div>
     </Modal>
   );
