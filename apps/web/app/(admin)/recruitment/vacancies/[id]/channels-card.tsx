@@ -6,6 +6,7 @@ import { formatRelativeTime } from '../../../../../lib/format-utils';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { AddChannelModal } from './add-channel-modal';
+import { Button, StatusBadge } from '../../../../../components';
 
 interface ChannelStats {
   applications?: number;
@@ -28,14 +29,15 @@ interface ChannelsCardProps {
   channels: Channel[];
 }
 
+// Monogram tiles are decorative (the channel name is next to them); -700 backgrounds keep white text ≥ 5:1.
 const CHANNEL_COLORS: Record<string, { bg: string; text: string }> = {
-  linkedin: { bg: 'bg-blue-600', text: 'in' },
-  indeed: { bg: 'bg-[#1F114C]', text: 'ID' },
-  computrabajo: { bg: 'bg-orange-500', text: 'CT' },
-  elempleo: { bg: 'bg-teal-600', text: 'EE' },
-  website: { bg: 'bg-[#1F114C]', text: 'P' },
-  internal: { bg: 'bg-green-600', text: 'R' },
-  other: { bg: 'bg-gray-500', text: '?' },
+  linkedin: { bg: 'bg-blue-700', text: 'in' },
+  indeed: { bg: 'bg-brand', text: 'ID' },
+  computrabajo: { bg: 'bg-orange-700', text: 'CT' },
+  elempleo: { bg: 'bg-teal-700', text: 'EE' },
+  website: { bg: 'bg-brand', text: 'P' },
+  internal: { bg: 'bg-green-700', text: 'R' },
+  other: { bg: 'bg-secondary', text: '?' },
 };
 
 export function ChannelsCard({ vacancyId, vacancyStatus, channels }: ChannelsCardProps) {
@@ -44,6 +46,13 @@ export function ChannelsCard({ vacancyId, vacancyStatus, channels }: ChannelsCar
   const [showAdd, setShowAdd] = useState(false);
 
   const canPublish = vacancyStatus === 'approved' || vacancyStatus === 'published';
+  // Why channels cannot be added, in the card itself (a disabled button's tooltip never reaches touch or keyboard).
+  const blockedNote =
+    vacancyStatus === 'closed'
+      ? t.vacancies.channelsClosedNote
+      : vacancyStatus === 'frozen'
+        ? t.vacancies.channelsFrozenNote
+        : null;
 
   const publish = trpc.vacancy.publish.useMutation({
     onSuccess: () => {
@@ -52,68 +61,83 @@ export function ChannelsCard({ vacancyId, vacancyStatus, channels }: ChannelsCar
       setShowAdd(false);
       toast(t.vacancies.addChannelSuccess, { type: 'success' });
     },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+    },
   });
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.vacancies.channels}</h3>
-        <button
-          onClick={() => setShowAdd(true)}
-          disabled={!canPublish}
-          title={canPublish ? undefined : t.vacancies.approveBeforePublish}
-          className="text-[12px] text-[#DD0C15] font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          + {t.vacancies.addChannel}
-        </button>
+    <section
+      aria-labelledby="vacancy-channels-title"
+      className="rounded-xl border border-border bg-white p-5 shadow-card"
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="vacancy-channels-title" className="text-heading font-semibold text-brand">
+          {t.vacancies.channels}
+        </h2>
+        {canPublish && (
+          <Button variant="tertiary" size="sm" onClick={() => setShowAdd(true)}>
+            {t.vacancies.addChannelAction}
+          </Button>
+        )}
       </div>
-      <div className="space-y-2">
+      {blockedNote && <p className="mb-3 text-callout text-secondary">{blockedNote}</p>}
+      <ul className="space-y-2">
         {channels.map((ch) => {
           const color = CHANNEL_COLORS[ch.channelType] ?? CHANNEL_COLORS.other;
           const stats = (ch.stats ?? {}) as ChannelStats;
           return (
-            <div key={ch.id} className="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded ${color.bg} flex items-center justify-center text-white text-[10px] font-bold`}>
+            <li
+              key={ch.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface px-4 py-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div
+                  aria-hidden="true"
+                  className={`flex size-8 shrink-0 items-center justify-center rounded text-caption font-bold text-white ${color.bg}`}
+                >
                   {color.text}
                 </div>
-                <div>
-                  <p className="text-[12px] text-[#333] font-medium">{ch.channelName}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-body font-medium text-primary">{ch.channelName}</p>
                   {ch.publishedAt && (
-                    <p className="text-[10px] text-[#8B8B8B]">{formatRelativeTime(ch.publishedAt)}</p>
+                    <p className="text-caption text-secondary">{formatRelativeTime(ch.publishedAt)}</p>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 {stats.applications !== undefined && (
                   <div className="text-right">
-                    <p className="text-[13px] font-medium text-[#1F114C]">{stats.applications}</p>
-                    <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.applications}</p>
+                    <p className="text-body font-medium tabular-nums text-brand">{stats.applications}</p>
+                    <p className="text-caption text-secondary">{t.vacancies.applications}</p>
                   </div>
                 )}
                 {stats.qualified !== undefined && (
                   <div className="text-right">
-                    <p className="text-[13px] font-medium text-green-600">{stats.qualified}</p>
-                    <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.qualified}</p>
+                    <p className="text-body font-medium tabular-nums text-primary">{stats.qualified}</p>
+                    <p className="text-caption text-secondary">{t.vacancies.qualified}</p>
                   </div>
                 )}
                 {stats.costPerQualified !== undefined && (
                   <div className="text-right">
-                    <p className="text-[13px] font-medium text-[#1F114C]">${stats.costPerQualified.toFixed(2)}</p>
-                    <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.costPerQualified}</p>
+                    <p className="text-body font-medium tabular-nums text-brand">
+                      ${stats.costPerQualified.toFixed(2)}
+                    </p>
+                    <p className="text-caption text-secondary">{t.vacancies.costPerQualified}</p>
                   </div>
                 )}
-                <span className={`text-[10px] px-2 py-0.5 rounded ${
-                  ch.status === 'published' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {ch.status === 'published' ? t.vacancies.statusPublished : ch.status}
-                </span>
+                {ch.status === 'published' ? (
+                  <StatusBadge tone="success">{t.vacancies.statusPublished}</StatusBadge>
+                ) : ch.status === 'pending' ? (
+                  <StatusBadge tone="warning">{t.vacancies.pending}</StatusBadge>
+                ) : (
+                  <StatusBadge tone="neutral">{t.vacancies.channelStatusUnknown}</StatusBadge>
+                )}
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
       {showAdd && (
         <AddChannelModal
@@ -122,6 +146,6 @@ export function ChannelsCard({ vacancyId, vacancyStatus, channels }: ChannelsCar
           isPending={publish.isPending}
         />
       )}
-    </div>
+    </section>
   );
 }

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { Modal } from '../../../../components';
+import { Modal, Stepper } from '../../../../components';
+import { WizardFooter } from './create-modal.footer';
 import type { PickedUser } from '../../../../components/user-picker';
 import { Step1BasicInfo, Step2Description, Step3Compensation } from './create-modal.fields';
 import { VacancyOrgFields } from './create-modal.org-fields';
@@ -84,6 +85,11 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
   };
 
   const isStep1Valid = title.trim().length > 0;
+  // "Siguiente" stays enabled on step 1: pressing it without a title says why and focuses the field
+  // (feedback.md: show people when a command can't be carried out and why). The rule itself is unchanged.
+  const [titleTouched, setTitleTouched] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const titleError = titleTouched && !isStep1Valid ? t.vacancies.titleRequiredToContinue : null;
   // No competencies is fine; a blank or repeated one must be fixed (or removed) before moving on.
   const isStep2Valid = validateCompetencyDrafts(competencies) === null;
 
@@ -126,35 +132,86 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
     });
   };
 
-  const stepLabels = ['Información básica', 'Descripción del cargo', 'Compensación y ajustes'];
+  const goNext = () => {
+    if (step === 1 && !isStep1Valid) {
+      setTitleTouched(true);
+      titleRef.current?.focus();
+      return;
+    }
+    if (step === 2 && !isStep2Valid) return;
+    setStep((step + 1) as Step);
+  };
+
+  // Anything typed or chosen beyond the defaults: closing asks before discarding it (modality.md).
+  const isDirty =
+    [
+      title,
+      location,
+      description,
+      responsibilities,
+      requirements,
+      desiredQualifications,
+      benefits,
+      salaryMin,
+      salaryMax,
+    ].some((v) => v.trim() !== '') ||
+    competencies.length > 0 ||
+    socialDescription !== '' ||
+    whatsappDescription !== '' ||
+    hiringManager !== null ||
+    businessUnitId !== null ||
+    positions !== 1 ||
+    priority !== 'medium' ||
+    contractType !== 'indefinido' ||
+    remotePolicy !== 'hybrid' ||
+    slaTargetDays !== '30';
+
+  const stepLabels = [
+    t.vacancies.wizardStepBasic,
+    t.vacancies.wizardStepDescription,
+    t.vacancies.wizardStepCompensation,
+  ];
 
   return (
-    <Modal title={t.vacancies.createNewVacancy} onClose={onClose} maxWidth="max-w-2xl">
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-6">
-        {stepLabels.map((label, i) => (
-          <div key={i} className="flex items-center gap-2 flex-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
-              step > i + 1 ? 'bg-green-500 text-white' :
-              step === i + 1 ? 'bg-[#1F114C] text-white' :
-              'bg-[#EDEDED] text-[#8B8B8B]'
-            }`}>
-              {step > i + 1 ? '✓' : i + 1}
-            </div>
-            <span className={`text-[11px] ${step === i + 1 ? 'text-[#1F114C] font-medium' : 'text-[#8B8B8B]'}`}>{label}</span>
-            {i < 2 && <div className={`flex-1 h-[1px] ${step > i + 1 ? 'bg-green-500' : 'bg-[#EDEDED]'}`} />}
-          </div>
-        ))}
-      </div>
+    <Modal
+      title={t.vacancies.createNewVacancy}
+      onClose={onClose}
+      size="lg"
+      fullScreenOnMobile
+      dirty={isDirty && !isPending}
+      footer={
+        <WizardFooter
+          step={step}
+          onBack={() => setStep((step - 1) as Step)}
+          onNext={goNext}
+          onSubmit={handleSubmit}
+          nextDisabled={step === 2 && !isStep2Valid}
+          submitDisabled={!isStep1Valid || !isStep2Valid || isSalaryBlocked}
+          isPending={isPending}
+        />
+      }
+    >
+      <Stepper steps={stepLabels} current={step - 1} label={t.vacancies.wizardSteps} className="mb-6" />
+      <p className="sr-only" aria-live="polite">
+        {stepLabels[step - 1]}
+      </p>
 
       {step === 1 && (
         <Step1BasicInfo
-          title={title} setTitle={setTitle}
-          location={location} setLocation={setLocation}
-          remotePolicy={remotePolicy} setRemotePolicy={setRemotePolicy}
-          contractType={contractType} setContractType={setContractType}
-          positions={positions} setPositions={setPositions}
-          priority={priority} setPriority={setPriority}
+          title={title}
+          setTitle={setTitle}
+          titleError={titleError}
+          titleRef={titleRef}
+          location={location}
+          setLocation={setLocation}
+          remotePolicy={remotePolicy}
+          setRemotePolicy={setRemotePolicy}
+          contractType={contractType}
+          setContractType={setContractType}
+          positions={positions}
+          setPositions={setPositions}
+          priority={priority}
+          setPriority={setPriority}
         />
       )}
       {step === 1 && (
@@ -172,12 +229,18 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
 
       {step === 2 && (
         <Step2Description
-          title={title} location={location}
-          description={description} setDescription={setDescription}
-          responsibilities={responsibilities} setResponsibilities={setResponsibilities}
-          requirements={requirements} setRequirements={setRequirements}
-          desiredQualifications={desiredQualifications} setDesiredQualifications={setDesiredQualifications}
-          benefits={benefits} setBenefits={setBenefits}
+          title={title}
+          location={location}
+          description={description}
+          setDescription={setDescription}
+          responsibilities={responsibilities}
+          setResponsibilities={setResponsibilities}
+          requirements={requirements}
+          setRequirements={setRequirements}
+          desiredQualifications={desiredQualifications}
+          setDesiredQualifications={setDesiredQualifications}
+          benefits={benefits}
+          setBenefits={setBenefits}
           setSocialDescription={setSocialDescription}
           setWhatsappDescription={setWhatsappDescription}
           onSuggestedCompetencies={setCompetencySuggestions}
@@ -196,59 +259,36 @@ export function CreateModal({ onConfirm, onClose, isPending, errorMessage }: Cre
 
       {step === 3 && (
         <Step3Compensation
-          salaryMin={salaryMin} salaryMax={salaryMax} currency={currency} salaryPeriod={salaryPeriod}
+          salaryMin={salaryMin}
+          salaryMax={salaryMax}
+          currency={currency}
+          salaryPeriod={salaryPeriod}
           onSalaryChange={changeSalary}
           salaryStatus={salaryStatus}
           wideConfirmed={confirmedRangeKey === salaryStatus.rangeKey}
           onConfirmWide={(confirmed) => setConfirmedRangeKey(confirmed ? salaryStatus.rangeKey : null)}
-          slaTargetDays={slaTargetDays} setSlaTargetDays={setSlaTargetDays}
-          autoPublish={autoPublish} setAutoPublish={setAutoPublish}
-          requireApproval={requireApproval} setRequireApproval={setRequireApproval}
-          title={title} location={location} remotePolicy={remotePolicy}
-          contractType={contractType} positions={positions}
+          slaTargetDays={slaTargetDays}
+          setSlaTargetDays={setSlaTargetDays}
+          autoPublish={autoPublish}
+          setAutoPublish={setAutoPublish}
+          requireApproval={requireApproval}
+          setRequireApproval={setRequireApproval}
+          title={title}
+          location={location}
+          remotePolicy={remotePolicy}
+          contractType={contractType}
+          positions={positions}
         />
       )}
 
       {errorMessage && (
-        <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-[#991b1b]">
+        <p
+          role="alert"
+          className="mt-4 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-callout text-danger"
+        >
           {t.vacancies.createFailed}: {errorMessage}
         </p>
       )}
-
-      {/* Navigation */}
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#EDEDED]">
-        <div>
-          {step > 1 && (
-            <button onClick={() => setStep((step - 1) as Step)} className="text-[12px] text-[#585858] hover:text-[#1F114C] transition flex items-center gap-1">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-              Anterior
-            </button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
-            Cancelar
-          </button>
-          {step < 3 ? (
-            <button
-              onClick={() => setStep((step + 1) as Step)}
-              disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid)}
-              className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1a5c] transition disabled:opacity-50 flex items-center gap-1"
-            >
-              Siguiente
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={!isStep1Valid || !isStep2Valid || isPending || isSalaryBlocked}
-              className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
-            >
-              {isPending ? t.vacancies.creatingVacancy : t.vacancies.createVacancySubmit}
-            </button>
-          )}
-        </div>
-      </div>
     </Modal>
   );
 }

@@ -1,4 +1,10 @@
 import type { JobProfileCompetencyInput } from '@tims/shared';
+import {
+  FIELD_HELP_CLASSES,
+  FIELD_LABEL_CLASSES,
+  inputClasses,
+  textareaClasses,
+} from '../../../../components/field-styles';
 
 export interface VacancyFormData {
   title: string;
@@ -26,9 +32,20 @@ export interface VacancyFormData {
 export type Step = 1 | 2 | 3;
 
 /** Stored contract-type values. Their labels live in i18n `portal.contractTypes` — one source for both surfaces. */
-export const CONTRACT_TYPES = ['indefinido', 'termino_fijo', 'obra_labor', 'prestacion', 'temporal', 'practicas'] as const;
+export const CONTRACT_TYPES = [
+  'indefinido',
+  'termino_fijo',
+  'obra_labor',
+  'prestacion',
+  'temporal',
+  'practicas',
+] as const;
 
-type FormalSections = { responsibilities: readonly string[]; requirements: readonly string[]; benefits: readonly string[] };
+type FormalSections = {
+  responsibilities: readonly string[];
+  requirements: readonly string[];
+  benefits: readonly string[];
+};
 
 // Headings of the three sections "Usar" also copies into their own wizard fields (es + en).
 const STRUCTURED_HEADINGS: Array<{ key: keyof FormalSections; re: RegExp }> = [
@@ -103,14 +120,23 @@ export function withoutCopiedSections(description: string, sections: FormalSecti
     }
     if (!copied || line.trim() !== '') kept.push(line);
   }
-  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return kept
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** "1 posición" / "3 posiciones" (or the English forms) from the active locale's labels. */
-export function positionCountLabel(count: number, labels: { positionCountOne: string; positionCountMany: string }): string {
+export function positionCountLabel(
+  count: number,
+  labels: { positionCountOne: string; positionCountMany: string },
+): string {
   return count === 1 ? labels.positionCountOne : labels.positionCountMany.replace('{n}', String(count));
 }
 
-export const inputCls = 'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]';
-export const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
-export const textareaCls = 'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none';
+// The foundation field recipes (field-border outline, 16px on phones so iOS does not zoom, global focus ring),
+// for the controls the wizard and the drawer cannot swap for <TextInput>/<Select> (MoneyInput, raw selects).
+export const inputCls = inputClasses('md');
+export const labelCls = FIELD_LABEL_CLASSES;
+export const textareaCls = textareaClasses();
+export const hintCls = FIELD_HELP_CLASSES;

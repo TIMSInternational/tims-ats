@@ -15,7 +15,11 @@ const m = vi.hoisted(() => ({
 }));
 const idle = vi.hoisted(() => () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }));
 
-vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: es, locale: 'ES' }) }));
+// The pure message helpers (formatMessage, pluralize) stay real; only the locale hook is fixed.
+vi.mock('../../apps/web/lib/i18n', async () => ({
+  ...(await vi.importActual<typeof import('../../apps/web/lib/i18n/format')>('../../apps/web/lib/i18n/format')),
+  useI18n: () => ({ t: es, locale: 'ES' }),
+}));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: vi.fn() }));
 vi.mock('../../apps/web/lib/permissions', () => ({
   usePermissions: () => ({ can: (mod: string, action = 'read') => m.grants.has(`${mod}:${action}`), userId: 'me' }),
@@ -139,7 +143,10 @@ describe('edit form helpers', () => {
 
   // Codex P2: a stored decimal (the API accepts any non-negative number) must not block a title-only edit.
   it('never lets an untouched stored salary block an unrelated edit', () => {
-    const initial = initialEditForm({ ...editable, salary: { min: 1500.5, max: 900, currency: 'CRC', period: 'monthly' } });
+    const initial = initialEditForm({
+      ...editable,
+      salary: { min: 1500.5, max: 900, currency: 'CRC', period: 'monthly' },
+    });
     const titleOnly = { ...initial, title: 'Analista Sr' };
     expect(validateEditForm(initial, titleOnly)).toBeNull();
     expect(buildVacancyPatch(initial, titleOnly)).toEqual({ title: 'Analista Sr' });
@@ -189,7 +196,10 @@ describe('vacancy detail lifecycle actions', () => {
     fireEvent.click(screen.getByRole('button', { name: es.vacancies.freezeVacancy }));
     expect(m.freeze).not.toHaveBeenCalled();
     expect(screen.getByText(es.vacancies.confirmFreezeDesc)).toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: es.vacancies.freezeVacancy }));
+    // The confirm button names its verb and object ("Congelar vacante"), not a bare "Congelar".
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: es.vacancies.freezeVacancyConfirm }),
+    );
     expect(m.freeze).toHaveBeenCalledWith({ id: VACANCY });
     published.unmount();
 
