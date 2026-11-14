@@ -64,9 +64,9 @@ describe('assessment security settings', () => {
   it('starts all off, keeps the identity check disabled with an explanation, and saves nothing until changed', () => {
     render(<AssessmentSecurityForm settings={off} />);
 
-    expect(screen.getByRole('switch', { name: es.assessmentSecurity.lockdownLabel })).not.toBeChecked();
-    expect(screen.getByRole('switch', { name: es.assessmentSecurity.antiCheatLabel })).not.toBeChecked();
-    const identity = screen.getByRole('switch', { name: es.assessmentSecurity.identityLabel });
+    expect(screen.getByRole('checkbox', { name: es.assessmentSecurity.lockdownLabel })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: es.assessmentSecurity.antiCheatLabel })).not.toBeChecked();
+    const identity = screen.getByRole('checkbox', { name: es.assessmentSecurity.identityLabel });
     expect(identity).toBeDisabled();
     expect(screen.getByTestId('identity-unavailable')).toHaveTextContent(es.assessmentSecurity.identityUnavailable);
     expect(screen.getByText(es.assessmentSecurity.appliesNote)).toBeInTheDocument();
@@ -76,8 +76,8 @@ describe('assessment security settings', () => {
   it('turning alert control on offers the threshold and the three consequences, and saves the whole block', async () => {
     render(<AssessmentSecurityForm settings={off} />);
 
-    fireEvent.click(screen.getByRole('switch', { name: es.assessmentSecurity.lockdownLabel }));
-    fireEvent.click(screen.getByRole('switch', { name: es.assessmentSecurity.antiCheatLabel }));
+    fireEvent.click(screen.getByRole('checkbox', { name: es.assessmentSecurity.lockdownLabel }));
+    fireEvent.click(screen.getByRole('checkbox', { name: es.assessmentSecurity.antiCheatLabel }));
     for (const c of ['warn', 'auto_submit', 'void'] as const) {
       expect(
         screen.getByRole('radio', { name: new RegExp(es.assessmentSecurity.consequence[c].label) }),
@@ -106,7 +106,7 @@ describe('assessment security settings', () => {
     mocks.locale = 'en';
     render(<AssessmentSecurityForm settings={{ ...off, identityCheckAvailable: true }} />);
 
-    expect(screen.getByRole('switch', { name: en.assessmentSecurity.identityLabel })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: en.assessmentSecurity.identityLabel })).toBeEnabled();
     expect(screen.queryByTestId('identity-unavailable')).not.toBeInTheDocument();
   });
 });

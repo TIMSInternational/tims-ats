@@ -21,7 +21,7 @@ export function ProviderProctoringNote({
 
   return (
     <div
-      className="mt-1 space-y-0.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
+      className="mt-1 space-y-0.5 rounded-lg bg-warning-bg px-3 py-2 text-callout text-warning"
       data-testid="provider-proctoring-note"
     >
       {outcome && (
@@ -30,7 +30,7 @@ export function ProviderProctoringNote({
           <p>{outcome === 'auto_submitted' ? p.autoSubmitted : p.voided}</p>
         </>
       )}
-      {known.length > 0 && <p className="text-[11px]">{p.reasonsLabel.replace('{reasons}', known.join(', '))}</p>}
+      {known.length > 0 && <p className="text-caption">{p.reasonsLabel.replace('{reasons}', known.join(', '))}</p>}
     </div>
   );
 }

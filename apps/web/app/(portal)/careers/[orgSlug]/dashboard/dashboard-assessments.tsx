@@ -1,10 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { Button, ErrorState, Skeleton, StatusBadge, type StatusTone } from '../../../../../components';
 
 const ACTIVE_STATUSES = new Set(['assigned', 'in_progress']);
+const STATUS_TONE: Record<string, StatusTone> = { assigned: 'brand', in_progress: 'warning', completed: 'success' };
 
 function isExpired(expiresAt: Date | null): boolean {
   return expiresAt !== null && expiresAt.getTime() < Date.now();
@@ -18,24 +19,30 @@ function isExpired(expiresAt: Date | null): boolean {
 // above it (the candidate saw "no assessments yet" right over four TIMS tests).
 export function DashboardAssessments({ orgSlug, hideWhenEmpty = false }: { orgSlug: string; hideWhenEmpty?: boolean }) {
   const { t } = useI18n();
-  const { data, isLoading, isError } = trpc.candidatePortal.getMyAssessments.useQuery({ orgSlug });
+  const { data, isLoading, isError, refetch } = trpc.candidatePortal.getMyAssessments.useQuery({ orgSlug });
 
-  const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.assessments}</h2>;
+  const header = (
+    <h2 id="native-assessments-heading" className="mb-3 text-subheading font-semibold text-brand">
+      {t.portalDashboard.assessments}
+    </h2>
+  );
+  const sectionClass = 'rounded-2xl border border-border bg-white p-4 sm:p-5';
 
   if (isLoading) {
     if (hideWhenEmpty) return null;
     return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
+      <section aria-labelledby="native-assessments-heading" aria-busy="true" className={sectionClass}>
         {header}
-        <p className="text-[12px] text-muted">{t.portalDashboard.assessLoading}</p>
+        <span className="sr-only">{t.portalDashboard.assessLoading}</span>
+        <Skeleton className="h-16 w-full rounded-xl" />
       </section>
     );
   }
   if (isError) {
     return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
+      <section aria-labelledby="native-assessments-heading" className={sectionClass}>
         {header}
-        <p className="text-[12px] text-[#B42318]">{t.portalDashboard.assessError}</p>
+        <ErrorState size="compact" title={t.portalDashboard.assessError} onRetry={() => void refetch()} />
       </section>
     );
   }
@@ -55,41 +62,45 @@ export function DashboardAssessments({ orgSlug, hideWhenEmpty = false }: { orgSl
       case 'cancelled':
         return t.portalDashboard.assessStatusCancelled;
       default:
-        return status;
+        // Never show a raw status code: anything not started reads as "not started".
+        return t.portalDashboard.assessStatusAssigned;
     }
   };
 
   return (
-    <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
+    <section aria-labelledby="native-assessments-heading" className={sectionClass}>
       {header}
 
       {assignments.length === 0 ? (
-        <p className="text-[12px] text-muted">{t.portalDashboard.assessEmpty}</p>
+        <p className="text-body text-secondary">{t.portalDashboard.assessEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {assignments.map((assignment) => {
             const expired = ACTIVE_STATUSES.has(assignment.status) && isExpired(assignment.expiresAt);
             const active = ACTIVE_STATUSES.has(assignment.status) && !expired;
             return (
-              <li key={assignment.id} className="rounded-xl border border-[#EDEDED] p-4">
+              <li key={assignment.id} className="rounded-xl border border-border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-[#1F114C] truncate">
+                    <p className="truncate text-subheading font-semibold text-brand">
                       {assignment.assessmentType.name}
                     </p>
                     {assignment.assessmentType.duration !== null && (
-                      <p className="text-[11px] text-muted mt-1">
+                      <p className="mt-1 text-caption text-secondary">
                         {assignment.assessmentType.duration} {t.portalDashboard.assessMinutes}
                       </p>
                     )}
                   </div>
-                  <span className="shrink-0 rounded-full bg-[#F4F1FF] px-2.5 py-1 text-[11px] font-medium text-[#1F114C]">
+                  <StatusBadge
+                    tone={expired ? 'neutral' : (STATUS_TONE[assignment.status] ?? 'neutral')}
+                    className="shrink-0"
+                  >
                     {statusLabel(assignment.status, expired)}
-                  </span>
+                  </StatusBadge>
                 </div>
 
                 {assignment.status === 'completed' && (
-                  <p className="text-[12px] text-[#585858] mt-2">
+                  <p className="mt-2 text-callout text-secondary">
                     {assignment.result?.hasPending
                       ? t.portalDashboard.assessPendingNotice
                       : `${t.portalDashboard.assessScoreLabel}: ${assignment.result?.normalizedScore ?? '—'}`}
@@ -97,14 +108,15 @@ export function DashboardAssessments({ orgSlug, hideWhenEmpty = false }: { orgSl
                 )}
 
                 {active && (
-                  <Link
+                  <Button
                     href={`/careers/${orgSlug}/dashboard/assessments/${assignment.id}`}
-                    className="mt-3 inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition"
+                    size="lg"
+                    className="mt-3 w-full sm:w-auto"
                   >
                     {assignment.status === 'in_progress'
                       ? t.portalDashboard.assessContinue
                       : t.portalDashboard.assessStart}
-                  </Link>
+                  </Button>
                 )}
               </li>
             );

@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { usePermissions } from '../../../../lib/permissions';
-import { EmptyState, ErrorState, Skeleton } from '../../../../components';
+import { EmptyState, ErrorState, PageHeader, Skeleton } from '../../../../components';
 import { isProviderAssessmentsStaffEnabled } from '../../../../lib/platform-api/assessment-providers-staff';
 import { useProctoringSettings } from '../../../../lib/platform-api/assessment-provider-settings';
 import { AssessmentSecurityForm } from './assessment-security-form';
@@ -18,20 +18,33 @@ export default function AssessmentSecurityPage() {
   const settings = useProctoringSettings();
 
   let body: ReactNode;
-  if (!isProviderAssessmentsStaffEnabled()) body = <EmptyState icon={null} message={m.unavailable} />;
+  if (!isProviderAssessmentsStaffEnabled())
+    body = <EmptyState icon={<ShieldIcon />} title={m.unavailableTitle} description={m.unavailableBody} />;
   else if (isLoading || settings.isLoading) body = <Skeleton className="h-64 w-full rounded-xl" />;
-  else if (!can('assessment', 'update')) body = <EmptyState icon={null} message={m.noPermission} />;
+  else if (!can('assessment', 'update')) body = <EmptyState icon={<ShieldIcon />} title={m.noPermission} />;
   else if (settings.isError || !settings.data)
     body = <ErrorState onRetry={() => void settings.refetch()} error={settings.error} />;
   else body = <AssessmentSecurityForm settings={settings.data} />;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <header className="max-w-2xl">
-        <h1 className="text-lg font-semibold text-[#1F114C]">{m.title}</h1>
-        <p className="mt-1 text-sm text-[#585858]">{m.subtitle}</p>
-      </header>
-      <section className="flex flex-col">{body}</section>
+    <div className="flex h-full flex-col">
+      <PageHeader title={m.title} description={m.subtitle} />
+      <section className="flex flex-1 flex-col overflow-y-auto px-4 py-5 md:px-6 md:py-6">{body}</section>
     </div>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg
+      className="size-8 text-muted"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path d="M12 3l7.5 3v5.25c0 4.5-3.15 8.4-7.5 9.75-4.35-1.35-7.5-5.25-7.5-9.75V6L12 3z" strokeLinejoin="round" />
+    </svg>
   );
 }

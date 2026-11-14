@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { frameMessages } from './provider-frame-messages';
+import { Button } from '../../../../../components';
 
 // A TIMS test, framed full screen inside the portal (D16). Two kinds:
 //  - the TIMS hosted player (LIA, English, Personality): it draws timssuite.com's own test screens, so this frame adds
@@ -86,23 +87,13 @@ export function ProviderAssessmentFrame({
   const m = frameMessages(locale, t.portalDashboard);
   const leaveButton = finished ? (
     // The sitting is over and the suite's receipt is on screen: one clear way back, no question asked.
-    <button
-      ref={leaveRef}
-      type="button"
-      onClick={onClose}
-      className="inline-flex items-center min-h-11 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#150D33] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-    >
+    <Button ref={leaveRef} onClick={onClose}>
       {m.providerFrameDone}
-    </button>
+    </Button>
   ) : (
-    <button
-      ref={leaveRef}
-      type="button"
-      onClick={() => setConfirming(true)}
-      className="inline-flex items-center min-h-11 px-3 -mr-3 rounded-lg text-sm font-medium text-[#1F114C] hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-    >
+    <Button ref={leaveRef} variant="tertiary" onClick={() => setConfirming(true)}>
       {m.providerFrameLeave}
-    </button>
+    </Button>
   );
 
   return (
@@ -122,8 +113,8 @@ export function ProviderAssessmentFrame({
           </div>
         </div>
       ) : (
-        <div className="bg-white border-b border-gray-200 px-4 h-11 flex items-center justify-between gap-4">
-          <p className="min-w-0 truncate text-sm font-medium text-gray-900">{name ?? m.providerFrameTitle}</p>
+        <div className="flex min-h-14 items-center justify-between gap-4 border-b border-border bg-white px-4 py-2">
+          <p className="min-w-0 truncate text-subheading font-medium text-primary">{name ?? m.providerFrameTitle}</p>
           {leaveButton}
         </div>
       )}
@@ -132,31 +123,22 @@ export function ProviderAssessmentFrame({
           role="alertdialog"
           aria-labelledby="provider-leave-title"
           aria-describedby="provider-leave-body"
-          className="bg-white border-b border-gray-200 px-4 py-3 flex flex-wrap items-center gap-3"
+          className="flex flex-wrap items-center gap-3 border-b border-border bg-white px-4 py-3"
         >
           <div className="min-w-0 flex-1">
-            <p id="provider-leave-title" className="text-sm font-semibold text-gray-900">
+            <p id="provider-leave-title" className="text-subheading font-semibold text-primary">
               {m.providerLeaveTitle}
             </p>
-            <p id="provider-leave-body" className="text-sm text-gray-600">
+            <p id="provider-leave-body" className="text-body text-secondary">
               {m.providerLeaveBody}
             </p>
           </div>
-          <button
-            ref={stayRef}
-            type="button"
-            onClick={() => setConfirming(false)}
-            className="inline-flex items-center justify-center min-h-11 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#150D33] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-          >
-            {m.providerLeaveStay}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center justify-center min-h-11 px-4 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-          >
+          <Button variant="secondary" onClick={onClose}>
             {m.providerLeaveConfirm}
-          </button>
+          </Button>
+          <Button ref={stayRef} onClick={() => setConfirming(false)}>
+            {m.providerLeaveStay}
+          </Button>
         </div>
       )}
       <iframe
@@ -170,4 +152,3 @@ export function ProviderAssessmentFrame({
     </div>
   );
 }
-

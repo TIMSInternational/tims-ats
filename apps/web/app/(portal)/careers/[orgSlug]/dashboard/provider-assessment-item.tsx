@@ -6,6 +6,7 @@ import type {
   PortalProviderAttempt,
   PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
+import { Button, StatusBadge, type StatusTone } from '../../../../../components';
 import { ProviderAssessmentConsent } from './provider-assessment-consent';
 import { ProviderAssessmentNoticeStep } from './provider-assessment-notice-step';
 
@@ -54,6 +55,8 @@ const INSTRUMENT_DESCRIPTION: Record<string, keyof PortalMessages> = {
   english: 'providerDescriptionEnglish',
   personality: 'providerDescriptionPersonality',
   pca: 'providerDescriptionPca',
+  itcia: 'providerDescriptionItcia',
+  mi: 'providerDescriptionMi',
 };
 
 /** The short mark timssuite.com shows for each test, so a candidate who knows one recognises it here. */
@@ -66,18 +69,17 @@ const INSTRUMENT_MARK: Record<string, string> = {
   pca: 'PCA',
 };
 
-/** One tint per meaning: done is green, waiting on the candidate is lavender, under way or in review is amber. */
-const STATUS_TONE: Record<PortalStatus, string> = {
-  consent_needed: 'bg-[#F4F1FF] text-[#1F114C]',
-  ready: 'bg-[#F4F1FF] text-[#1F114C]',
-  in_progress: 'bg-[#FFFAEB] text-[#B54708]',
-  completed: 'bg-[#ECFDF3] text-[#067647]',
-  expired: 'bg-[#F2F4F7] text-[#475467]',
-  needs_review: 'bg-[#FFFAEB] text-[#B54708]',
+/** One tone per meaning: done is green, waiting on the candidate is brand, under way or in review is amber. */
+const STATUS_TONE: Record<PortalStatus, StatusTone> = {
+  consent_needed: 'brand',
+  ready: 'brand',
+  in_progress: 'warning',
+  completed: 'success',
+  expired: 'neutral',
+  needs_review: 'warning',
 };
 
-const BUTTON =
-  'mt-3 inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition disabled:opacity-50';
+const FINISHED = new Set<PortalStatus>(['completed', 'expired', 'needs_review']);
 
 export function ProviderAssessmentItem({
   attempt,
@@ -87,6 +89,8 @@ export function ProviderAssessmentItem({
   failureKey,
   consentOpen,
   notice,
+  primary = true,
+  justClosed = false,
   onOpenConsent,
   onCancelConsent,
   onStart,
@@ -99,6 +103,10 @@ export function ProviderAssessmentItem({
   busy: boolean;
   failureKey: keyof PortalMessages | null;
   consentOpen: boolean;
+  /** Only the next test to take gets the filled button; the rest are secondary (buttons.md › Style). */
+  primary?: boolean;
+  /** The candidate just closed this test's provider page (PCA): its result may still be on its way. */
+  justClosed?: boolean;
   onOpenConsent: () => void;
   onCancelConsent: () => void;
   onStart: (decision: ConsentDecision) => void;
@@ -108,31 +116,47 @@ export function ProviderAssessmentItem({
   // the provider still needs a consent, otherwise through the notice step. Only a started sitting resumes directly.
   const launchable = attempt.status === 'in_progress';
   const notStarted = attempt.status === 'ready' || attempt.status === 'consent_needed';
+  const finished = FINISHED.has(attempt.status);
+  // Closing the provider page does not prove the survey was finished: say the result may be on its way, never that
+  // it was submitted, and offer to open it again without urging a second sitting.
+  const awaiting = justClosed && attempt.status === 'ready';
+  const variant = primary && !awaiting ? 'primary' : 'secondary';
+  const action = (label: string, onClick: () => void, disabled = false) => (
+    <Button variant={variant} size="lg" className="mt-3 w-full sm:w-auto" disabled={disabled} onClick={onClick}>
+      {label}
+    </Button>
+  );
   return (
-    <li className="rounded-xl border border-[#EDEDED] p-4" data-status={attempt.status}>
+    <li className={`rounded-xl border border-border ${finished ? 'px-4 py-3' : 'p-4'}`} data-status={attempt.status}>
       <div className="flex items-start gap-3">
         <span
           aria-hidden="true"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F4F1FF] text-[12px] font-semibold text-[#1F114C]"
+          className={`flex shrink-0 items-center justify-center rounded-xl bg-brand-tint font-semibold text-brand ${
+            finished ? 'size-8 text-caption' : 'size-10 text-callout'
+          }`}
         >
           {INSTRUMENT_MARK[attempt.instrument] ?? '·'}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-semibold text-[#1F114C] truncate">{name}</p>
-          <p className="text-[12px] text-[#585858] mt-0.5">
-            {t[INSTRUMENT_DESCRIPTION[attempt.instrument] ?? 'providerDescriptionOther']}
-          </p>
+          <p className="truncate text-subheading font-semibold text-brand">{name}</p>
+          {!finished && (
+            <p className="mt-0.5 text-callout text-secondary">
+              {t[INSTRUMENT_DESCRIPTION[attempt.instrument] ?? 'providerDescriptionOther']}
+            </p>
+          )}
           {deadline && notStarted && (
-            <p className="text-[11px] text-muted mt-1">
+            <p className="mt-1 text-caption text-secondary">
               {t.providerAvailableUntil} {deadline}
             </p>
           )}
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${STATUS_TONE[attempt.status]}`}>
-          {t[STATUS_LABEL[attempt.status]]}
-        </span>
+        <StatusBadge tone={awaiting ? 'neutral' : STATUS_TONE[attempt.status]} className="shrink-0">
+          {awaiting ? t.providerStatusAwaitingResult : t[STATUS_LABEL[attempt.status]]}
+        </StatusBadge>
       </div>
-      <p className="text-[12px] text-[#585858] mt-2">{t[STATUS_HINT[attempt.status]]}</p>
+      <p className={`text-callout text-secondary ${finished ? 'mt-1 pl-11' : 'mt-2'}`}>
+        {awaiting ? t.providerHintPcaPending : t[STATUS_HINT[attempt.status]]}
+      </p>
 
       {attempt.status === 'consent_needed' &&
         (consentOpen ? (
@@ -144,9 +168,7 @@ export function ProviderAssessmentItem({
             onCancel={onCancelConsent}
           />
         ) : (
-          <button type="button" onClick={onOpenConsent} className={BUTTON}>
-            {t.providerReviewConsent}
-          </button>
+          action(t.providerReviewConsent, onOpenConsent)
         ))}
 
       {attempt.status === 'ready' &&
@@ -158,19 +180,13 @@ export function ProviderAssessmentItem({
             onCancel={onCancelConsent}
           />
         ) : (
-          <button type="button" onClick={onOpenConsent} className={BUTTON}>
-            {t.providerStart}
-          </button>
+          action(awaiting ? t.providerOpenAgain : t.providerStart, onOpenConsent)
         ))}
 
-      {launchable && (
-        <button type="button" disabled={busy} onClick={() => onStart(NO_DECISION)} className={BUTTON}>
-          {busy ? t.providerOpening : t.providerContinue}
-        </button>
-      )}
+      {launchable && action(busy ? t.providerOpening : t.providerContinue, () => onStart(NO_DECISION), busy)}
 
       {failureKey && (
-        <p role="alert" className="text-[12px] text-[#B42318] mt-2">
+        <p role="alert" className="mt-2 text-callout text-danger">
           {t[failureKey]}
         </p>
       )}

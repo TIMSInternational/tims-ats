@@ -2,11 +2,9 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import {
-  AssessmentConsentNotice,
-  atsNoticeAcknowledgment,
-} from '../../../../../components/assessment-consent-notice';
+import { AssessmentConsentNotice, atsNoticeAcknowledgment } from '../../../../../components/assessment-consent-notice';
 import type { NoticeAcknowledgment } from '../../../../../lib/platform-api/assessment-provider-portal';
+import { BUTTON_GROUP_CLASSES, Button, CHOICE_INPUT_CLASSES } from '../../../../../components';
 
 // Before a sitting that needs no provider consent any more (status "ready": the provider already holds every purpose),
 // the candidate still reads the ATS notice for this vacancy (design §6.3), so no assessment ever starts without it.
@@ -31,28 +29,31 @@ export function ProviderAssessmentNoticeStep({
         orgName={notice.orgName}
         vacancyTitle={notice.vacancyTitle}
         instruments={[notice.instrumentName]}
-      />
-      <label className="flex items-start gap-2 text-[12px] text-[#1F114C]">
-        <input type="checkbox" checked={read} onChange={(event) => setRead(event.target.checked)} />
-        <span>{t.assessmentConsentNotice.readAck}</span>
-      </label>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!read || busy}
-          onClick={() => onStart(atsNoticeAcknowledgment(locale))}
-          className="inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition disabled:opacity-50"
-        >
-          {busy ? t.portalDashboard.providerOpening : t.portalDashboard.providerStart}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="inline-flex h-9 items-center rounded-xl border border-[#EDEDED] px-4 text-[12px] font-medium text-[#1F114C]"
-        >
+        scroll={false}
+      >
+        <label className="mt-1 flex min-h-7 cursor-pointer items-start gap-2 border-t border-border pt-3 text-body font-medium text-primary pointer-coarse:min-h-11">
+          <input
+            type="checkbox"
+            checked={read}
+            onChange={(event) => setRead(event.target.checked)}
+            className={`${CHOICE_INPUT_CLASSES} mt-0.5`}
+          />
+          <span>{t.assessmentConsentNotice.readAck}</span>
+        </label>
+      </AssessmentConsentNotice>
+      <div className={BUTTON_GROUP_CLASSES}>
+        <Button variant="secondary" size="lg" onClick={onCancel} disabled={busy}>
           {t.portalDashboard.providerCancel}
-        </button>
+        </Button>
+        <Button
+          size="lg"
+          disabled={!read}
+          loading={busy}
+          loadingLabel={t.portalDashboard.providerOpening}
+          onClick={() => onStart(atsNoticeAcknowledgment(locale))}
+        >
+          {t.portalDashboard.providerStart}
+        </Button>
       </div>
     </div>
   );

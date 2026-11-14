@@ -21,9 +21,27 @@ function renderConfirm(props: Partial<React.ComponentProps<typeof AssessmentSubm
 }
 
 describe('AssessmentSubmitConfirm', () => {
+  // Each unanswered question is named ("Question 3") and, with onJumpTo, is a button back to it.
   it('lists unanswered question numbers when there are any', () => {
     renderConfirm({ unansweredOrders: [3, 7] });
-    expect(screen.getByText(/3, 7/)).toBeInTheDocument();
+    expect(screen.getByText('Question 3')).toBeInTheDocument();
+    expect(screen.getByText('Question 7')).toBeInTheDocument();
+  });
+
+  it('jumps to an unanswered question from its link', () => {
+    const onJumpTo = vi.fn();
+    renderConfirm({ unansweredOrders: [3, 7], onJumpTo });
+    fireEvent.click(screen.getByRole('button', { name: 'Question 7' }));
+    expect(onJumpTo).toHaveBeenCalledWith(7);
+  });
+
+  it('is a labelled modal dialog that Escape cancels', () => {
+    const onCancel = vi.fn();
+    renderConfirm({ onCancel });
+    const dialog = screen.getByRole('dialog', { name: en.assessmentPlayer.submitConfirmTitle });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    fireEvent.keyDown(document.activeElement ?? dialog, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
   it('renders no unanswered-question notice when everything is answered', () => {
