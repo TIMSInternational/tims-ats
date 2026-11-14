@@ -73,7 +73,8 @@ export function SubTable({
         : { label: sb.changePlanEllipsis, onClick: () => onChangePlan(sub) };
     const items: MenuEntry[] = [{ key: 'invoices', label: sb.viewInvoices, href: `/platform/invoices?orgId=${sub.organizationId}` }];
     if (!d.isCancelled && d.isPastDue) items.push({ key: 'plan', label: sb.changePlanEllipsis, onSelect: () => onChangePlan(sub) });
-    if (!d.isCancelled) {
+    // Past-due rows never offered cancel; keep that availability (cancelling them is a product decision).
+    if (!d.isCancelled && !d.isPastDue) {
       items.push({ key: 'sep', type: 'separator' });
       items.push({ key: 'cancel', label: sb.cancelSubscriptionEllipsis, destructive: true, onSelect: () => onCancel(sub) });
     }

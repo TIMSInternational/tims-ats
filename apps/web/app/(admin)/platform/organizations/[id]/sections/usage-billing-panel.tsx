@@ -89,13 +89,17 @@ export function UsageBillingPanel({ orgId }: { orgId: string }) {
     setConfirming(false);
     generateInvoice.mutate({ orgId, periodStart, periodEnd });
   };
-  const nothingBillable = hasValidPeriod && !preview.isLoading && (lines.length === 0 || subtotalUsd <= 0);
+  const nothingBillable = hasValidPeriod && preview.isSuccess && (lines.length === 0 || subtotalUsd <= 0);
+  const cannotGenerate =
+    !hasValidPeriod || preview.isLoading || preview.isError || lines.length === 0 || subtotalUsd <= 0;
   const u = t.usageBilling;
 
   return (
     <section className="overflow-hidden rounded-xl bg-white shadow-card" aria-labelledby="usage-billing-title">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
-        <h2 id="usage-billing-title" className="text-subheading font-semibold text-primary">{u.title}</h2>
+        <h2 id="usage-billing-title" className="text-subheading font-semibold text-primary">
+          {u.title}
+        </h2>
         <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
           <fieldset className="grid w-full grid-cols-2 gap-2 sm:w-auto">
             <legend className="mb-1 text-callout font-medium text-secondary">{u.periodLabel}</legend>
@@ -126,14 +130,16 @@ export function UsageBillingPanel({ orgId }: { orgId: string }) {
               className="sm:w-auto"
               onClick={() => setConfirming(true)}
               loading={generateInvoice.isPending}
-              disabled={!hasValidPeriod || nothingBillable}
+              disabled={cannotGenerate}
               aria-describedby={nothingBillable ? 'usage-billing-disabled' : undefined}
             >
               {u.generate}
             </Button>
           </div>
           {nothingBillable && (
-            <p id="usage-billing-disabled" className="w-full text-callout text-secondary sm:text-right">{u.noUsage}</p>
+            <p id="usage-billing-disabled" className="w-full text-callout text-secondary sm:text-right">
+              {u.noUsage}
+            </p>
           )}
         </div>
       </div>
@@ -153,7 +159,12 @@ export function UsageBillingPanel({ orgId }: { orgId: string }) {
         <div className="space-y-3 p-5" aria-hidden="true">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4">
-              <Skeleton className="h-3 w-32" /><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-16" /><Skeleton className="h-3 w-16" /><Skeleton className="h-3 w-20" /><Skeleton className="h-3 w-20" />
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-3 w-20" />
             </div>
           ))}
         </div>
@@ -162,37 +173,65 @@ export function UsageBillingPanel({ orgId }: { orgId: string }) {
       ) : lines.length === 0 ? (
         <EmptyState icon={emptyIcon} size="compact" message={t.usageBilling.noUsage} />
       ) : (
-        <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left">
-          <caption className="sr-only">{u.title}</caption>
-          <thead>
-            <tr className="border-b border-border">
-              <th scope="col" className={TH}>{u.moduleCol}</th>
-              <th scope="col" className={`${TH} text-right`}>{u.usageCol}</th>
-              <th scope="col" className={`${TH} text-right`}>{u.includedCol}</th>
-              <th scope="col" className={`${TH} text-right`}>{u.billableCol}</th>
-              <th scope="col" className={`${TH} text-right`}>{u.unitPriceCol}</th>
-              <th scope="col" className={`${TH} text-right`}>{u.amountCol}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {lines.map((line) => (
-              <tr key={line.moduleCode} className="hover:bg-surface-hover">
-                <td className="px-4 py-2.5 text-body font-medium text-primary">{line.name}</td>
-                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{line.quantity} {line.unit}</td>
-                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{line.includedQty}</td>
-                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{line.billableQty}</td>
-                <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">{fmtCurrency(line.unitPrice)}</td>
-                <td className="px-4 py-2.5 text-right text-body font-medium tabular-nums text-primary">{fmtCurrency(line.amountUsd)}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left">
+            <caption className="sr-only">{u.title}</caption>
+            <thead>
+              <tr className="border-b border-border">
+                <th scope="col" className={TH}>
+                  {u.moduleCol}
+                </th>
+                <th scope="col" className={`${TH} text-right`}>
+                  {u.usageCol}
+                </th>
+                <th scope="col" className={`${TH} text-right`}>
+                  {u.includedCol}
+                </th>
+                <th scope="col" className={`${TH} text-right`}>
+                  {u.billableCol}
+                </th>
+                <th scope="col" className={`${TH} text-right`}>
+                  {u.unitPriceCol}
+                </th>
+                <th scope="col" className={`${TH} text-right`}>
+                  {u.amountCol}
+                </th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-border bg-surface-hover">
-              <th scope="row" className="px-4 py-2.5 text-left text-callout font-semibold text-secondary" colSpan={5}>{u.subtotal}</th>
-              <td className="px-4 py-2.5 text-right text-body font-semibold tabular-nums text-primary">{fmtCurrency(subtotalUsd)}</td>
-            </tr>
-          </tfoot>
-        </table></div>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {lines.map((line) => (
+                <tr key={line.moduleCode} className="hover:bg-surface-hover">
+                  <td className="px-4 py-2.5 text-body font-medium text-primary">{line.name}</td>
+                  <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">
+                    {line.quantity} {line.unit}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">
+                    {line.includedQty}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">
+                    {line.billableQty}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-callout tabular-nums text-secondary">
+                    {fmtCurrency(line.unitPrice)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-body font-medium tabular-nums text-primary">
+                    {fmtCurrency(line.amountUsd)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-border bg-surface-hover">
+                <th scope="row" className="px-4 py-2.5 text-left text-callout font-semibold text-secondary" colSpan={5}>
+                  {u.subtotal}
+                </th>
+                <td className="px-4 py-2.5 text-right text-body font-semibold tabular-nums text-primary">
+                  {fmtCurrency(subtotalUsd)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
     </section>
   );

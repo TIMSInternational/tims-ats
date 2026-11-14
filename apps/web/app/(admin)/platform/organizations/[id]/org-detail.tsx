@@ -195,7 +195,7 @@ export function OrgDetail({ id }: { id: string }) {
       {/* Edit modal */}
       {showEdit && (
         <EditOrgModal
-          org={org as any}
+          org={org}
           localeInitial={orgLocaleFormFromOrg(org.settings, primaryCompany)}
           onClose={() => setShowEdit(false)}
           onSuccess={() => {

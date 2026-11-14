@@ -108,7 +108,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
 
   const rows = users.map((user) => {
     const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || ou.noName;
-    const roleSlug = user.isPlatformOwner ? 'platform_owner' : (user as any).userRoles?.[0]?.role?.slug || 'employee';
+    const roleSlug = user.isPlatformOwner ? 'platform_owner' : user.userRoles?.[0]?.role?.slug || 'employee';
     return { user, fullName, roleSlug };
   });
   const statusBadge = (isActive: boolean) => (

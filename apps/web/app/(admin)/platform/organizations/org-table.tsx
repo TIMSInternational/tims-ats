@@ -11,9 +11,10 @@ import {
   formatCurrency,
   formatRelativeTimeLocale,
 } from '../../../../lib/format-utils';
-import { CHOICE_INPUT_CLASSES, EmptyState, Skeleton, SortableHeader, StatusBadge } from '../../../../components';
+import { CHOICE_INPUT_CLASSES, CHOICE_ROW_CLASSES, EmptyState, Skeleton, SortableHeader, StatusBadge } from '../../../../components';
 import type { StatusTone } from '../../../../components';
 import { planLabel } from './plan-label';
+import { OrgActionsDropdown } from './org-actions-dropdown';
 
 function SkeletonRow() {
   return (
@@ -30,8 +31,6 @@ function SkeletonRow() {
     </tr>
   );
 }
-import { OrgActionsDropdown } from './org-actions-dropdown';
-
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
 
 type SortField = 'name' | 'plan' | 'createdAt' | 'users' | null;
@@ -101,21 +100,9 @@ export function OrgTable({
   const allSelected = organizations.length > 0 && organizations.every((o) => selectedIds.includes(o.id));
   const someSelected = organizations.some((o) => selectedIds.includes(o.id)) && !allSelected;
 
-  const toggleAll = () => {
-    if (allSelected) {
-      onSelectIds([]);
-    } else {
-      onSelectIds(organizations.map((o) => o.id));
-    }
-  };
-
-  const toggleOne = (id: string) => {
-    if (selectedIds.includes(id)) {
-      onSelectIds(selectedIds.filter((x) => x !== id));
-    } else {
-      onSelectIds([...selectedIds, id]);
-    }
-  };
+  const toggleAll = () => onSelectIds(allSelected ? [] : organizations.map((o) => o.id));
+  const toggleOne = (id: string) =>
+    onSelectIds(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
 
   if (!isLoading && organizations.length === 0) {
     return hasFilters ? (
@@ -131,7 +118,19 @@ export function OrgTable({
 
   return (
     <>
-      {/* Phones: a stacked list (foundation-spec.md §7); the table from md. */}
+      {/* Phones: a stacked list (foundation-spec.md §7) with its own selection so the bulk bar stays reachable; the table from md. */}
+      {!isLoading && (
+        <label className={`${CHOICE_ROW_CLASSES} border-b border-border px-4 py-2 md:hidden`}>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => { if (el) el.indeterminate = someSelected; }}
+            onChange={toggleAll}
+            className={CHOICE_INPUT_CLASSES}
+          />
+          <span className="text-callout text-secondary">{o.selectAll}</span>
+        </label>
+      )}
       <ul className="divide-y divide-border md:hidden" aria-busy={isLoading || undefined}>
         {isLoading
           ? Array.from({ length: 5 }).map((_, i) => (
@@ -143,8 +142,18 @@ export function OrgTable({
           : organizations.map((org) => {
               const plan = org.plan || org.subscription?.plan || 'trial';
               const health = computeHealth(org);
+              const pendingCount = ((org as Record<string, unknown>).invoices as unknown[] | undefined)?.length ?? 0;
               return (
-                <li key={org.id} className="flex items-center gap-3 px-4 py-3">
+                <li key={org.id} className={`flex items-center gap-3 px-4 py-3 ${selectedIds.includes(org.id) ? 'bg-brand-tint' : ''}`}>
+                  <label className="-ml-2 flex shrink-0 items-center justify-center p-1 pointer-coarse:size-11">
+                    <input
+                      type="checkbox"
+                      aria-label={formatMessage(o.selectOrg, { name: org.name })}
+                      checked={selectedIds.includes(org.id)}
+                      onChange={() => toggleOne(org.id)}
+                      className={CHOICE_INPUT_CLASSES}
+                    />
+                  </label>
                   <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-caption font-semibold text-white ${getAvatarColor(org.name)}`} aria-hidden="true">
                     {getInitials(org.name)}
                   </div>
@@ -155,6 +164,9 @@ export function OrgTable({
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <StatusBadge tone="brand" icon="none">{planLabel(plan, t)}</StatusBadge>
                       <StatusBadge tone={HEALTH_TONE[health]}>{healthLabel[health]}</StatusBadge>
+                      {pendingCount > 0 && (
+                        <StatusBadge tone="warning" icon="none">{formatMessage(o.pendingInvoicesCount, { count: pendingCount })}</StatusBadge>
+                      )}
                     </div>
                   </div>
                   <OrgActionsDropdown org={org} onEdit={onEdit} />

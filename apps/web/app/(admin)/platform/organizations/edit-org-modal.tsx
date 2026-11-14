@@ -36,7 +36,10 @@ export function EditOrgModal({
   onClose,
   onSuccess,
 }: {
-  org: OrganizationListItem;
+  // Only the fields this modal reads, so both the list item and the getOrganization detail fit without a cast.
+  org: Pick<OrganizationListItem, 'id' | 'name' | 'plan' | 'isActive'> & {
+    subscription?: { plan: OrganizationListItem['plan'] } | null;
+  };
   localeInitial?: OrgLocaleForm;
   onClose: () => void;
   onSuccess: () => void;
