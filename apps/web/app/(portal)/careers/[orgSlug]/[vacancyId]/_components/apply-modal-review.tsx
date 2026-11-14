@@ -57,7 +57,7 @@ export function ApplyModalReview({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg bg-[#F6F6F6] p-4 space-y-2">
+      <dl className="space-y-2 rounded-lg bg-surface p-4">
         <SummaryRow label={p.summaryName} value={`${s.firstName} ${s.lastName}`} />
         <SummaryRow label={p.summaryEmail} value={s.email} />
         {s.phone && <SummaryRow label={p.summaryPhone} value={s.phone} />}
@@ -71,10 +71,10 @@ export function ApplyModalReview({
         {s.yearsExperience && (
           <SummaryRow label={p.summaryExperience} value={experienceLevelLabel(s.yearsExperience, p.experienceLevels)} />
         )}
-        {s.linkedinUrl && <SummaryRow label="LinkedIn" value={s.linkedinUrl} />}
+        {s.linkedinUrl && <SummaryRow label={p.linkedinLabel} value={s.linkedinUrl} />}
         {cvFile && <SummaryRow label={p.summaryCv} value={`${cvFile.name} (${formatFileSize(cvFile.size)})`} />}
         <SummaryRow label={p.summaryVacancy} value={vacancyTitle} />
-      </div>
+      </dl>
 
       {cvUploadFailed && cvFile && (
         <CvUploadFailedAlert disabled={submitting} onRetry={onRetryCv} onRemoveAndContinue={onRemoveCvAndContinue} />
@@ -82,8 +82,8 @@ export function ApplyModalReview({
 
       {s.coverLetter.trim() && (
         <div>
-          <p className="mb-2 text-[12px] font-medium text-[#585858]">{p.yourMessage}</p>
-          <div className="rounded-lg border border-[#EDEDED] bg-white p-3 text-[13px] leading-relaxed text-[#585858] whitespace-pre-wrap max-h-32 overflow-y-auto">
+          <p className="mb-2 text-callout font-medium text-secondary">{p.yourMessage}</p>
+          <div className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-white p-3 text-body leading-relaxed text-secondary">
             {s.coverLetter}
           </div>
         </div>

@@ -7,6 +7,8 @@ vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: en, locale: 'EN
 import { ApplyModalStep1 } from '../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_components/apply-modal-step1';
 
 const noop = () => undefined;
+/** The visible label of an optional field: "Phone (optional)". */
+const optional = (label: string) => `${label} (${en.common.optional})`;
 
 describe('apply form step 1 accessibility', () => {
   it('associates every visible label with its input', () => {
@@ -25,11 +27,15 @@ describe('apply form step 1 accessibility', () => {
       />,
     );
     const p = en.portal;
-    expect((screen.getByLabelText(p.firstNameLabel) as HTMLInputElement).value).toBe('Ana');
-    expect((screen.getByLabelText(p.lastNameLabel) as HTMLInputElement).value).toBe('Pérez');
-    expect((screen.getByLabelText(p.emailLabel) as HTMLInputElement).value).toBe('ana@example.com');
-    expect((screen.getByLabelText(p.phoneLabel) as HTMLInputElement).value).toBe('123');
-    expect((screen.getByLabelText(p.locationLabel) as HTMLInputElement).value).toBe('Lima');
+    // The three required fields carry `required` (no "*" read aloud); the two optional ones say "(optional)".
+    for (const [label, value] of [[p.firstNameLabel, 'Ana'], [p.lastNameLabel, 'Pérez'], [p.emailLabel, 'ana@example.com']] as const) {
+      const input = screen.getByLabelText(label) as HTMLInputElement;
+      expect(input.value).toBe(value);
+      expect(input).toBeRequired();
+    }
+    expect((screen.getByLabelText(optional(p.phoneLabel)) as HTMLInputElement).value).toBe('123');
+    expect((screen.getByLabelText(optional(p.locationLabel)) as HTMLInputElement).value).toBe('Lima');
+    expect(screen.getByLabelText(optional(p.phoneLabel))).not.toBeRequired();
   });
 });
 
@@ -57,11 +63,12 @@ describe('apply form step 2 accessibility', () => {
       />,
     );
     const p = en.portal;
-    expect((screen.getByLabelText(p.currentTitleLabel) as HTMLInputElement).value).toBe('Dev');
-    expect((screen.getByLabelText(p.currentCompanyLabel) as HTMLInputElement).value).toBe('Acme');
-    expect(screen.getByLabelText(p.yearsExpLabel).tagName).toBe('SELECT');
-    expect((screen.getByLabelText('LinkedIn') as HTMLInputElement).value).toBe('https://linkedin.com/in/ana');
-    expect((screen.getByLabelText(p.coverLetterLabel) as HTMLTextAreaElement).value).toBe('Hola');
+    // Every step-2 field is optional, and its label says so.
+    expect((screen.getByLabelText(optional(p.currentTitleLabel)) as HTMLInputElement).value).toBe('Dev');
+    expect((screen.getByLabelText(optional(p.currentCompanyLabel)) as HTMLInputElement).value).toBe('Acme');
+    expect(screen.getByLabelText(optional(p.yearsExpLabel)).tagName).toBe('SELECT');
+    expect((screen.getByLabelText(optional(p.linkedinLabel)) as HTMLInputElement).value).toBe('https://linkedin.com/in/ana');
+    expect((screen.getByLabelText(optional(p.coverLetterLabel)) as HTMLTextAreaElement).value).toBe('Hola');
     expect((screen.getByLabelText(p.cvLabel) as HTMLInputElement).type).toBe('file');
   });
 

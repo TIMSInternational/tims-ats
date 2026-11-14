@@ -3,6 +3,8 @@
 import { useId } from 'react';
 
 import { useI18n } from '../../../../../../lib/i18n';
+import { Button } from '../../../../../../components/button';
+import { FIELD_ERROR_CLASSES, FIELD_HELP_CLASSES, FIELD_LABEL_CLASSES } from '../../../../../../components/field-styles';
 import type { CvValidationError } from '../_lib/cv-validation';
 
 interface CvUploadFieldProps {
@@ -24,16 +26,18 @@ export function CvUploadField({ file, error, uploading, onFileChange, onRemove }
   const p = t.portal;
   const inputId = useId();
   const labelId = `${inputId}-label`;
-  const labelClass = 'block text-xs font-medium text-[#585858] mb-1';
+  const helpId = `${inputId}-help`;
+  const errorId = `${inputId}-error`;
+  const describedBy = error ? `${helpId} ${errorId}` : helpId;
 
   return (
     <div>
       {file ? (
-        <span id={labelId} className={labelClass}>
+        <span id={labelId} className={FIELD_LABEL_CLASSES}>
           {p.cvLabel}
         </span>
       ) : (
-        <label id={labelId} htmlFor={inputId} className={labelClass}>
+        <label id={labelId} htmlFor={inputId} className={FIELD_LABEL_CLASSES}>
           {p.cvLabel}
         </label>
       )}
@@ -41,16 +45,11 @@ export function CvUploadField({ file, error, uploading, onFileChange, onRemove }
         <div
           role="group"
           aria-labelledby={labelId}
-          className="flex items-center justify-between rounded-lg border border-[#EDEDED] px-3 py-2 text-sm text-[#333]">
+          className="flex items-center justify-between gap-2 rounded-lg border border-field-border px-3 py-1 text-body text-primary">
           <span className="truncate">{file.name}</span>
-          <button
-            type="button"
-            onClick={onRemove}
-            disabled={uploading}
-            className="ml-2 shrink-0 text-[11px] text-[#DD0C15] hover:underline disabled:opacity-50"
-          >
+          <Button variant="tertiary" size="sm" onClick={onRemove} disabled={uploading} className="-mr-2 shrink-0">
             {p.cvRemove}
-          </button>
+          </Button>
         </div>
       ) : (
         <input
@@ -59,11 +58,19 @@ export function CvUploadField({ file, error, uploading, onFileChange, onRemove }
           accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
           onChange={onFileChange}
           disabled={uploading}
-          className="block w-full text-sm text-[#585858] file:mr-3 file:rounded-lg file:border-0 file:bg-[#F6F6F6] file:px-3 file:py-2 file:text-[12px] file:font-medium file:text-[#1F114C] disabled:opacity-50"
+          aria-describedby={describedBy}
+          aria-invalid={error ? true : undefined}
+          className="block w-full text-body text-secondary file:mr-3 file:min-h-9 file:cursor-pointer file:rounded-lg file:border file:border-field-border file:bg-white file:px-3 file:py-2 file:text-callout file:font-medium file:text-brand hover:file:bg-surface disabled:opacity-50"
         />
       )}
-      <p className="mt-1 text-[10px] text-muted">{p.cvHelperText}</p>
-      {error && <p className="mt-1 text-[11px] text-[#DD0C15]">{p[ERROR_KEYS[error]]}</p>}
+      <p id={helpId} className={FIELD_HELP_CLASSES}>
+        {p.cvHelperText}
+      </p>
+      {error && (
+        <p id={errorId} role="alert" className={FIELD_ERROR_CLASSES}>
+          {p[ERROR_KEYS[error]]}
+        </p>
+      )}
     </div>
   );
 }

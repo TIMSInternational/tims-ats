@@ -25,9 +25,12 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 vi.mock('../../apps/web/components', () => ({
-  Modal: ({ title, children }: { title: string; children: React.ReactNode }) => (
+  // The action row is the Modal's pinned `footer`; render it after the body as the real Modal does.
+  Modal: ({ title, children, footer }: { title: string; children: React.ReactNode; footer?: React.ReactNode }) => (
     <div role="dialog" aria-label={title}>
+      <h2>{title}</h2>
       {children}
+      {footer}
     </div>
   ),
 }));
@@ -258,13 +261,16 @@ describe('apply modal — submit error copy', () => {
       { data: { code: 'BAD_REQUEST' } },
     );
 
+  // A failed submit is said INSIDE the dialog (role="alert"): inline above the actions, or under the field
+  // the server rejected. Only a vacancy that closed meanwhile still toasts (the dialog's purpose is gone).
   async function submitWith(error: unknown) {
     mocks.applyMutateAsync.mockRejectedValue(error);
     goToReview();
     fireEvent.click(consentBox());
     fireEvent.click(submitButton());
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledOnce());
-    return mocks.toast.mock.calls[0]![0] as string;
+    const alert = await screen.findByRole('alert');
+    expect(mocks.toast).not.toHaveBeenCalled();
+    return alert.textContent;
   }
 
   it('a stale consent text version (stale bundle) asks the candidate to reload — never raw zod JSON', async () => {
@@ -291,7 +297,11 @@ describe('apply modal — submit error copy', () => {
 
   it('a vacancy that closed while the form was open says so (NOT_FOUND), not "try again"', async () => {
     const closed = Object.assign(new Error('No se encontró el recurso solicitado.'), { data: { code: 'NOT_FOUND' } });
-    expect(await submitWith(closed)).toBe(p.applyVacancyClosed);
+    mocks.applyMutateAsync.mockRejectedValue(closed);
+    goToReview();
+    fireEvent.click(consentBox());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(p.applyVacancyClosed, { type: 'error' }));
   });
 
   it('a deliberate BAD_REQUEST message (captcha) is shown as-is', async () => {
@@ -299,7 +309,7 @@ describe('apply modal — submit error copy', () => {
     expect(await submitWith(captcha)).toBe('Verificación de seguridad fallida.');
   });
 
-  it('an internal error (e.g. a raw Prisma unique-constraint message) never reaches the toast verbatim', async () => {
+  it('an internal error (e.g. a raw Prisma unique-constraint message) never reaches the candidate verbatim', async () => {
     const internal = Object.assign(new Error('Unique constraint failed on the fields: (`email`)'), {
       data: { code: 'INTERNAL_SERVER_ERROR' },
     });

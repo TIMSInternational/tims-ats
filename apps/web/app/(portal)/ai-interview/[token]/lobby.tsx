@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { Button } from '../../../../components/button';
 import { useMicLevel } from './use-mic-level';
 import { ParticipantTile } from './participant-tile';
 
@@ -12,38 +13,43 @@ interface LobbyProps {
 
 export function Lobby({ onJoin, joining, error }: LobbyProps) {
   const { t } = useI18n();
-  const level = useMicLevel(true);
+  const { level, blocked } = useMicLevel(true);
+  const hearing = level > 0.05;
 
   return (
-    <div className="min-h-screen bg-[#0E0A1F] flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl bg-[#160f2e] p-8 flex flex-col items-center gap-6">
-        <h1 className="text-lg font-semibold text-white">{t.aiInterview.lobbyHeading}</h1>
+    <main className="flex min-h-screen items-center justify-center bg-[#0E0A1F] p-4">
+      <div className="flex w-full max-w-md flex-col items-center gap-6 rounded-2xl bg-[#160f2e] p-6 sm:p-8">
+        <h1 className="text-center font-display text-heading font-semibold text-white">{t.aiInterview.lobbyHeading}</h1>
 
-        <div className="w-full flex flex-col items-center gap-2">
-          <p className="text-[11px] uppercase tracking-wide text-[#8a83ad]">
-            {t.aiInterview.lobbyMicCheck}
-          </p>
+        <div className="flex w-full flex-col items-center gap-2">
+          <p className="text-callout font-medium text-[#cfc8ea]">{t.aiInterview.lobbyMicCheck}</p>
           <div className="w-40">
             <ParticipantTile name={t.aiInterview.you} level={level} muted={false} />
           </div>
-          {level > 0.05 && <p className="text-xs text-[#5fd07a]">{t.aiInterview.lobbyMicWorking}</p>}
+          {/* Always say something: either it hears the candidate, or how to test it. */}
+          <p role="status" className={`text-callout ${hearing ? 'text-[#5fd07a]' : 'text-[#cfc8ea]'}`}>
+            {blocked ? '' : hearing ? t.aiInterview.lobbyMicWorking : t.aiInterview.lobbySpeakToTest}
+          </p>
         </div>
 
+        {blocked && (
+          <div role="alert" className="w-full rounded-lg bg-[#3a1414] p-3 text-callout text-[#ff8a8f]">
+            <p className="font-medium">{t.aiInterview.lobbyMicDenied}</p>
+            <p className="mt-1">{t.aiInterview.lobbyMicDeniedHelp}</p>
+          </div>
+        )}
+
         {error && (
-          <div className="w-full text-xs text-[#ff8a8f] bg-[#3a1414] px-3 py-2 rounded-lg">
+          <div role="alert" className="w-full rounded-lg bg-[#3a1414] p-3 text-callout text-[#ff8a8f]">
             {error}
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onJoin}
-          disabled={joining}
-          className="w-full h-12 rounded-xl bg-[#7c5cff] text-white text-sm font-semibold hover:bg-[#6b4ce0] transition disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {joining ? t.aiInterview.loading : t.aiInterview.lobbyJoin}
-        </button>
+        {/* White on the dark card: 16:1, where the old violet button with white text was 4.35:1. */}
+        <Button variant="secondary" size="lg" fullWidth onClick={onJoin} loading={joining} loadingLabel={t.aiInterview.connecting}>
+          {t.aiInterview.lobbyJoin}
+        </Button>
       </div>
-    </div>
+    </main>
   );
 }

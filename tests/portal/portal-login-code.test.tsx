@@ -309,7 +309,10 @@ describe('portal login page: code sign-in', () => {
 describe('portal login copy (es)', () => {
   it('addresses the candidate as usted and names the code', () => {
     const p = es.portalAuth;
-    expect(p.loginSubtitle).toBe('Ingrese su correo y le enviaremos un enlace y un código de acceso.');
+    // Says what the portal is for, then the mechanics: a link and a code by email.
+    expect(p.loginSubtitle).toBe(
+      'Consulte sus postulaciones, entrevistas y ofertas. Le enviaremos un enlace y un código a su correo.',
+    );
     expect(p.checkEmailTitle).toBe('Revise su correo');
     expect(p.checkEmailDesc).toContain('{email}');
     expect(p.resendIn).toContain('{n}');

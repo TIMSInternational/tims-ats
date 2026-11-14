@@ -16,7 +16,7 @@ export function PortalFooter({ orgName, orgSlug, orgLogo = null }: PortalFooterP
   // The vendor blurb promises "evaluaciones científicas", which the pilot launch scope does not offer.
   const showVendorBlurb = !isPilotScope();
   return (
-    <footer className="bg-[#1F114C] px-8 py-8">
+    <footer className="bg-brand px-4 py-8 sm:px-8">
       <div className="mx-auto max-w-5xl">
         {/* Top row */}
         <div className="flex flex-col justify-between gap-8 md:flex-row">
@@ -27,13 +27,13 @@ export function PortalFooter({ orgName, orgSlug, orgLogo = null }: PortalFooterP
                 logo={orgLogo}
                 name={orgName}
                 imgClassName="h-8 w-auto max-w-[140px] rounded bg-white object-contain p-1"
-                fallbackClassName="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-[13px] font-bold text-white"
+                fallbackClassName="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-body font-bold text-white"
                 decorative
               />
-              <span className="text-[14px] font-semibold text-white">{orgName}</span>
+              <span className="text-subheading font-semibold text-white">{orgName}</span>
             </div>
             {showVendorBlurb && (
-              <p className="mt-3 text-[12px] leading-relaxed text-white/50">
+              <p className="mt-3 text-callout leading-relaxed text-white/70">
                 {orgName} {p.footerUsesTimsSuffix}
               </p>
             )}
@@ -45,7 +45,7 @@ export function PortalFooter({ orgName, orgSlug, orgLogo = null }: PortalFooterP
               <li>
                 <Link
                   href={`/careers/${encodeURIComponent(orgSlug)}/privacy`}
-                  className="text-[12px] text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline"
+                  className="inline-flex min-h-7 items-center text-callout text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline pointer-coarse:min-h-11"
                 >
                   {p.footerPrivacy}
                 </Link>
@@ -56,11 +56,11 @@ export function PortalFooter({ orgName, orgSlug, orgLogo = null }: PortalFooterP
 
         {/* Bottom */}
         <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-6 sm:flex-row">
-          <p className="text-[11px] text-white/40">
+          <p className="text-caption text-white/70">
             &copy; {new Date().getFullYear()} {orgName}. {p.allRightsReserved}
           </p>
-          <p className="text-[11px] text-white/40">
-            {t.auth.poweredBy} <span className="font-semibold text-white/60">TIMS ATS</span>
+          <p className="text-caption text-white/70">
+            {t.auth.poweredBy} <span className="font-semibold text-white">TIMS ATS</span>
           </p>
         </div>
       </div>

@@ -14,6 +14,10 @@ import { DashboardOffer } from './dashboard-offer';
 import { DashboardFaqChat } from './dashboard-faq-chat';
 import { DashboardPrivacy } from './dashboard-privacy';
 import { DashboardProfile, type CandidateProfileView } from './dashboard-profile';
+import { Button } from '../../../../../components/button';
+import { EmptyState } from '../../../../../components/empty-state';
+import { OrgLogo } from '../../../../../components/org-logo';
+import { usePortalOrgBrand } from '../_components/portal-org-brand';
 
 // Candidate dashboard shell. Renders the authenticated frame with the full
 // dashboard: My Applications (Wave 1 Slice 2), My Interviews (Wave 1 Slice 3),
@@ -48,6 +52,7 @@ export function PortalDashboardShell({
   const router = useRouter();
   const { t } = useI18n();
   const pilot = isPilotScope();
+  const brand = usePortalOrgBrand();
 
   const signOut = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -57,20 +62,27 @@ export function PortalDashboardShell({
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F6F6]">
-      <header className="bg-white border-b border-[#EDEDED]">
-        <div className="max-w-[900px] mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
-          <Link href={`/careers/${orgSlug}`} className="text-[14px] font-semibold text-[#1F114C] truncate">
-            {orgName}
+    <div className="min-h-screen bg-surface">
+      <header className="border-b border-border bg-white">
+        <div className="mx-auto flex h-14 max-w-[900px] items-center justify-between gap-3 px-4 md:px-6">
+          <Link href={`/careers/${orgSlug}`} className="flex min-w-0 items-center gap-2">
+            <OrgLogo
+              logo={brand?.logo ?? null}
+              name={orgName}
+              imgClassName="h-7 w-auto max-w-[120px] shrink-0 object-contain"
+              fallbackClassName="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand text-callout font-bold text-white"
+              decorative
+            />
+            <span className="truncate text-subheading font-semibold text-brand">{orgName}</span>
           </Link>
-          <button onClick={signOut} className="text-[12px] text-muted hover:text-[#585858] hover:underline shrink-0">
+          <Button variant="tertiary" size="sm" onClick={() => void signOut()} className="shrink-0">
             {t.portalDashboard.signOut}
-          </button>
+          </Button>
         </div>
       </header>
 
-      <main className="max-w-[900px] mx-auto px-4 md:px-6 py-8">
-        <h1 className="text-[20px] font-bold text-[#1F114C] mb-1">
+      <main className="mx-auto max-w-[900px] px-4 py-6 md:px-6 md:py-8">
+        <h1 className="break-words font-display text-title font-bold text-brand">
           {t.portalDashboard.welcome}, {displayName}
         </h1>
 
@@ -95,15 +107,13 @@ export function PortalDashboardShell({
             />
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">
-            <h2 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.portalDashboard.noCandidateTitle}</h2>
-            <p className="text-[13px] text-[#585858] mb-5">{t.portalDashboard.noCandidateDesc}</p>
-            <Link
-              href={`/careers/${orgSlug}`}
-              className="inline-flex h-10 items-center rounded-xl bg-[#1F114C] px-5 text-[13px] font-semibold text-white hover:bg-[#2a1a5e] transition"
-            >
-              {t.portalDashboard.backToJobs}
-            </Link>
+          <div className="mt-4">
+            <EmptyState
+              className="rounded-2xl border border-border bg-white"
+              title={t.portalDashboard.noCandidateTitle}
+              description={t.portalDashboard.noCandidateDesc}
+              action={{ label: t.portalDashboard.backToJobs, href: `/careers/${orgSlug}` }}
+            />
           </div>
         )}
       </main>

@@ -17,7 +17,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 vi.mock('../../apps/web/components', () => ({
-  Modal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Modal: ({ title, children, footer }: { title: string; children: React.ReactNode; footer?: React.ReactNode }) => <div><h2>{title}</h2>{children}{footer}</div>,
 }));
 vi.mock('../../apps/web/components/turnstile-widget', () => ({ TurnstileWidget: () => null }));
 vi.mock('../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_lib/use-cv-upload', () => ({

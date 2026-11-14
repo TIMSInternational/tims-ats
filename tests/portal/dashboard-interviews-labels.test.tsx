@@ -104,7 +104,9 @@ describe('candidate dashboard — interview labels', () => {
   it('a real place is kept, and long values wrap on a phone', () => {
     renderRows([{ id: 'a', type: 'onsite', meetingUrl: null, location: 'Oficinas centrales, San José' }]);
     const place = screen.getByText(/Oficinas centrales, San José/);
-    expect(place.className).toContain('break-all');
+    // Ordinary words wrap at spaces ("San José" never splits into "San Jos / é"); only a URL may break anywhere.
+    expect(place.className).toContain('break-words');
+    expect(place.className).not.toContain('break-all');
   });
 
   it('portal interview copy addresses the candidate as usted', () => {

@@ -2,6 +2,11 @@
 
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { buttonClasses } from '../../../../../components/button-styles';
+import { ErrorState } from '../../../../../components/error-state';
+import { StatusBadge } from '../../../../../components/status-badge';
+import { DashboardCardSkeleton } from './dashboard-card-skeleton';
+import { DASHBOARD_CARD, DASHBOARD_ITEM, DASHBOARD_TITLE } from './dashboard-styles';
 import { isSafeDailyJoinUrl } from '../../../../../lib/interview-join';
 import { candidateTimeZone, formatCandidateDateTime } from '../../../../../lib/candidate-format';
 
@@ -75,7 +80,7 @@ function isSameLink(location: string | null, url: string | null): boolean {
 // company's, else UTC — with an explicit zone label.
 export function DashboardInterviews({ orgSlug, timeZone = null }: { orgSlug: string; timeZone?: string | null }) {
   const { t, locale } = useI18n();
-  const { data, isLoading, isError } = trpc.candidatePortal.myInterviews.useQuery({ orgSlug });
+  const { data, isLoading, isError, refetch } = trpc.candidatePortal.myInterviews.useQuery({ orgSlug });
 
   const statusLabel = (s: string) => {
     switch (s) {
@@ -90,68 +95,52 @@ export function DashboardInterviews({ orgSlug, timeZone = null }: { orgSlug: str
     }
   };
 
-  const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.interviews}</h2>;
-
-  if (isLoading) {
-    return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-        {header}
-        <p className="text-[12px] text-muted">{t.portalDashboard.intLoading}</p>
-      </section>
-    );
-  }
-  if (isError) {
-    return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-        {header}
-        <p className="text-[12px] text-[#B42318]">{t.portalDashboard.intError}</p>
-      </section>
-    );
-  }
-
-  const interviews = data ?? [];
+  const pd = t.portalDashboard;
 
   return (
-    <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-      {header}
+    <section aria-labelledby="dashboard-interviews-title" className={DASHBOARD_CARD}>
+      <h2 id="dashboard-interviews-title" className={DASHBOARD_TITLE}>
+        {pd.interviews}
+      </h2>
 
-      {interviews.length === 0 ? (
-        <p className="text-[12px] text-muted">{t.portalDashboard.intEmpty}</p>
+      {isLoading ? (
+        <DashboardCardSkeleton label={pd.intLoading} rows={1} />
+      ) : isError ? (
+        <ErrorState size="compact" title={pd.intError} onRetry={() => void refetch()} />
+      ) : (data ?? []).length === 0 ? (
+        <p className="text-body text-secondary">{pd.intEmpty}</p>
       ) : (
         <ul className="space-y-3">
-          {interviews.map((iv) => {
+          {(data ?? []).map((iv) => {
             const viaEmail = usesEmailJoinLink(iv.type, iv.meetingUrl);
             const joinUrl = viaEmail ? null : safeMeetingUrl(iv.meetingUrl);
+            const locationIsLink = Boolean(iv.location && /^https?:\/\//i.test(iv.location.trim()));
             return (
-              <li key={iv.id} className="rounded-xl border border-[#EDEDED] p-4">
-                <div className="flex items-start justify-between gap-3">
+              <li key={iv.id} className={DASHBOARD_ITEM}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                   <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-[#1F114C] truncate">{iv.vacancy.title}</p>
-                    <p className="text-[12px] text-[#585858] mt-0.5">{candidateInterviewTypeLabel(t, iv.type, joinUrl)}</p>
-                    <p className="text-[11px] text-muted mt-1">
+                    <h3 className="break-words text-subheading font-semibold text-brand">{iv.vacancy.title}</h3>
+                    {/* When it is: the one line the candidate needs most, so it is the largest after the title. */}
+                    <p className="mt-1 text-subheading font-medium text-primary tabular-nums">
                       {formatCandidateDateTime(iv.scheduledAt, locale, candidateTimeZone(timeZone, iv.vacancy.company?.timezone))}
-                      {iv.duration ? ` · ${iv.duration} ${t.portalDashboard.intMinutes}` : ''}
+                      {iv.duration ? ` · ${iv.duration} ${pd.intMinutes}` : ''}
                     </p>
+                    <p className="mt-0.5 text-callout text-secondary">{candidateInterviewTypeLabel(t, iv.type, joinUrl)}</p>
                     {iv.location && !isSameLink(iv.location, joinUrl) && (
-                      <p className="text-[11px] text-muted mt-0.5 break-all">
-                        {t.portalDashboard.intLocation}: {iv.location}
+                      <p className={`mt-1 text-callout text-secondary ${locationIsLink ? '[overflow-wrap:anywhere]' : 'break-words'}`}>
+                        <span className="text-muted">{pd.intLocation}:</span> {iv.location}
                       </p>
                     )}
                   </div>
-                  <span className="shrink-0 rounded-full bg-[#F4F1FF] px-2.5 py-1 text-[11px] font-medium text-[#1F114C]">
+                  <StatusBadge tone="brand" className="self-start">
                     {statusLabel(iv.status)}
-                  </span>
+                  </StatusBadge>
                 </div>
 
-                {viaEmail && <p className="mt-3 text-[12px] text-[#585858]">{t.portalDashboard.intJoinViaEmail}</p>}
+                {viaEmail && <p className="mt-3 text-callout text-secondary">{pd.intJoinViaEmail}</p>}
                 {joinUrl && (
-                  <a
-                    href={joinUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition"
-                  >
-                    {t.portalDashboard.intJoin}
+                  <a href={joinUrl} target="_blank" rel="noopener noreferrer" className={buttonClasses({ className: 'mt-3' })}>
+                    {pd.intJoin}
                   </a>
                 )}
               </li>

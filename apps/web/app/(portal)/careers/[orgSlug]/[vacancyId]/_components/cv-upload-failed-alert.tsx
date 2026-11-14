@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../../lib/i18n';
+import { Button } from '../../../../../../components/button';
 
 interface CvUploadFailedAlertProps {
   disabled: boolean;
@@ -16,26 +17,16 @@ export function CvUploadFailedAlert({ disabled, onRetry, onRemoveAndContinue }: 
   const p = t.portal;
 
   return (
-    <div role="alert" className="rounded-lg border border-[#DD0C15]/30 bg-[#DD0C15]/5 p-3">
-      <p className="text-[13px] font-semibold text-[#DD0C15]">{p.cvUploadFailedTitle}</p>
-      <p className="mt-1 text-[12px] text-[#585858]">{p.cvUploadFailedBody}</p>
+    <div role="alert" className="rounded-lg border border-danger/30 bg-danger-bg p-3">
+      <p className="text-body font-semibold text-danger">{p.cvUploadFailedTitle}</p>
+      <p className="mt-1 text-callout text-secondary">{p.cvUploadFailedBody}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={disabled}
-          className="h-8 rounded-lg bg-[#1F114C] px-3 text-[12px] font-medium text-white transition hover:bg-[#2a1a5c] disabled:opacity-50"
-        >
-          {p.cvRetryUpload}
-        </button>
-        <button
-          type="button"
-          onClick={onRemoveAndContinue}
-          disabled={disabled}
-          className="h-8 rounded-lg border border-[#EDEDED] bg-white px-3 text-[12px] font-medium text-[#585858] transition hover:bg-[#F6F6F6] disabled:opacity-50"
-        >
+        <Button variant="secondary" size="sm" onClick={onRemoveAndContinue} disabled={disabled}>
           {p.cvRemoveAndContinue}
-        </button>
+        </Button>
+        <Button size="sm" onClick={onRetry} disabled={disabled}>
+          {p.cvRetryUpload}
+        </Button>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
 import { Modal } from '../../../../../components';
+import { Button } from '../../../../../components/button';
 
 export interface WithdrawErrorLabels {
   withdrawErrorNotActive: string;
@@ -55,9 +56,8 @@ export function DashboardWithdrawApplication({
       await refresh();
     },
     onError: (err) => {
-      const message = withdrawErrorMessage(err.data?.code, pd, orgName);
-      setError(message);
-      toast(message, { type: 'error' });
+      // Said inside the dialog, beside the action that failed; the dialog stays open.
+      setError(withdrawErrorMessage(err.data?.code, pd, orgName));
       // The status changed elsewhere (e.g. a decision was recorded meanwhile): show the current one.
       if (err.data?.code === 'CONFLICT') void refresh();
     },
@@ -70,48 +70,46 @@ export function DashboardWithdrawApplication({
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        variant="destructive-secondary"
+        size="sm"
         onClick={() => {
           setError('');
           setOpen(true);
         }}
-        className="shrink-0 text-[12px] font-medium text-[#B42318] hover:underline"
       >
         {pd.withdrawAction}
-      </button>
+      </Button>
 
       {open && (
-        <Modal title={pd.withdrawConfirmTitle} onClose={close}>
-          <p className="text-[13px] text-[#585858]">
+        <Modal
+          title={pd.withdrawConfirmTitle}
+          onClose={close}
+          size="sm"
+          footer={
+            <>
+              <Button variant="secondary" disabled={withdraw.isPending} onClick={close}>
+                {pd.withdrawCancel}
+              </Button>
+              <Button
+                variant="destructive"
+                loading={withdraw.isPending}
+                loadingLabel={pd.withdrawSubmitting}
+                onClick={() => withdraw.mutate({ orgSlug, applicationId })}
+              >
+                {pd.withdrawConfirm}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-base text-secondary sm:text-body">
             {pd.withdrawConfirmBody.replace('{vacancy}', vacancyTitle).replace('{org}', orgName)}
           </p>
           {error && (
-            <p
-              role="alert"
-              className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700"
-            >
+            <p role="alert" className="mt-3 rounded-lg bg-danger-bg p-3 text-callout text-danger">
               {error}
             </p>
           )}
-          <div className="mt-5 flex justify-end gap-2">
-            <button
-              type="button"
-              disabled={withdraw.isPending}
-              onClick={close}
-              className="h-10 rounded-xl border border-[#EDEDED] px-4 text-[13px] text-[#585858] hover:bg-[#F6F6F6] disabled:opacity-50"
-            >
-              {pd.withdrawCancel}
-            </button>
-            <button
-              type="button"
-              disabled={withdraw.isPending}
-              onClick={() => withdraw.mutate({ orgSlug, applicationId })}
-              className="h-10 rounded-xl bg-[#DD0C15] px-5 text-[13px] font-semibold text-white hover:bg-[#b80a12] disabled:opacity-50"
-            >
-              {withdraw.isPending ? pd.withdrawSubmitting : pd.withdrawConfirm}
-            </button>
-          </div>
         </Modal>
       )}
     </>
