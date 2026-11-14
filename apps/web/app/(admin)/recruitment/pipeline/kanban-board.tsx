@@ -98,7 +98,6 @@ export function KanbanBoard({ stages, onMove, onReject, onSchedule, onToggleChec
       window.removeEventListener('resize', updateScrollState);
     };
     // Re-check whenever the column set changes (stage count/content affects scrollWidth).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stages, updateScrollState]);
 
   const moveTargets = stages.map((stage) => ({ id: stage.id, name: stage.name }));

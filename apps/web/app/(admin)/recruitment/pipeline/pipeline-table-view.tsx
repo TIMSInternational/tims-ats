@@ -232,6 +232,7 @@ export function PipelineTableView({
                     key={app.id}
                     app={app}
                     nextStage={nextStageOf(app)}
+                    statusMap={statusMap}
                     bulkEnabled={bulkEnabled}
                     isSelected={selected.has(app.id)}
                     onToggleSelect={() => toggleRow(app.id)}

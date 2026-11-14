@@ -58,8 +58,10 @@ export function PipelineToolbar(props: PipelineToolbarProps) {
             <>
               <Button
                 variant="primary"
-                onClick={props.onAddCandidate}
-                disabled={noVacancy}
+                // aria-disabled, not disabled: the button stays focusable, so keyboard and screen-reader users
+                // reach it and hear why it does nothing yet ("Selecciona una vacante primero").
+                onClick={noVacancy ? undefined : props.onAddCandidate}
+                aria-disabled={noVacancy || undefined}
                 aria-describedby={noVacancy ? ADD_HINT_ID : undefined}
                 title={noVacancy ? p.selectVacancyFirst : undefined}
                 icon={

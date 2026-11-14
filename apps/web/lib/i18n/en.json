@@ -2340,7 +2340,7 @@
     "addCandidateCreating": "Creating the candidate…",
     "addCandidateApplying": "Adding to the vacancy…",
     "addCandidateExists": "{name} already exists: adding them to the vacancy",
-    "addCandidateExistsNotFound": "A candidate with this email already exists, but couldn't be found",
+    "addCandidateExistsNotFound": "A candidate with this email exists, but couldn't be found",
     "addCandidateAdded": "{name} added to the vacancy",
     "addCandidateError": "Couldn't add the candidate",
     "addCandidateFirstNamePlaceholder": "Maria",

@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { CandidateAvatar, CHOICE_INPUT_CLASSES, StatusBadge } from '../../../../components';
+import { CandidateAvatar, CHOICE_INPUT_CLASSES, StatusBadge, type StatusMapEntry } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import type { ScheduleRequest } from './pipeline-actions';
 import type { FlatApp } from './pipeline-table-data';
 import { RejectionBadge } from './rejection-badge';
@@ -13,6 +14,7 @@ import { PipelineSlaChip } from './pipeline-sla-chip';
 interface PipelineTableCardProps {
   app: FlatApp;
   nextStage: { id: string; name: string } | undefined;
+  statusMap: Record<string, StatusMapEntry>;
   bulkEnabled: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
@@ -23,11 +25,13 @@ interface PipelineTableCardProps {
 
 /**
  * One table row as a stacked item below md (scroll-views.md, layout.md › Size classes: "Keep functionality the
- * same"): selection for the bulk bar, name, stage / FIT / SLA chips, then the row's actions.
+ * same"): selection for the bulk bar, name, stage / FIT / status / SLA chips and days in stage (every column the
+ * table shows), then the row's actions.
  */
 export function PipelineTableCard({
   app,
   nextStage,
+  statusMap,
   bulkEnabled,
   isSelected,
   onToggleSelect,
@@ -70,7 +74,16 @@ export function PipelineTableCard({
         {app.status === 'rejected' ? (
           <RejectionBadge rejectedAt={app.rejectedAt} rejectedReason={app.rejectedReason} showReason />
         ) : (
-          <PipelineSlaChip app={app} />
+          <>
+            <StatusBadge status={app.status} map={statusMap} />
+            <PipelineSlaChip app={app} />
+          </>
+        )}
+        {app.actionable && (
+          <span className="text-callout tabular-nums text-secondary">
+            <span aria-hidden="true">{formatMessage(p.daysShort, { n: app.days })}</span>
+            <span className="sr-only">{formatMessage(p.daysShortLabel, { n: app.days })}</span>
+          </span>
         )}
       </div>
       <PipelineRowActions

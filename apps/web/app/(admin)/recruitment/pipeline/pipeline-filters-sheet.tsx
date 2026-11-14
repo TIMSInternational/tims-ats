@@ -40,7 +40,10 @@ export function PipelineFiltersSheet({ filters, onChange, status, onStatusChange
   const { t } = useI18n();
   const p = t.pipeline;
   const [open, setOpen] = useState(false);
-  const count = activeFilterCount(filters) + (status === 'active' ? 0 : 1);
+  // "Limpiar filtros" follows the desktop rule: it clears the four filters and leaves the board status alone.
+  // The trigger's badge still counts a non-default status, because on phones the status lives in this sheet.
+  const filterCount = activeFilterCount(filters);
+  const count = filterCount + (status === 'active' ? 0 : 1);
   const statusLabels: Record<BoardStatus, string> = {
     active: p.statusActive,
     rejected: p.statusRejected,
@@ -77,14 +80,7 @@ export function PipelineFiltersSheet({ filters, onChange, status, onStatusChange
           onClose={() => setOpen(false)}
           footer={
             <div className={BUTTON_GROUP_CLASSES}>
-              <Button
-                variant="secondary"
-                disabled={count === 0}
-                onClick={() => {
-                  onChange(EMPTY_FILTERS);
-                  onStatusChange('active');
-                }}
-              >
+              <Button variant="secondary" disabled={filterCount === 0} onClick={() => onChange(EMPTY_FILTERS)}>
                 {t.common.clearFilters}
               </Button>
               <Button variant="primary" onClick={() => setOpen(false)}>

@@ -15,3 +15,10 @@ export const EXPERIENCE_LEVELS = [
   { value: '8', labelKey: 'eightTen' },
   { value: '12', labelKey: 'tenPlus' },
 ] as const;
+
+/**
+ * Thrown when the email is taken but the existing candidate cannot be looked up. The submit handler branches on
+ * the class, never on message text: a translated message may well contain "already" (en.json) and would then be
+ * misread as the "already applying" duplicate-application error.
+ */
+export class ExistingCandidateNotFoundError extends Error {}

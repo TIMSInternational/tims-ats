@@ -143,12 +143,15 @@ describe('kanban column SLA count (Codex round 2)', () => {
     const old = app('a3', 'rejected', { enteredStageAt: iso(60) });
     render(<KanbanBoard stages={stages(old)} onMove={vi.fn()} />);
     expect(screen.queryByText(es.pipeline.slaOverdueCountOne)).toBeNull();
+    // Nor does the card itself carry the overdue chip.
+    expect(screen.queryByText(es.pipeline.slaOverdueChip)).toBeNull();
   });
 
   it('still counts an overdue active card', () => {
     const overdue = app('a1', 'active', { enteredStageAt: iso(60) });
     render(<KanbanBoard stages={stages(overdue)} onMove={vi.fn()} />);
     expect(screen.getByText(es.pipeline.slaOverdueCountOne)).toBeTruthy();
+    expect(screen.getByText(es.pipeline.slaOverdueChip)).toBeTruthy();
   });
 });
 
@@ -170,3 +173,35 @@ describe('list view (A-22)', () => {
 function row(el: Element) {
   return within(el as HTMLElement);
 }
+
+describe('table view stacked below md (HIG check rp-check-01)', () => {
+  function narrow() {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  }
+
+  it('keeps the Estado and days facts the wide table shows, so a hired row is not just a dash', () => {
+    narrow();
+    try {
+      render(
+        <PipelineTableView
+          stages={stages(app('a1', 'active'), app('a2', 'hired'))}
+          boardStatus="all"
+          onMove={vi.fn()}
+        />,
+      );
+      expect(screen.getByRole('list')).toBeTruthy();
+      expect(screen.queryByRole('table')).toBeNull();
+      expect(screen.getByText(es.pipeline.applicationStatus.hired)).toBeTruthy();
+      expect(screen.getByText(es.pipeline.applicationStatus.active)).toBeTruthy();
+      // Days in stage for the actionable row only (with its full spoken label).
+      expect(screen.getAllByText(es.pipeline.daysShortLabel.replace('{n}', '2'))).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

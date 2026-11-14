@@ -5,7 +5,7 @@ import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { Button, BUTTON_GROUP_CLASSES, Modal, Stepper } from '../../../../components';
 import { Step1Fields, Step2Fields, Step3Fields } from './add-candidate-modal.fields';
-import type { Step, ProcessStep } from './add-candidate-modal.helpers';
+import { ExistingCandidateNotFoundError, type Step, type ProcessStep } from './add-candidate-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
 import { formatMessage } from '../../../../lib/i18n/format';
 
@@ -103,7 +103,7 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
             candidateId = results[0].id;
             toast(formatMessage(p.addCandidateExists, { name: fullName }), { type: 'info' });
           } else {
-            throw new Error(p.addCandidateExistsNotFound);
+            throw new ExistingCandidateNotFoundError(p.addCandidateExistsNotFound);
           }
         } else {
           throw createErr;
@@ -117,7 +117,9 @@ export function AddCandidateModal({ vacancyId, vacancyTitle, onClose, onSuccess 
       onSuccess();
     } catch (err) {
       const msg = err instanceof Error ? err.message : p.addCandidateError;
-      if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
+      if (err instanceof ExistingCandidateNotFoundError) {
+        toast(msg, { type: 'error' });
+      } else if (msg.includes('unique') || msg.includes('Unique') || msg.includes('already')) {
         toast(t.pipeline.alreadyApplying, { type: 'error' });
       } else {
         toast(msg, { type: 'error' });

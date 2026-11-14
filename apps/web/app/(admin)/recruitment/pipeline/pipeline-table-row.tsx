@@ -42,7 +42,6 @@ export function PipelineTableRow({
   const p = t.pipeline;
   return (
     <tr
-      aria-selected={bulkEnabled ? isSelected : undefined}
       className={`border-b border-border transition-colors ${isSelected ? 'bg-brand-tint' : 'hover:bg-surface-hover'}`}
     >
       {bulkEnabled && (
