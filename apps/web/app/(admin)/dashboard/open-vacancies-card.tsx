@@ -19,18 +19,20 @@ export function OpenVacanciesCard({ totalOpen }: OpenVacanciesCardProps) {
   return (
     <section
       aria-labelledby="open-vacancies-card-title"
-      className="w-full md:flex-[35] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+      className="w-full rounded-xl bg-white p-5 shadow-card md:flex-[35]"
     >
-      <h2 id="open-vacancies-card-title" className="text-base font-semibold text-[#1F114C] mb-3">
+      <h2 id="open-vacancies-card-title" className="mb-3 text-heading font-semibold text-brand">
         {rd.openVacancies}
       </h2>
+      {/* A plain numeral: a full ring around any value read as a complete gauge, even at 0. */}
       <div className="flex flex-col items-center py-4">
-        <div className="w-[120px] h-[120px] rounded-full border-[16px] border-[#1F114C] flex items-center justify-center">
-          <span data-testid="open-vacancies-total" className="text-xl font-bold text-[#1F114C]">
-            {totalOpen}
-          </span>
-        </div>
-        <span className="text-[11px] text-[#585858] mt-2">{rd.totalVacancies}</span>
+        <span
+          data-testid="open-vacancies-total"
+          className="font-display text-display font-bold tabular-nums text-primary"
+        >
+          {totalOpen}
+        </span>
+        <span className="mt-1 text-callout text-secondary">{rd.totalVacancies}</span>
       </div>
     </section>
   );
@@ -38,10 +40,14 @@ export function OpenVacanciesCard({ totalOpen }: OpenVacanciesCardProps) {
 
 export function OpenVacanciesCardSkeleton() {
   return (
-    <div className="w-full md:flex-[35] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] animate-pulse">
-      <div className="h-5 w-40 bg-gray-200 rounded mb-3" />
-      <div className="flex justify-center py-4">
-        <div className="w-[120px] h-[120px] rounded-full bg-gray-200" />
+    <div
+      aria-hidden="true"
+      className="w-full animate-pulse rounded-xl bg-white p-5 shadow-card motion-reduce:animate-none md:flex-[35]"
+    >
+      <div className="mb-3 h-5 w-40 rounded bg-gray-200" />
+      <div className="flex flex-col items-center gap-2 py-4">
+        <div className="h-9 w-12 rounded bg-gray-200" />
+        <div className="h-3 w-24 rounded bg-gray-200" />
       </div>
     </div>
   );

@@ -1,8 +1,7 @@
 import { Skeleton } from '../../../components';
+import { ProgressBar } from '../../../components/progress-bar';
 
 // Shared primitives for the employee "My Home" dashboard sections.
-
-export const EMPTY_ICON = <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />;
 
 export function ListSkeletonRows() {
   return (
@@ -17,14 +16,18 @@ export function ListSkeletonRows() {
   );
 }
 
-export function ProgressBar({ value }: { value: number }) {
-  const pct = Math.max(0, Math.min(100, value));
+/**
+ * A row's progress: the shared determinate bar (role=progressbar, named after the row) on the brand fill,
+ * with the percentage beside it.
+ */
+export function RowProgress({ value, label }: { value: number; label: string }) {
+  const pct = Math.max(0, Math.min(100, Math.round(value)));
   return (
-    <div className="flex items-center gap-2 ml-3 w-32 shrink-0">
-      <div className="flex-1 h-1.5 rounded-full bg-[#EEE] overflow-hidden">
-        <div className="h-full rounded-full bg-[#6C4FE0]" style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-[13px] text-[#8B8B8B] w-9 text-right">{pct}%</span>
+    <div className="flex w-full items-center gap-2 sm:w-40 sm:shrink-0">
+      <ProgressBar value={pct} label={label} valueText={`${pct}%`} hideLabel className="flex-1" />
+      <span className="w-10 text-right text-callout tabular-nums text-secondary" aria-hidden="true">
+        {pct}%
+      </span>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { Button } from '../../../components/button';
 import { useCan } from '../../../lib/permissions';
 import { isTenantInvitationsEnabled } from '../../../lib/platform-api/tenant-invitations';
 
@@ -19,24 +19,15 @@ export function RecruiterQuickActions() {
 
   if (!canCreateVacancy && !canInvite) return null;
 
+  // Secondary first, then the page's one primary (navy) action trailing (foundation §5).
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <>
       {canInvite && (
-        <Link
-          href="/settings/users"
-          className="h-8 px-3 rounded-lg border border-[#EDEDED] bg-white text-[12px] font-medium text-[#585858] hover:bg-[#F6F6F6] transition flex items-center"
-        >
+        <Button href="/settings/users" variant="secondary">
           {rd.quickInviteTeam}
-        </Link>
+        </Button>
       )}
-      {canCreateVacancy && (
-        <Link
-          href="/recruitment/vacancies?create=1"
-          className="h-8 px-3 rounded-lg bg-[#DD0C15] text-white text-[12px] font-medium hover:bg-[#c00b13] transition flex items-center"
-        >
-          {rd.quickNewVacancy}
-        </Link>
-      )}
-    </div>
+      {canCreateVacancy && <Button href="/recruitment/vacancies?create=1">{rd.quickNewVacancy}</Button>}
+    </>
   );
 }

@@ -1,20 +1,17 @@
 'use client';
 
+import { useId } from 'react';
 import { useCompensationMyCompensation } from '../../../lib/platform-api/compensation';
 import { useI18n } from '../../../lib/i18n';
 import { EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { formatCurrency } from '../../../lib/format-utils';
 
-const EMPTY_ICON = (
-  <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />
-);
-
 function FieldRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3">
-      <span className="text-sm text-[#585858]">{label}</span>
-      <span className="text-sm text-[#333] font-medium">{value}</span>
+    <div className="-mx-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5">
+      <dt className="text-body text-secondary">{label}</dt>
+      <dd className="text-body font-medium tabular-nums text-primary">{value}</dd>
     </div>
   );
 }
@@ -29,6 +26,7 @@ export function EmployeeCompensation() {
   const e = t.employeeHome;
   const comp = useCompensationMyCompensation();
   const data = comp.data;
+  const titleId = useId();
 
   const rows: { label: string; value: string }[] = [];
   if (data) {
@@ -51,10 +49,12 @@ export function EmployeeCompensation() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mb-8">
-      <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{e.compensation}</h2>
+    <section aria-labelledby={titleId} className="rounded-xl bg-white p-5 shadow-card">
+      <h2 id={titleId} className="mb-4 text-heading font-semibold text-brand">
+        {e.compensation}
+      </h2>
       {comp.isError ? (
-        <LoadError message={e.loadError} />
+        <LoadError message={e.loadError} onRetry={() => comp.refetch()} />
       ) : comp.isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 2 }).map((_, i) => (
@@ -65,14 +65,14 @@ export function EmployeeCompensation() {
           ))}
         </div>
       ) : !data || rows.length === 0 ? (
-        <EmptyState icon={EMPTY_ICON} message={e.compUnavailable} />
+        <EmptyState size="compact" message={e.compUnavailable} />
       ) : (
-        <div className="space-y-1">
+        <dl className="space-y-1">
           {rows.map((row) => (
             <FieldRow key={row.label} label={row.label} value={row.value} />
           ))}
-        </div>
+        </dl>
       )}
-    </div>
+    </section>
   );
 }

@@ -8,6 +8,7 @@ import { EmployeePrivacy } from './employee-privacy';
 import { EmployeeRecognition } from './employee-recognition';
 import { EmployeeCommitments } from './employee-commitments';
 import { EmployeeOnboardingCard } from './employee-onboarding-card';
+import { DashboardPage } from './dashboard-page';
 
 // employee is OWN-scoped: every query below (and in each section component) is
 // auto-narrowed to the caller by scopeWhereFor (we pass NO userId — that would
@@ -26,46 +27,42 @@ export function EmployeeHomeDashboard({ isPilot = false }: EmployeeHomeDashboard
   const { t } = useI18n();
   const e = t.employeeHome;
 
+  // Ordered by what needs action (layout.md › Visual hierarchy): onboarding and pending surveys first,
+  // then goals and commitments, then the reference sections. Every section is a card on one even rhythm.
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-lg font-bold text-[#1F114C]">{e.title}</h1>
-          <span className="text-[13px] text-[#585858]">{e.subtitle}</span>
-        </div>
-
-        {/* ── SECTIONS 1–2 — My Performance + My Learning ── */}
-        {!isPilot && <EmployeeGrowthSection />}
-
-        {/* ── SECTION 3 — My Onboarding ── */}
-        <h2 className="text-sm font-semibold text-[#1F114C] mb-3">{e.onboarding}</h2>
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-          {/* onboarding.list (mine: true) is the card's only query; an empty list = no plan. */}
-          <EmployeeOnboardingCard />
-        </div>
+    <DashboardPage title={e.title} description={e.subtitle}>
+      <div className="space-y-8">
+        {/* ── My Onboarding ── */}
+        <section>
+          <h2 className="mb-3 text-heading font-semibold text-brand">{e.onboarding}</h2>
+          <div className="rounded-xl bg-white p-5 shadow-card">
+            {/* onboarding.list (mine: true) is the card's only query; an empty list = no plan. */}
+            <EmployeeOnboardingCard />
+          </div>
+        </section>
 
         {!isPilot && (
           <>
-            {/* ── SECTION 4 — Mis Encuestas (own-scoped pending surveys) ── */}
-            <div className="mt-8">
-              <EmployeeSurveys />
-            </div>
+            {/* ── Mis Encuestas (own-scoped pending surveys) ── */}
+            <EmployeeSurveys />
 
-            {/* ── SECTION 5 — Mi Compensacion (own-scoped, sensitive) ── */}
-            <EmployeeCompensation />
+            {/* ── My Performance + My Learning ── */}
+            <EmployeeGrowthSection />
 
-            {/* ── SECTION 6 — Privacidad (own-scoped consent ledger) ── */}
-            <EmployeePrivacy />
+            {/* ── Mis Compromisos (own-scoped coaching commitments) ── */}
+            <EmployeeCommitments />
 
-            {/* ── SECTION 7 — Reconocimientos (own-scoped, recognition received) ── */}
+            {/* ── Reconocimientos (own-scoped, recognition received) ── */}
             <EmployeeRecognition />
 
-            {/* ── SECTION 8 — Mis Compromisos (own-scoped coaching commitments) ── */}
-            <EmployeeCommitments />
+            {/* ── Privacidad (own-scoped consent ledger) ── */}
+            <EmployeePrivacy />
+
+            {/* ── Mi Compensación (own-scoped, sensitive) ── */}
+            <EmployeeCompensation />
           </>
         )}
       </div>
-    </div>
+    </DashboardPage>
   );
 }

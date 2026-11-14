@@ -1,75 +1,79 @@
 'use client';
 
+import { useId } from 'react';
 import { useMonitoringActiveAlerts } from '../../../lib/platform-api/monitoring';
 import { useI18n } from '../../../lib/i18n';
+import { formatRelativeTimeLocale } from '../../../lib/format-utils';
+import { ErrorState } from '../../../components';
+import { CountBadge } from '../../../components/count-badge';
+import { StatusBadge, type StatusTone } from '../../../components/status-badge';
 
-const SEV_META: Record<string, { bar: string; border: string }> = {
-  critical: { bar: 'bg-[#DD0C15]', border: 'border-red-200 bg-red-50/50' },
-  warning: { bar: 'bg-amber-500', border: 'border-amber-200 bg-amber-50/50' },
-  info: { bar: 'bg-blue-500', border: 'border-blue-200 bg-blue-50/50' },
+const SEV_TONE: Record<string, StatusTone> = {
+  critical: 'danger',
+  warning: 'warning',
+  info: 'info',
 };
 
-function timeAgo(d: string | Date): string {
-  const diff = Date.now() - new Date(d).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  return `${Math.floor(hrs / 24)}d`;
-}
-
 export function AlertsPanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useMonitoringActiveAlerts({});
   const items = q.data?.items ?? [];
+  const titleId = useId();
+  const total = q.data?.total ?? 0;
+
+  // Severity and module through i18n: never the raw slug ("CRITICAL", "recruitment").
+  const sevLabel: Record<string, string> = {
+    critical: t.alertRules.sev_critical,
+    warning: t.alertRules.sev_warning,
+    info: t.alertRules.sev_info,
+  };
+  const modLabel: Record<string, string> = {
+    recruitment: t.monitoring.mod_recruitment,
+    onboarding: t.monitoring.mod_onboarding,
+    people: t.monitoring.mod_people,
+    engagement: t.monitoring.mod_engagement,
+    compensation: t.monitoring.mod_compensation,
+    dei: t.monitoring.mod_dei,
+    time: t.monitoring.mod_time,
+    performance: t.monitoring.mod_performance,
+  };
 
   return (
-    <div className="w-full md:w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDEDED]">
-        <div className="flex items-center gap-2">
-          <svg
-            className="w-4 h-4 text-[#DD0C15]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            viewBox="0 0 24 24"
-          >
-            <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-          </svg>
-          <span className="text-[13px] font-semibold text-[#333]">{t.monitoring.activeAlerts}</span>
-        </div>
-        {q.data && q.data.total > 0 && (
-          <span className="text-[10px] bg-[#DD0C15] text-white px-1.5 py-0.5 rounded-full font-bold">
-            {q.data.total}
-          </span>
-        )}
+    <section aria-labelledby={titleId} className="flex flex-col rounded-xl bg-white shadow-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <h2 id={titleId} className="text-subheading font-semibold text-brand">
+          {t.monitoring.activeAlerts}
+          {total > 0 && <span className="sr-only"> ({total})</span>}
+        </h2>
+        <CountBadge count={total} />
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      <div className="max-h-96 space-y-2 overflow-y-auto p-3">
         {q.isLoading ? (
-          <div className="h-20 bg-gray-50 rounded animate-pulse m-1" />
+          <div className="h-20 animate-pulse rounded bg-surface motion-reduce:animate-none" aria-busy="true">
+            <span className="sr-only">{t.common.loadingContent}</span>
+          </div>
         ) : q.isError ? (
-          <p className="text-[12px] text-[#DD0C15] p-2">{t.monitoring.alertsErr}</p>
+          <ErrorState size="compact" title={t.monitoring.alertsErr} onRetry={() => q.refetch()} error={q.error} />
         ) : items.length === 0 ? (
-          <p className="text-[12px] text-[#8B8B8B] p-2">{t.monitoring.noAlerts}</p>
+          <p className="px-1 py-2 text-callout text-secondary">{t.monitoring.noAlerts}</p>
         ) : (
-          items.map((a) => {
-            const meta = SEV_META[a.severity] ?? SEV_META.info;
-            return (
-              <div key={a.id} className={`border rounded-lg p-3 ${meta.border}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[9px] font-bold ${meta.bar} text-white px-1.5 py-0.5 rounded uppercase`}>
-                    {a.severity}
-                  </span>
-                  <span className="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">{a.module}</span>
+          <ul className="space-y-2">
+            {items.map((a) => (
+              <li key={a.id} className="rounded-lg border border-border p-3">
+                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  <StatusBadge tone={SEV_TONE[a.severity] ?? 'info'}>{sevLabel[a.severity] ?? a.severity}</StatusBadge>
+                  <StatusBadge tone="brand" icon="none">
+                    {modLabel[a.module] ?? a.module}
+                  </StatusBadge>
                 </div>
-                <p className="text-[11px] text-[#333] font-medium leading-tight">{a.title}</p>
-                {a.message && <p className="text-[10px] text-[#585858] leading-tight mt-0.5">{a.message}</p>}
-                <p className="text-[9px] text-[#8B8B8B] mt-1">{timeAgo(a.createdAt)}</p>
-              </div>
-            );
-          })
+                <p className="text-body font-medium text-primary">{a.title}</p>
+                {a.message && <p className="mt-0.5 text-callout text-secondary">{a.message}</p>}
+                <p className="mt-1 text-caption text-muted">{formatRelativeTimeLocale(a.createdAt, locale)}</p>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-    </div>
+    </section>
   );
 }

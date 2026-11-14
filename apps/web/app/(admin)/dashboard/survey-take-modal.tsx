@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
@@ -9,6 +9,8 @@ import {
   useEngagementSubmitSurveyResponse,
 } from '../../../lib/platform-api/engagement';
 import { Modal, Skeleton } from '../../../components';
+import { Button } from '../../../components/button';
+import { BUTTON_GROUP_CLASSES } from '../../../components/button-styles';
 import { LoadError } from './load-error';
 import { parseSurveyQuestions, type SurveyAnswer, type SurveyQuestion } from './survey-question';
 import { SurveyQuestionField } from './survey-question-field';
@@ -63,6 +65,9 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
 
   const canSubmit = questions.length > 0 && requiredMet && !submit.isPending;
 
+  const showFooter = !survey.isLoading && !survey.isError && questions.length > 0;
+  const hintId = useId();
+
   const onSubmit = () => {
     if (!canSubmit) return;
     // answers map is keyed by question TEXT — matches the submit endpoint, which
@@ -77,20 +82,54 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
     submit.mutate({ surveyId, answers: payload });
   };
 
+  // Cancel leading, the one primary (navy) trailing, in the Modal's sticky footer (foundation §9).
+  const footer = showFooter ? (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* A neutral hint until the required answers exist, not a red error before anything was typed. */}
+      {!requiredMet ? (
+        <p id={hintId} className="text-callout text-secondary">
+          {e.surveyRequiredHint}
+        </p>
+      ) : (
+        <span />
+      )}
+      <div className={BUTTON_GROUP_CLASSES}>
+        <Button variant="secondary" onClick={onClose} disabled={submit.isPending}>
+          {t.common.cancel}
+        </Button>
+        <Button
+          onClick={onSubmit}
+          disabled={!canSubmit}
+          loading={submit.isPending}
+          loadingLabel={e.surveySubmitting}
+          aria-describedby={!requiredMet ? hintId : undefined}
+        >
+          {e.surveySubmit}
+        </Button>
+      </div>
+    </div>
+  ) : undefined;
+
   return (
-    <Modal title={survey.data?.title ?? e.surveyTakeTitle} onClose={onClose}>
+    <Modal
+      title={survey.data?.title ?? e.surveyTakeTitle}
+      onClose={onClose}
+      footer={footer}
+      dirty={Object.keys(answers).length > 0 && !submit.isPending}
+    >
       {survey.isLoading ? (
-        <div className="space-y-3">
+        <div className="space-y-3" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
       ) : survey.isError ? (
-        <LoadError message={e.surveyNotFound} />
+        <LoadError message={e.surveyNotFound} onRetry={() => survey.refetch()} error={survey.error} />
       ) : questions.length === 0 ? (
-        <p className="text-[13px] text-[#8B8B8B]">{e.surveyNoQuestions}</p>
+        <p className="text-body text-secondary">{e.surveyNoQuestions}</p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {questions.map((q) => (
             <SurveyQuestionField
               key={q.text}
@@ -100,27 +139,6 @@ export function SurveyTakeModal({ surveyId, onClose }: SurveyTakeModalProps) {
               onChange={(v) => setAnswer(q.text, v)}
             />
           ))}
-
-          {!requiredMet ? <p className="text-[11px] text-[#DD0C15]">{e.surveyRequiredError}</p> : null}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submit.isPending}
-              className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition disabled:opacity-50"
-            >
-              {t.common.cancel}
-            </button>
-            <button
-              type="button"
-              onClick={onSubmit}
-              disabled={!canSubmit}
-              className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {e.surveySubmit}
-            </button>
-          </div>
         </div>
       )}
     </Modal>

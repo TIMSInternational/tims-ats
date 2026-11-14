@@ -193,10 +193,12 @@ describe('profile page (D-16)', () => {
     };
     const { default: ProfilePage } = await import('../../apps/web/app/(admin)/profile/page');
     render(<ProfilePage />);
-    expect(screen.getByLabelText('Correo')).toHaveValue('ana@x.test');
+    // The email is read-only, so it is shown as text (with its hint), not as a field that looks editable.
+    expect(screen.getByText('ana@x.test')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Correo')).toBeNull();
     fireEvent.change(screen.getByLabelText('Teléfono'), { target: { value: '+506 8888 0000' } });
     fireEvent.change(screen.getByLabelText('Zona horaria'), { target: { value: 'America/Costa_Rica' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     expect(mocks.updateProfile).toHaveBeenCalledWith({
       firstName: 'Ana',
       lastName: 'Admin',
@@ -220,7 +222,7 @@ describe('profile page (D-16)', () => {
     const { default: ProfilePage } = await import('../../apps/web/app/(admin)/profile/page');
     render(<ProfilePage />);
     fireEvent.change(screen.getByLabelText('Nombre *'), { target: { value: '  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     expect(mocks.updateProfile).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Escribe tu nombre.');
   });
