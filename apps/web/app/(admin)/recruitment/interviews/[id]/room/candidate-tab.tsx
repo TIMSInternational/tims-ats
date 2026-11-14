@@ -12,7 +12,7 @@ interface CandidateTabProps {
 }
 
 const linkClass =
-  'text-[12px] font-medium text-[#1F114C] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1F114C] rounded';
+  'text-callout font-medium text-brand underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-brand rounded';
 
 /** Candidate facts that the interview query already returns — nothing invented. */
 export function CandidateTab({ interview, candidateInitials }: CandidateTabProps) {
@@ -44,7 +44,7 @@ export function CandidateTab({ interview, candidateInitials }: CandidateTabProps
           {candidate.phone}
         </a>
       ) : (
-        <span className="text-[#8B8B8B]">{t.interviewRoom.notProvided}</span>
+        <span className="text-muted">{t.interviewRoom.notProvided}</span>
       ),
     },
     { label: t.interviewRoom.candidateVacancy, value: vacancy.title },
@@ -61,20 +61,20 @@ export function CandidateTab({ interview, candidateInitials }: CandidateTabProps
     <div>
       <div className="flex items-center gap-3 mb-4">
         <div
-          className="w-12 h-12 rounded-full bg-[#1F114C] flex items-center justify-center text-white text-[14px] font-bold"
+          className="w-12 h-12 rounded-full bg-brand flex items-center justify-center text-white text-subheading font-bold"
           aria-hidden="true"
         >
           {candidateInitials}
         </div>
-        <p className="text-[14px] font-medium text-[#333]">
+        <p className="text-subheading font-medium text-primary">
           {candidate.firstName} {candidate.lastName}
         </p>
       </div>
       <dl className="space-y-2 mb-4">
         {rows.map((row) => (
           <div key={row.label}>
-            <dt className="text-[10px] uppercase tracking-wide text-[#8B8B8B]">{row.label}</dt>
-            <dd className="text-[12px] text-[#333] break-words">{row.value}</dd>
+            <dt className="text-caption uppercase tracking-wide text-muted">{row.label}</dt>
+            <dd className="text-callout text-primary break-words">{row.value}</dd>
           </div>
         ))}
       </dl>

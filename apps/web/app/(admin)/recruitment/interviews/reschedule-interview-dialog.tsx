@@ -6,7 +6,9 @@ import { Modal } from '../../../../components';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { DURATIONS, inputCls, labelCls } from './schedule-modal.helpers';
+import { DURATIONS } from './schedule-modal.helpers';
+import { Button } from '../../../../components/button';
+import { FIELD_ERROR_CLASSES, FIELD_HELP_CLASSES, FIELD_LABEL_CLASSES, inputClasses, selectClasses } from '../../../../components/field-styles';
 import { rescheduleErrorMessage, wallTimeInZone } from './interview-reschedule';
 
 export interface RescheduleTarget {
@@ -54,39 +56,44 @@ export function RescheduleInterviewDialog({
   });
 
   return (
-    <Modal title={t.interviews.rescheduleDialogTitle} onClose={onClose} maxWidth="max-w-md">
-      <p className="text-sm text-[#585858] mb-4">{t.interviews.rescheduleDialogBody}</p>
-      <div className="grid grid-cols-2 gap-3">
+    <Modal
+      title={t.interviews.rescheduleDialogTitle}
+      description={t.interviews.rescheduleDialogBody}
+      onClose={onClose}
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t.interviews.rescheduleKeep}
+          </Button>
+          <Button
+            disabled={!isFuture}
+            loading={reschedule.isPending}
+            onClick={() => scheduledAt && reschedule.mutate({ id: target.id, scheduledAt, duration })}
+          >
+            {t.interviews.rescheduleConfirm}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label htmlFor="reschedule-date" className={labelCls}>{t.interviews.rescheduleDateLabel}</label>
-          <input id="reschedule-date" type="date" value={dateValue} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+          <label htmlFor="reschedule-date" className={FIELD_LABEL_CLASSES}>{t.interviews.rescheduleDateLabel}</label>
+          <input id="reschedule-date" type="date" value={dateValue} onChange={(e) => setDate(e.target.value)} className={inputClasses()} aria-describedby="reschedule-zone" />
         </div>
         <div>
-          <label htmlFor="reschedule-time" className={labelCls}>{t.interviews.rescheduleTimeLabel}</label>
-          <input id="reschedule-time" type="time" value={timeValue} onChange={(e) => setTime(e.target.value)} className={inputCls} />
+          <label htmlFor="reschedule-time" className={FIELD_LABEL_CLASSES}>{t.interviews.rescheduleTimeLabel}</label>
+          <input id="reschedule-time" type="time" value={timeValue} onChange={(e) => setTime(e.target.value)} className={inputClasses()} aria-describedby="reschedule-zone" />
         </div>
       </div>
-      <p className="mt-2 text-[12px] text-[#8B8B8B]">{zoneLabel}</p>
-      <label htmlFor="reschedule-duration" className={`${labelCls} mt-3`}>{t.interviews.rescheduleDurationLabel}</label>
-      <select id="reschedule-duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))} className={`${inputCls} bg-white`}>
-        {DURATIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+      <p id="reschedule-zone" className={FIELD_HELP_CLASSES}>{zoneLabel}</p>
+      <label htmlFor="reschedule-duration" className={`${FIELD_LABEL_CLASSES} mt-4`}>{t.interviews.rescheduleDurationLabel}</label>
+      <select id="reschedule-duration" value={duration} onChange={(e) => setDuration(Number(e.target.value))} className={selectClasses()}>
+        {DURATIONS.map((d) => <option key={d.value} value={d.value}>{t.interviews[d.labelKey]}</option>)}
       </select>
       {scheduledAt !== null && !isFuture && (
-        <p role="alert" className="mt-3 text-[12px] text-red-700">{t.interviews.reschedulePast}</p>
+        <p role="alert" className={FIELD_ERROR_CLASSES}>{t.interviews.reschedulePast}</p>
       )}
-      <div className="flex justify-end gap-2 mt-5">
-        <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
-          {t.interviews.rescheduleKeep}
-        </button>
-        <button
-          type="button"
-          disabled={!isFuture || reschedule.isPending}
-          onClick={() => scheduledAt && reschedule.mutate({ id: target.id, scheduledAt, duration })}
-          className="h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1863] transition disabled:opacity-50"
-        >
-          {t.interviews.rescheduleConfirm}
-        </button>
-      </div>
     </Modal>
   );
 }

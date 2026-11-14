@@ -2,172 +2,15 @@
 
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate } from '../../../../../lib/format-utils';
-import { trpc } from '../../../../../lib/trpc';
-import { toast } from '../../../../../lib/toast';
-import { useCan } from '../../../../../lib/permissions';
-
-interface Validation {
-  id: string;
-  type: string;
-  status: string;
-  isBlocking: boolean;
-  completedAt: Date | string | null;
-  notes: string | null;
-  completedByUser: { id: string; firstName: string; lastName: string } | null;
-}
-
-interface LegalCheck {
-  id: string;
-  checkName: string;
-  completed: boolean;
-  completedAt: Date | string | null;
-  completedByUser: { id: string; firstName: string; lastName: string } | null;
-}
+import { OfferValidationItem, type OfferValidation } from './offer-validation-item';
+import { OfferLegalCheckItem, type OfferLegalCheck } from './offer-legal-check-item';
+import { validationStatus, validationTypeLabel } from './offer-validation-labels';
 
 interface OfferValidationsProps {
   offerId: string;
-  validations: Validation[];
-  legalChecks: LegalCheck[];
+  validations: OfferValidation[];
+  legalChecks: OfferLegalCheck[];
   readOnly?: boolean;
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  offer_accepted: 'Oferta Aceptada',
-  background_check: 'Verificación de Antecedentes',
-  reference_check: 'Verificación de Referencias',
-  medical_exam: 'Examen Médico',
-  education_verification: 'Verificación de Educación',
-  contract_signing: 'Firma de Contrato',
-};
-
-function ValidationItem({ validation }: { validation: Validation }) {
-  const { t } = useI18n();
-  const isPassed = validation.status === 'passed';
-  const isWaived = validation.status === 'waived';
-  const isFailed = validation.status === 'failed';
-  const isPending = validation.status === 'pending';
-  const isInReview = validation.status === 'in_review' || validation.status === 'in_progress';
-
-  const bgCls = isPassed
-    ? 'bg-green-50 border-green-200'
-    : isFailed
-      ? 'bg-red-50 border-red-200'
-      : isWaived
-        ? 'bg-blue-50 border-blue-200'
-    : isInReview
-      ? 'bg-amber-50 border-amber-200'
-      : 'bg-[#F6F6F6] border-[#EDEDED]';
-
-  const iconCls = isPassed
-    ? 'bg-green-500'
-    : isFailed
-      ? 'bg-red-500'
-      : isWaived
-        ? 'bg-blue-500'
-    : isInReview
-      ? 'bg-amber-500'
-      : 'bg-[#EDEDED]';
-
-  return (
-    <div className={`flex items-start gap-3 p-3 rounded-lg border ${bgCls} mb-2`}>
-      <div className={`w-6 h-6 rounded-full ${iconCls} flex items-center justify-center shrink-0 mt-0.5`}>
-        {isPassed || isWaived ? (
-          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <path d="m4.5 12.75 6 6 9-13.5" />
-          </svg>
-        ) : isFailed ? (
-          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        ) : isInReview ? (
-          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        ) : (
-          <svg className="w-3.5 h-3.5 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        )}
-      </div>
-      <div className="flex-1">
-        <div className="flex justify-between items-center">
-          <p className={`text-[12px] font-medium ${isPending ? 'text-[#8B8B8B]' : 'text-[#333]'}`}>
-            {TYPE_LABELS[validation.type] || validation.type}
-          </p>
-          <span
-            className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-              validation.isBlocking
-                ? 'bg-[#DD0C15]/10 text-[#DD0C15]'
-                : 'bg-[#F6F6F6] text-[#8B8B8B] border border-[#EDEDED]'
-            }`}
-          >
-            {validation.isBlocking ? t.offers.blocking : t.offers.nonBlocking}
-          </span>
-        </div>
-        {(isPassed || isWaived || isFailed) && (
-          <p className={`text-[10px] mt-0.5 ${isFailed ? 'text-red-700' : isWaived ? 'text-blue-700' : 'text-green-600'}`}>
-            {isPassed ? t.offers.completed : isWaived ? t.offers.waived : t.offers.failed}
-            {validation.completedAt && ` — ${formatDate(validation.completedAt)}`}
-            {validation.completedByUser && ` — ${validation.completedByUser.firstName} ${validation.completedByUser.lastName}`}
-          </p>
-        )}
-        {isInReview && (
-          <p className="text-[10px] text-amber-600 mt-0.5 font-medium">
-            {t.offers.inReview}
-          </p>
-        )}
-        {isPending && (
-          <p className="text-[10px] text-[#8B8B8B] mt-0.5">{t.offers.pending}</p>
-        )}
-        {validation.notes && (
-          <p className="text-[10px] text-[#8B8B8B] mt-0.5">{validation.notes}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LegalCheckItem({
-  check,
-  offerId,
-  readOnly,
-}: {
-  check: LegalCheck;
-  offerId: string;
-  readOnly: boolean;
-}) {
-  const { t } = useI18n();
-  const can = useCan();
-  const utils = trpc.useUtils();
-  const updateCheck = trpc.offer.updateLegalCheck.useMutation({
-    onSuccess: () => {
-      utils.offer.getLegalChecklist.invalidate({ offerId });
-      utils.offer.getById.invalidate({ id: offerId });
-    },
-    onError: () => toast(t.offers.errorUpdateVerification, { type: 'error' }),
-  });
-
-  return (
-    <button
-      type="button"
-      disabled={readOnly || !can('offer', 'update') || updateCheck.isPending}
-      className="flex items-center gap-2 text-left disabled:cursor-default disabled:opacity-75"
-      onClick={() => updateCheck.mutate({ id: check.id, completed: !check.completed })}
-    >
-      {check.completed ? (
-        <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-          <path d="m4.5 12.75 6 6 9-13.5" />
-        </svg>
-      ) : (
-        <svg className="w-4 h-4 text-[#EDEDED] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-          <path d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-        </svg>
-      )}
-      <span className={`text-[11px] ${check.completed ? 'text-[#333]' : 'text-[#8B8B8B]'}`}>
-        {check.checkName}
-      </span>
-    </button>
-  );
 }
 
 export function OfferValidations({ offerId, validations, legalChecks, readOnly = false }: OfferValidationsProps) {
@@ -178,69 +21,72 @@ export function OfferValidations({ offerId, validations, legalChecks, readOnly =
   const completedLegal = legalChecks.filter((c) => c.completed).length;
   const totalLegal = legalChecks.length;
 
+  const fill = (template: string, done: number, total: number) =>
+    template.replace('{done}', String(done)).replace('{total}', String(total));
+  const card = 'rounded-xl border border-border bg-white p-4 shadow-card md:p-5';
+  const audited = validations
+    .filter((v) => v.completedAt)
+    .sort((a, b) => String(b.completedAt ?? '').localeCompare(String(a.completedAt ?? '')));
+
   return (
     <div className="space-y-4">
-      {/* Validation Checklist */}
-      <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.offers.validationChecklist}</h3>
-          <span className="text-[11px] text-[#585858]">
-            {completedValidations} {t.offers.ofCompleted.split(' ')[0]} {totalValidations} {t.offers.ofCompleted}
+      {/* Validation checklist */}
+      <section className={card} aria-labelledby="offer-validations-title">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="offer-validations-title" className="text-heading font-semibold text-brand">{t.offers.validationChecklist}</h2>
+          <span className="text-callout text-secondary tabular-nums">
+            {fill(t.offers.validationsProgress, completedValidations, totalValidations)}
           </span>
         </div>
-        {validations.map((v) => (
-          <ValidationItem key={v.id} validation={v} />
-        ))}
-        {validations.length === 0 && (
-          <p className="text-[12px] text-[#8B8B8B] text-center py-4">
-            {t.offers.noValidationsConfigured}
-          </p>
-        )}
-      </div>
-
-      {/* Legal Checklist */}
-      {legalChecks.length > 0 && (
-        <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.offers.legalChecklist}</h3>
-            <span className="text-[10px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded">
-              {t.offers.autoLoadedByCountry}
-            </span>
-          </div>
-          <div className="space-y-1.5">
-            {legalChecks.map((check) => (
-              <LegalCheckItem key={check.id} check={check} offerId={offerId} readOnly={readOnly} />
+        {validations.length > 0 ? (
+          <ul className="space-y-2">
+            {validations.map((v) => (
+              <OfferValidationItem key={v.id} validation={v} />
             ))}
+          </ul>
+        ) : (
+          <p className="py-4 text-center text-callout text-secondary">{t.offers.noValidationsConfigured}</p>
+        )}
+      </section>
+
+      {/* Legal checklist */}
+      {legalChecks.length > 0 && (
+        <section className={card} aria-labelledby="offer-legal-title">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 id="offer-legal-title" className="text-heading font-semibold text-brand">{t.offers.legalChecklist}</h2>
+            <span className="rounded bg-surface px-2 py-0.5 text-caption text-secondary">{t.offers.autoLoadedByCountry}</span>
           </div>
-          <p className="text-[10px] text-[#8B8B8B] mt-3 pt-3 border-t border-[#F0F0F0]">
-            {completedLegal} de {totalLegal} {t.offers.itemsCompleted} — {t.offers.managedInOnboarding}
+          <ul className="space-y-0.5">
+            {legalChecks.map((check) => (
+              <OfferLegalCheckItem key={check.id} check={check} offerId={offerId} readOnly={readOnly} />
+            ))}
+          </ul>
+          <p className="mt-3 border-t border-border pt-3 text-callout text-secondary">
+            {fill(t.offers.legalProgress, completedLegal, totalLegal)} — {t.offers.managedInOnboarding}
           </p>
-        </div>
+        </section>
       )}
 
-      {/* Audit Trail */}
-      <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.offers.auditTrail}</h3>
-        <div className="space-y-1.5">
-          {validations
-            .filter((v) => v.completedAt)
-            .sort((a, b) => String(b.completedAt ?? '').localeCompare(String(a.completedAt ?? '')))
-            .map((v) => (
-              <div key={v.id} className="flex items-center gap-3 text-[10px]">
-                <span className="text-[#8B8B8B] w-28 shrink-0">{formatDate(v.completedAt)}</span>
-                <span className="text-[#333]">
-                  {v.completedByUser
-                    ? `${v.completedByUser.firstName} ${v.completedByUser.lastName}`
-                    : 'Sistema'}{' '}
-                  — {TYPE_LABELS[v.type] || v.type}: {v.status}
+      {/* Audit trail */}
+      <section className={card} aria-labelledby="offer-audit-title">
+        <h2 id="offer-audit-title" className="mb-3 text-heading font-semibold text-brand">{t.offers.auditTrail}</h2>
+        {audited.length > 0 ? (
+          <ul className="space-y-1.5">
+            {audited.map((v) => (
+              <li key={v.id} className="flex flex-col gap-0.5 text-callout sm:flex-row sm:items-center sm:gap-3">
+                <span className="shrink-0 text-muted tabular-nums sm:w-28">{formatDate(v.completedAt)}</span>
+                <span className="text-primary">
+                  {v.completedByUser ? `${v.completedByUser.firstName} ${v.completedByUser.lastName}` : t.offers.auditSystemActor}
+                  {' — '}
+                  {validationTypeLabel(v.type, t.offers)}: {validationStatus(v.status, t.offers).label}
                 </span>
-              </div>
+              </li>
             ))}
-          {validations.filter((v) => v.completedAt).length === 0 && (
-            <p className="text-[11px] text-[#8B8B8B] text-center py-2">{t.offers.noAuditEvents}</p>
-          )}
-        </div>
-      </div>
+          </ul>
+        ) : (
+          <p className="py-2 text-center text-callout text-secondary">{t.offers.noAuditEvents}</p>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import es from '../../apps/web/lib/i18n/es.json';
 import { I18nProvider } from '../../apps/web/lib/i18n';
@@ -41,6 +41,7 @@ vi.mock('../../apps/web/components', () => ({
 
 import { InterviewTable } from '../../apps/web/app/(admin)/recruitment/interviews/interview-table';
 import { InterviewFilterBar } from '../../apps/web/app/(admin)/recruitment/interviews/interview-filter-bar';
+import { InterviewsPageHeader } from '../../apps/web/app/(admin)/recruitment/interviews/interviews-page-header';
 import { UpcomingPanel } from '../../apps/web/app/(admin)/recruitment/interviews/upcoming-panel';
 import { InterviewKpis } from '../../apps/web/app/(admin)/recruitment/interviews/interview-kpis';
 import {
@@ -177,16 +178,24 @@ function renderTable(props: Partial<Parameters<typeof InterviewTable>[0]> = {}) 
   );
 }
 
+/** The row's secondary commands live in its "More actions" menu (HIG pass): open it before looking. */
+function openRowMenu(name = 'Ana Mora') {
+  fireEvent.click(screen.getByRole('button', { name: en.interviews.rowMoreActions.replace('{name}', name) }));
+}
+
 describe('interview table', () => {
   it('a past, unscored interview has no Cancel and says it waits for its scorecard', () => {
     renderTable({ interviews: [row({ scheduledAt: new Date(Date.now() - 3 * HOUR) })] });
-    expect(screen.queryByRole('button', { name: en.interviews.cancelInterview })).toBeNull();
+    openRowMenu();
+    expect(screen.getByRole('menuitem', { name: en.interviews.manageEvaluatorsMenu })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: en.interviews.cancelInterviewMenu })).toBeNull();
     expect(screen.getByTestId('status')).toHaveTextContent(en.interviews.statusAwaitingScorecard);
   });
 
   it('an upcoming interview keeps Cancel', () => {
     renderTable();
-    expect(screen.getByRole('button', { name: en.interviews.cancelInterview })).toBeInTheDocument();
+    openRowMenu();
+    expect(screen.getByRole('menuitem', { name: en.interviews.cancelInterviewMenu })).toBeInTheDocument();
     expect(screen.getByTestId('status')).toHaveTextContent(en.interviews.statusScheduled);
   });
 
@@ -204,7 +213,9 @@ describe('interview table', () => {
   it('B-05 / B-28: no panel management and no dead candidate link for a panelist', () => {
     renderTable({ onManageEvaluators: undefined, onCancel: undefined, canViewCandidate: false });
     const tableRow = screen.getAllByRole('row')[0]!;
-    expect(within(tableRow).queryByRole('button', { name: en.interviews.manageEvaluators })).toBeNull();
+    // No panel management and no cancel: the row has no "More actions" menu at all.
+    expect(within(tableRow).queryByRole('button', { name: /more actions/i })).toBeNull();
+    expect(within(tableRow).queryByText(en.interviews.manageEvaluatorsMenu)).toBeNull();
     expect(within(tableRow).queryByRole('link', { name: 'Ana Mora' })).toBeNull();
     expect(within(tableRow).getByText('Ana Mora')).toBeInTheDocument();
   });
@@ -220,13 +231,24 @@ describe('interview table', () => {
     const past = row({ id: 'past', scheduledAt: new Date(Date.now() - 3 * HOUR) });
     const scored = row({ id: 'scored', scheduledAt: new Date(Date.now() - 3 * HOUR), _count: { scorecards: 1 } });
     renderTable({ interviews: [past, row({ id: 'next' }), scored], onMarkNoShow: (id) => marked.push(id) });
-    const buttons = screen.getAllByRole('button', { name: en.interviews.markNoShow });
-    expect(buttons).toHaveLength(1);
-    buttons[0]!.click();
+    // Open every row's menu in turn: only the past, unscored one offers "No-show".
+    let offered = 0;
+    for (const trigger of screen.getAllByRole('button', { name: en.interviews.rowMoreActions.replace('{name}', 'Ana Mora') })) {
+      fireEvent.click(trigger);
+      const item = screen.queryByRole('menuitem', { name: en.interviews.markNoShowMenu });
+      if (item) {
+        offered += 1;
+        fireEvent.click(item);
+      } else {
+        fireEvent.click(trigger);
+      }
+    }
+    expect(offered).toBe(1);
     expect(marked).toEqual(['past']);
     cleanup();
     renderTable({ interviews: [past], onMarkNoShow: undefined });
-    expect(screen.queryByRole('button', { name: en.interviews.markNoShow })).toBeNull();
+    openRowMenu();
+    expect(screen.queryByRole('menuitem', { name: en.interviews.markNoShowMenu })).toBeNull();
   });
 });
 
@@ -291,10 +313,12 @@ describe('interview filter bar', () => {
     localStorage.setItem('tims-locale', 'EN');
     render(
       <I18nProvider>
+        <InterviewsPageHeader />
         <InterviewFilterBar {...base} />
       </I18nProvider>,
     );
     expect(screen.queryByRole('button', { name: en.interviews.scheduleNew })).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: en.interviews.title })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.interviews.viewUpcoming })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: en.interviews.viewPast })).toHaveAttribute('aria-pressed', 'false');
   });
@@ -319,11 +343,11 @@ describe('interview filter bar', () => {
     expect(es.interviews.statusNoShow).toBe('No se presentó');
   });
 
-  it('shows it when the viewer may schedule', () => {
+  it('shows it, in the page header, when the viewer may schedule', () => {
     localStorage.setItem('tims-locale', 'EN');
     render(
       <I18nProvider>
-        <InterviewFilterBar {...base} onSchedule={() => undefined} />
+        <InterviewsPageHeader onSchedule={() => undefined} />
       </I18nProvider>,
     );
     expect(screen.getByRole('button', { name: en.interviews.scheduleNew })).toBeInTheDocument();

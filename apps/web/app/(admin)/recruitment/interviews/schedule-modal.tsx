@@ -5,8 +5,12 @@ import { timeZoneLabel, zonedWallTimeToDate } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
-import { type Step, stepLabels, defaultInterviewType, locationPayload } from './schedule-modal.helpers';
-import { Step1Fields, Step2Fields, Step3Fields } from './schedule-modal.fields';
+import { Button } from '../../../../components/button';
+import { Stepper } from '../../../../components/stepper';
+import { FIELD_LABEL_CLASSES, selectClasses } from '../../../../components/field-styles';
+import { type Step, STEP_LABEL_KEYS, defaultInterviewType, locationPayload } from './schedule-modal.helpers';
+import { Step1Fields, Step2Fields } from './schedule-modal.fields';
+import { Step3Fields } from './schedule-modal.step3';
 import { useI18n } from '../../../../lib/i18n';
 import { useAssignablePeople } from '../../../../lib/platform-api/assignable-people';
 
@@ -134,7 +138,7 @@ export function ScheduleModal({ onClose, onSuccess, prefill }: ScheduleModalProp
       }
       onSuccess();
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Error al agendar', { type: 'error' });
+      toast(err instanceof Error ? err.message : t.interviews.scheduleError, { type: 'error' });
     }
   };
 
@@ -144,22 +148,36 @@ export function ScheduleModal({ onClose, onSuccess, prefill }: ScheduleModalProp
     );
   };
 
+  const firstStep: Step = prefill ? 2 : 1;
+  const footer = (
+    <>
+      {step > firstStep && (
+        <Button variant="tertiary" className="sm:mr-auto" onClick={() => setStep((step - 1) as Step)}
+          icon={<svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>}>
+          {t.common.back}
+        </Button>
+      )}
+      <Button variant="secondary" onClick={onClose}>
+        {t.common.cancel}
+      </Button>
+      {step < 3 ? (
+        <Button
+          onClick={() => setStep((step + 1) as Step)}
+          disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid)}
+        >
+          {t.common.next}
+        </Button>
+      ) : (
+        <Button onClick={handleSubmit} disabled={!isStep3Valid} loading={isPending} loadingLabel={t.portal.scheduling}>
+          {t.interviews.modalTitle}
+        </Button>
+      )}
+    </>
+  );
+
   return (
-    <Modal title={t.interviews.modalTitle} onClose={onClose} maxWidth="max-w-2xl">
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-6">
-        {stepLabels.map((label, i) => (
-          <div key={i} className="flex items-center gap-2 flex-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
-              step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-[#1F114C] text-white' : 'bg-[#EDEDED] text-[#8B8B8B]'
-            }`}>
-              {step > i + 1 ? '✓' : i + 1}
-            </div>
-            <span className={`text-[11px] ${step === i + 1 ? 'text-[#1F114C] font-medium' : 'text-[#8B8B8B]'}`}>{label}</span>
-            {i < 2 && <div className={`flex-1 h-[1px] ${step > i + 1 ? 'bg-green-500' : 'bg-[#EDEDED]'}`} />}
-          </div>
-        ))}
-      </div>
+    <Modal title={t.interviews.modalTitle} onClose={onClose} size="lg" footer={footer}>
+      <Stepper steps={STEP_LABEL_KEYS.map((key) => t.interviews[key])} current={step - 1} className="mb-6" />
 
       {/* Step 1: Candidate + Vacancy */}
       {step === 1 && (
@@ -180,14 +198,14 @@ export function ScheduleModal({ onClose, onSuccess, prefill }: ScheduleModalProp
 
       {/* Prefilled from a candidate: who and for which application, instead of step 1 */}
       {prefill && step === 2 && (
-        <div className="mb-4 rounded-lg bg-[#F6F6F6] px-3 py-2">
+        <div className="mb-4 rounded-lg bg-surface px-3 py-2">
           {prefill.applications.length > 1 ? (
-            <label className="block text-[12px] font-medium text-[#585858]">
+            <label className={`${FIELD_LABEL_CLASSES} mb-0`}>
               {t.candidates.scheduleForApplication} · {prefill.candidateName}
               <select
                 value={selectedApplicationId}
                 onChange={(e) => pickApplication(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px] text-[#333]"
+                className={selectClasses('md', 'mt-1.5 font-normal')}
               >
                 {prefill.applications.map((app) => (
                   <option key={app.id} value={app.id}>
@@ -197,7 +215,7 @@ export function ScheduleModal({ onClose, onSuccess, prefill }: ScheduleModalProp
               </select>
             </label>
           ) : (
-            <p className="text-[12px] text-[#333]">
+            <p className="text-callout text-primary">
               {t.candidates.scheduleSummary.replace('{candidate}', prefill.candidateName).replace('{vacancy}', selectedVacancyTitle)}
             </p>
           )}
@@ -238,36 +256,6 @@ export function ScheduleModal({ onClose, onSuccess, prefill }: ScheduleModalProp
         />
       )}
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#EDEDED]">
-        <div>
-          {step > (prefill ? 2 : 1) && (
-            <button onClick={() => setStep((step - 1) as Step)} className="text-[12px] text-[#585858] hover:text-[#1F114C] transition flex items-center gap-1">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-              Anterior
-            </button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
-            Cancelar
-          </button>
-          {step < 3 ? (
-            <button
-              onClick={() => setStep((step + 1) as Step)}
-              disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid)}
-              className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1a5c] transition disabled:opacity-50 flex items-center gap-1">
-              Siguiente
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-            </button>
-          ) : (
-            <button onClick={handleSubmit} disabled={!isStep3Valid || isPending}
-              className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50 flex items-center gap-2">
-              {isPending ? t.portal.scheduling : t.interviews.modalTitle}
-            </button>
-          )}
-        </div>
-      </div>
     </Modal>
   );
 }

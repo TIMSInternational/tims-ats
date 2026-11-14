@@ -3,13 +3,13 @@ export type Step = 1 | 2 | 3;
 // Labels and descriptions are i18n keys under `interviews` (typeX / typeDescX). `online` is a pasted
 // Teams/Meet/Zoom meeting: candidates read it as "En línea", never as an in-person interview.
 export const INTERVIEW_TYPES = [
-  { value: 'phone', icon: '📞', labelKey: 'typePhone', descKey: 'typeDescPhone' },
-  { value: 'video', icon: '📹', labelKey: 'typeVideo', descKey: 'typeDescVideo' },
-  { value: 'online', icon: '🔗', labelKey: 'typeOnline', descKey: 'typeDescOnline' },
-  { value: 'technical', icon: '💻', labelKey: 'typeTechnical', descKey: 'typeDescTechnical' },
-  { value: 'cultural', icon: '🤝', labelKey: 'typeCultural', descKey: 'typeDescCultural' },
-  { value: 'panel', icon: '👥', labelKey: 'typePanel', descKey: 'typeDescPanel' },
-  { value: 'onsite', icon: '🏢', labelKey: 'typeOnsite', descKey: 'typeDescOnsite' },
+  { value: 'phone', labelKey: 'typePhone', descKey: 'typeDescPhone' },
+  { value: 'video', labelKey: 'typeVideo', descKey: 'typeDescVideo' },
+  { value: 'online', labelKey: 'typeOnline', descKey: 'typeDescOnline' },
+  { value: 'technical', labelKey: 'typeTechnical', descKey: 'typeDescTechnical' },
+  { value: 'cultural', labelKey: 'typeCultural', descKey: 'typeDescCultural' },
+  { value: 'panel', labelKey: 'typePanel', descKey: 'typeDescPanel' },
+  { value: 'onsite', labelKey: 'typeOnsite', descKey: 'typeDescOnsite' },
 ] as const;
 
 export type InterviewTypeOption = (typeof INTERVIEW_TYPES)[number];
@@ -53,17 +53,15 @@ export function locationPayload(raw: string): { location?: string; meetingUrl?: 
   return { location: value };
 }
 
+// Labels are i18n keys under `interviews` ("1,5 h" in Spanish, "1.5 hr" in English).
 export const DURATIONS = [
-  { value: 15, label: '15 min' },
-  { value: 30, label: '30 min' },
-  { value: 45, label: '45 min' },
-  { value: 60, label: '1 hora' },
-  { value: 90, label: '1.5 horas' },
-  { value: 120, label: '2 horas' },
-];
+  { value: 15, labelKey: 'duration15' },
+  { value: 30, labelKey: 'duration30' },
+  { value: 45, labelKey: 'duration45' },
+  { value: 60, labelKey: 'duration60' },
+  { value: 90, labelKey: 'duration90' },
+  { value: 120, labelKey: 'duration120' },
+] as const;
 
-export const inputCls = 'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]';
-export const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
-export const textareaCls = 'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none';
-
-export const stepLabels = ['Candidato y vacante', 'Tipo y horario', 'Evaluadores y notas'];
+/** i18n keys (under `interviews`) of the three wizard steps. */
+export const STEP_LABEL_KEYS = ['scheduleStepWho', 'scheduleStepWhen', 'scheduleStepEvaluators'] as const;

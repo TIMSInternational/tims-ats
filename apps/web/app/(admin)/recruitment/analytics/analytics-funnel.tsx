@@ -6,120 +6,97 @@ import {
   useReportingSourceBreakdown,
 } from '../../../../lib/platform-api/reporting';
 import type { AnalyticsPeriod } from './page';
-
-function CardSkeleton() {
-  return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse">
-      <div className="h-40 bg-gray-100 rounded" />
-    </div>
-  );
-}
-
-function CardError({ message }: { message: string }) {
-  return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center text-[12px] text-[#DD0C15]">
-      {message}
-    </div>
-  );
-}
-
-// Darkens as the funnel narrows — same palette as the original design.
-const BAR_COLORS = ['bg-[#E8E5F0]', 'bg-[#D4CFE5]', 'bg-[#B8AED4]', 'bg-[#7B6BAA]', 'bg-[#5C4B99]', 'bg-[#1F114C]'];
-const TEXT_COLORS = ['text-[#1F114C]', 'text-[#1F114C]', 'text-white', 'text-white', 'text-white', 'text-white'];
+import { AnalyticsCard } from './analytics-card';
+import { pluralize } from '../../../../lib/i18n/format';
 
 export function AnalyticsFunnel() {
   const { t } = useI18n();
   const q = useReportingFunnel();
-
-  if (q.isLoading) return <CardSkeleton />;
-  if (q.isError || !q.data) return <CardError message={t.recruitAnalytics.errLoading} />;
-
-  const { stages, totalApplications, totalHired, conversionPct } = q.data;
+  const data = q.data;
 
   return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.recruitAnalytics.funnel}</h3>
-      {stages.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B] text-center py-8">{t.recruitAnalytics.noFunnelData}</p>
-      ) : (
-        <div className="space-y-2">
-          {stages.map((stage, idx) => (
-            <div key={stage.name} className="flex items-center gap-3">
-              <span className="text-[11px] text-[#585858] w-24 shrink-0 truncate" title={stage.name}>
-                {stage.name}
-              </span>
-              <div className="flex-1 bg-[#F6F6F6] rounded-full h-6 relative overflow-hidden">
-                <div
-                  className={`h-6 ${BAR_COLORS[Math.min(idx, BAR_COLORS.length - 1)]} rounded-full flex items-center justify-end pr-2`}
-                  style={{ width: `${Math.max(stage.pctOfMax, 8)}%` }}
-                >
-                  <span className={`text-[11px] font-medium ${TEXT_COLORS[Math.min(idx, TEXT_COLORS.length - 1)]}`}>
-                    {stage.count}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+    <AnalyticsCard
+      title={t.recruitAnalytics.funnel}
+      loading={q.isLoading}
+      error={q.isError || (!q.isLoading && !data) ? (q.error ?? true) : undefined}
+      onRetry={() => void q.refetch()}
+    >
+      {data && (
+        <>
+          {data.stages.length === 0 ? (
+            <p className="py-8 text-center text-callout text-secondary">{t.recruitAnalytics.noFunnelData}</p>
+          ) : (
+            <ul className="space-y-2">
+              {data.stages.map((stage) => (
+                <li key={stage.name} className="flex items-center gap-3">
+                  <span className="line-clamp-2 w-28 shrink-0 text-callout text-secondary sm:w-36">{stage.name}</span>
+                  {/* True length: a stage with 0 shows an empty track, never a filled pill. */}
+                  <div className="h-5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface" aria-hidden="true">
+                    <div
+                      className={`h-5 rounded-full bg-chart-2 ${stage.count > 0 ? 'min-w-0.5' : 'hidden'}`}
+                      style={{ width: `${stage.pctOfMax}%` }}
+                    />
+                  </div>
+                  <span className="w-10 shrink-0 text-right text-callout font-medium text-primary tabular-nums">{stage.count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-4 flex flex-wrap justify-center gap-x-6 gap-y-1 border-t border-border pt-3">
+            <span className="text-callout text-secondary">
+              {t.recruitAnalytics.totalConversion}:{' '}
+              <strong className="text-brand tabular-nums">{data.conversionPct != null ? `${data.conversionPct}%` : '—'}</strong>
+            </span>
+            <span className="text-callout text-secondary">
+              {t.recruitAnalytics.hired}: <strong className="text-brand tabular-nums">{data.totalHired}</strong> /{' '}
+              <span className="tabular-nums">{data.totalApplications}</span>
+            </span>
+          </div>
+        </>
       )}
-      <div className="flex justify-center gap-6 mt-4 pt-3 border-t border-[#F0F0F0]">
-        <span className="text-[11px] text-[#585858]">
-          {t.recruitAnalytics.totalConversion}:{' '}
-          <strong className="text-[#1F114C]">{conversionPct != null ? `${conversionPct}%` : '—'}</strong>
-        </span>
-        <span className="text-[11px] text-[#585858]">
-          {t.recruitAnalytics.hired}: <strong className="text-[#1F114C]">{totalHired}</strong> /{' '}
-          {totalApplications}
-        </span>
-      </div>
-    </div>
+    </AnalyticsCard>
   );
 }
 
 export function AnalyticsSourceQuality({ period }: { period: AnalyticsPeriod }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useReportingSourceBreakdown(period);
-
-  if (q.isLoading) return <CardSkeleton />;
-  if (q.isError || !q.data) return <CardError message={t.recruitAnalytics.errLoading} />;
-
   const sources = q.data;
-  const maxApps = Math.max(1, ...sources.map((s) => s.applications));
-  const DOT_COLORS = ['bg-blue-500', 'bg-[#1F114C]', 'bg-green-500', 'bg-orange-500', 'bg-amber-500', 'bg-teal-500'];
+  const maxApps = Math.max(1, ...(sources ?? []).map((s) => s.applications));
 
   return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.recruitAnalytics.sourcesTitle}</h3>
-      {sources.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B] text-center py-8">{t.recruitAnalytics.noSourceData}</p>
-      ) : (
-        <div className="space-y-3">
-          {sources.map((src, idx) => (
-            <div key={src.source}>
-              <div className="flex justify-between items-center mb-1.5">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded ${DOT_COLORS[idx % DOT_COLORS.length]}`} />
-                  <span className="text-[12px] text-[#333] font-medium capitalize">{src.source}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-[11px] text-[#585858]">
-                    {src.applications} {t.recruitAnalytics.applicationsLabel}
+    <AnalyticsCard
+      title={t.recruitAnalytics.sourcesTitle}
+      loading={q.isLoading}
+      error={q.isError || (!q.isLoading && !sources) ? (q.error ?? true) : undefined}
+      onRetry={() => void q.refetch()}
+    >
+      {sources &&
+        (sources.length === 0 ? (
+          <p className="py-8 text-center text-callout text-secondary">{t.recruitAnalytics.noSourceData}</p>
+        ) : (
+          <ul className="space-y-3">
+            {sources.map((src) => (
+              <li key={src.source}>
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5">
+                  <span className="text-callout font-medium capitalize text-primary">{src.source}</span>
+                  <span className="flex items-center gap-4 tabular-nums">
+                    <span className="text-callout text-secondary">
+                      {pluralize(src.applications, { one: t.recruitAnalytics.applicationsOne, other: t.recruitAnalytics.applicationsOther }, locale)}
+                    </span>
+                    <span className={`text-callout font-medium ${src.hires > 0 ? 'text-success' : 'text-secondary'}`}>
+                      {pluralize(src.hires, { one: t.recruitAnalytics.hiresOne, other: t.recruitAnalytics.hiresOther }, locale)}
+                    </span>
                   </span>
-                  <span className={`text-[11px] font-medium ${src.hires > 0 ? 'text-green-600' : 'text-[#8B8B8B]'}`}>
-                    {src.hires} {t.recruitAnalytics.hires}
-                  </span>
                 </div>
-              </div>
-              <div className="w-full bg-[#F6F6F6] rounded-sm h-4 overflow-hidden">
-                <div
-                  className="bg-[#7B6BAA] h-4 rounded-sm"
-                  style={{ width: `${Math.round((src.applications / maxApps) * 100)}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+                {/* One series: one colour, no legend swatch that matches nothing. */}
+                <div className="h-3 w-full overflow-hidden rounded-sm bg-surface" aria-hidden="true">
+                  <div className="h-3 rounded-sm bg-chart-3" style={{ width: `${Math.round((src.applications / maxApps) * 100)}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ))}
+    </AnalyticsCard>
   );
 }

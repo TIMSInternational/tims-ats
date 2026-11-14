@@ -44,9 +44,10 @@ vi.mock('../../apps/web/components', () => ({
   StatusBadge: ({ status }: { status: string }) => <span>{status}</span>,
   CandidateAvatar: () => null,
   UpsellNotice: () => null,
-  Modal: ({ title, children }: { title: string; children: ReactNode }) => (
+  Modal: ({ title, children, footer }: { title: string; children: ReactNode; footer?: ReactNode }) => (
     <div role="dialog" aria-label={title}>
       {children}
+      {footer}
     </div>
   ),
 }));
@@ -87,17 +88,24 @@ describe('Reprogramar on the interview row', () => {
   it('is offered on an open, unscored interview and hands the row over', () => {
     const onReschedule = vi.fn();
     render(<InterviewTable {...baseProps} interviews={[row('scheduled')]} onReschedule={onReschedule} />);
-    fireEvent.click(screen.getByRole('button', { name: es.interviews.reschedule }));
+    fireEvent.click(screen.getByRole('button', { name: es.interviews.rowMoreActions.replace('{name}', 'Ana Mora') }));
+    fireEvent.click(screen.getByRole('menuitem', { name: es.interviews.rescheduleMenu }));
     expect(onReschedule).toHaveBeenCalledWith(expect.objectContaining({ id: 'iv-1' }));
   });
 
   it('is hidden for scored, cancelled or completed interviews, and for viewers without the handler', () => {
-    const { rerender } = render(<InterviewTable {...baseProps} interviews={[row('scheduled', 1)]} onReschedule={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: es.interviews.reschedule })).toBeNull();
-    rerender(<InterviewTable {...baseProps} interviews={[row('cancelled')]} onReschedule={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: es.interviews.reschedule })).toBeNull();
-    rerender(<InterviewTable {...baseProps} interviews={[row('scheduled')]} />);
-    expect(screen.queryByRole('button', { name: es.interviews.reschedule })).toBeNull();
+    // A panel-management item keeps the row's "Más acciones" menu present, so each case opens it and
+    // checks the menu itself for "Reprogramar…".
+    const withMenu = { ...baseProps, onManageEvaluators: vi.fn() };
+    const menuButton = () => screen.getByRole('button', { name: es.interviews.rowMoreActions.replace('{name}', 'Ana Mora') });
+    const { rerender } = render(<InterviewTable {...withMenu} interviews={[row('scheduled', 1)]} onReschedule={vi.fn()} />);
+    fireEvent.click(menuButton());
+    expect(screen.getByRole('menuitem', { name: es.interviews.manageEvaluatorsMenu })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: es.interviews.rescheduleMenu })).toBeNull();
+    rerender(<InterviewTable {...withMenu} interviews={[row('cancelled')]} onReschedule={vi.fn()} />);
+    expect(screen.queryByRole('menuitem', { name: es.interviews.rescheduleMenu })).toBeNull();
+    rerender(<InterviewTable {...withMenu} interviews={[row('scheduled')]} />);
+    expect(screen.queryByRole('menuitem', { name: es.interviews.rescheduleMenu })).toBeNull();
   });
 });
 

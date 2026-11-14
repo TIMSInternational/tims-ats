@@ -131,7 +131,9 @@ describe('approver: "Your decision"', () => {
 
     fireEvent.click(button(en.offers.reject));
     expect(button(en.offers.rejectConfirm)).toBeDisabled();
-    fireEvent.change(screen.getByRole('textbox', { name: `${en.offers.rejectionReason} *` }), {
+    // The asterisk is visual only (aria-hidden); the field itself is marked required (HIG pass).
+    expect(screen.getByRole('textbox', { name: en.offers.rejectionReason })).toBeRequired();
+    fireEvent.change(screen.getByRole('textbox', { name: en.offers.rejectionReason }), {
       target: { value: 'Over budget' },
     });
     fireEvent.click(button(en.offers.rejectConfirm));
