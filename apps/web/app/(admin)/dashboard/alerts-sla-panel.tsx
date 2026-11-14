@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
+import { StatusBadge } from '../../../components/status-badge';
 
 interface SlaStage {
   name: string;
@@ -63,59 +64,73 @@ export function AlertsSlaPanel({ vacancyId, vacanciesLoading }: AlertsSlaPanelPr
   }, [slaQuery.data]);
 
   const totalOverdue = slaData.reduce((s, d) => s + d.count, 0);
+  const titleId = useId();
 
   return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-sm font-semibold text-[#1F114C]">{rd.slaOverdueByStage}</span>
-        <span className={`text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${totalOverdue > 0 ? 'bg-[#DD0C15]' : 'bg-green-500'}`}>
+    <section aria-labelledby={titleId} className="w-full rounded-xl bg-white p-4 shadow-card md:flex-1">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 id={titleId} className="text-subheading font-semibold text-brand">
+          {rd.slaOverdueByStage}
+        </h3>
+        {/* Colour only when something is overdue; a word-free count stays neutral at 0. */}
+        <StatusBadge tone={totalOverdue > 0 ? 'danger' : 'neutral'} icon="none" className="tabular-nums">
           {totalOverdue}
-        </span>
+        </StatusBadge>
       </div>
 
       {isLoading ? (
-        <div className="space-y-3 animate-pulse">
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded" />)}
+        <div className="space-y-3" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              aria-hidden="true"
+              className="h-12 animate-pulse rounded bg-gray-100 motion-reduce:animate-none"
+            />
+          ))}
         </div>
       ) : slaQuery.isError ? (
-        <ErrorState onRetry={() => slaQuery.refetch()} error={slaQuery.error} />
+        <ErrorState size="compact" onRetry={() => slaQuery.refetch()} error={slaQuery.error} />
       ) : slaData.length === 0 ? (
-        <div className="text-center py-6">
-          <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">
-            <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <div className="py-6 text-center">
+          <div
+            className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full bg-success-bg"
+            aria-hidden="true"
+          >
+            <svg className="size-4 text-success" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="m4.5 12.75 6 6 9-13.5" />
             </svg>
           </div>
-          <p className="text-[12px] text-[#8B8B8B]">{rd.noSlaOverdue}</p>
+          <p className="text-callout text-secondary">{rd.noSlaOverdue}</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <ul className="space-y-3">
           {slaData.map((stage) => {
-            const barColor = stage.severity === 'critical' ? 'bg-[#DD0C15]' : 'bg-amber-500';
-            const lineColor = stage.severity === 'critical' ? 'bg-[#DD0C15]' : 'bg-amber-500';
-            const textColor = stage.severity === 'critical' ? 'text-[#DD0C15]' : 'text-amber-500';
+            const critical = stage.severity === 'critical';
+            const accent = critical ? 'bg-danger' : 'bg-warning';
+            const textColor = critical ? 'text-danger' : 'text-warning';
             return (
-              <div key={stage.name} className="flex items-center gap-3">
-                <div className={`w-[3px] h-12 ${lineColor} rounded-full shrink-0`} />
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <span className="text-[13px] text-[#333]">{stage.name}</span>
-                    <span className="text-xs text-[#585858]">
+              <li key={stage.name} className="flex items-center gap-3">
+                <div className={`h-12 w-[3px] shrink-0 rounded-full ${accent}`} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap justify-between gap-x-2">
+                    <span className="text-body text-primary">{stage.name}</span>
+                    <span className="text-callout tabular-nums text-secondary">
                       {stage.count} {stage.count === 1 ? rd.candidate : rd.candidates}
                     </span>
                   </div>
-                  <div className="w-full bg-[#F6F6F6] rounded-full h-1 my-1">
-                    <div className={`h-1 ${barColor} rounded-full`} style={{ width: `${stage.barPct}%` }} />
+                  <div className="my-1 h-1 w-full rounded-full bg-surface" aria-hidden="true">
+                    <div className={`h-1 rounded-full ${accent}`} style={{ width: `${stage.barPct}%` }} />
                   </div>
-                  <span className={`text-[11px] ${textColor}`}>
+                  <span className={`text-caption font-medium ${textColor}`}>
                     {rd.average}: {stage.avgDays} {rd.days} ({rd.sla}: {stage.slaDays})
                   </span>
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

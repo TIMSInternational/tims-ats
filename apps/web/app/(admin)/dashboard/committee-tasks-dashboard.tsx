@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
@@ -9,15 +9,14 @@ import { LoadError } from './load-error';
 import { CommitteeCalibrationsPanel } from './committee-calibrations-panel';
 import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
 import { interviewRoomHref } from './manager-todos';
+import { DashboardPage } from './dashboard-page';
 
 function fullName(p: { firstName: string; lastName: string }): string {
   return `${p.firstName} ${p.lastName}`.trim();
 }
 
-const CARD_ICON = <span className="w-2.5 h-2.5 rounded-full inline-block bg-blue-400" />;
-const CARD_BG = 'bg-blue-50';
-
-const EMPTY_ICON = <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />;
+const ROW =
+  '-mx-3 flex flex-wrap items-center justify-between gap-x-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface';
 
 function SkeletonRows() {
   return (
@@ -51,94 +50,89 @@ export function CommitteeTasksDashboard({ isPilot = false }: CommitteeTasksDashb
   const upcomingItems = upcoming.data?.items ?? [];
 
   const scorecardsCount = scorecards.data?.length ?? 0;
+  const panelsId = useId();
+  const upcomingId = useId();
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-lg font-bold text-[#1F114C]">{ct.title}</h1>
-          <span className="text-[13px] text-[#585858]">{ct.subtitle}</span>
-        </div>
+    <DashboardPage title={ct.title} description={ct.subtitle}>
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        {scorecards.isError ? (
+          <div className="col-span-full">
+            <LoadError message={ct.loadError} onRetry={() => scorecards.refetch()} />
+          </div>
+        ) : scorecards.isLoading ? (
+          <KpiCardSkeleton />
+        ) : (
+          <KpiCard
+            label={ct.pendingScorecards}
+            value={scorecardsCount}
+            tone="warning"
+            highlight={scorecardsCount > 0}
+          />
+        )}
+      </div>
 
-        {/* KPI row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
-          {scorecards.isError ? (
-            <div className="col-span-full">
-              <LoadError message={ct.loadError} />
-            </div>
-          ) : scorecards.isLoading ? (
-            <KpiCardSkeleton />
-          ) : (
-            <KpiCard
-              label={ct.pendingScorecards}
-              value={scorecardsCount}
-              icon={CARD_ICON}
-              iconBg={CARD_BG}
-              highlight={scorecardsCount > 0}
-            />
-          )}
-        </div>
-
-        {/* Panels */}
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-          <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{ct.panelsTitle}</h2>
-          {scorecards.isError ? (
-            <LoadError message={ct.loadError} />
-          ) : scorecards.isLoading ? (
-            <SkeletonRows />
-          ) : !scorecards.data || scorecards.data.length === 0 ? (
-            <EmptyState icon={EMPTY_ICON} message={ct.noScorecards} />
-          ) : (
-            <div className="space-y-1">
-              {scorecards.data.map((row) => (
-                <a
-                  key={row.id}
-                  href={interviewRoomHref(row.interviewId)}
-                  className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
-                >
-                  <span className="text-sm text-[#333] font-medium truncate">{fullName(row.interview.candidate)}</span>
-                  <span className="text-[13px] text-[#8B8B8B] truncate ml-3">
+      {/* Panels */}
+      <section aria-labelledby={panelsId} className="rounded-xl bg-white p-5 shadow-card">
+        <h2 id={panelsId} className="mb-4 text-heading font-semibold text-brand">
+          {ct.panelsTitle}
+        </h2>
+        {scorecards.isError ? (
+          <LoadError message={ct.loadError} onRetry={() => scorecards.refetch()} />
+        ) : scorecards.isLoading ? (
+          <SkeletonRows />
+        ) : !scorecards.data || scorecards.data.length === 0 ? (
+          <EmptyState size="compact" message={ct.noScorecards} />
+        ) : (
+          <ul className="space-y-1">
+            {scorecards.data.map((row) => (
+              <li key={row.id}>
+                <a href={interviewRoomHref(row.interviewId)} className={ROW}>
+                  <span className="min-w-0 truncate text-body font-medium text-primary">
+                    {fullName(row.interview.candidate)}
+                  </span>
+                  <span className="min-w-0 truncate text-callout text-muted">
                     {[row.interview.vacancy.title, formatInterviewWhen(row.interview.scheduledAt, locale)]
                       .filter(Boolean)
                       .join(' · ')}
                   </span>
                 </a>
-              ))}
-            </div>
-          )}
-        </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        {/* Upcoming panels — not scorecards yet */}
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mt-6">
-          <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{ct.upcomingTitle}</h2>
-          {upcoming.isError ? (
-            <LoadError message={ct.loadError} />
-          ) : upcoming.isLoading ? (
-            <SkeletonRows />
-          ) : upcomingItems.length === 0 ? (
-            <EmptyState icon={EMPTY_ICON} message={ct.noUpcoming} />
-          ) : (
-            <div className="space-y-1">
-              {upcomingItems.map((iv) => (
-                <Link
-                  key={iv.id}
-                  href="/recruitment/interviews"
-                  className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
-                >
-                  <span className="text-sm text-[#333] font-medium truncate">{fullName(iv.candidate)}</span>
-                  <span className="text-[13px] text-[#8B8B8B] truncate ml-3">
+      {/* Upcoming panels — not scorecards yet */}
+      <section aria-labelledby={upcomingId} className="mt-6 rounded-xl bg-white p-5 shadow-card">
+        <h2 id={upcomingId} className="mb-4 text-heading font-semibold text-brand">
+          {ct.upcomingTitle}
+        </h2>
+        {upcoming.isError ? (
+          <LoadError message={ct.loadError} onRetry={() => upcoming.refetch()} />
+        ) : upcoming.isLoading ? (
+          <SkeletonRows />
+        ) : upcomingItems.length === 0 ? (
+          <EmptyState size="compact" message={ct.noUpcoming} />
+        ) : (
+          <ul className="space-y-1">
+            {upcomingItems.map((iv) => (
+              <li key={iv.id}>
+                <Link href="/recruitment/interviews" className={ROW}>
+                  <span className="min-w-0 truncate text-body font-medium text-primary">{fullName(iv.candidate)}</span>
+                  <span className="min-w-0 truncate text-callout text-muted">
                     {[iv.vacancy.title, formatInterviewWhen(iv.scheduledAt, locale)].filter(Boolean).join(' · ')}
                   </span>
                 </Link>
-              ))}
-            </div>
-          )}
-        </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        {/* Mis Calibraciones (talent / 9-box): not mounted under the pilot launch scope */}
-        {!isPilot && <CommitteeCalibrationsPanel />}
-      </div>
-    </div>
+      {/* Mis Calibraciones (talent / 9-box): not mounted under the pilot launch scope */}
+      {!isPilot && <CommitteeCalibrationsPanel />}
+    </DashboardPage>
   );
 }

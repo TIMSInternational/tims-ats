@@ -1,12 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 import { usePermissions } from '../../../lib/permissions';
 import { isValidTimeZone } from '@tims/shared';
 import { COMMON_TIME_ZONES, timeZoneOptions } from '../../../lib/time-zone-options';
+import { Button } from '../../../components/button';
+import {
+  FIELD_ERROR_CLASSES,
+  FIELD_HELP_CLASSES,
+  FIELD_LABEL_CLASSES,
+  inputClasses,
+  selectClasses,
+} from '../../../components/field-styles';
 
 export interface ProfileFormValues {
   firstName: string;
@@ -18,9 +26,15 @@ export interface ProfileFormValues {
   timezone: string;
 }
 
-const FIELD_CLS =
-  'w-full h-9 px-3 rounded-lg border border-[#EDEDED] bg-white text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20';
-const LABEL_CLS = 'block text-[12px] font-medium text-[#585858] mb-1.5';
+const FIELD_CLS = inputClasses();
+const SELECT_CLS = selectClasses();
+const LABEL_CLS = FIELD_LABEL_CLASSES;
+/** How long the inline "saved" confirmation stays beside the button. */
+const SAVED_NOTICE_MS = 4000;
+
+function RequiredMark() {
+  return <span aria-hidden="true">*</span>;
+}
 
 export function ProfileForm({ profile }: { profile: ProfileFormValues }) {
   const { t, locale: uiLocale, setLocale } = useI18n();
@@ -33,8 +47,17 @@ export function ProfileForm({ profile }: { profile: ProfileFormValues }) {
   const [phone, setPhone] = useState(profile.phone ?? '');
   const [language, setLanguage] = useState(profile.locale === 'en' ? 'en' : 'es');
   // A stored zone no formatter understands would be refused on save; start from the pilot default instead.
-  const [timezone, setTimezone] = useState(isValidTimeZone(profile.timezone) ? profile.timezone : (COMMON_TIME_ZONES[0] ?? 'UTC'));
+  const [timezone, setTimezone] = useState(
+    isValidTimeZone(profile.timezone) ? profile.timezone : (COMMON_TIME_ZONES[0] ?? 'UTC'),
+  );
   const [touched, setTouched] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    if (!justSaved) return;
+    const timer = setTimeout(() => setJustSaved(false), SAVED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [justSaved]);
 
   const firstNameError = touched && firstName.trim().length === 0;
   const lastNameError = touched && lastName.trim().length === 0;
@@ -42,7 +65,8 @@ export function ProfileForm({ profile }: { profile: ProfileFormValues }) {
 
   const save = trpc.user.updateProfile.useMutation({
     onSuccess: (updated) => {
-      toast(m.saved, { type: 'success' });
+      // Confirmed next to the button that did it, not in a toast across the screen.
+      setJustSaved(true);
       // The interface language follows the saved preference right away.
       setLocale(updated.locale === 'en' ? 'EN' : 'ES');
       void utils.user.me.invalidate();
@@ -64,130 +88,153 @@ export function ProfileForm({ profile }: { profile: ProfileFormValues }) {
     });
   };
 
+  const errorText = (id: string, text: string) => (
+    <p id={id} role="alert" className={FIELD_ERROR_CLASSES}>
+      {text}
+    </p>
+  );
+
   return (
-    <form onSubmit={onSubmit} noValidate className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <label htmlFor="profile-first-name" className={LABEL_CLS}>
-          {m.firstName} *
-        </label>
-        <input
-          id="profile-first-name"
-          value={firstName}
-          maxLength={100}
-          onChange={(e) => setFirstName(e.target.value)}
-          aria-invalid={firstNameError || undefined}
-          aria-describedby={firstNameError ? 'profile-first-name-error' : undefined}
-          className={FIELD_CLS}
-        />
-        {firstNameError && (
-          <p id="profile-first-name-error" role="alert" className="mt-1 text-xs text-[#DD0C15]">
-            {m.firstNameRequired}
+    <div className="space-y-6">
+      {/* What cannot be edited here is shown as text, not as a field that looks editable. */}
+      <dl className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <dt className="text-callout text-secondary">{m.email}</dt>
+          <dd className="mt-0.5 break-all text-body text-primary">{profile.email}</dd>
+          <dd className={FIELD_HELP_CLASSES}>{m.emailHint}</dd>
+        </div>
+        <div>
+          <dt className="text-callout text-secondary">{m.role}</dt>
+          <dd className="mt-0.5 text-body text-primary">{roleLabel || '—'}</dd>
+        </div>
+      </dl>
+
+      <form
+        onSubmit={onSubmit}
+        noValidate
+        className="grid grid-cols-1 gap-4 border-t border-border pt-5 md:grid-cols-2"
+      >
+        <p className="text-callout text-secondary md:col-span-2">{m.requiredLegend}</p>
+        <div>
+          <label htmlFor="profile-first-name" className={LABEL_CLS}>
+            {m.firstName} <RequiredMark />
+          </label>
+          <input
+            id="profile-first-name"
+            value={firstName}
+            maxLength={100}
+            autoComplete="given-name"
+            onChange={(e) => setFirstName(e.target.value)}
+            aria-required="true"
+            aria-invalid={firstNameError || undefined}
+            aria-describedby={firstNameError ? 'profile-first-name-error' : undefined}
+            className={FIELD_CLS}
+          />
+          {firstNameError && errorText('profile-first-name-error', m.firstNameRequired)}
+        </div>
+        <div>
+          <label htmlFor="profile-last-name" className={LABEL_CLS}>
+            {m.lastName} <RequiredMark />
+          </label>
+          <input
+            id="profile-last-name"
+            value={lastName}
+            maxLength={100}
+            autoComplete="family-name"
+            onChange={(e) => setLastName(e.target.value)}
+            aria-required="true"
+            aria-invalid={lastNameError || undefined}
+            aria-describedby={lastNameError ? 'profile-last-name-error' : undefined}
+            className={FIELD_CLS}
+          />
+          {lastNameError && errorText('profile-last-name-error', m.lastNameRequired)}
+        </div>
+        <div>
+          <label htmlFor="profile-job-title" className={LABEL_CLS}>
+            {m.jobTitle}
+          </label>
+          <input
+            id="profile-job-title"
+            value={jobTitle}
+            maxLength={200}
+            autoComplete="organization-title"
+            onChange={(e) => setJobTitle(e.target.value)}
+            className={FIELD_CLS}
+          />
+        </div>
+        <div>
+          <label htmlFor="profile-phone" className={LABEL_CLS}>
+            {m.phone}
+          </label>
+          <input
+            id="profile-phone"
+            type="tel"
+            value={phone}
+            maxLength={20}
+            autoComplete="tel"
+            placeholder={m.phonePlaceholder}
+            onChange={(e) => setPhone(e.target.value)}
+            className={FIELD_CLS}
+          />
+        </div>
+        <div>
+          <label htmlFor="profile-language" className={LABEL_CLS}>
+            {m.language}
+          </label>
+          <select
+            id="profile-language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className={SELECT_CLS}
+          >
+            <option value="es">{m.languageEs}</option>
+            <option value="en">{m.languageEn}</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="profile-time-zone" className={LABEL_CLS}>
+            {m.timeZone}
+          </label>
+          <select
+            id="profile-time-zone"
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            aria-describedby="profile-time-zone-hint"
+            className={SELECT_CLS}
+          >
+            {zones.map((z) => (
+              <option key={z.value} value={z.value} title={z.value}>
+                {z.label}
+              </option>
+            ))}
+          </select>
+          <p id="profile-time-zone-hint" className={FIELD_HELP_CLASSES}>
+            {m.timeZoneHint}
           </p>
-        )}
-      </div>
-      <div>
-        <label htmlFor="profile-last-name" className={LABEL_CLS}>
-          {m.lastName} *
-        </label>
-        <input
-          id="profile-last-name"
-          value={lastName}
-          maxLength={100}
-          onChange={(e) => setLastName(e.target.value)}
-          aria-invalid={lastNameError || undefined}
-          aria-describedby={lastNameError ? 'profile-last-name-error' : undefined}
-          className={FIELD_CLS}
-        />
-        {lastNameError && (
-          <p id="profile-last-name-error" role="alert" className="mt-1 text-xs text-[#DD0C15]">
-            {m.lastNameRequired}
+        </div>
+        <div className="flex flex-col-reverse items-stretch gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end md:col-span-2">
+          <p role="status" className="flex items-center gap-1.5 text-callout text-success">
+            {justSaved && (
+              <>
+                <svg
+                  className="size-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {m.saved}
+              </>
+            )}
           </p>
-        )}
-      </div>
-      <div>
-        <label htmlFor="profile-email" className={LABEL_CLS}>
-          {m.email}
-        </label>
-        <input
-          id="profile-email"
-          value={profile.email}
-          readOnly
-          aria-describedby="profile-email-hint"
-          className={`${FIELD_CLS} bg-[#F6F6F6] text-[#8B8B8B]`}
-        />
-        <p id="profile-email-hint" className="mt-1 text-[11px] text-[#8B8B8B]">
-          {m.emailHint}
-        </p>
-      </div>
-      <div>
-        <span className={LABEL_CLS}>{m.role}</span>
-        <p className="h-9 flex items-center text-sm text-[#333]">{roleLabel || '—'}</p>
-      </div>
-      <div>
-        <label htmlFor="profile-job-title" className={LABEL_CLS}>
-          {m.jobTitle}
-        </label>
-        <input
-          id="profile-job-title"
-          value={jobTitle}
-          maxLength={200}
-          onChange={(e) => setJobTitle(e.target.value)}
-          className={FIELD_CLS}
-        />
-      </div>
-      <div>
-        <label htmlFor="profile-phone" className={LABEL_CLS}>
-          {m.phone}
-        </label>
-        <input
-          id="profile-phone"
-          type="tel"
-          value={phone}
-          maxLength={20}
-          placeholder={m.phonePlaceholder}
-          onChange={(e) => setPhone(e.target.value)}
-          className={FIELD_CLS}
-        />
-      </div>
-      <div>
-        <label htmlFor="profile-language" className={LABEL_CLS}>
-          {m.language}
-        </label>
-        <select id="profile-language" value={language} onChange={(e) => setLanguage(e.target.value)} className={FIELD_CLS}>
-          <option value="es">{m.languageEs}</option>
-          <option value="en">{m.languageEn}</option>
-        </select>
-      </div>
-      <div>
-        <label htmlFor="profile-time-zone" className={LABEL_CLS}>
-          {m.timeZone}
-        </label>
-        <select
-          id="profile-time-zone"
-          value={timezone}
-          onChange={(e) => setTimezone(e.target.value)}
-          aria-describedby="profile-time-zone-hint"
-          className={FIELD_CLS}
-        >
-          {zones.map((z) => (
-            <option key={z.value} value={z.value}>
-              {z.label}
-            </option>
-          ))}
-        </select>
-        <p id="profile-time-zone-hint" className="mt-1 text-[11px] text-[#8B8B8B]">
-          {m.timeZoneHint}
-        </p>
-      </div>
-      <div className="md:col-span-2 flex justify-end pt-2">
-        <button
-          type="submit"
-          disabled={save.isPending}
-          className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-        >
-          {save.isPending ? t.common.saving : t.common.save}
-        </button>
-      </div>
-    </form>
+          <Button type="submit" loading={save.isPending} loadingLabel={t.common.saving}>
+            {m.saveChanges}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }

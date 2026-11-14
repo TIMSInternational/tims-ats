@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
@@ -24,6 +24,7 @@ import { UnassignedDashboard } from './unassigned-dashboard';
 import { readLaunchScope } from '../../../lib/launch-scope';
 import { buildFunnelVacancies } from './funnel-vacancies';
 import { MyApprovalsCard } from './my-approvals-card';
+import { DashboardLeadContext, DashboardPage } from './dashboard-page';
 
 interface RecruitmentDashboardProps {
   roleSlugs: string[];
@@ -66,22 +67,12 @@ export function RecruitmentDashboard({ roleSlugs }: RecruitmentDashboardProps) {
     }
   })();
 
-  // Wrap in a flex column so SetupChecklist (natural height) and the chosen
-  // dashboard (remaining space) share the viewport instead of both claiming
-  // h-full as independent siblings of admin-shell's plain (non-flex) scroll
-  // container — every dashboard case's own root already assumes it's the
-  // SOLE h-full child of that container (h-full flex flex-col overflow-hidden
-  // + its own internal flex-1 min-h-0 overflow-y-auto), so this wrapper gives
-  // it that same guarantee one level deeper rather than changing any
-  // dashboard component itself. Safe for all 7 cases, not just the 2 that
-  // show the checklist: the inner flex-1 min-h-0 overflow-hidden div always
-  // has a real computed height to hand down, whether or not SetupChecklist
-  // is present above it.
+  // The setup checklist opens the chosen dashboard's body, under its page header (DashboardPage reads it),
+  // instead of sitting above the h1 outside the scroll container.
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {showsSetupChecklist && <SetupChecklist />}
-      <div className="flex-1 min-h-0 overflow-hidden">{dashboard}</div>
-    </div>
+    <DashboardLeadContext.Provider value={showsSetupChecklist ? <SetupChecklist /> : null}>
+      {dashboard}
+    </DashboardLeadContext.Provider>
   );
 }
 
@@ -109,77 +100,84 @@ function RecruiterDashboard() {
   const [pickedAlertsVacancyId, setPickedAlertsVacancyId] = useState<string | null>(null);
   const alertVacancies = publishedVacancies.data?.items ?? [];
   const alertsVacancyId = (alertVacancies.find((v) => v.id === pickedAlertsVacancyId) ?? alertVacancies[0])?.id;
+  const alertsTitleId = useId();
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-lg font-bold text-[#1F114C]">{rd.overviewMetrics}</h1>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <span className="text-[13px] text-[#585858]">{rd.todaysStatus}</span>
-            <RecruiterQuickActions />
-          </div>
-        </div>
+    <DashboardPage title={rd.overviewMetrics} description={rd.todaysStatus} actions={<RecruiterQuickActions />}>
+      <MyApprovalsCard className="mb-6" />
 
-        <MyApprovalsCard className="mb-6" />
+      {/* KPI Cards Strip */}
+      <RecruitingKpiStrip
+        vacancyKpis={vacancyKpis.data}
+        candidateKpis={candidateKpis.data}
+        isLoading={isLoading}
+        isError={kpiIsError}
+        onRetry={() => {
+          vacancyKpis.refetch();
+          candidateKpis.refetch();
+        }}
+      />
 
-        {/* KPI Cards Strip */}
-        <RecruitingKpiStrip
-          vacancyKpis={vacancyKpis.data}
-          candidateKpis={candidateKpis.data}
-          isLoading={isLoading}
-          isError={kpiIsError}
-          onRetry={() => {
-            vacancyKpis.refetch();
-            candidateKpis.refetch();
-          }}
-        />
+      {/* Pipeline + open vacancies */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        {/* The funnel's vacancy list must have loaded too, or an empty list would read as "none published". */}
+        {isLoading || publishedVacancies.isLoading || closedVacancies.isLoading ? (
+          <>
+            <PipelineFunnelSkeleton />
+            <OpenVacanciesCardSkeleton />
+          </>
+        ) : publishedVacancies.isError || closedVacancies.isError ? (
+          <ErrorState
+            size="compact"
+            className="w-full rounded-xl bg-white shadow-card"
+            onRetry={() => {
+              if (publishedVacancies.isError) publishedVacancies.refetch();
+              if (closedVacancies.isError) closedVacancies.refetch();
+            }}
+          />
+        ) : (
+          <>
+            <PipelineFunnel vacancies={funnelVacancies} />
+            {/* Only the real count: a failed KPI query shows an error, never a default 0. */}
+            {vacancyKpis.data && !vacancyKpis.isError ? (
+              <OpenVacanciesCard totalOpen={vacancyKpis.data.totalOpen} />
+            ) : (
+              <ErrorState
+                size="compact"
+                className="w-full rounded-xl bg-white shadow-card md:flex-[35]"
+                onRetry={() => vacancyKpis.refetch()}
+                error={vacancyKpis.error}
+              />
+            )}
+          </>
+        )}
+      </div>
 
-        {/* Pipeline + open vacancies */}
-        <div className="flex flex-col md:flex-row gap-4 mb-6">
-          {/* The funnel's vacancy list must have loaded too, or an empty list would read as "none published". */}
-          {isLoading || publishedVacancies.isLoading || closedVacancies.isLoading ? (
-            <>
-              <PipelineFunnelSkeleton />
-              <OpenVacanciesCardSkeleton />
-            </>
-          ) : publishedVacancies.isError || closedVacancies.isError ? (
-            <ErrorState
-              onRetry={() => {
-                if (publishedVacancies.isError) publishedVacancies.refetch();
-                if (closedVacancies.isError) closedVacancies.refetch();
-              }}
-            />
-          ) : (
-            <>
-              <PipelineFunnel vacancies={funnelVacancies} />
-              {/* Only the real count: a failed KPI query shows an error, never a default 0. */}
-              {vacancyKpis.data && !vacancyKpis.isError ? (
-                <OpenVacanciesCard totalOpen={vacancyKpis.data.totalOpen} />
-              ) : (
-                <ErrorState onRetry={() => vacancyKpis.refetch()} error={vacancyKpis.error} />
-              )}
-            </>
-          )}
-        </div>
-
+      <section aria-labelledby={alertsTitleId}>
         {/* Alerts Section Header */}
-        <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <span className="text-base font-semibold text-[#1F114C]">{rd.alertsTitle}</span>
-            <p className="text-[12px] text-[#585858]">{alertVacancies.length > 0 ? rd.alertsScopeHint : rd.alertsSubtitle}</p>
+            <h2 id={alertsTitleId} className="text-heading font-semibold text-brand">
+              {rd.alertsTitle}
+            </h2>
+            <p className="text-callout text-secondary">
+              {alertVacancies.length > 0 ? rd.alertsScopeHint : rd.alertsSubtitle}
+            </p>
           </div>
-          <AlertsVacancySelect vacancies={alertVacancies} selectedId={alertsVacancyId} onSelect={setPickedAlertsVacancyId} />
+          <AlertsVacancySelect
+            vacancies={alertVacancies}
+            selectedId={alertsVacancyId}
+            onSelect={setPickedAlertsVacancyId}
+          />
         </div>
 
         {/* 3-Column Alerts */}
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col gap-4 md:flex-row">
           <AlertsSlaPanel vacancyId={alertsVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
           <AlertsPendingPanel />
           <AlertsRiskPanel vacancyId={alertsVacancyId} vacanciesLoading={publishedVacancies.isLoading} />
         </div>
-      </div>
-    </div>
+      </section>
+    </DashboardPage>
   );
 }

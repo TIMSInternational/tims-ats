@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import Link from 'next/link';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@tims/api';
@@ -7,6 +8,7 @@ import { useI18n } from '../../../lib/i18n';
 import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
 import { EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
+import { CountBadge } from '../../../components/count-badge';
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type PendingScorecards = RouterOutputs['interview']['getPendingScorecards'];
@@ -22,16 +24,26 @@ export function interviewRoomHref(interviewId: string): string {
 
 function PanelShell({
   title,
+  count,
   children,
 }: {
   title: string;
+  /** Items waiting; shown beside the title (and read as part of it) only when there are any. */
+  count?: number;
   children: React.ReactNode;
 }) {
+  const titleId = useId();
   return (
-    <div className="flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{title}</h2>
+    <section aria-labelledby={titleId} className="flex-1 rounded-xl bg-white p-5 shadow-card">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 id={titleId} className="text-subheading font-semibold text-brand">
+          {title}
+          {count ? <span className="sr-only"> ({count})</span> : null}
+        </h3>
+        <CountBadge count={count ?? 0} />
+      </div>
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -60,11 +72,12 @@ function TodoRow({
   /** Full document load (plain <a>): the interview room needs its own route's CSP, see interview-table. */
   documentLoad?: boolean;
 }) {
-  const className = 'flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition';
+  const className =
+    '-mx-3 flex flex-wrap items-center justify-between gap-x-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface';
   const content = (
     <>
-      <span className="text-sm text-[#333] font-medium truncate">{primary}</span>
-      <span className="text-[13px] text-[#8B8B8B] truncate ml-3">{secondary}</span>
+      <span className="min-w-0 truncate text-body font-medium text-primary">{primary}</span>
+      <span className="min-w-0 truncate text-callout text-muted">{secondary}</span>
     </>
   );
   return documentLoad ? (
@@ -78,44 +91,43 @@ function TodoRow({
   );
 }
 
-const EMPTY_ICON = (
-  <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />
-);
-
 export function ScorecardsToSubmitPanel({
   data,
   isLoading,
   isError,
+  onRetry,
 }: {
   data: PendingScorecards | undefined;
   isLoading: boolean;
   isError: boolean;
+  onRetry?: () => void;
 }) {
   const { t, locale } = useI18n();
   const md = t.managerDashboard;
 
   return (
-    <PanelShell title={md.scorecardsTitle}>
+    <PanelShell title={md.scorecardsTitle} count={isError || isLoading ? 0 : (data?.length ?? 0)}>
       {isError ? (
-        <LoadError message={md.loadError} />
+        <LoadError message={md.loadError} onRetry={onRetry} />
       ) : isLoading ? (
         <SkeletonRows />
       ) : !data || data.length === 0 ? (
-        <EmptyState icon={EMPTY_ICON} message={md.noScorecards} />
+        <EmptyState size="compact" message={md.noScorecards} />
       ) : (
-        <div className="space-y-1">
+        <ul className="space-y-1">
           {data.map((row) => (
-            <TodoRow
-              key={row.id}
-              href={interviewRoomHref(row.interviewId)}
-              documentLoad
-              primary={fullName(row.interview.candidate)}
-              secondary={[row.interview.vacancy.title, formatInterviewWhen(row.interview.scheduledAt, locale)]
-                .filter(Boolean)
-                .join(' · ')}
-            />
+            <li key={row.id}>
+              <TodoRow
+                href={interviewRoomHref(row.interviewId)}
+                documentLoad
+                primary={fullName(row.interview.candidate)}
+                secondary={[row.interview.vacancy.title, formatInterviewWhen(row.interview.scheduledAt, locale)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </PanelShell>
   );

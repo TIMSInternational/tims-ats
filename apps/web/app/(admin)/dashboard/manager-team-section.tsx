@@ -5,7 +5,6 @@ import { useI18n } from '../../../lib/i18n';
 import { useEngagementListActionPlans, useEngagementListLeaderCommitments } from '../../../lib/platform-api/engagement';
 import { KpiCard, KpiCardSkeleton } from '../../../components';
 import { LoadError } from './load-error';
-import { CARD_BG_COLORS, Dot } from './dashboard-dot';
 
 // Team lists are small; the list endpoints that take a limit (listOkrs) are
 // capped here. listActionPlans / listLeaderCommitments take no limit and return
@@ -32,34 +31,26 @@ export function ManagerTeamSection() {
 
   return (
     <>
-      <h2 className="text-sm font-semibold text-[#1F114C] mb-3">{md.myTeam}</h2>
+      <h2 className="mb-3 text-heading font-semibold text-brand">{md.myTeam}</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {teamError ? (
           <div className="col-span-full">
-            <LoadError message={md.loadError} />
+            <LoadError
+              message={md.loadError}
+              onRetry={() => {
+                if (okrs.isError) okrs.refetch();
+                if (actionPlans.isError) actionPlans.refetch();
+                if (commitments.isError) commitments.refetch();
+              }}
+            />
           </div>
         ) : teamLoading ? (
           Array.from({ length: 3 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : (
           <>
-            <KpiCard
-              label={md.activeOkrs}
-              value={activeOkrsCount}
-              icon={<Dot index={0} />}
-              iconBg={CARD_BG_COLORS[0]}
-            />
-            <KpiCard
-              label={md.openActionPlans}
-              value={openActionPlansCount}
-              icon={<Dot index={1} />}
-              iconBg={CARD_BG_COLORS[1]}
-            />
-            <KpiCard
-              label={md.myCommitments}
-              value={openCommitmentsCount}
-              icon={<Dot index={2} />}
-              iconBg={CARD_BG_COLORS[2]}
-            />
+            <KpiCard label={md.activeOkrs} value={activeOkrsCount} />
+            <KpiCard label={md.openActionPlans} value={openActionPlansCount} />
+            <KpiCard label={md.myCommitments} value={openCommitmentsCount} />
           </>
         )}
       </div>

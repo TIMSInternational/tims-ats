@@ -1,19 +1,47 @@
 // Dashboard utility functions, types, and constants
 
+import type { StatusTone } from '../../../components/status-badge';
+import { intlLocale } from '../../../lib/format-utils';
+
+type Locale = 'ES' | 'EN';
+
+/**
+ * Plans are one navy-ramp series (chart tokens, dark → light). Green / amber / red mean health only, so a
+ * plan colour is never read as "healthy" or "at risk" (color.md › Best practices).
+ */
 export const PLAN_COLORS: Record<string, string> = {
-  trial: '#F59E0B',
-  starter: '#3B82F6',
-  professional: '#8B5CF6',
-  enterprise: '#10B981',
+  enterprise: 'var(--color-chart-1)',
+  professional: 'var(--color-chart-3)',
+  starter: 'var(--color-chart-4)',
+  trial: 'var(--color-chart-5)',
 };
 
+export const PLAN_FALLBACK_COLOR = 'var(--color-chart-grid)';
+
+/** The same ramp as legend swatch classes (HTML legends, no inline style). */
+export const PLAN_SWATCH_CLASSES: Record<string, string> = {
+  enterprise: 'bg-chart-1',
+  professional: 'bg-chart-3',
+  starter: 'bg-chart-4',
+  trial: 'bg-chart-5',
+};
+
+/** Shortens a long axis label; the full name stays in the tooltip and the text alternative. */
+export function truncateLabel(value: string, max = 18): string {
+  return value.length > max ? `${value.slice(0, max - 1)}\u2026` : value;
+}
+
+/** Plan chips are neutral: the plan name carries the meaning. */
 export const PLAN_BG_CLASSES: Record<string, string> = {
-  trial: 'bg-amber-100 text-amber-800',
-  starter: 'bg-blue-100 text-blue-800',
-  professional: 'bg-violet-100 text-violet-800',
-  enterprise: 'bg-emerald-100 text-emerald-800',
+  trial: 'bg-surface text-secondary',
+  starter: 'bg-surface text-secondary',
+  professional: 'bg-surface text-secondary',
+  enterprise: 'bg-surface text-secondary',
 };
 
+export const PLAN_CHIP_FALLBACK = 'bg-surface text-secondary';
+
+// Plan names are product names: the same in both locales.
 export const PLAN_LABELS: Record<string, string> = {
   trial: 'Trial',
   starter: 'Starter',
@@ -21,57 +49,44 @@ export const PLAN_LABELS: Record<string, string> = {
   enterprise: 'Enterprise',
 };
 
-export const HEALTH_CONFIG: Record<string, { dot: string; bg: string; label: string }> = {
-  healthy: { dot: 'bg-emerald-500', bg: 'bg-emerald-50 border-emerald-200', label: 'Healthy' },
-  at_risk: { dot: 'bg-amber-500', bg: 'bg-amber-50 border-amber-200', label: 'At Risk' },
-  critical: { dot: 'bg-red-500', bg: 'bg-red-50 border-red-200', label: 'Critical' },
+/** Health → StatusBadge tone and the i18n key (t.dashboard.*) of its word. */
+export const HEALTH_CONFIG: Record<string, { tone: StatusTone; labelKey: 'healthy' | 'yellow' | 'red' }> = {
+  healthy: { tone: 'success', labelKey: 'healthy' },
+  at_risk: { tone: 'warning', labelKey: 'yellow' },
+  critical: { tone: 'danger', labelKey: 'red' },
 };
 
-export const SEVERITY_CONFIG: Record<string, { dot: string; bg: string }> = {
-  critical: { dot: 'bg-red-500', bg: 'bg-red-50' },
-  warning: { dot: 'bg-amber-500', bg: 'bg-amber-50' },
-  info: { dot: 'bg-blue-500', bg: 'bg-blue-50' },
+export const SEVERITY_CONFIG: Record<string, { tone: StatusTone }> = {
+  critical: { tone: 'danger' },
+  warning: { tone: 'warning' },
+  info: { tone: 'info' },
 };
 
-export const BRAND_NAVY = '#1F114C';
-export const BRAND_RED = '#DD0C15';
-
-export function formatCurrency(value: number, compact?: boolean): string {
-  if (compact && value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(1)}M`;
-  }
-  if (compact && value >= 1_000) {
-    return `$${(value / 1_000).toFixed(1)}K`;
-  }
-  return new Intl.NumberFormat('en-US', {
+/** USD money in the UI locale; `compact` → "93,5 mil US$" / "$93.5K" for chart axes and tiles. */
+export function formatCurrency(value: number, locale: Locale, compact?: boolean): string {
+  return new Intl.NumberFormat(intlLocale(locale), {
     style: 'currency',
     currency: 'USD',
+    notation: compact ? 'compact' : 'standard',
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    maximumFractionDigits: compact ? 1 : 0,
   }).format(value);
 }
 
-export function timeAgo(date: Date | string | null): string {
-  if (!date) return 'Never';
-  const diff = Date.now() - new Date(date).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return `${Math.floor(days / 30)}mo ago`;
-}
-
-export function trendArrow(current: number, previous: number): { label: string; color: string; up: boolean } {
-  if (previous === 0) return { label: '+0%', color: 'text-muted', up: true };
+/** Change against the previous value: a signed percent, its tone, and its direction (none at 0). */
+export function trendArrow(
+  current: number,
+  previous: number,
+): { label: string; color: string; direction: 'up' | 'down' | 'none' } {
+  if (previous === 0) return { label: '+0%', color: 'text-muted', direction: 'none' };
   const pct = Math.round(((current - previous) / previous) * 100);
-  if (pct > 0) return { label: `+${pct}%`, color: 'text-emerald-600', up: true };
-  if (pct < 0) return { label: `${pct}%`, color: 'text-red-600', up: false };
-  return { label: '+0%', color: 'text-muted', up: true };
+  if (pct > 0) return { label: `+${pct}%`, color: 'text-success', direction: 'up' };
+  if (pct < 0) return { label: `${pct}%`, color: 'text-danger', direction: 'down' };
+  return { label: '+0%', color: 'text-muted', direction: 'none' };
 }
 
 export function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-gray-200 ${className}`} />;
+  return (
+    <div aria-hidden="true" className={`animate-pulse rounded bg-gray-200 motion-reduce:animate-none ${className}`} />
+  );
 }

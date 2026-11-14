@@ -3,7 +3,8 @@
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { CandidateAvatar, ErrorState } from '../../../components';
-import { useMemo } from 'react';
+import { StatusBadge } from '../../../components/status-badge';
+import { useId, useMemo } from 'react';
 
 function daysAgo(date: Date | string): number {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -58,7 +59,13 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
 
         if (!isOverdue && !isStalled) continue;
 
-        const c = app.candidate as { id: string; firstName: string; lastName: string; avatar: string | null; currentTitle?: string | null };
+        const c = app.candidate as {
+          id: string;
+          firstName: string;
+          lastName: string;
+          avatar: string | null;
+          currentTitle?: string | null;
+        };
 
         // A fixed rule (time in stage vs. the stage SLA), not an AI suggestion — labelled as a next step.
         const fill = (template: string) =>
@@ -69,15 +76,15 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
 
         if (isOverdue && days > 10) {
           riskLabel = fill(rd.stalledDays);
-          riskColor = 'text-[#DD0C15]';
+          riskColor = 'text-danger';
           nextStep = rd.nextStepActNow;
         } else if (isOverdue) {
           riskLabel = fill(rd.slaOverdueInStage);
-          riskColor = 'text-[#DD0C15]';
+          riskColor = 'text-danger';
           nextStep = rd.nextStepReviewAndAdvance;
         } else {
           riskLabel = fill(rd.noMovementDays);
-          riskColor = 'text-amber-500';
+          riskColor = 'text-warning';
           nextStep = rd.nextStepFollowUp;
         }
 
@@ -101,55 +108,71 @@ export function AlertsRiskPanel({ vacancyId, vacanciesLoading }: AlertsRiskPanel
   }, [board.data, rd]);
 
   const isLoading = vacanciesLoading || board.isLoading;
+  const titleId = useId();
+  const alertCount = riskCandidates.length;
 
   return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-[#1F114C]">{rd.riskCandidates}</span>
-          {riskCandidates.length > 0 && <div className="w-2 h-2 rounded-full bg-[#DD0C15] animate-pulse" />}
-        </div>
-        <span className="text-xs text-[#DD0C15]">
-          {riskCandidates.length} {rd.alerts}
-        </span>
+    <section aria-labelledby={titleId} className="w-full rounded-xl bg-white p-4 shadow-card md:flex-1">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 id={titleId} className="text-subheading font-semibold text-brand">
+          {rd.riskCandidates}
+        </h3>
+        {/* Red only when there is something to act on; at 0 it reads "Sin alertas" in neutral text. */}
+        {alertCount > 0 ? (
+          <StatusBadge tone="danger" icon="none" className="tabular-nums">
+            {alertCount} {rd.alerts}
+          </StatusBadge>
+        ) : (
+          <span className="text-callout text-secondary">{rd.noAlerts}</span>
+        )}
       </div>
 
       {isLoading ? (
-        <div className="space-y-4 animate-pulse">
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 bg-gray-100 rounded" />)}
+        <div className="space-y-4" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              aria-hidden="true"
+              className="h-16 animate-pulse rounded bg-gray-100 motion-reduce:animate-none"
+            />
+          ))}
         </div>
       ) : board.isError ? (
-        <ErrorState onRetry={() => board.refetch()} error={board.error} />
-      ) : riskCandidates.length === 0 ? (
-        <div className="text-center py-6">
-          <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">
-            <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <ErrorState size="compact" onRetry={() => board.refetch()} error={board.error} />
+      ) : alertCount === 0 ? (
+        <div className="py-6 text-center">
+          <div
+            className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full bg-success-bg"
+            aria-hidden="true"
+          >
+            <svg className="size-4 text-success" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="m4.5 12.75 6 6 9-13.5" />
             </svg>
           </div>
-          <p className="text-[12px] text-[#8B8B8B]">{t.recruitingDashboard.noRiskCandidates}</p>
+          <p className="text-callout text-secondary">{rd.noRiskCandidates}</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <ul className="space-y-4">
           {riskCandidates.map((c) => (
-            <div key={c.id}>
+            <li key={c.id}>
               <div className="flex items-center gap-3">
-                <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="sm" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] text-[#333]">{c.firstName} {c.lastName}</span>
-                  </div>
-                  <p className="text-[11px] text-[#8B8B8B]">{c.title}</p>
-                  <p className={`text-[11px] ${c.riskColor}`}>{c.riskLabel}</p>
+                <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="sm" decorative />
+                <div className="min-w-0 flex-1">
+                  <p className="text-body text-primary">
+                    {c.firstName} {c.lastName}
+                  </p>
+                  <p className="text-caption text-muted">{c.title}</p>
+                  <p className={`text-caption font-medium ${c.riskColor}`}>{c.riskLabel}</p>
                 </div>
               </div>
-              <p className="text-[11px] text-teal-600 mt-1 ml-10">
-                {rd.aiSuggestion}: {c.nextStep}
+              <p className="ml-10 mt-1 text-caption text-secondary">
+                <span className="font-medium text-primary">{rd.aiSuggestion}:</span> {c.nextStep}
               </p>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ALERT_METRIC_KEYS,
@@ -14,7 +14,16 @@ import { useMonitoringAlertRules, invalidateMonitoringPlatformReads } from '../.
 import { toast } from '../../../lib/toast';
 import { useI18n } from '../../../lib/i18n';
 import { Modal } from '../../../components/modal';
-import { ErrorState } from '../../../components';
+import { ErrorState, Skeleton } from '../../../components';
+import { Button } from '../../../components/button';
+import { BUTTON_GROUP_CLASSES } from '../../../components/button-styles';
+import { Field } from '../../../components/field';
+import {
+  CHOICE_INPUT_CLASSES,
+  CHOICE_ROW_CLASSES,
+  inputClasses,
+  selectClasses,
+} from '../../../components/field-styles';
 
 type Severity = 'info' | 'warning' | 'critical';
 
@@ -80,6 +89,10 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const rulesQuery = useMonitoringAlertRules();
   const [rules, setRules] = useState<EditableRule[]>([]);
+  // Errors show under the empty message only after a save attempt, never on open.
+  const [showErrors, setShowErrors] = useState(false);
+  const baseId = useId();
+  const messageId = (i: number) => `${baseId}-message-${i}`;
 
   useEffect(() => {
     if (rulesQuery.data) setRules(rulesQuery.data.map(toEditable));
@@ -108,9 +121,10 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
     setRules((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   const handleSave = () => {
-    const invalid = rules.find((r) => r.message.trim().length === 0);
-    if (invalid) {
-      toast(ar.messageRequired, { type: 'error' });
+    const firstInvalid = rules.findIndex((r) => r.message.trim().length === 0);
+    if (firstInvalid >= 0) {
+      setShowErrors(true);
+      document.getElementById(messageId(firstInvalid))?.focus();
       return;
     }
     save.mutate({
@@ -125,119 +139,132 @@ export function AlertRulesModal({ onClose }: { onClose: () => void }) {
     });
   };
 
-  return (
-    <Modal title={ar.title} onClose={onClose} maxWidth="max-w-3xl">
-      <p className="text-[13px] text-[#8B8B8B] -mt-3 mb-4">{ar.subtitle}</p>
+  const loaded = !rulesQuery.isLoading && !rulesQuery.isError;
+  const footer = loaded ? (
+    <div className={BUTTON_GROUP_CLASSES}>
+      <Button variant="secondary" onClick={onClose}>
+        {t.common.cancel}
+      </Button>
+      <Button onClick={handleSave} loading={save.isPending} loadingLabel={t.common.saving}>
+        {ar.saveRules}
+      </Button>
+    </div>
+  ) : undefined;
 
+  return (
+    <Modal title={ar.title} description={ar.subtitle} onClose={onClose} size="xl" footer={footer}>
       {rulesQuery.isLoading ? (
-        <p className="text-[13px] text-[#585858] py-6 text-center">{t.common.loading}</p>
+        <div className="space-y-3" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+          ))}
+        </div>
       ) : rulesQuery.isError ? (
-        <ErrorState onRetry={() => rulesQuery.refetch()} />
+        <ErrorState size="compact" onRetry={() => rulesQuery.refetch()} error={rulesQuery.error} />
       ) : (
         <>
-          <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
-            {rules.length === 0 && <p className="text-[13px] text-[#8B8B8B] py-6 text-center">{ar.noRules}</p>}
-            {rules.map((r, i) => (
-              <div key={r.id ?? `new-${i}`} className="rounded-xl border border-[#EDEDED] p-3 space-y-2.5">
-                <div className="flex flex-wrap items-end gap-2">
-                  <label className="flex flex-col gap-1 flex-1 min-w-[160px]">
-                    <span className="text-[11px] font-medium text-[#8B8B8B]">{ar.metric}</span>
-                    <select
-                      value={r.metric}
-                      onChange={(e) => update(i, { metric: e.target.value as AlertMetricKey })}
-                      className="h-9 px-2.5 rounded-lg border border-[#EDEDED] text-[13px] bg-white focus:outline-none focus:border-[#1F114C]"
-                    >
-                      {ALERT_METRIC_KEYS.map((k) => (
-                        <option key={k} value={k}>
-                          {ar[`metric_${k}`] ?? k}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 w-[90px]">
-                    <span className="text-[11px] font-medium text-[#8B8B8B]">{ar.operator}</span>
-                    <select
-                      value={r.operator}
-                      onChange={(e) => update(i, { operator: e.target.value as AlertOperator })}
-                      className="h-9 px-2.5 rounded-lg border border-[#EDEDED] text-[13px] bg-white focus:outline-none focus:border-[#1F114C]"
-                    >
-                      {ALERT_OPERATORS.map((op) => (
-                        <option key={op} value={op}>
-                          {OPERATOR_SYMBOL[op]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 w-[110px]">
-                    <span className="text-[11px] font-medium text-[#8B8B8B]">{ar.threshold}</span>
+          <ul className="space-y-3">
+            {rules.length === 0 && <li className="py-6 text-center text-body text-secondary">{ar.noRules}</li>}
+            {rules.map((r, i) => {
+              const messageError = showErrors && r.message.trim().length === 0 ? ar.messageError : undefined;
+              return (
+                <li key={r.id ?? `new-${i}`} className="space-y-3 rounded-xl border border-border p-3">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_6rem_7rem_8rem] sm:items-end">
+                    <Field label={ar.metric} className="col-span-2 sm:col-span-1">
+                      <select
+                        value={r.metric}
+                        onChange={(e) => update(i, { metric: e.target.value as AlertMetricKey })}
+                        className={selectClasses()}
+                      >
+                        {ALERT_METRIC_KEYS.map((k) => (
+                          <option key={k} value={k}>
+                            {ar[`metric_${k}`] ?? k}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label={ar.operator}>
+                      <select
+                        value={r.operator}
+                        onChange={(e) => update(i, { operator: e.target.value as AlertOperator })}
+                        className={selectClasses()}
+                      >
+                        {ALERT_OPERATORS.map((op) => (
+                          <option key={op} value={op}>
+                            {OPERATOR_SYMBOL[op]}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label={ar.threshold}>
+                      <input
+                        type="number"
+                        value={r.threshold}
+                        onChange={(e) => update(i, { threshold: Number(e.target.value) })}
+                        className={inputClasses()}
+                      />
+                    </Field>
+                    <Field label={ar.severity}>
+                      <select
+                        value={r.severity}
+                        onChange={(e) => update(i, { severity: e.target.value as Severity })}
+                        className={selectClasses()}
+                      >
+                        <option value="info">{ar.sev_info}</option>
+                        <option value="warning">{ar.sev_warning}</option>
+                        <option value="critical">{ar.sev_critical}</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <Field
+                    id={messageId(i)}
+                    label={ar.messageLabel}
+                    help={ar.messagePlaceholder}
+                    error={messageError}
+                    required
+                  >
                     <input
-                      type="number"
-                      value={r.threshold}
-                      onChange={(e) => update(i, { threshold: Number(e.target.value) })}
-                      className="h-9 px-2.5 rounded-lg border border-[#EDEDED] text-[13px] focus:outline-none focus:border-[#1F114C]"
+                      type="text"
+                      maxLength={500}
+                      value={r.message}
+                      onChange={(e) => update(i, { message: e.target.value })}
+                      className={inputClasses()}
                     />
-                  </label>
-                  <label className="flex flex-col gap-1 w-[130px]">
-                    <span className="text-[11px] font-medium text-[#8B8B8B]">{ar.severity}</span>
-                    <select
-                      value={r.severity}
-                      onChange={(e) => update(i, { severity: e.target.value as Severity })}
-                      className="h-9 px-2.5 rounded-lg border border-[#EDEDED] text-[13px] bg-white focus:outline-none focus:border-[#1F114C]"
-                    >
-                      <option value="info">{ar.sev_info}</option>
-                      <option value="warning">{ar.sev_warning}</option>
-                      <option value="critical">{ar.sev_critical}</option>
-                    </select>
-                  </label>
-                  <label className="flex items-center gap-1.5 h-9 px-1 cursor-pointer">
+                  </Field>
+                  <label className={CHOICE_ROW_CLASSES}>
                     <input
                       type="checkbox"
                       checked={r.isActive}
                       onChange={(e) => update(i, { isActive: e.target.checked })}
-                      className="accent-[#1F114C]"
+                      className={CHOICE_INPUT_CLASSES}
                     />
-                    <span className="text-[12px] text-[#585858]">{ar.active}</span>
+                    {ar.active}
                   </label>
-                </div>
-                <input
-                  type="text"
-                  maxLength={500}
-                  value={r.message}
-                  onChange={(e) => update(i, { message: e.target.value })}
-                  placeholder={ar.messagePlaceholder}
-                  className="w-full h-9 px-2.5 rounded-lg border border-[#EDEDED] text-[13px] focus:outline-none focus:border-[#1F114C]"
-                />
-              </div>
-            ))}
-          </div>
+                </li>
+              );
+            })}
+          </ul>
 
-          <button
+          <Button
+            variant="tertiary"
+            className="mt-3"
             onClick={() => setRules((rs) => [...rs, newRule()])}
-            className="mt-3 flex items-center gap-1.5 text-[13px] text-[#1F114C] font-medium hover:underline"
+            icon={
+              <svg
+                className="size-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            }
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
             {ar.addRule}
-          </button>
-
-          <div className="flex gap-3 pt-5 mt-2 border-t border-[#EDEDED]">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 h-10 rounded-lg border border-[#EDEDED] text-[13px] font-medium text-[#585858] hover:bg-[#F6F6F6] transition"
-            >
-              {t.common.cancel}
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={save.isPending}
-              className="flex-1 h-10 rounded-lg bg-[#DD0C15] text-[13px] text-white font-medium hover:bg-[#c40b13] transition disabled:opacity-60"
-            >
-              {save.isPending ? t.common.loading : t.common.save}
-            </button>
-          </div>
+          </Button>
         </>
       )}
     </Modal>
