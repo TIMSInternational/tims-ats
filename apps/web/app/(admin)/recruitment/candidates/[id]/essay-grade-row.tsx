@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
 import { useGradeEssay, type PendingEssay } from '../../../../../lib/platform-api/fit-engine';
+import { Button, FIELD_ERROR_CLASSES, inputClasses } from '../../../../../components';
 
 /** One essay awaiting a grade: prompt, the candidate's answer (plain text), and a points control. */
 export function EssayGradeRow({
@@ -17,14 +18,19 @@ export function EssayGradeRow({
 }) {
   const { t } = useI18n();
   const [points, setPoints] = useState('');
+  const [showError, setShowError] = useState(false);
   const grade = useGradeEssay(assignmentId, { onError: () => toast(t.candidates.essayGradeError, { type: 'error' }) });
   const max = String(essay.maxPoints);
   const value = Number(points);
   const valid = points !== '' && Number.isFinite(value) && value >= 0 && value <= essay.maxPoints;
+  const inputId = `essay-points-${assignmentId}-${essay.questionId}`;
+  const errorId = `${inputId}-error`;
+  const invalid = showError && !valid;
 
   const submit = () => {
+    // The range error belongs under the points field, not in a toast (writing.md › Best practices).
     if (!valid) {
-      toast(t.candidates.essayInvalidPoints.replace('{max}', max), { type: 'error' });
+      setShowError(true);
       return;
     }
     grade.mutate(
@@ -34,31 +40,37 @@ export function EssayGradeRow({
   };
 
   return (
-    <div className="border border-[#EDEDED] rounded-lg p-3 space-y-2" data-testid="essay-grade-row">
-      <p className="text-[12px] font-medium text-[#1F114C] whitespace-pre-wrap">{essay.prompt}</p>
-      <p className="text-[12px] text-[#585858] whitespace-pre-wrap bg-[#F6F6F6] rounded p-2">{essay.answer}</p>
+    <div className="space-y-2 rounded-lg border border-border p-3" data-testid="essay-grade-row">
+      <p className="whitespace-pre-wrap text-body font-medium text-brand">{essay.prompt}</p>
+      <p className="whitespace-pre-wrap rounded bg-surface p-2 text-body text-primary">{essay.answer}</p>
       {canGrade && (
-        <div className="flex items-end gap-2">
-          <label className="text-[11px] text-[#585858]">
-            {t.candidates.essayPointsLabel.replace('{max}', max)}
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label htmlFor={inputId} className="block text-callout text-secondary">
+              {t.candidates.essayPointsLabel.replace('{max}', max)}
+            </label>
             <input
+              id={inputId}
               type="number"
               min={0}
               max={essay.maxPoints}
               step="0.5"
               value={points}
               onChange={(e) => setPoints(e.target.value)}
-              className="block w-24 mt-1 bg-white border border-[#EDEDED] rounded-lg px-2 h-8 text-[12px] text-[#333]"
+              onBlur={() => setShowError(points !== '')}
+              aria-invalid={invalid || undefined}
+              aria-describedby={invalid ? errorId : undefined}
+              className={inputClasses('md', 'mt-1 w-28')}
             />
-          </label>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={grade.isPending}
-            className="bg-[#1F114C] text-white px-3 h-8 rounded-lg text-[12px] font-medium disabled:opacity-50"
-          >
-            {grade.isPending ? t.candidates.essayGrading : t.candidates.essayGradeButton}
-          </button>
+          </div>
+          <Button size="sm" onClick={submit} loading={grade.isPending} loadingLabel={t.candidates.essayGrading}>
+            {t.candidates.essayGradeButton}
+          </Button>
+          {invalid && (
+            <p id={errorId} role="alert" className={`${FIELD_ERROR_CLASSES} w-full`}>
+              {t.candidates.essayInvalidPoints.replace('{max}', max)}
+            </p>
+          )}
         </div>
       )}
     </div>

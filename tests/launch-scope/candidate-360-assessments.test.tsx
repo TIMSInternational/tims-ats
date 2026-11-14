@@ -32,6 +32,10 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-header', () => stub('CandidateHeader'));
+// The header's action group (Mover etapa, Rechazar, Crear oferta) was split out of CandidateHeader into its own file.
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-header-actions', () =>
+  stub('CandidateHeaderActions'),
+);
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/profile-tab', () => ({
   ...stub('ApplicationsCard'),
   ...stub('PersonalInfoCard'),

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { Modal } from '../../../../components';
+import { Button, Modal, Stepper } from '../../../../components';
+import { DiscardChangesPrompt } from '../../../../components/discard-changes-prompt';
 import type { Step } from './create-modal.helpers';
 import { Step1Fields, Step2Fields, Step3Fields } from './create-modal.fields';
 
@@ -24,9 +25,11 @@ interface CreateModalProps {
   }) => void;
   onClose: () => void;
   isPending: boolean;
+  /** tRPC error code of a failed create ('CONFLICT' = the email is already registered). */
+  errorCode?: string;
 }
 
-export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps) {
+export function CreateModal({ onConfirm, onClose, isPending, errorCode }: CreateModalProps) {
   const { t } = useI18n();
   const [step, setStep] = useState<Step>(1);
 
@@ -50,7 +53,42 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
   const [poolType, setPoolType] = useState('active');
   const [referrerName, setReferrerName] = useState('');
 
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+
   const isStep1Valid = firstName.trim() && lastName.trim() && email.trim();
+  // Anything typed, or a choice changed from its default, is work that closing would lose.
+  const dirty = Boolean(
+    firstName ||
+    lastName ||
+    email ||
+    phone ||
+    location ||
+    currentTitle ||
+    currentCompany ||
+    linkedinUrl ||
+    skills ||
+    notes ||
+    referrerName ||
+    yearsExperience !== 3 ||
+    source !== 'manual' ||
+    poolType !== 'active',
+  );
+
+  // A duplicate email belongs to step 1: take the user back to the field it concerns.
+  useEffect(() => {
+    if (errorCode === 'CONFLICT') setStep(1);
+  }, [errorCode]);
+  const emailError = errorCode === 'CONFLICT' ? t.candidates.emailTaken : undefined;
+  const generalError =
+    !errorCode || errorCode === 'CONFLICT'
+      ? undefined
+      : errorCode === 'FORBIDDEN'
+        ? t.candidates.createErrorForbidden
+        : errorCode === 'BAD_REQUEST'
+          ? t.candidates.createErrorInvalid
+          : t.candidates.createError;
+
+  const handleCancel = () => (dirty ? setConfirmingCancel(true) : onClose());
 
   const handleSubmit = () => {
     if (!isStep1Valid) return;
@@ -66,29 +104,51 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
       currentCompany: currentCompany.trim() || undefined,
       yearsExperience: yearsExperience || undefined,
       linkedinUrl: linkedinUrl.trim() || undefined,
-      skills: skills.trim() ? skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
-      notes: notes.trim() ? `${notes.trim()}${referrerName.trim() ? `\nReferido por: ${referrerName.trim()}` : ''}` : referrerName.trim() ? `Referido por: ${referrerName.trim()}` : undefined,
+      skills: skills.trim()
+        ? skills
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined,
+      notes: notes.trim()
+        ? `${notes.trim()}${referrerName.trim() ? `\nReferido por: ${referrerName.trim()}` : ''}`
+        : referrerName.trim()
+          ? `Referido por: ${referrerName.trim()}`
+          : undefined,
     });
   };
 
-  const stepLabels = ['Datos personales', 'Perfil profesional', 'Fuente y clasificación'];
+  const stepLabels = [t.candidates.stepPersonal, t.candidates.stepProfessional, t.candidates.stepSource];
 
   return (
-    <Modal title={t.candidates.createTitle} onClose={onClose} maxWidth="max-w-2xl">
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-6">
-        {stepLabels.map((label, i) => (
-          <div key={i} className="flex items-center gap-2 flex-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
-              step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-[#1F114C] text-white' : 'bg-[#EDEDED] text-[#8B8B8B]'
-            }`}>
-              {step > i + 1 ? '✓' : i + 1}
-            </div>
-            <span className={`text-[11px] ${step === i + 1 ? 'text-[#1F114C] font-medium' : 'text-[#8B8B8B]'}`}>{label}</span>
-            {i < 2 && <div className={`flex-1 h-[1px] ${step > i + 1 ? 'bg-green-500' : 'bg-[#EDEDED]'}`} />}
-          </div>
-        ))}
-      </div>
+    <Modal
+      title={t.candidates.createTitle}
+      onClose={onClose}
+      size="lg"
+      dirty={dirty}
+      footer={
+        <>
+          {step > 1 && (
+            <Button variant="tertiary" onClick={() => setStep((step - 1) as Step)} className="sm:mr-auto">
+              {t.candidates.wizardBack}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={handleCancel}>
+            {t.common.cancel}
+          </Button>
+          {step < 3 ? (
+            <Button onClick={() => setStep((step + 1) as Step)} disabled={step === 1 && !isStep1Valid}>
+              {t.candidates.wizardNext}
+            </Button>
+          ) : (
+            <Button onClick={handleSubmit} disabled={!isStep1Valid} loading={isPending} loadingLabel={t.common.saving}>
+              {t.candidates.createSubmit}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <Stepper steps={stepLabels} current={step - 1} className="mb-5" />
 
       {/* Step 1: Personal Info */}
       {step === 1 && (
@@ -103,6 +163,7 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
           setPhone={setPhone}
           location={location}
           setLocation={setLocation}
+          emailError={emailError}
         />
       )}
 
@@ -143,40 +204,15 @@ export function CreateModal({ onConfirm, onClose, isPending }: CreateModalProps)
         />
       )}
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#EDEDED]">
-        <div>
-          {step > 1 && (
-            <button onClick={() => setStep((step - 1) as Step)} className="text-[12px] text-[#585858] hover:text-[#1F114C] transition flex items-center gap-1">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-              Anterior
-            </button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
-            {t.common.cancel}
-          </button>
-          {step < 3 ? (
-            <button
-              onClick={() => setStep((step + 1) as Step)}
-              disabled={step === 1 && !isStep1Valid}
-              className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1a5c] transition disabled:opacity-50 flex items-center gap-1"
-            >
-              Siguiente
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={!isStep1Valid || isPending}
-              className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
-            >
-              {isPending ? t.common.saving : t.common.create}
-            </button>
-          )}
-        </div>
-      </div>
+      {generalError && (
+        <p role="alert" className="mt-4 rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">
+          {generalError}
+        </p>
+      )}
+
+      {confirmingCancel && (
+        <DiscardChangesPrompt onKeepEditing={() => setConfirmingCancel(false)} onDiscard={onClose} />
+      )}
     </Modal>
   );
 }

@@ -49,11 +49,11 @@ export function PersonalityProfile({ personality }: { personality: Personality }
     <div>
       <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
         <div>
-          <p className="text-[12px] text-[#585858]">{r.headline}</p>
-          <p className="text-[28px] font-semibold leading-8 tracking-[0.12em] text-[#1F114C]">{code}</p>
+          <p className="text-callout text-secondary">{r.headline}</p>
+          <p className="text-[28px] font-semibold leading-8 tracking-[0.12em] text-brand">{code}</p>
         </div>
         {personality.variant && (
-          <p className="pb-1 text-[13px] text-[#333333]">{variants[personality.variant] ?? personality.variant}</p>
+          <p className="pb-1 text-body text-primary">{variants[personality.variant] ?? personality.variant}</p>
         )}
       </div>
 
@@ -66,20 +66,22 @@ export function PersonalityProfile({ personality }: { personality: Personality }
           return (
             <li key={d.dimension} aria-label={`${dims[d.dimension] ?? d.dimension}: ${lean}`}>
               <div className="mb-1 flex items-baseline justify-between gap-3">
-                <span className="text-[12px] font-medium uppercase tracking-wide text-[#6B6B6B]">
+                <span className="text-callout font-medium uppercase tracking-wide text-muted">
                   {dims[d.dimension] ?? d.dimension}
                 </span>
-                <span className="text-[12px] text-[#1F114C]">{lean}</span>
+                <span className="text-callout text-brand">{lean}</span>
               </div>
-              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_6.5rem] items-center gap-3">
+              <div className="grid grid-cols-2 items-center gap-x-3 gap-y-1 sm:grid-cols-[6.5rem_minmax(0,1fr)_6.5rem] sm:gap-y-3">
                 <span
-                  className={`truncate text-[13px] ${d.preferredPole === d.firstPole && !d.balanced ? 'font-semibold text-[#1F114C]' : 'text-[#585858]'}`}
+                  className={`text-body sm:truncate ${d.preferredPole === d.firstPole && !d.balanced ? 'font-semibold text-brand' : 'text-secondary'}`}
                 >
                   {poles[d.firstPole] ?? d.firstPole}
                 </span>
-                <Spectrum d={d} />
+                <div className="order-last col-span-2 sm:order-none sm:col-span-1">
+                  <Spectrum d={d} />
+                </div>
                 <span
-                  className={`truncate text-right text-[13px] ${d.preferredPole === d.secondPole && !d.balanced ? 'font-semibold text-[#1F114C]' : 'text-[#585858]'}`}
+                  className={`text-right text-body sm:truncate ${d.preferredPole === d.secondPole && !d.balanced ? 'font-semibold text-brand' : 'text-secondary'}`}
                 >
                   {poles[d.secondPole] ?? d.secondPole}
                 </span>

@@ -18,7 +18,7 @@ function Ladder({ level, minimum }: { level: string | null; minimum: string | nu
       {CEFR.map((step, i) => (
         <span
           key={step}
-          className={`h-2.5 rounded-sm ${i <= reached ? 'bg-[#1F114C]' : 'bg-[#ECEAF3]'} ${i === required ? MINIMUM_STEP : ''}`}
+          className={`h-2.5 rounded-sm ${i <= reached ? 'bg-brand' : 'bg-[#ECEAF3]'} ${i === required ? MINIMUM_STEP : ''}`}
         />
       ))}
     </span>
@@ -37,11 +37,11 @@ export function EnglishProfile({ english, minimum }: { english: English; minimum
     <div>
       <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
         <div>
-          <p className="text-[12px] text-[#585858]">{r.headline}</p>
-          <p className="text-[28px] font-semibold leading-8 text-[#1F114C]">{english.overallCefr ?? '—'}</p>
+          <p className="text-callout text-secondary">{r.headline}</p>
+          <p className="text-[28px] font-semibold leading-8 text-brand">{english.overallCefr ?? '—'}</p>
         </div>
         {english.overallScorePct !== null && (
-          <p className="pb-1 text-[13px] text-[#333333]">
+          <p className="pb-1 text-body text-primary">
             {fill(r.scorePct, { value: formatNumber(english.overallScorePct) })}
           </p>
         )}
@@ -50,7 +50,7 @@ export function EnglishProfile({ english, minimum }: { english: English; minimum
         <div className="mt-2 max-w-md">
           <Ladder level={english.overallCefr} minimum={minimum} />
           {minimum !== null && (
-            <p className="mt-1 text-[11px] text-[#585858]">
+            <p className="mt-1 text-caption text-secondary">
               {fill(t.providerAssessments.results.minimum, { value: minimum })}
             </p>
           )}
@@ -58,9 +58,9 @@ export function EnglishProfile({ english, minimum }: { english: English; minimum
       )}
 
       <div className="mt-5" role="group" aria-label={r.chartLabel}>
-        <div className="mb-1 grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] gap-3" aria-hidden="true">
+        <div className="mb-1 hidden grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] gap-3 sm:grid" aria-hidden="true">
           <span />
-          <span className="grid grid-cols-6 gap-1 text-center text-[11px] text-[#6B6B6B]">
+          <span className="grid grid-cols-6 gap-1 text-center text-caption text-muted">
             {CEFR.map((step) => (
               <span key={step}>{step}</span>
             ))}
@@ -72,9 +72,12 @@ export function EnglishProfile({ english, minimum }: { english: English; minimum
             const name = skills[s.skill] ?? s.skill;
             if (!s.assessed) {
               return (
-                <li key={s.skill} className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)] items-center gap-3">
-                  <span className="truncate text-[13px] text-[#333333]">{name}</span>
-                  <span className="text-[12px] text-[#6B6B6B]">
+                <li
+                  key={s.skill}
+                  className="grid grid-cols-1 items-center gap-1 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)] sm:gap-3"
+                >
+                  <span className="text-body text-primary sm:truncate">{name}</span>
+                  <span className="text-callout text-muted">
                     {reasons[s.notAssessedReason ?? 'other'] ?? reasons.other}
                   </span>
                 </li>
@@ -83,12 +86,14 @@ export function EnglishProfile({ english, minimum }: { english: English; minimum
             return (
               <li
                 key={s.skill}
-                className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] items-center gap-3"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] sm:gap-y-3"
                 aria-label={fill(r.skillValue, { name, level: s.cefr ?? '—' })}
               >
-                <span className="truncate text-[13px] text-[#333333]">{name}</span>
-                <Ladder level={s.cefr} minimum={null} />
-                <span className="text-right text-[13px] font-medium text-[#1F114C]">{s.cefr ?? '—'}</span>
+                <span className="text-body text-primary sm:truncate">{name}</span>
+                <div className="order-last col-span-2 sm:order-none sm:col-span-1">
+                  <Ladder level={s.cefr} minimum={null} />
+                </div>
+                <span className="text-right text-body font-medium text-brand">{s.cefr ?? '—'}</span>
               </li>
             );
           })}

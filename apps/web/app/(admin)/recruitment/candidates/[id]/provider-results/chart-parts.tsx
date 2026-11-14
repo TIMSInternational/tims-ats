@@ -56,7 +56,7 @@ export function LevelDots({ level, max }: { level: number; max: number }) {
       {Array.from({ length: max }, (_, i) => (
         <span
           key={i}
-          className={`h-2 w-2 rounded-full ${i < level ? 'bg-[#1F114C]' : 'bg-[#ECEAF3] ring-1 ring-inset ring-[#D9D5E6]'}`}
+          className={`h-2 w-2 rounded-full ${i < level ? 'bg-brand' : 'bg-[#ECEAF3] ring-1 ring-inset ring-[#D9D5E6]'}`}
         />
       ))}
     </span>
@@ -65,5 +65,5 @@ export function LevelDots({ level, max }: { level: number; max: number }) {
 
 /** The quiet line under an advisory profile: what it describes, and that it never decides. */
 export function AdvisoryNote({ text }: { text: string }) {
-  return <p className="mt-4 border-t border-[#F1F0F5] pt-3 text-[12px] leading-5 text-[#6B6B6B]">{text}</p>;
+  return <p className="mt-4 border-t border-border pt-3 text-callout leading-5 text-muted">{text}</p>;
 }

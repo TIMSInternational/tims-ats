@@ -101,8 +101,6 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:150:jsx-text',
   'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:55:jsx-text',
   'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:100:jsx-text',
-  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:44:placeholder',
-  'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:227:jsx-text',
   'apps/web/app/(admin)/talent/team-intelligence/page.tsx:35:jsx-text',
 ]);
 
