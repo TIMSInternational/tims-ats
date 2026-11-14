@@ -5,6 +5,7 @@ interface StageBadgeProps {
   order?: number;
 }
 
+// -700 text on -100 fills: every pair passes 4.5:1 at 11px.
 const STAGE_COLORS = [
   'bg-blue-100 text-blue-700',
   'bg-violet-100 text-violet-700',
@@ -16,10 +17,14 @@ const STAGE_COLORS = [
   'bg-cyan-100 text-cyan-700',
 ];
 
+/** A pipeline stage chip: a dot in the stage colour plus the stage name. */
 export function StageBadge({ name, order = 0 }: StageBadgeProps) {
   const color = STAGE_COLORS[order % STAGE_COLORS.length];
   return (
-    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${color}`}>
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded px-2 py-0.5 text-caption font-medium ${color}`}
+    >
+      <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
       {name}
     </span>
   );
