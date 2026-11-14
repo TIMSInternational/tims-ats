@@ -2,30 +2,28 @@
 
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { formatRelativeTime } from '../../../../lib/format-utils';
-import { ErrorState } from '../../../../components';
+import { formatRelativeTimeLocale } from '../../../../lib/format-utils';
+import { Button, EmptyState, ErrorState, Skeleton, StatusBadge, type StatusTone } from '../../../../components';
 
 export function SystemInfo() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const {
     data: health,
     isLoading: healthLoading,
     isError: healthError,
+    error: healthLoadError,
     refetch: refetchHealth,
   } = trpc.platform.getSystemHealth.useQuery(undefined, { refetchInterval: 30_000 });
   const {
     data: events,
     isLoading: eventsLoading,
     isError: eventsError,
+    error: eventsLoadError,
     refetch: refetchEvents,
   } = trpc.platform.getRecentPlatformEvents.useQuery({ limit: 10 }, { refetchInterval: 30_000 });
 
-  const statusColor = (status: string) => {
-    if (status === 'operational') return 'bg-green-500';
-    if (status === 'degraded') return 'bg-amber-500';
-    if (status === 'down') return 'bg-red-500';
-    return 'bg-slate-400';
-  };
+  const statusTone = (status: string): StatusTone =>
+    status === 'operational' ? 'success' : status === 'degraded' ? 'warning' : status === 'down' ? 'danger' : 'neutral';
 
   const statusLabel = (status: string) =>
     status === 'operational'
@@ -35,30 +33,34 @@ export function SystemInfo() {
         : status === 'down'
           ? t.health.statusDown
           : t.health.statusUnmonitored;
+  const actions = t.audit.actions as Record<string, string>;
+  const entities = t.audit.entities as Record<string, string>;
+  const TH = 'pb-2 text-left text-callout font-medium text-secondary';
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <h3 className="text-sm font-semibold text-[#333] mb-4 flex items-center gap-2">
-        <svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-          <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-          <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        {t.support.systemInfo}
-      </h3>
+    <section aria-labelledby="system-info-title" className="rounded-xl bg-white p-5 shadow-card">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="system-info-title" className="text-heading font-semibold text-brand">
+          {t.support.systemInfo}
+        </h2>
+        <Button href="/platform/health" variant="tertiary" size="sm">
+          {t.support.viewHealth}
+        </Button>
+      </div>
 
       {healthLoading ? (
-        <div className="space-y-2 mb-5">
+        <div aria-busy="true" className="mb-5 space-y-2">
+          <span className="sr-only">{t.common.loadingContent}</span>
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-8 bg-[#F6F6F6] rounded-lg animate-pulse" />
+            <Skeleton key={i} className="h-8 rounded-lg" />
           ))}
         </div>
       ) : healthError ? (
-        <ErrorState onRetry={() => refetchHealth()} />
+        <ErrorState size="compact" onRetry={() => refetchHealth()} error={healthLoadError} message={t.health.loadError} />
       ) : health ? (
         <>
-          <div className="flex items-center gap-2 mb-4">
-            <span className={`w-2.5 h-2.5 rounded-full ${statusColor(health.overall)}`} />
-            <span className="text-sm font-medium text-[#585858]">
+          <div className="mb-4">
+            <StatusBadge tone={statusTone(health.overall)}>
               {health.overall === 'operational'
                 ? t.support.allOperational
                 : health.overall === 'down'
@@ -66,92 +68,85 @@ export function SystemInfo() {
                   : health.overall === 'degraded'
                     ? t.support.someDegraded
                     : t.support.monitoringIncomplete}
-            </span>
+            </StatusBadge>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-[#333]">{health.stats.userCount ?? '—'}</div>
-              <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.users}</div>
-            </div>
-            <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-[#333]">{health.stats.orgCount ?? '—'}</div>
-              <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.orgs}</div>
-            </div>
-            <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-[#333]">{health.stats.loginsToday ?? '—'}</div>
-              <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.loginsToday}</div>
-            </div>
-            <div className="bg-[#F6F6F6] rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-[#333]">
-                {health.services.find((s) => s.id === 'database')?.metrics.find((m) => m.id === 'query_time')?.value ??
-                  '—'}
-              </div>
-              <div className="text-[10px] text-[#8B8B8B] uppercase">{t.support.dbLatency}</div>
-            </div>
-          </div>
-          <div className="text-[11px] text-[#8B8B8B] uppercase tracking-wide mb-2">{t.support.services}</div>
-          <div className="grid grid-cols-2 gap-2 mb-5">
-            {health.services.map((svc) => (
-              <div key={svc.id} className="flex items-center gap-2 border border-[#EDEDED] rounded-lg px-3 py-2">
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColor(svc.status)}`} />
-                <span className="text-xs text-[#585858] font-medium truncate">{t.health.serviceNames[svc.id]}</span>
-                <span className="text-[10px] text-[#8B8B8B] ml-auto">{statusLabel(svc.status)}</span>
+          <dl className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {[
+              { label: t.support.users, value: health.stats.userCount },
+              { label: t.support.orgs, value: health.stats.orgCount },
+              { label: t.support.loginsToday, value: health.stats.loginsToday },
+              {
+                label: t.support.dbLatency,
+                value: health.services.find((s) => s.id === 'database')?.metrics.find((m) => m.id === 'query_time')
+                  ?.value,
+              },
+            ].map((stat) => (
+              <div key={stat.label} className="flex flex-col-reverse rounded-lg bg-surface p-3 text-center">
+                <dt className="text-callout text-secondary">{stat.label}</dt>
+                <dd className="text-title font-semibold tabular-nums text-primary">{stat.value ?? '—'}</dd>
               </div>
             ))}
-          </div>
+          </dl>
+          <h3 className="mb-2 text-subheading font-semibold text-primary">{t.support.services}</h3>
+          <ul className="mb-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {health.services.map((svc) => (
+              <li key={svc.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-body font-medium text-primary">
+                  {t.health.serviceNames[svc.id]}
+                </span>
+                <StatusBadge tone={statusTone(svc.status)} className="shrink-0">
+                  {statusLabel(svc.status)}
+                </StatusBadge>
+              </li>
+            ))}
+          </ul>
         </>
       ) : null}
 
-      <div className="text-[11px] text-[#8B8B8B] uppercase tracking-wide mb-2">{t.support.recentEvents}</div>
+      <h3 className="mb-2 text-subheading font-semibold text-primary">{t.support.recentEvents}</h3>
       {eventsLoading ? (
-        <div className="space-y-2">
+        <div aria-busy="true" className="space-y-2">
+          <span className="sr-only">{t.common.loadingContent}</span>
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-8 bg-[#F6F6F6] rounded-lg animate-pulse" />
+            <Skeleton key={i} className="h-8 rounded-lg" />
           ))}
         </div>
       ) : eventsError ? (
-        <ErrorState onRetry={() => refetchEvents()} />
+        <ErrorState size="compact" onRetry={() => refetchEvents()} error={eventsLoadError} message={t.support.eventsLoadError} />
       ) : events && events.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px]">
             <thead>
-              <tr className="border-b border-[#EDEDED]">
-                <th className="text-left text-[10px] text-[#8B8B8B] uppercase tracking-wider font-medium pb-2">Hora</th>
-                <th className="text-left text-[10px] text-[#8B8B8B] uppercase tracking-wider font-medium pb-2">
-                  Actor
-                </th>
-                <th className="text-left text-[10px] text-[#8B8B8B] uppercase tracking-wider font-medium pb-2">
-                  Accion
-                </th>
-                <th className="text-left text-[10px] text-[#8B8B8B] uppercase tracking-wider font-medium pb-2">
-                  Entidad
-                </th>
+              <tr className="border-b border-border">
+                <th className={TH}>{t.support.colTime}</th>
+                <th className={TH}>{t.support.colActor}</th>
+                <th className={TH}>{t.support.colAction}</th>
+                <th className={TH}>{t.support.colEntity}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#F6F6F6]">
+            <tbody className="divide-y divide-border">
               {events.map((evt) => (
                 <tr key={evt.id}>
-                  <td className="py-2 text-[11px] text-[#8B8B8B] whitespace-nowrap">
-                    {formatRelativeTime(evt.createdAt)}
+                  <td className="whitespace-nowrap py-2 text-callout text-secondary">
+                    {formatRelativeTimeLocale(evt.createdAt, locale)}
                   </td>
-                  <td className="py-2 text-[11px] text-[#585858] truncate max-w-[120px]">
+                  <td className="max-w-[160px] truncate py-2 text-body text-primary">
                     {evt.actor
                       ? `${evt.actor.firstName || ''} ${evt.actor.lastName || ''}`.trim() || evt.actor.email
                       : t.support.system}
                   </td>
-                  <td className="py-2 text-[11px] text-[#585858]">{evt.action}</td>
-                  <td className="py-2 text-[11px] text-[#8B8B8B]">{evt.entity || '-'}</td>
+                  <td className="py-2 text-body text-primary">{actions[evt.action] ?? evt.action}</td>
+                  <td className="py-2 text-body text-secondary">
+                    {evt.entity ? (entities[evt.entity] ?? evt.entity) : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="py-6 text-center">
-          <p className="text-sm text-[#8B8B8B]">{t.support.noEvents}</p>
-          <p className="text-xs text-[#ABABAB] mt-1">{t.support.noEventsDesc}</p>
-        </div>
+        <EmptyState size="compact" title={t.support.noEvents} description={t.support.noEventsDesc} />
       )}
-    </div>
+    </section>
   );
 }

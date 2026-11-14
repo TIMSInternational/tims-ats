@@ -118,8 +118,8 @@ describe('support → send notification (D-14)', () => {
     const { QuickActions } = await import('../../apps/web/app/(admin)/platform/support/quick-actions');
     render(<QuickActions />);
     fireEvent.change(screen.getByLabelText('Título de la notificación'), { target: { value: 'Mantenimiento' } });
-    fireEvent.change(screen.getByLabelText('Mensaje de la notificación...'), { target: { value: 'Esta noche' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar Notificación/ }));
+    fireEvent.change(screen.getByLabelText('Mensaje'), { target: { value: 'Esta noche' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar notificación/ }));
     expect(m.sendNotification).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('TODAS las organizaciones activas');
     fireEvent.click(screen.getByRole('button', { name: 'Sí, enviar' }));
