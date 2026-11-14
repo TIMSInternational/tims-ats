@@ -69,7 +69,9 @@ describe('kanban card', () => {
     render(<KanbanCard application={app('a1', 'active')} isDragging={false} stageId="s1" onSchedule={onSchedule} />);
     fireEvent.click(screen.getByRole('button', { name: es.pipeline.scheduleInterviewFor.replace('{name}', 'Ana Mora') }));
     expect(onSchedule).toHaveBeenCalledTimes(1);
-    const fit = screen.getByRole('link', { name: es.pipeline.fitDetailLink.replace('{name}', 'Ana Mora') });
+    // The link's name now leads with the score and its band in words ("FIT 72, alto"), not colour alone.
+    const band = es.pipeline.fitChipLabel.replace('{score}', '72').replace('{band}', es.pipeline.fitBandHigh);
+    const fit = screen.getByRole('link', { name: `${band}. ${es.pipeline.fitDetailLink.replace('{name}', 'Ana Mora')}` });
     expect(fit.getAttribute('href')).toBe('/recruitment/candidates/cand-a1?tab=tabFitGaps');
   });
 });
@@ -140,13 +142,13 @@ describe('kanban column SLA count (Codex round 2)', () => {
   it('never counts a rejected card as overdue', () => {
     const old = app('a3', 'rejected', { enteredStageAt: iso(60) });
     render(<KanbanBoard stages={stages(old)} onMove={vi.fn()} />);
-    expect(screen.queryByText(/SLA!/)).toBeNull();
+    expect(screen.queryByText(es.pipeline.slaOverdueCountOne)).toBeNull();
   });
 
   it('still counts an overdue active card', () => {
     const overdue = app('a1', 'active', { enteredStageAt: iso(60) });
     render(<KanbanBoard stages={stages(overdue)} onMove={vi.fn()} />);
-    expect(screen.getByText('1 SLA!')).toBeTruthy();
+    expect(screen.getByText(es.pipeline.slaOverdueCountOne)).toBeTruthy();
   });
 });
 
@@ -158,7 +160,7 @@ describe('list view (A-22)', () => {
     const rows = container.querySelectorAll('.divide-y > div');
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row.className).toContain('flex-col');
-    expect(row(rows[0]!).getByRole('button', { name: es.pipeline.advance })).toBeTruthy();
+    expect(row(rows[0]!).getByRole('button', { name: es.pipeline.moveToStageNamed.replace('{stage}', 'Entrevista final') })).toBeTruthy();
     expect(row(rows[0]!).getByRole('button', { name: es.pipeline.scheduleInterviewFor.replace('{name}', 'Ana Mora') })).toBeTruthy();
     expect(row(rows[1]!).queryByRole('button')).toBeNull();
     expect(row(rows[1]!).getByText(es.pipeline.applicationStatus.rejected)).toBeTruthy();

@@ -99,7 +99,8 @@ describe('reject modal — bulk (journeys-26)', () => {
     pickReason();
     fireEvent.click(screen.getByRole('button', { name: mm.continue }));
     expect(await screen.findByText(mm.bulkConfirmDesc.replace('{n}', '3').replace('{reason}', mm.reasons.NOT_QUALIFIED))).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: mm.confirm }));
+    // The destructive button names the outcome and the count ("Rechazar 3 candidatos").
+    fireEvent.click(screen.getByRole('button', { name: mm.bulkConfirm.replace('{n}', '3') }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(m.mutateAsync.mock.calls.map((c) => (c[0] as { applicationId: string }).applicationId)).toEqual(['a1', 'a2', 'a3']);
     expect(m.mutate).not.toHaveBeenCalled();

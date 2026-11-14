@@ -1,15 +1,17 @@
 // Application status badges for the pipeline list and table views (labels from i18n
-// pipeline.applicationStatus, so neither view hard-codes "Activo" / "Rechazado").
+// pipeline.applicationStatus, so neither view hard-codes "Activo" / "Rechazado"). Foundation StatusBadge
+// tones: every pair passes 4.5:1 at 11px, and each carries an outcome icon, never colour alone.
+import type { StatusMapEntry, StatusTone } from '../../../../components';
 
-const STATUS_CLASSES: Record<string, string> = {
-  active: 'bg-blue-50 text-blue-600 border border-blue-200',
-  rejected: 'bg-red-50 text-red-600 border border-red-200',
-  withdrawn: 'bg-gray-100 text-gray-600',
-  hired: 'bg-green-50 text-green-600 border border-green-200',
+const STATUS_TONES: Record<string, StatusTone> = {
+  active: 'info',
+  rejected: 'danger',
+  withdrawn: 'neutral',
+  hired: 'success',
 };
 
-export function applicationStatusMap(labels: Record<string, string>): Record<string, { cls: string; label: string }> {
+export function applicationStatusMap(labels: Record<string, string>): Record<string, StatusMapEntry> {
   return Object.fromEntries(
-    Object.entries(STATUS_CLASSES).map(([status, cls]) => [status, { cls, label: labels[status] ?? status }]),
+    Object.entries(STATUS_TONES).map(([status, tone]) => [status, { tone, label: labels[status] ?? status }]),
   );
 }

@@ -1,10 +1,21 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  type DragStart,
+  type DragUpdate,
+  type DropResult,
+  type ResponderProvided,
+} from '@hello-pangea/dnd';
 import { KanbanCard } from './kanban-card';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
-import { isActionableApplication, type ScheduleRequest } from './pipeline-actions';
+import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
+import { isActionableApplication, stageOverdueCount, type ScheduleRequest } from './pipeline-actions';
+import { PipelineStageHeader } from './pipeline-stage-header';
 
 interface KanbanBoardProps {
   stages: PipelineStageWithApps[];
@@ -16,24 +27,47 @@ interface KanbanBoardProps {
   onToggleChecklistItem?: (applicationId: string, stageId: string, itemKey: string, completed: boolean) => void;
 }
 
-/** Progressive purple gradient — lighter to darker, left to right */
-const HEADER_COLORS: Array<{ bg: string; text: string; badge: string; badgeText: string }> = [
-  { bg: 'bg-[#E8E5F0]', text: 'text-[#1F114C]', badge: 'bg-[#1F114C]', badgeText: 'text-white' },
-  { bg: 'bg-[#D4CFE5]', text: 'text-[#1F114C]', badge: 'bg-[#1F114C]', badgeText: 'text-white' },
-  { bg: 'bg-[#B8AED4]', text: 'text-white',      badge: 'bg-white',     badgeText: 'text-[#1F114C]' },
-  { bg: 'bg-[#7B6BAA]', text: 'text-white',      badge: 'bg-white',     badgeText: 'text-[#1F114C]' },
-  { bg: 'bg-[#5C4B99]', text: 'text-white',      badge: 'bg-white',     badgeText: 'text-[#1F114C]' },
-  { bg: 'bg-[#1F114C]', text: 'text-white',      badge: 'bg-white',     badgeText: 'text-[#1F114C]' },
-];
-
-function getHeaderStyle(idx: number) {
-  return HEADER_COLORS[Math.min(idx, HEADER_COLORS.length - 1)];
-}
-
 export function KanbanBoard({ stages, onMove, onReject, onSchedule, onToggleChecklistItem }: KanbanBoardProps) {
-  const handleDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
-    if (result.source.droppableId === result.destination.droppableId) return;
+  const { t } = useI18n();
+  const p = t.pipeline;
+
+  // Drag announcements in the UI language, naming the candidate and the stage (drag-and-drop.md › Providing
+  // feedback). The library's defaults are English and only give positions.
+  const stageName = (id: string | undefined) => stages.find((stage) => stage.id === id)?.name ?? '';
+  const candidateName = (applicationId: string) => {
+    const app = stages.flatMap((stage) => stage.applications).find((a) => a.id === applicationId);
+    return app ? `${app.candidate.firstName} ${app.candidate.lastName}` : '';
+  };
+
+  const handleDragStart = (start: DragStart, provided: ResponderProvided) => {
+    provided.announce(
+      formatMessage(p.dndLifted, {
+        name: candidateName(start.draggableId),
+        stage: stageName(start.source.droppableId),
+      }),
+    );
+  };
+
+  const handleDragUpdate = (update: DragUpdate, provided: ResponderProvided) => {
+    provided.announce(
+      update.destination
+        ? formatMessage(p.dndOver, { stage: stageName(update.destination.droppableId) })
+        : p.dndOutside,
+    );
+  };
+
+  const handleDragEnd = (result: DropResult, provided: ResponderProvided) => {
+    const name = candidateName(result.draggableId);
+    const from = stageName(result.source.droppableId);
+    if (result.reason === 'CANCEL') {
+      provided.announce(formatMessage(p.dndCancelled, { name, stage: from }));
+      return;
+    }
+    if (!result.destination || result.source.droppableId === result.destination.droppableId) {
+      provided.announce(formatMessage(p.dndReturned, { name, stage: from }));
+      return;
+    }
+    provided.announce(formatMessage(p.dndDropped, { name, stage: stageName(result.destination.droppableId) }));
     onMove(result.draggableId, result.destination.droppableId);
   };
 
@@ -67,101 +101,105 @@ export function KanbanBoard({ stages, onMove, onReject, onSchedule, onToggleChec
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stages, updateScrollState]);
 
+  const moveTargets = stages.map((stage) => ({ id: stage.id, name: stage.name }));
+
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
+    <DragDropContext
+      onDragStart={handleDragStart}
+      onDragUpdate={handleDragUpdate}
+      onDragEnd={handleDragEnd}
+      dragHandleUsageInstructions={p.dndInstructions}
+    >
       <div className="relative h-full">
         <div ref={scrollRef} className="flex gap-3 h-full overflow-x-auto overflow-y-hidden">
           {stages.map((stage, idx) => {
-            const style = getHeaderStyle(idx);
-            const isDark = idx >= 2;
-
-            // Count overdue applications in this stage — time-in-CURRENT-stage,
-            // not time since the original application (matches kanban-card.tsx).
-            // Precise hours, not floored days*24, so sub-24h SLAs can trigger same-day.
-            // Only active applications can be overdue: a rejected or hired card (Rechazados / Todos) never is.
-            const overdueCount = stage.slaHours
-              ? stage.applications.filter((app) => {
-                  if (!isActionableApplication(app)) return false;
-                  const hoursInStage = (Date.now() - new Date(app.enteredStageAt).getTime()) / 3600000;
-                  return hoursInStage > stage.slaHours!;
-                }).length
-              : 0;
-
+            const headingId = `stage-${stage.id}`;
             return (
-              <div
+              <section
                 key={stage.id}
-                className="min-w-[240px] max-w-[240px] flex flex-col bg-[#F0EEF5]/50 rounded-xl overflow-hidden"
+                aria-labelledby={headingId}
+                className="w-60 shrink-0 flex flex-col bg-surface rounded-xl overflow-hidden"
               >
-                {/* Column Header */}
-                <div className={`flex items-center justify-between px-3 py-3 shrink-0 ${style.bg}`}>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[13px] font-semibold ${style.text}`}>
-                      {stage.name}
-                    </span>
-                    <span className={`${style.badge} ${style.badgeText} text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center`}>
-                      {stage.count}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {overdueCount > 0 && (
-                      <span className="text-[10px] text-[#DD0C15] font-medium bg-red-50 px-1.5 py-0.5 rounded">
-                        {overdueCount} SLA!
-                      </span>
-                    )}
-                    {stage.slaHours && overdueCount === 0 && (
-                      <span className={`text-[9px] ${isDark ? 'text-white/60' : 'text-[#8B8B8B]'}`}>
-                        {stage.slaHours}h SLA
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <PipelineStageHeader
+                  headingId={headingId}
+                  name={stage.name}
+                  index={idx}
+                  shown={stage.applications.length}
+                  total={stage.count}
+                  slaHours={stage.slaHours}
+                  overdueCount={stageOverdueCount(stage)}
+                  className="border-b border-border"
+                />
 
-                {/* Droppable Area */}
                 <Droppable droppableId={stage.id}>
                   {(provided, snapshot) => (
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`flex-1 overflow-y-auto p-2 space-y-2 min-h-[100px] transition-colors ${
-                        snapshot.isDraggingOver ? 'bg-[#1F114C]/5' : ''
+                      className={`relative flex-1 overflow-y-auto p-2 space-y-2 min-h-25 rounded-b-xl transition-colors ${
+                        snapshot.isDraggingOver
+                          ? 'bg-brand-tint outline-2 outline-dashed -outline-offset-4 outline-brand/60'
+                          : ''
                       }`}
                     >
+                      {stage.applications.length === 0 && !snapshot.isDraggingOver && (
+                        <p className="px-2 py-6 text-center text-callout text-muted">{p.emptyStage}</p>
+                      )}
                       {stage.applications.map((app, appIdx) => {
                         // A rejected or hired card (Rechazados / Todos views) is read-only: no drag, no actions.
                         const actionable = isActionableApplication(app);
-                        const candidateName = `${app.candidate.firstName} ${app.candidate.lastName}`;
+                        const name = `${app.candidate.firstName} ${app.candidate.lastName}`;
                         return (
-                        <Draggable key={app.id} draggableId={app.id} index={appIdx} isDragDisabled={!actionable}>
-                          {(dragProvided, dragSnapshot) => (
-                            <div
-                              ref={dragProvided.innerRef}
-                              {...dragProvided.draggableProps}
-                              {...dragProvided.dragHandleProps}
-                            >
-                              <KanbanCard
-                                application={app}
-                                isDragging={dragSnapshot.isDragging}
-                                slaHours={stage.slaHours}
-                                stageId={stage.id}
-                                checklist={stage.checklist}
-                                onToggleChecklistItem={onToggleChecklistItem}
-                                onReject={onReject && actionable ? () => onReject(app.id, candidateName) : undefined}
-                                onSchedule={
-                                  onSchedule && actionable
-                                    ? () => onSchedule({ applicationId: app.id, candidateId: app.candidate.id, candidateName })
-                                    : undefined
-                                }
-                              />
-                            </div>
-                          )}
-                        </Draggable>
+                          <Draggable key={app.id} draggableId={app.id} index={appIdx} isDragDisabled={!actionable}>
+                            {(dragProvided, dragSnapshot) => (
+                              // The library makes this wrapper role="button"; a button's children are
+                              // presentational, which would hide the card's links and buttons from screen
+                              // readers. A named group keeps them reachable; tabIndex, the usage
+                              // instructions and the keyboard drag stay the library's.
+                              <div
+                                ref={dragProvided.innerRef}
+                                {...dragProvided.draggableProps}
+                                {...dragProvided.dragHandleProps}
+                                role="group"
+                                aria-label={name}
+                                aria-roledescription={actionable ? p.dndCardRole : undefined}
+                              >
+                                <KanbanCard
+                                  application={app}
+                                  isDragging={dragSnapshot.isDragging}
+                                  actionable={actionable}
+                                  slaHours={stage.slaHours}
+                                  stageId={stage.id}
+                                  checklist={stage.checklist}
+                                  onToggleChecklistItem={onToggleChecklistItem}
+                                  onReject={onReject && actionable ? () => onReject(app.id, name) : undefined}
+                                  onSchedule={
+                                    onSchedule && actionable
+                                      ? () =>
+                                          onSchedule({
+                                            applicationId: app.id,
+                                            candidateId: app.candidate.id,
+                                            candidateName: name,
+                                          })
+                                      : undefined
+                                  }
+                                  moveTargets={
+                                    onReject && actionable
+                                      ? moveTargets.filter((target) => target.id !== stage.id)
+                                      : undefined
+                                  }
+                                  onMoveTo={(toStageId) => onMove(app.id, toStageId)}
+                                />
+                              </div>
+                            )}
+                          </Draggable>
                         );
                       })}
                       {provided.placeholder}
                     </div>
                   )}
                 </Droppable>
-              </div>
+              </section>
             );
           })}
         </div>
