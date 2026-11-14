@@ -41,7 +41,8 @@ function menuItems(t: ReturnType<typeof useI18n>['t'], p: InterviewRowActionsPro
   if (p.aiScreenEnabled || p.aiScreenError) {
     items.push({
       key: 'ai-screen',
-      label: t.interviews.startAiScreen,
+      // A failed entitlement read disables the item; say so in the label rather than leaving it silent.
+      label: p.aiScreenEnabled ? t.interviews.startAiScreen : t.interviews.startAiScreenUnavailable,
       disabled: !p.aiScreenEnabled,
       onSelect: () => p.onStartAiScreen(iv.id),
     });

@@ -62,13 +62,13 @@ export function Step1Fields({
     <div className="space-y-5">
       {/* Candidate search */}
       <div>
-        <label htmlFor="schedule-candidate" className={FIELD_LABEL_CLASSES}>{t.interviews.scheduleFieldCandidate}</label>
+        <label id="schedule-candidate-label" htmlFor="schedule-candidate" className={FIELD_LABEL_CLASSES}>{t.interviews.scheduleFieldCandidate}</label>
         {selectedCandidateId ? (
-          <div className="flex items-center gap-3 rounded-lg bg-brand-tint px-3 py-2.5">
+          <div role="group" aria-labelledby="schedule-candidate-label" className="flex items-center gap-3 rounded-lg bg-brand-tint px-3 py-2.5">
             <div className="flex size-8 items-center justify-center rounded-full bg-brand text-caption font-semibold text-white" aria-hidden="true">
               {selectedCandidateName.split(' ').map((p) => p[0]).join('').slice(0, 2)}
             </div>
-            <span id="schedule-candidate" className="flex-1 text-body font-medium text-brand">{selectedCandidateName}</span>
+            <span className="flex-1 text-body font-medium text-brand">{selectedCandidateName}</span>
             <button
               type="button"
               onClick={() => { setSelectedCandidateId(''); setSelectedCandidateName(''); setCandidateSearch(''); }}

@@ -102,6 +102,7 @@ export function InterviewTable(props: InterviewTableProps) {
         <InterviewTypeIcon type={iv.type} />
         {interviewTypeLabel(t, iv.type)} · {timeLabel(iv, locale, t)}
       </p>
+      {showAiUpsell && <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />}
       <InterviewRowActions {...props} iv={iv} now={now} fullWidth />
     </div>
   ));

@@ -256,7 +256,9 @@ test('recruiter moves the candidate to Oferta and drafts an offer', async () => 
   // /recruitment/offers?offer=<id>). Wait for it to show the offer before the next test navigates, so its
   // navigation cannot race the in-flight client push (CI run 36754356674 once found the list without it).
   await expect(page).toHaveURL(/\/recruitment\/offers(\?offer=[^&]+)?$/);
-  await expect(page.getByText(fullName()).first()).toBeVisible();
+  // The offers list also renders a phone-only (md:hidden) stacked list BEFORE the table, so the first
+  // match at desktop width is a hidden copy: assert on the visible one.
+  await expect(page.getByText(fullName()).filter({ visible: true }).first()).toBeVisible();
 });
 
 /** Open this candidate's offer from the offers list. */
@@ -264,8 +266,9 @@ async function openOffer(page: Page): Promise<void> {
   await navigateStaff(page, '/recruitment/offers');
   const backToList = page.getByRole('button', { name: 'Volver a ofertas' });
   if (await backToList.isVisible()) await backToList.click();
-  await page.getByText(fullName()).first().click();
-  await expect(page.getByText(fullName()).first()).toBeVisible();
+  // Visible match only: the phone-only stacked list (md:hidden) precedes the table in the DOM.
+  await page.getByText(fullName()).filter({ visible: true }).first().click();
+  await expect(page.getByText(fullName()).filter({ visible: true }).first()).toBeVisible();
 }
 
 /** Request approval from `approverName`, then approve as `approverPage`. */
