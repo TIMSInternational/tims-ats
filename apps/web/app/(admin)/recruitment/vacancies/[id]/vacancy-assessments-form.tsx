@@ -20,6 +20,7 @@ import {
   type AssessmentForm,
 } from '../../../../../lib/assessments/vacancy-assessment-form';
 import { VacancyAssessmentRow } from './vacancy-assessment-row';
+import { BUTTON_GROUP_CLASSES, Button, selectClasses } from '../../../../../components';
 
 export type CatalogState = 'ok' | 'unavailable' | 'not_connected';
 
@@ -68,13 +69,13 @@ export function VacancyAssessmentsForm({
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-3">
-      {catalogNote && <p className="text-[11px] text-[#8B8B8B]">{catalogNote}</p>}
+      {catalogNote && <p className="text-callout text-secondary">{catalogNote}</p>}
       {ignored > 0 && (
-        <p role="status" className="text-[11px] text-amber-700">
+        <p role="status" className="text-callout text-warning">
           {va.ignored.replace('{count}', String(ignored))}
         </p>
       )}
-      {fields.length === 0 && <p className="text-[12px] text-[#8B8B8B]">{va.empty}</p>}
+      {fields.length === 0 && <p className="text-body text-secondary">{va.empty}</p>}
       <ul className="space-y-3">
         {fields.map((field, index) => (
           <VacancyAssessmentRow
@@ -91,12 +92,12 @@ export function VacancyAssessmentsForm({
 
       {canEdit && addable.length > 0 && (
         <div className="flex items-end gap-2">
-          <label className="flex-1 block text-[12px] font-medium text-[#585858]">
+          <label className="block flex-1 text-callout font-medium text-primary">
             {va.addLabel}
             <select
               value={adding}
               onChange={(event) => setAdding(event.target.value as FitRequirementInstrument | '')}
-              className="mt-1 w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333]"
+              className={`mt-1 font-normal ${selectClasses()}`}
             >
               <option value="">{va.addPlaceholder}</option>
               {addable.map((entry) => (
@@ -106,41 +107,39 @@ export function VacancyAssessmentsForm({
               ))}
             </select>
           </label>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             disabled={adding === ''}
             onClick={() => {
               if (adding === '') return;
               append(newRow(adding));
               setAdding('');
             }}
-            className="h-9 rounded-lg border border-[#EDEDED] px-3 text-[12px] font-medium text-[#1F114C] disabled:opacity-50"
           >
             {va.addButton}
-          </button>
+          </Button>
         </div>
       )}
 
-      <p className="text-[11px] text-[#8B8B8B]">{va.noteNoAutoReject}</p>
+      <p className="text-callout text-secondary">{va.noteNoAutoReject}</p>
 
       {canEdit && (
-        <div className="flex gap-2">
-          <button
+        // Sticky: with several tests the form is long, and Save stays in reach while editing any of them.
+        <div
+          className={`sticky bottom-0 -mx-4 border-t border-border bg-white px-4 py-3 md:-mx-5 md:px-5 ${BUTTON_GROUP_CLASSES}`}
+        >
+          <Button variant="secondary" disabled={save.isPending || !form.formState.isDirty} onClick={() => form.reset()}>
+            {va.discard}
+          </Button>
+          <Button
             type="submit"
             // Stored entries FIT ignores are removed by a save, so one is offered even without an edit.
-            disabled={save.isPending || (!form.formState.isDirty && ignored === 0)}
-            className="bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
+            disabled={!form.formState.isDirty && ignored === 0}
+            loading={save.isPending}
+            loadingLabel={va.saving}
           >
-            {save.isPending ? va.saving : va.save}
-          </button>
-          <button
-            type="button"
-            disabled={save.isPending || !form.formState.isDirty}
-            onClick={() => form.reset()}
-            className="px-4 h-8 rounded-lg border border-[#EDEDED] text-[12px] text-[#585858] disabled:opacity-50"
-          >
-            {va.discard}
-          </button>
+            {va.save}
+          </Button>
         </div>
       )}
     </form>

@@ -151,6 +151,19 @@ export function ProviderResultsBoard({
     return null;
 
   const titles = applications ? new Map(applications.map((a) => [a.vacancy.id, a.vacancy.title])) : null;
+  // With the applications known, each vacancy's cards sit under a heading that names it.
+  const renderGroup = (vacancyId: string, attempts: StaffProviderAttempt[]) => {
+    if (!titles) return <VacancyResults key={vacancyId} vacancyId={vacancyId} attempts={attempts} />;
+    const headingId = `vacancy-results-${vacancyId}`;
+    return (
+      <section key={vacancyId} aria-labelledby={headingId} className="space-y-4">
+        <h3 id={headingId} className="text-subheading font-semibold text-primary">
+          {t.providerAssessments.vacancyLabel}: {titles.get(vacancyId) ?? t.providerAssessments.unknownVacancy}
+        </h3>
+        <VacancyResults vacancyId={vacancyId} attempts={attempts} />
+      </section>
+    );
+  };
   const byVacancy = new Map<string, StaffProviderAttempt[]>();
   for (const a of data.attempts) byVacancy.set(a.vacancyId, [...(byVacancy.get(a.vacancyId) ?? []), a]);
 
@@ -160,18 +173,7 @@ export function ProviderResultsBoard({
         <h2 className="text-title font-semibold text-brand">{r.heading}</h2>
         <p className="mt-0.5 text-body text-secondary">{r.intro}</p>
       </div>
-      {[...byVacancy.entries()].map(([vacancyId, attempts]) =>
-        titles ? (
-          <section key={vacancyId} aria-labelledby={`vacancy-results-${vacancyId}`} className="space-y-4">
-            <h3 id={`vacancy-results-${vacancyId}`} className="text-subheading font-semibold text-primary">
-              {t.providerAssessments.vacancyLabel}: {titles.get(vacancyId) ?? t.providerAssessments.unknownVacancy}
-            </h3>
-            <VacancyResults vacancyId={vacancyId} attempts={attempts} />
-          </section>
-        ) : (
-          <VacancyResults key={vacancyId} vacancyId={vacancyId} attempts={attempts} />
-        ),
-      )}
+      {[...byVacancy.entries()].map(([vacancyId, attempts]) => renderGroup(vacancyId, attempts))}
     </div>
   );
 }

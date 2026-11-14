@@ -38,6 +38,7 @@ export function AssignProviderTermsStep({
   const { t } = useI18n();
   const ap = t.assignProviderAssessments;
   const ageError = form.formState.errors.ageBand;
+  const ageDescribedBy = ['assign-age-hint', ageError ? 'assign-age-error' : null].filter(Boolean).join(' ');
 
   return (
     <div className="space-y-4">
@@ -54,7 +55,7 @@ export function AssignProviderTermsStep({
         )}
       </div>
 
-      <fieldset aria-describedby={ageError ? 'assign-age-hint assign-age-error' : 'assign-age-hint'}>
+      <fieldset aria-describedby={ageDescribedBy}>
         <legend className={FIELD_LABEL_CLASSES}>
           {ap.ageBandLabel}
           <span aria-hidden="true" className="ml-0.5 text-danger">

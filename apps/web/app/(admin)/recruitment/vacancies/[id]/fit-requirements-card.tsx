@@ -4,10 +4,8 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
-import {
-  isFitEngineV2Enabled,
-  useUpdateFitRequirementsViaCsharp,
-} from '../../../../../lib/platform-api/fit-engine';
+import { Button, Field, Select, TextInput } from '../../../../../components';
+import { isFitEngineV2Enabled, useUpdateFitRequirementsViaCsharp } from '../../../../../lib/platform-api/fit-engine';
 
 const EDUCATION_LEVELS = ['high_school', 'associate', 'bachelor', 'master', 'phd'] as const;
 type EducationLevel = (typeof EDUCATION_LEVELS)[number];
@@ -82,60 +80,55 @@ export function FitRequirementsCard({ vacancyId, fitRequirements }: { vacancyId:
   };
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-1">{t.fitRequirements.title}</h3>
-      <p className="text-[11px] text-[#8B8B8B] mb-4">{t.fitRequirements.description}</p>
+    <div className="rounded-xl bg-white p-4 shadow-card md:p-5">
+      <h3 className="mb-1 text-subheading font-semibold text-brand">{t.fitRequirements.title}</h3>
+      <p className="mb-4 text-callout text-secondary">{t.fitRequirements.description}</p>
 
-      <div className="space-y-3">
-        <div>
-          <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.fitRequirements.minYearsLabel}</label>
-          <input
+      <div className="space-y-4">
+        <Field label={t.fitRequirements.minYearsLabel} id={`fit-min-years-${vacancyId}`}>
+          <TextInput
             type="number"
+            inputMode="numeric"
             min={0}
             max={60}
             value={minYears}
             onChange={(e) => setMinYears(e.target.value)}
-            className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
+            className="tabular-nums"
           />
-        </div>
+        </Field>
 
-        <div>
-          <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.fitRequirements.educationLabel}</label>
-          <select
-            value={educationLevel}
-            onChange={(e) => setEducationLevel(e.target.value)}
-            className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
-          >
+        <Field label={t.fitRequirements.educationLabel} id={`fit-education-${vacancyId}`}>
+          <Select value={educationLevel} onChange={(e) => setEducationLevel(e.target.value)}>
             <option value="">{t.fitRequirements.educationNone}</option>
             {EDUCATION_LEVELS.map((level) => (
-              <option key={level} value={level}>{educationLabels[level]}</option>
+              <option key={level} value={level}>
+                {educationLabels[level]}
+              </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        <div>
-          <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.fitRequirements.languagesLabel}</label>
-          <input
+        <Field
+          label={t.fitRequirements.languagesLabel}
+          help={t.fitRequirements.languagesHelp}
+          id={`fit-languages-${vacancyId}`}
+        >
+          <TextInput
             value={languagesText}
             onChange={(e) => setLanguagesText(e.target.value)}
             placeholder={t.fitRequirements.languagesPlaceholder}
-            className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
           />
-        </div>
+        </Field>
 
         {viaCsharp && configuredAssessments > 0 && (
-          <p className="text-[11px] text-[#8B8B8B]">
+          <p className="text-callout text-secondary">
             {t.fitRequirements.assessmentsKept.replace('{count}', String(configuredAssessments))}
           </p>
         )}
 
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
-        >
-          {isSaving ? t.fitRequirements.saving : t.fitRequirements.saveButton}
-        </button>
+        <Button variant="secondary" onClick={handleSave} loading={isSaving} loadingLabel={t.fitRequirements.saving}>
+          {t.fitRequirements.saveButton}
+        </Button>
       </div>
     </div>
   );

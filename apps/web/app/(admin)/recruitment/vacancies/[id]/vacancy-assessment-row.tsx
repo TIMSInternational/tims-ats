@@ -12,10 +12,13 @@ import {
   takesWeight,
   type AssessmentForm,
 } from '../../../../../lib/assessments/vacancy-assessment-form';
+import { Button, inputClasses, selectClasses, textareaClasses } from '../../../../../components';
 
-const FIELD = 'w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] disabled:opacity-60';
-const LABEL = 'block text-[12px] font-medium text-[#585858]';
-const ERROR = 'mt-1 text-[11px] text-[#B42318]';
+const FIELD = inputClasses();
+const SELECT = selectClasses();
+const LABEL = 'block text-callout font-medium text-primary';
+const HELP = 'mt-1 text-caption text-secondary';
+const ERROR = 'mt-1 text-callout text-danger';
 
 // One configured test: how FIT uses it (only the uses its instrument allows), its minimum (the kind its instrument
 // takes, required for a scored or gated use), its relative weight (scored, not English), PCA's TIMS position code
@@ -46,10 +49,16 @@ export function VacancyAssessmentRow({
   const uses = allowedUses(instrument);
   const name = t.candidates.fitInstrumentNames[instrument];
   const id = `vacancy-assessment-${index}`;
+  // Short nouns fit the select at any card width; the sentence for the chosen use sits under it as help.
   const useLabels: Record<InstrumentUse, string> = {
-    scored: va.useScored,
-    gate: va.useGate,
-    advisory: va.useAdvisory,
+    scored: va.useScoredShort,
+    gate: va.useGateShort,
+    advisory: va.useAdvisoryShort,
+  };
+  const useHelp: Record<InstrumentUse, string> = {
+    scored: va.useScoredHelp,
+    gate: va.useGateHelp,
+    advisory: va.useAdvisoryHelp,
   };
   const minimumLabel = kind
     ? {
@@ -65,22 +74,24 @@ export function VacancyAssessmentRow({
   const errorText = (key: string | undefined) => (key && key in va ? va[key as keyof typeof va] : null);
 
   return (
-    <li className="rounded-lg border border-[#EDEDED] p-3 space-y-2" data-instrument={instrument}>
+    // @container: the fields lay out by the card's width, not the viewport's (the card can sit in a narrow column).
+    <li className="@container space-y-3 rounded-lg border border-border p-3" data-instrument={instrument}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-semibold text-[#1F114C]">{name}</span>
-        <button
-          type="button"
+        <span className="text-body font-semibold text-brand">{name}</span>
+        <Button
+          variant="tertiary"
+          size="sm"
           onClick={onRemove}
           disabled={disabled}
           aria-label={va.removeAria.replace('{instrument}', name)}
-          className="text-[11px] text-[#DD0C15] hover:underline disabled:opacity-50"
+          className="-mr-2"
         >
           {va.remove}
-        </button>
+        </Button>
       </div>
 
       {catalogEntry && (
-        <p className="text-[11px] text-[#8B8B8B]">
+        <p className="text-caption text-secondary">
           {catalogEntry.pinnedVersion
             ? va.versionPinned.replace('{version}', catalogEntry.pinnedVersion)
             : va.versionCurrent.replace(
@@ -92,10 +103,10 @@ export function VacancyAssessmentRow({
         </p>
       )}
       {!catalogEntry && catalogKnown && instrument !== 'native_quiz' && (
-        <p className="text-[11px] text-amber-700">{va.notInCatalog}</p>
+        <p className="text-callout text-warning">{va.notInCatalog}</p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-3 @md:grid-cols-2">
         <div>
           <label htmlFor={`${id}-use`} className={LABEL}>
             {va.useLabel}
@@ -104,7 +115,8 @@ export function VacancyAssessmentRow({
             id={`${id}-use`}
             {...form.register(`rows.${index}.use`)}
             disabled={disabled || uses.length === 1}
-            className={`mt-1 ${FIELD}`}
+            aria-describedby={`${id}-use-help`}
+            className={`mt-1 ${SELECT}`}
           >
             {uses.map((u) => (
               <option key={u} value={u}>
@@ -112,6 +124,9 @@ export function VacancyAssessmentRow({
               </option>
             ))}
           </select>
+          <p id={`${id}-use-help`} className={HELP}>
+            {useHelp[use] ?? ''}
+          </p>
         </div>
 
         {kind && use !== 'advisory' && (
@@ -127,7 +142,7 @@ export function VacancyAssessmentRow({
                 disabled={disabled}
                 aria-invalid={Boolean(errors?.minimum)}
                 aria-describedby={errors?.minimum ? `${id}-min-error` : undefined}
-                className={`mt-1 ${FIELD}`}
+                className={`mt-1 ${SELECT}`}
               >
                 <option value="">{va.minimumChoose}</option>
                 {CEFR_LEVELS.map((level) => (
@@ -161,7 +176,7 @@ export function VacancyAssessmentRow({
       </div>
 
       {(showJobCode || showWeight) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-3 @md:grid-cols-2">
           {showJobCode && (
             <div>
               <label htmlFor={`${id}-job-code`} className={LABEL}>
@@ -181,7 +196,7 @@ export function VacancyAssessmentRow({
                 aria-describedby={`${id}-job-code-hint${errors?.jobCode ? ` ${id}-job-code-error` : ''}`}
                 className={`mt-1 ${FIELD}`}
               />
-              <p id={`${id}-job-code-hint`} className="mt-1 text-[11px] text-[#8B8B8B]">
+              <p id={`${id}-job-code-hint`} className={HELP}>
                 {va.jobCodeHint}
               </p>
               {errors?.jobCode && (
@@ -209,7 +224,7 @@ export function VacancyAssessmentRow({
                 aria-describedby={`${id}-weight-hint${errors?.weight ? ` ${id}-weight-error` : ''}`}
                 className={`mt-1 ${FIELD}`}
               />
-              <p id={`${id}-weight-hint`} className="mt-1 text-[11px] text-[#8B8B8B]">
+              <p id={`${id}-weight-hint`} className={HELP}>
                 {va.weightHint}
               </p>
               {errors?.weight && (
@@ -222,35 +237,39 @@ export function VacancyAssessmentRow({
         </div>
       )}
 
-      <label htmlFor={`${id}-reason`} className={LABEL}>
-        {va.reasonLabel}
-      </label>
-      <textarea
-        id={`${id}-reason`}
-        rows={2}
-        maxLength={500}
-        {...form.register(`rows.${index}.reason`)}
-        disabled={disabled}
-        required
-        placeholder={va.reasonPlaceholder}
-        aria-invalid={Boolean(errors?.reason)}
-        aria-describedby={`${id}-reason-hint${errors?.reason ? ` ${id}-reason-error` : ''}`}
-        className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 py-2 text-[13px] text-[#333] disabled:opacity-60"
-      />
-      <p id={`${id}-reason-hint`} className="text-[11px] text-[#8B8B8B]">
-        {va.reasonHint}
-      </p>
-      {errors?.reason && (
-        <p id={`${id}-reason-error`} className={ERROR}>
-          {errorText(errors.reason.message)}
+      <div>
+        <label htmlFor={`${id}-reason`} className={LABEL}>
+          {va.reasonLabel}
+        </label>
+        <textarea
+          id={`${id}-reason`}
+          rows={2}
+          maxLength={500}
+          {...form.register(`rows.${index}.reason`)}
+          disabled={disabled}
+          required
+          placeholder={va.reasonPlaceholder}
+          aria-invalid={Boolean(errors?.reason)}
+          aria-describedby={`${id}-reason-hint${errors?.reason ? ` ${id}-reason-error` : ''}`}
+          className={`mt-1 ${textareaClasses('min-h-16')}`}
+        />
+        <p id={`${id}-reason-hint`} className={HELP}>
+          {va.reasonHint}
         </p>
-      )}
+        {errors?.reason && (
+          <p id={`${id}-reason-error`} className={ERROR}>
+            {errorText(errors.reason.message)}
+          </p>
+        )}
+      </div>
       {errors?.use && <p className={ERROR}>{errorText(errors.use.message)}</p>}
 
-      {instrument === 'english' && use !== 'advisory' && <p className="text-[11px] text-[#585858]">{va.noteEnglish}</p>}
-      {instrument === 'lia' && use === 'scored' && <p className="text-[11px] text-[#585858]">{va.noteLia}</p>}
-      {instrument === 'pca' && <p className="text-[11px] text-[#585858]">{va.notePcaJobFit}</p>}
-      {uses.length === 1 && <p className="text-[11px] text-[#585858]">{va.noteAdvisoryOnly}</p>}
+      {instrument === 'english' && use !== 'advisory' && (
+        <p className="text-callout text-secondary">{va.noteEnglish}</p>
+      )}
+      {instrument === 'lia' && use === 'scored' && <p className="text-callout text-secondary">{va.noteLia}</p>}
+      {instrument === 'pca' && <p className="text-callout text-secondary">{va.notePcaJobFit}</p>}
+      {uses.length === 1 && <p className="text-callout text-secondary">{va.noteAdvisoryOnly}</p>}
     </li>
   );
 }
