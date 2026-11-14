@@ -94,8 +94,6 @@ const KNOWN_DEBT = new Set<string>([
   // accents (fix/es-accents) made them detectable. Remove each entry when it moves to t.*.
   'apps/web/app/(admin)/people/onboarding/onboarding-table.tsx:138:jsx-text',
   'apps/web/app/(admin)/people/performance/page.tsx:68:jsx-text',
-  'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:55:jsx-text',
-  'apps/web/app/(admin)/platform/users/invite-wizard.steps.tsx:100:jsx-text',
   'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:44:placeholder',
   'apps/web/app/(admin)/recruitment/candidates/create-modal.fields.tsx:227:jsx-text',
   'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.fields.tsx:44:placeholder',

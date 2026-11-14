@@ -3,6 +3,8 @@
 import { formatDateLong as fmtDateLong } from '../../../../lib/format-utils';
 import { fmtCurrency, type LineItem } from './invoice-wizard.helpers';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
+import { SegmentedControl } from '../../../../components';
 
 interface PreviewPanelProps {
   step: number;
@@ -19,6 +21,8 @@ interface PreviewPanelProps {
   invoiceDate: string;
   dueDate: string;
   memo: string;
+  /** Visibility from the parent: below md the wizard swaps this pane with the form. */
+  className?: string;
 }
 
 export function PreviewPanel({
@@ -36,64 +40,80 @@ export function PreviewPanel({
   invoiceDate,
   dueDate,
   memo,
+  className = 'hidden md:block md:w-1/2',
 }: PreviewPanelProps) {
   const { t } = useI18n();
+  const iv = t.invoices;
+  const items = lineItems.filter((li) => li.description);
+  const total = fmtCurrency(subtotal, currency);
+  const LABEL = 'mb-1 text-callout font-medium text-secondary';
+  const emailBody = dueDate
+    ? formatMessage(iv.emailBodyDue, { company: iv.fromCompanyName, n: invNumber, date: fmtDateLong(dueDate), amount: total })
+    : formatMessage(iv.emailBody, { company: iv.fromCompanyName, n: invNumber, amount: total });
+
   return (
-    <div className="hidden md:block md:w-1/2 overflow-y-auto bg-[#F0F0F0] p-6">
+    <div className={`overflow-y-auto bg-surface p-3 md:p-6 ${className}`}>
       {step > 0 && (
         <>
-          <div className="flex gap-4 mb-4">
-            <button onClick={() => setPreviewTab('invoice')} className={`text-sm font-medium pb-1 ${previewTab === 'invoice' ? 'text-[#333] border-b-2 border-[#333]' : 'text-[#8B8B8B] hover:text-[#585858]'}`}>Factura</button>
-            <button onClick={() => setPreviewTab('email')} className={`text-sm font-medium pb-1 ${previewTab === 'email' ? 'text-[#333] border-b-2 border-[#333]' : 'text-[#8B8B8B] hover:text-[#585858]'}`}>Email</button>
-          </div>
+          <SegmentedControl
+            label={iv.previewLabel}
+            className="mb-4"
+            options={[
+              { value: 'invoice' as const, label: iv.previewInvoice },
+              { value: 'email' as const, label: iv.previewEmail },
+            ]}
+            value={previewTab}
+            onChange={setPreviewTab}
+          />
 
           {previewTab === 'invoice' && (
-            <div className="bg-white rounded-xl shadow-lg p-8 min-h-[600px]">
-              <div className="flex justify-between items-start mb-8">
-                <h3 className="text-2xl font-bold text-[#333]">Invoice</h3>
-                <div className="w-10 h-10 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span className="text-white text-sm font-bold">T</span></div>
+            <div className="rounded-xl bg-white p-5 shadow-card md:min-h-[600px] md:p-8">
+              <h3 className="mb-6 font-display text-title font-semibold text-primary md:mb-8">{iv.docTitle}</h3>
+              <div className="mb-6 grid grid-cols-1 gap-4 text-callout sm:grid-cols-3 md:mb-8">
+                <div><p className={LABEL}>{iv.docFrom}</p><p className="font-semibold text-primary">{iv.fromCompanyName}</p><p className="break-all text-secondary">{iv.fromEmail}</p><p className="mt-1 text-secondary">{iv.fromAddress1}<br />{iv.fromAddress2}<br />{iv.fromCity}</p></div>
+                <div><p className={LABEL}>{iv.docTo}</p><p className="font-semibold text-primary">{orgName || '\u2014'}</p><p className="break-all text-secondary">{emailTo || orgEmail || '\u2014'}</p></div>
+                <div><p className={LABEL}>{iv.docDetails}</p><dl><div className="flex gap-2"><dt className="text-secondary">{iv.colInvoiceNo}</dt><dd className="font-semibold text-primary">{invNumber}</dd></div>{poNumber && <div className="flex gap-2"><dt className="text-secondary">{iv.colPoNo}</dt><dd className="font-semibold text-primary">{poNumber}</dd></div>}</dl></div>
               </div>
-              <div className="grid grid-cols-3 gap-4 mb-8 text-xs">
-                <div><p className="text-[#8B8B8B] mb-1 font-medium">From</p><p className="font-semibold text-[#333]">{t.invoices.fromCompanyName}</p><p className="text-[#585858]">federico@nexadev.ai</p><p className="text-[#585858] mt-1">{t.invoices.fromAddress1}<br />{t.invoices.fromAddress2}<br />{t.invoices.fromCity}</p></div>
-                <div><p className="text-[#8B8B8B] mb-1 font-medium">To</p><p className="font-semibold text-[#333]">{orgName || '...'}</p><p className="text-[#585858]">{emailTo || orgEmail || '...'}</p></div>
-                <div><p className="text-[#8B8B8B] mb-1 font-medium">Details</p><table className="text-[11px]"><tbody><tr><td className="text-[#8B8B8B] pr-2">{t.invoices.colInvoiceNo}</td><td className="font-semibold">{invNumber}</td></tr>{poNumber && <tr><td className="text-[#8B8B8B] pr-2">{t.invoices.colPoNo}</td><td className="font-semibold">{poNumber}</td></tr>}</tbody></table></div>
-              </div>
-              <table className="w-full text-xs mb-4">
-                <thead><tr className="border-b border-[#EDEDED]"><th className="text-left py-2 text-[#8B8B8B] font-medium">{t.invoices.item}</th><th className="text-center py-2 text-[#8B8B8B] font-medium">{t.invoices.quantity}</th><th className="text-right py-2 text-[#8B8B8B] font-medium">{t.invoices.colUnitPrice}</th><th className="text-right py-2 text-[#8B8B8B] font-medium">{t.invoices.total}</th></tr></thead>
-                <tbody>
-                  {lineItems.filter(li => li.description).map((li, i) => (
-                    <tr key={i} className="border-b border-[#F6F6F6]"><td className="py-2 text-[#333]">{li.description}</td><td className="py-2 text-center text-[#585858]">{li.quantity}</td><td className="py-2 text-right text-[#585858]">${li.unitPrice.toFixed(2)}</td><td className="py-2 text-right font-semibold text-[#333]">${(li.quantity * li.unitPrice).toFixed(2)}</td></tr>
-                  ))}
-                  {lineItems.filter(li => li.description).length === 0 && <tr><td colSpan={4} className="py-4 text-center text-[#8B8B8B]">{t.invoices.emptyLineItems}</td></tr>}
-                </tbody>
-              </table>
-              <div className="flex justify-end"><div className="text-right"><span className="text-sm font-bold text-[#333]">Total</span><span className="text-lg font-bold text-[#333] ml-4">{fmtCurrency(subtotal, currency)}</span></div></div>
-              <div className="grid grid-cols-2 gap-4 mt-8 pt-4 border-t border-[#EDEDED] text-xs">
-                <div><p className="text-[#8B8B8B] font-medium mb-1">Terms</p><table><tbody><tr><td className="text-[#8B8B8B] pr-2">{t.invoices.colInvoiceDate}</td><td className="font-medium">{invoiceDate ? fmtDateLong(invoiceDate) : '—'}</td></tr><tr><td className="text-[#8B8B8B] pr-2">{t.invoices.colDueDate}</td><td className="font-medium">{dueDate ? fmtDateLong(dueDate) : '—'}</td></tr></tbody></table></div>
-                {memo && <div><p className="text-[#8B8B8B] font-medium mb-1">Memo</p><p className="text-[#585858]">{memo}</p></div>}
+              <ul className="mb-4 divide-y divide-border border-y border-border text-callout">
+                {items.map((li, i) => (
+                  <li key={i} className="py-2">
+                    <p className="text-primary">{li.description}</p>
+                    <div className="mt-0.5 flex justify-between gap-2 tabular-nums">
+                      <span className="text-secondary">{li.quantity} × {fmtCurrency(li.unitPrice, currency)}</span>
+                      <span className="font-semibold text-primary">{fmtCurrency(li.quantity * li.unitPrice, currency)}</span>
+                    </div>
+                  </li>
+                ))}
+                {items.length === 0 && <li className="py-4 text-center text-secondary">{iv.emptyLineItems}</li>}
+              </ul>
+              <p className="flex justify-end gap-4"><span className="text-body font-semibold text-primary">{iv.total}</span><span className="text-heading font-semibold tabular-nums text-primary">{total}</span></p>
+              <div className="mt-6 grid grid-cols-1 gap-4 border-t border-border pt-4 text-callout sm:grid-cols-2 md:mt-8">
+                <div><p className={LABEL}>{iv.docTerms}</p><dl><div className="flex gap-2"><dt className="text-secondary">{iv.colInvoiceDate}</dt><dd className="font-medium text-primary">{invoiceDate ? fmtDateLong(invoiceDate) : '\u2014'}</dd></div><div className="flex gap-2"><dt className="text-secondary">{iv.colDueDate}</dt><dd className="font-medium text-primary">{dueDate ? fmtDateLong(dueDate) : '\u2014'}</dd></div></dl></div>
+                {memo && <div><p className={LABEL}>{iv.memoLabel}</p><p className="text-primary">{memo}</p></div>}
               </div>
             </div>
           )}
 
           {previewTab === 'email' && (
-            <div className="bg-white rounded-xl shadow-lg p-6 min-h-[600px]">
-              <div className="flex items-center gap-1.5 mb-4"><svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><span className="text-xs font-medium text-[#585858]">{t.invoices.emailSendToday}</span></div>
-              <div className="bg-[#1a1a2e] rounded-xl p-6 text-white">
-                <div className="space-y-3 text-xs mb-6">
-                  <div className="flex"><span className="text-white/50 w-24">Subject:</span><span>{t.invoices.emailSubject}</span></div>
-                  <div className="flex"><span className="text-white/50 w-24">{t.invoices.emailPreviewLabel}</span><span>{t.invoices.emailPreviewText}</span></div>
-                  <div className="flex"><span className="text-white/50 w-24">To:</span><span className="bg-[#1F114C] px-2 py-0.5 rounded">{emailTo || orgEmail || '...'}</span></div>
-                  <div className="flex"><span className="text-white/50 w-24">From:</span><span>{t.invoices.emailFrom}</span></div>
-                </div>
-                <div className="bg-[#0f0f23] rounded-xl p-6">
-                  <div className="flex items-center gap-2 mb-4"><div className="w-8 h-8 rounded-lg bg-[#DD0C15] flex items-center justify-center"><span className="text-white text-[10px] font-bold">T</span></div><span className="text-sm font-semibold">{t.invoices.emailSenderName}</span></div>
-                  <h3 className="text-lg font-bold mb-4">{t.invoices.emailNewInvoice}</h3>
-                  <p className="text-sm text-white/70 mb-6">NEXA DEV LLC te envio la factura {invNumber}{dueDate ? ` con vencimiento el ${fmtDateLong(dueDate)}` : ''} por {fmtCurrency(subtotal, currency)}.</p>
-                  <div className="bg-[#1a1a3e] rounded-lg p-4 flex justify-between items-center mb-4">
-                    <div><span className="text-2xl font-bold">{fmtCurrency(subtotal, currency)}</span>{dueDate && <p className="text-xs text-white/50 mt-1">Vence {fmtDateLong(dueDate)}</p>}</div>
-                    <span className="text-sm font-semibold text-white/60">{invNumber}</span>
+            <div className="rounded-xl bg-white p-4 shadow-card md:min-h-[600px] md:p-6">
+              <div className="mb-4 flex items-center gap-1.5"><svg className="size-4 text-secondary" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><span className="text-callout font-medium text-secondary">{iv.emailSendToday}</span></div>
+              <dl className="mb-4 space-y-2 rounded-lg border border-border p-3 text-callout">
+                <div className="flex flex-wrap gap-x-2"><dt className="w-24 text-secondary">{iv.emailSubjectLabel}</dt><dd className="text-primary">{iv.emailSubject}</dd></div>
+                <div className="flex flex-wrap gap-x-2"><dt className="w-24 text-secondary">{iv.emailPreviewLabel}</dt><dd className="text-primary">{iv.emailPreviewText}</dd></div>
+                <div className="flex flex-wrap gap-x-2"><dt className="w-24 text-secondary">{iv.emailToLabel}</dt><dd className="break-all text-primary">{emailTo || orgEmail || '\u2014'}</dd></div>
+                <div className="flex flex-wrap gap-x-2"><dt className="w-24 text-secondary">{iv.emailFromLabel}</dt><dd className="text-primary">{iv.emailFrom}</dd></div>
+              </dl>
+              <div className="overflow-hidden rounded-xl border border-border">
+                <div className="bg-brand px-5 py-3 text-body font-semibold text-white">{iv.emailSenderName}</div>
+                <div className="p-5">
+                  <h3 className="mb-3 text-heading font-semibold text-primary">{iv.emailNewInvoice}</h3>
+                  <p className="mb-5 text-body text-secondary">{emailBody}</p>
+                  <div className="mb-4 flex items-center justify-between rounded-lg bg-surface p-4">
+                    <div><span className="text-2xl font-semibold tabular-nums text-primary">{total}</span>{dueDate && <p className="mt-1 text-callout text-secondary">{formatMessage(iv.emailDue, { date: fmtDateLong(dueDate) })}</p>}</div>
+                    <span className="text-body font-semibold text-secondary">{invNumber}</span>
                   </div>
-                  <button className="w-full bg-[#1F114C] text-white py-3 rounded-lg font-semibold text-sm">{t.invoices.payInvoiceBtn}</button>
+                  {/* Preview only: the real email carries the link. */}
+                  <div className="w-full rounded-lg bg-brand py-3 text-center text-body font-semibold text-white" aria-hidden="true">{iv.payInvoiceBtn}</div>
                 </div>
               </div>
             </div>
@@ -101,8 +121,8 @@ export function PreviewPanel({
         </>
       )}
       {step === 0 && (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center text-[#8B8B8B]"><svg className="w-16 h-16 mx-auto mb-3 text-[#EDEDED]" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg><p className="text-sm">{t.invoices.selectClientPreview}</p></div>
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center text-secondary"><svg className="mx-auto mb-3 size-12 text-muted" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg><p className="text-body">{iv.selectClientPreview}</p></div>
         </div>
       )}
     </div>

@@ -157,11 +157,11 @@ describe('invitations (D-15)', () => {
   it('a new organization named like an existing one needs an explicit confirmation', async () => {
     const { InviteOrgModal } = await import('../../apps/web/app/(admin)/platform/invitations/invite-org-modal');
     render(<InviteOrgModal onClose={vi.fn()} onSuccess={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('Email del Admin *'), { target: { value: 'admin@x.test' } });
-    fireEvent.change(screen.getByLabelText('Nombre de la Organización *'), { target: { value: 'Nova Costa Rica' } });
+    fireEvent.change(screen.getByLabelText('Email del administrador *'), { target: { value: 'admin@x.test' } });
+    fireEvent.change(screen.getByLabelText('Nombre de la organización *'), { target: { value: 'Nova Costa Rica' } });
     fireEvent.change(screen.getByLabelText(/^País/), { target: { value: 'CR' } });
     expect(screen.getByRole('alert')).toHaveTextContent('nombre parecido: Nova');
-    const submit = screen.getByRole('button', { name: 'Crear & Enviar Invitación' });
+    const submit = screen.getByRole('button', { name: 'Crear y enviar invitación' });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByLabelText('Confirmo que es una organización nueva'));
     fireEvent.click(submit);
