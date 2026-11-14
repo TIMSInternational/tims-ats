@@ -2,6 +2,7 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { candidateConsentRepository } from './candidate-consent.repository';
+import { fitOverallRangeWhere } from '@tims/ai';
 import { APPLICATION_REJECTED_AUDIT_ACTION } from './pipeline.repository';
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ const buildCandidateListSelect = (appScopeWhere: Prisma.ApplicationWhereInput, v
       where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
       orderBy: { calculatedAt: 'desc' as const },
       take: 1,
-      select: { id: true, overallScore: true, calculatedAt: true },
+      select: { id: true, overallScore: true, restrictedOverallScore: true, calculatedAt: true },
     },
     _count: { select: { applications: { where: appScopeWhere } } },
   }) satisfies Prisma.CandidateSelect;
@@ -110,7 +111,7 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput,
     fitScores: {
       where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
       orderBy: { calculatedAt: 'desc' as const },
-      select: { id: true, overallScore: true, breakdown: true, calculatedAt: true },
+      select: { id: true, overallScore: true, breakdown: true, weights: true, calculatedAt: true },
     },
     assessmentAssignments: {
       where: appScopeWhere as Prisma.AssessmentAssignmentWhereInput,
@@ -192,6 +193,7 @@ export const candidateRepository = {
       fitMin?: number;
       fitMax?: number;
     },
+    hideBelowMinimum = false,
   ) {
     const { cursor, limit, search, poolType, source, tags, skills, fitMin, fitMax } = filters;
 
@@ -221,12 +223,11 @@ export const candidateRepository = {
       filterClause.fitScores = {
         some: {
           AND: [
-            {
-              overallScore: {
-                ...(fitMin !== undefined ? { gte: fitMin } : {}),
-                ...(fitMax !== undefined ? { lte: fitMax } : {}),
-              },
-            },
+            // FIT owner default D6: a narrow-scoped reader filters on the overall it sees (@tims/ai fit-visibility).
+            fitOverallRangeWhere(
+              { ...(fitMin !== undefined ? { gte: fitMin } : {}), ...(fitMax !== undefined ? { lte: fitMax } : {}) },
+              hideBelowMinimum,
+            ),
             appScopeWhere as Prisma.FitScoreWhereInput,
             visibleFit,
           ],
@@ -674,7 +675,7 @@ export const candidateRepository = {
           where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
           orderBy: { calculatedAt: 'desc' as const },
           take: 1,
-          select: { overallScore: true },
+          select: { overallScore: true, restrictedOverallScore: true },
         },
       },
     });

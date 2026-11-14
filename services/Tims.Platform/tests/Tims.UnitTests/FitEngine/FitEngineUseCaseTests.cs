@@ -452,7 +452,8 @@ public sealed class FitEngineUseCaseTests
 
         public Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
+            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+            bool skipIfV2Configured = false)
         {
             if (WithdrawnBeforeWrite.Contains(candidateId))
             {
@@ -462,6 +463,27 @@ public sealed class FitEngineUseCaseTests
             FitScoreUpserts.Add(new FitScoreUpsert(candidateId, overallScore, breakdownJson, weightsJson, isPartial));
             return Task.FromResult(true);
         }
+
+        // v1 never takes the v2 path; a call here is a test failure.
+        public Task<bool> UpsertFitScoreV2Async(
+            Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
+            Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
+            bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null) =>
+            throw new InvalidOperationException("the v1 tests never reach the FIT v2 write");
+
+        // The in-lock read sees the vacancy as the fake stores it.
+
+        public async Task<string?> GetFitRequirementsInLockAsync(
+
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+
+            (await GetVacancyForFitAsync(organizationId, vacancyId, cancellationToken))?.FitRequirements;
+
+
+        public Task<string?> UpsertFitRequirementsAsync(
+            Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("the v1 tests never write fit_requirements");
 
         public Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
             Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
@@ -493,6 +515,14 @@ public sealed class FitEngineUseCaseTests
         public Task<IReadOnlyList<WeightProfileData>> ListWeightProfilesAsync(
             Guid organizationId, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<WeightProfileData>>([]);
+
+        public Task<IReadOnlyList<CandidateFitScoreData>> GetFitScoresForCandidateAsync(
+            Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<CandidateFitScoreData>>([]);
+
+        public Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
+            Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FitReviewStateData>>([]);
 
         public Task<ExplainFitRowData?> GetFitScoreForExplainAsync(
             Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken) =>

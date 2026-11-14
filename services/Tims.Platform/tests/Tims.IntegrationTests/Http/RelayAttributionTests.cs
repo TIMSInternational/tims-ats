@@ -268,6 +268,77 @@ public sealed class RelayAttributionTests
         Assert.NotEqual(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
     }
 
+    // Round 11: the empty-body 401 the round-10 e2e saw on /api/platform/assessments/provider-attempts left no trace in
+    // C#, because every relay refusal is written before Serilog's request logging. Each refusal now logs its reason
+    // (and the clock difference for a timestamp refusal, the auth failure type for an unauthenticated bearer); the
+    // response stays an empty 401.
+    [Fact]
+    public async Task Each_refusal_logs_its_reason_and_stays_an_empty_401()
+    {
+        async Task<string> RefusalAsync(HttpContext context, IRelayNonceStore nonces)
+        {
+            var log = new ListLogger();
+            var called = false;
+            await new RelayAttributionMiddleware(_ => { called = true; return Task.CompletedTask; }, log).InvokeAsync(
+                context,
+                Options.Create(new PlatformOptions { ImpersonationSecret = Secret }),
+                nonces,
+                new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = "Development" },
+                new ConfigurationBuilder().Build());
+            Assert.False(called);
+            Assert.Equal(401, context.Response.StatusCode);
+            Assert.False(context.Response.HasStarted);
+            var entry = Assert.Single(log.Entries);
+            Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Warning, entry.Level);
+            Assert.DoesNotContain("q=a", entry.Message, StringComparison.Ordinal); // never the query
+            return entry.Message;
+        }
+
+        // A web host whose clock runs ahead of the API's by more than 5 s (two containers, two clocks).
+        var future = await RefusalAsync(Request(Envelope("203.0.113.1", age: -12)), new Nonces());
+        Assert.Contains("FromTheFuture", future, StringComparison.Ordinal);
+        Assert.Contains("skew 12s", future, StringComparison.Ordinal);
+        Assert.Contains("GET /test", future, StringComparison.Ordinal);
+
+        var stale = await RefusalAsync(Request(Envelope("203.0.113.1", age: 100)), new Nonces());
+        Assert.Contains("Stale", stale, StringComparison.Ordinal);
+        Assert.Contains("skew -100s", stale, StringComparison.Ordinal);
+
+        var used = new Nonces();
+        var once = Envelope("203.0.113.1");
+        await Run(Request(once), used, _ => Task.CompletedTask);
+        Assert.Contains("NonceRejected", await RefusalAsync(Request(once), used), StringComparison.Ordinal);
+
+        Assert.Contains("PathMismatch", await RefusalAsync(
+            Request(Envelope("203.0.113.1", path: "/other")), new Nonces()), StringComparison.Ordinal);
+
+        // An expired or otherwise invalid bearer: JwtBearer leaves the user anonymous and records why.
+        var expired = Request(Envelope("203.0.113.1"));
+        expired.User = new ClaimsPrincipal(new ClaimsIdentity());
+        expired.Features.Set<Microsoft.AspNetCore.Authentication.IAuthenticateResultFeature>(
+            new AuthenticateResultFeature(Microsoft.AspNetCore.Authentication.AuthenticateResult.Fail(
+                new Microsoft.IdentityModel.Tokens.SecurityTokenExpiredException("expired"))));
+        var unauthenticated = await RefusalAsync(expired, new Nonces());
+        Assert.Contains("Unauthenticated", unauthenticated, StringComparison.Ordinal);
+        Assert.Contains("SecurityTokenExpiredException", unauthenticated, StringComparison.Ordinal);
+    }
+
+    private sealed class AuthenticateResultFeature(Microsoft.AspNetCore.Authentication.AuthenticateResult result)
+        : Microsoft.AspNetCore.Authentication.IAuthenticateResultFeature
+    {
+        public Microsoft.AspNetCore.Authentication.AuthenticateResult? AuthenticateResult { get; set; } = result;
+    }
+
+    private sealed class ListLogger : Microsoft.Extensions.Logging.ILogger<RelayAttributionMiddleware>
+    {
+        public List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, formatter(state, exception)));
+    }
+
     private sealed class Nonces : IRelayNonceStore
     {
         private readonly HashSet<string> _seen = [];

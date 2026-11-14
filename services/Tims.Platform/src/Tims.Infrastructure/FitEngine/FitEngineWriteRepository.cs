@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using NpgsqlTypes;
 using Tims.Application.FitEngine;
+using Tims.Infrastructure.CandidateConsent;
 
 namespace Tims.Infrastructure.FitEngine;
 
@@ -158,17 +159,9 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     public async Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken)
+        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+        bool skipIfV2Configured = false)
     {
-        const string sql =
-            "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, breakdown, "
-            + "weights, is_partial, calculated_at, created_at, updated_at) "
-            + "VALUES (@id, @org, @cand, @vac, @score, @breakdown, @weights, @partial, @now, @now, @now) "
-            + "ON CONFLICT (candidate_id, vacancy_id) "
-            + "DO UPDATE SET overall_score = EXCLUDED.overall_score, breakdown = EXCLUDED.breakdown, "
-            + "weights = EXCLUDED.weights, is_partial = EXCLUDED.is_partial, "
-            + "calculated_at = EXCLUDED.calculated_at, updated_at = EXCLUDED.updated_at";
-
         await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
             .ConfigureAwait(false);
 
@@ -176,9 +169,8 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         // (CandidateConsentRepository.WithdrawOneAsync), then a re-check — a withdrawal that committed after the
         // pre-loop check (or one waiting on this lock) is seen here, so the score is not written. A withdrawal on a
         // same-email row takes that row's lock instead; the email-aware re-check still sees it once committed.
-        var lockKey = candidateId.ToString();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken).ConfigureAwait(false);
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidateId, cancellationToken)
+            .ConfigureAwait(false);
         var withdrawn = await QueryWithdrawnAsync(organizationId, [candidateId], cancellationToken)
             .ConfigureAwait(false);
         if (withdrawn.Count > 0)
@@ -187,10 +179,73 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
             return false;
         }
 
+        if (skipIfV2Configured)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock_shared(hashtextextended({FitV2RequirementsLockKey(organizationId, vacancyId)}, 0))",
+                cancellationToken).ConfigureAwait(false);
+            var nowV2 = await _db.Database.SqlQuery<bool>(
+                    $"SELECT EXISTS (SELECT 1 FROM job_profiles WHERE organization_id = {organizationId} AND vacancy_id = {vacancyId} AND jsonb_typeof(fit_requirements) = 'object' AND fit_requirements ? 'assessments') AS \"Value\"")
+                .SingleAsync(cancellationToken).ConfigureAwait(false);
+            if (nowV2)
+            {
+                await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return false;
+            }
+        }
+
+        await ExecuteFitScoreUpsertAsync(
+            organizationId, candidateId, vacancyId, overallScore, breakdownJson, weightsJson, isPartial, now,
+            restrictedOverallScore: null, cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task<bool> FitScoreExistsAsync(
+        Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            FitScoreExistsSql,
+            (NpgsqlConnection)_db.Database.GetDbConnection(),
+            (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction());
+        command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+        command.Parameters.Add(new NpgsqlParameter("cand", NpgsqlDbType.Uuid) { Value = candidateId });
+        command.Parameters.Add(new NpgsqlParameter("vac", NpgsqlDbType.Uuid) { Value = vacancyId });
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    // getPipelineCandidateIds for ONE candidate, on the caller's open TenantScope transaction: does the candidate hold
+    // an active application for the vacancy? (status = 'active' is a literal on a plain-String column.)
+    private async Task<bool> HasActiveApplicationAsync(
+        Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(
+            ActiveApplicationExistsSql,
+            (NpgsqlConnection)_db.Database.GetDbConnection(),
+            (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction());
+        command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+        command.Parameters.Add(new NpgsqlParameter("cand", NpgsqlDbType.Uuid) { Value = candidateId });
+        command.Parameters.Add(new NpgsqlParameter("vac", NpgsqlDbType.Uuid) { Value = vacancyId });
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false))!;
+    }
+
+    // The fit_scores upsert, on the caller's open TenantScope transaction. The C# engine knows both FIT versions, so
+    // it marks its write (transaction-local) for the fit_scores_keep_v2 trigger (migration
+    // 20261109100000_fit_v2_integrity): only a writer that does NOT set this is kept from replacing a v2 row with v1.
+    private async Task ExecuteFitScoreUpsertAsync(
+        Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
+        string weightsJson, bool isPartial, DateTimeOffset now, double? restrictedOverallScore,
+        CancellationToken cancellationToken)
+    {
         var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
         var transaction = (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
 
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        await using (var mark = new NpgsqlCommand(FitV2AwareWriterSql, connection, transaction))
+        {
+            await mark.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var command = new NpgsqlCommand(FitScoreUpsertSql, connection, transaction);
         command.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = Guid.NewGuid() });
         command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
         command.Parameters.Add(new NpgsqlParameter("cand", NpgsqlDbType.Uuid) { Value = candidateId });
@@ -199,12 +254,135 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         command.Parameters.Add(new NpgsqlParameter("breakdown", NpgsqlDbType.Jsonb) { Value = breakdownJson });
         command.Parameters.Add(new NpgsqlParameter("weights", NpgsqlDbType.Jsonb) { Value = weightsJson });
         command.Parameters.Add(new NpgsqlParameter("partial", NpgsqlDbType.Boolean) { Value = isPartial });
+        command.Parameters.Add(new NpgsqlParameter("restricted", NpgsqlDbType.Double)
+        {
+            Value = restrictedOverallScore is { } restricted ? restricted : DBNull.Value,
+        });
         command.Parameters.Add(new NpgsqlParameter("now", NpgsqlDbType.Timestamp) { Value = ToTimestamp(now) });
 
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> UpsertFitScoreV2Async(
+        Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
+        Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
+        bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null)
+    {
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
+            .ConfigureAwait(false);
+
+        // #312 first (the same lock and re-check as the v1 write), so the lock order is always consent → FIT v2.
+        await CandidateConsentLocks.LockCandidateAndSiblingsAsync(_db.Database, organizationId, candidateId, cancellationToken)
+            .ConfigureAwait(false);
+        var withdrawn = await QueryWithdrawnAsync(organizationId, [candidateId], cancellationToken)
+            .ConfigureAwait(false);
+        if (withdrawn.Count > 0)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
+        // The FIT v2 lock: every v2 compute for this (org, candidate, vacancy) reads its results and writes the row
+        // while holding it, so no compute can write a value read before another compute's write. It does not rely
+        // on the consent lock above, which serves a different purpose.
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({FitV2LockKey(organizationId, candidateId, vacancyId)}, 0))",
+            cancellationToken).ConfigureAwait(false);
+        // The vacancy's requirements lock, SHARED (the job_profiles requirements trigger takes it exclusively): the
+        // callbacks read the requirements in the lock, so an edit either waits for this write and re-queues its row, or
+        // committed before it and is what this write reads (Codex ats run 3 [P1]).
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock_shared(hashtextextended({FitV2RequirementsLockKey(organizationId, vacancyId)}, 0))",
+            cancellationToken).ConfigureAwait(false);
+
+        // A recompute keeps an existing row current, and creates one only when createIfMissing says so (a provider
+        // result for a pipeline candidate, round 11). Checked under the lock: a first compute still in flight holds
+        // it, so its row is visible here once it commits.
+        if (onlyIfRowExists
+            && !await FitScoreExistsAsync(organizationId, candidateId, vacancyId, cancellationToken).ConfigureAwait(false)
+            && (createIfMissing is null
+                || !await HasActiveApplicationAsync(organizationId, candidateId, vacancyId, cancellationToken)
+                    .ConfigureAwait(false)
+                || !await createIfMissing(cancellationToken).ConfigureAwait(false)))
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
+        // The in-lock read and evaluation, on this open transaction. A throw or a cancellation here (or in the write
+        // below) disposes the scope without a commit: rollback, and the stored row is untouched.
+        var write = await buildInLock(cancellationToken).ConfigureAwait(false);
+        if (write is null)
+        {
+            await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return false;
+        }
+
+        await ExecuteFitScoreUpsertAsync(
+            organizationId, candidateId, vacancyId, write.OverallScore, write.BreakdownJson, weightsJson,
+            write.IsPartial, now, write.RestrictedOverallScore, cancellationToken).ConfigureAwait(false);
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
+
+    public async Task<string?> UpsertFitRequirementsAsync(
+        Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        // The merge happens in the statement itself: a concurrent writer can never make this drop an array it did not
+        // see. disc_targets/competencies are NOT NULL with a '{}' Prisma default (client-side), so the insert sets them.
+        const string sql =
+            "INSERT INTO job_profiles (id, organization_id, vacancy_id, disc_targets, competencies, fit_requirements, "
+            + "created_at, updated_at) "
+            + "VALUES (@id, @org, @vac, '{}'::jsonb, '{}'::jsonb, @fit, @now, @now) "
+            + "ON CONFLICT (vacancy_id) DO UPDATE SET "
+            + "fit_requirements = CASE WHEN @replace THEN EXCLUDED.fit_requirements "
+            + "ELSE EXCLUDED.fit_requirements || CASE "
+            + "WHEN jsonb_typeof(job_profiles.fit_requirements) = 'object' AND job_profiles.fit_requirements ? 'assessments' "
+            + "THEN jsonb_build_object('assessments', job_profiles.fit_requirements -> 'assessments') "
+            + "ELSE '{}'::jsonb END END, "
+            + "updated_at = EXCLUDED.updated_at "
+            + "WHERE job_profiles.organization_id = @org "
+            + "RETURNING fit_requirements::text";
+
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken)
+            .ConfigureAwait(false);
+        var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
+        var transaction = (NpgsqlTransaction)_db.Database.CurrentTransaction!.GetDbTransaction();
+
+        // This writer understands `assessments` (it removes the key only on an explicit null): mark it for the
+        // job_profiles_keep_assessments trigger, which keeps the array against every other writer.
+        await using (var mark = new NpgsqlCommand(FitV2AwareWriterSql, connection, transaction))
+        {
+            await mark.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.Add(new NpgsqlParameter("id", NpgsqlDbType.Uuid) { Value = Guid.NewGuid() });
+        command.Parameters.Add(new NpgsqlParameter("org", NpgsqlDbType.Uuid) { Value = organizationId });
+        command.Parameters.Add(new NpgsqlParameter("vac", NpgsqlDbType.Uuid) { Value = vacancyId });
+        command.Parameters.Add(new NpgsqlParameter("fit", NpgsqlDbType.Jsonb) { Value = fitRequirementsJson });
+        command.Parameters.Add(new NpgsqlParameter("replace", NpgsqlDbType.Boolean) { Value = replaceAssessments });
+        command.Parameters.Add(new NpgsqlParameter("now", NpgsqlDbType.Timestamp) { Value = ToTimestamp(now) });
+
+        var stored = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return stored;
+    }
+
+    /// <summary>The FIT v2 per-(organization, candidate, vacancy) advisory-lock key text.</summary>
+    public static string FitV2LockKey(Guid organizationId, Guid candidateId, Guid vacancyId) =>
+        $"fit_v2:{organizationId}:{candidateId}:{vacancyId}";
+
+    /// <summary>The key the job_profiles requirements trigger (20261113090000) takes exclusively.</summary>
+    public static string FitV2RequirementsLockKey(Guid organizationId, Guid vacancyId) =>
+        $"fit_v2_requirements:{organizationId}:{vacancyId}";
+
+    public async Task<string?> GetFitRequirementsInLockAsync(
+        Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+        await _db.Database.SqlQuery<string?>(
+                $"SELECT fit_requirements::text AS \"Value\" FROM job_profiles WHERE organization_id = {organizationId} AND vacancy_id = {vacancyId}")
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
     public async Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
         Guid organizationId, Guid vacancyId, CancellationToken cancellationToken)
@@ -241,14 +419,23 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
 
     // The withdrawn-consent query, run on the caller's open TenantScope transaction (the pre-loop check and the
     // per-candidate re-check inside the upsert share it).
-    private async Task<HashSet<Guid>> QueryWithdrawnAsync(
-        Guid organizationId, List<Guid> ids, CancellationToken cancellationToken)
+    private Task<HashSet<Guid>> QueryWithdrawnAsync(
+        Guid organizationId, List<Guid> ids, CancellationToken cancellationToken) =>
+        QueryWithdrawnAsync(_db, organizationId, ids, cancellationToken);
+
+    /// <summary>
+    /// #312: which of <paramref name="ids"/> have a withdrawn recruitment consent (directly or through a same-org
+    /// candidate with the same normalized email), on the caller's open TenantScope transaction. Shared by the FIT
+    /// writes and essay grading (<see cref="EssayGradingRepository"/>).
+    /// </summary>
+    internal static async Task<HashSet<Guid>> QueryWithdrawnAsync(
+        FitEngineWriteDbContext db, Guid organizationId, List<Guid> ids, CancellationToken cancellationToken)
     {
         var withdrawn = new HashSet<Guid>();
 
         // (1) Direct: the candidate itself is the withdrawn subject. Independent of the candidates table, so a
         //     pipeline id with no (or a soft-deleted) candidate row is still caught.
-        var direct = await _db.DataConsents.AsNoTracking()
+        var direct = await db.DataConsents.AsNoTracking()
             .Where(dc => dc.OrganizationId == organizationId
                 && dc.ConsentType == RecruitmentConsentType
                 && dc.WithdrawnAt != null
@@ -264,14 +451,14 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
         //     normalized email never groups rows (it identifies nobody). Both sides explicitly org-filtered; RLS
         //     under TenantScope is the second layer.
         var viaEmail = await (
-                from target in _db.Candidates.AsNoTracking()
+                from target in db.Candidates.AsNoTracking()
                 where target.OrganizationId == organizationId
                     && ids.Contains(target.Id)
                     && target.Email.Trim() != string.Empty
-                    && _db.DataConsents.Any(dc => dc.OrganizationId == organizationId
+                    && db.DataConsents.Any(dc => dc.OrganizationId == organizationId
                         && dc.ConsentType == RecruitmentConsentType
                         && dc.WithdrawnAt != null
-                        && _db.Candidates.Any(other => other.OrganizationId == organizationId
+                        && db.Candidates.Any(other => other.OrganizationId == organizationId
                             && other.Id == dc.SubjectUserId
                             && other.Email.Trim().ToLower() == target.Email.Trim().ToLower()))
                 select target.Id)
@@ -284,6 +471,28 @@ public sealed class FitEngineWriteRepository(FitEngineWriteDbContext db) : IFitE
     // data_consents.consent_type for candidate recruitment processing (#312/#313) — mirrors
     // CandidateConsentConstants.ConsentType; duplicated so FitEngine does not depend on the consent slice.
     private const string RecruitmentConsentType = "recruitment_data_processing";
+
+    /// <summary>The transaction-local marker the fit_scores_keep_v2 trigger accepts as a FIT v2-aware writer.</summary>
+    public const string FitV2AwareWriterSql = "SELECT set_config('tims.fit_writer', 'fit_v2_aware', true)";
+
+    private const string ActiveApplicationExistsSql =
+        "SELECT EXISTS (SELECT 1 FROM applications WHERE organization_id = @org AND candidate_id = @cand "
+        + "AND vacancy_id = @vac AND status = 'active')";
+
+    private const string FitScoreExistsSql =
+        "SELECT EXISTS (SELECT 1 FROM fit_scores WHERE organization_id = @org AND candidate_id = @cand "
+        + "AND vacancy_id = @vac)";
+
+    // restricted_overall_score (migration 20261109100000_fit_v2_integrity): the D6 overall of a v2 row, NULL otherwise.
+    private const string FitScoreUpsertSql =
+        "INSERT INTO fit_scores (id, organization_id, candidate_id, vacancy_id, overall_score, restricted_overall_score, "
+        + "breakdown, weights, is_partial, calculated_at, created_at, updated_at) "
+        + "VALUES (@id, @org, @cand, @vac, @score, @restricted, @breakdown, @weights, @partial, @now, @now, @now) "
+        + "ON CONFLICT (candidate_id, vacancy_id) "
+        + "DO UPDATE SET overall_score = EXCLUDED.overall_score, "
+        + "restricted_overall_score = EXCLUDED.restricted_overall_score, breakdown = EXCLUDED.breakdown, "
+        + "weights = EXCLUDED.weights, is_partial = EXCLUDED.is_partial, "
+        + "calculated_at = EXCLUDED.calculated_at, updated_at = EXCLUDED.updated_at";
 
     // Prisma `timestamp(3) without time zone` stores UTC wall-clock; Npgsql rejects a Kind=Utc DateTime for it,
     // so bind the UTC wall-clock as Unspecified-kind, ms-truncated (what a JS `new Date()` persists) — matches

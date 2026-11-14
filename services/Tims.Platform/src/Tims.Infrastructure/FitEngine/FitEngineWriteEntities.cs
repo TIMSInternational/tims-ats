@@ -60,6 +60,12 @@ public sealed class FitAssessmentAssignmentWriteEntity
 
     public Guid VacancyId { get; set; }
 
+    /// <summary>Read ONLY by the FIT v2 native-quiz adapter (integrity: anything but 'completed' needs review).</summary>
+    public string Status { get; set; } = null!;
+
+    /// <summary>Read ONLY by the FIT v2 native-quiz adapter: which quiz (each quiz is judged on its own latest result).</summary>
+    public Guid AssessmentTypeId { get; set; }
+
     public DateTime? CompletedAt { get; set; }
 }
 
@@ -68,9 +74,40 @@ public sealed class FitAssessmentResultWriteEntity
 {
     public Guid Id { get; set; }
 
+    /// <summary>Read ONLY by the FIT v2 native-quiz adapter's explicit tenant filter.</summary>
+    public Guid OrganizationId { get; set; }
+
     public Guid AssignmentId { get; set; }
 
     public double? NormalizedScore { get; set; }
+
+    /// <summary>
+    /// The jsonb <c>breakdown</c>, read ONLY by the FIT v2 native-quiz adapter for <c>pendingManual</c> (question ids
+    /// awaiting manual grading). The TS submission writes <c>{ autoScored, pendingManual }</c> and completes the
+    /// assignment in the same transaction, with <c>normalized_score</c> over the auto-scored questions only.
+    /// </summary>
+    public string? Breakdown { get; set; }
+}
+
+/// <summary>
+/// proctoring_sessions — FIT v2 reads only <c>severity</c> (max of the staff-flagged events: low/medium/high/
+/// critical), 1-1 on assignment_id. A high or critical session makes the result "needs review".
+/// </summary>
+public sealed class FitProctoringSessionReadEntity
+{
+    public Guid Id { get; set; }
+
+    public Guid OrganizationId { get; set; }
+
+    public Guid AssignmentId { get; set; }
+
+    public string? Severity { get; set; }
+
+    /// <summary>
+    /// The review-completion signal (migration 20261109100000_fit_v2_integrity): unreviewed | clear | concern |
+    /// inconclusive. Only <c>clear</c> releases a high/critical session's result.
+    /// </summary>
+    public string ReviewStatus { get; set; } = null!;
 }
 
 /// <summary>ai_interview_sessions — fitScore + createdAt only (status, a native enum, deliberately unmapped).</summary>

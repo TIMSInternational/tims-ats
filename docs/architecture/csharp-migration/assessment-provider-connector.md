@@ -1,0 +1,715 @@
+# AS-5: the TIMS Assessments provider connector
+
+Status: implemented, dark (`Platform:AssessmentProvidersEnabled=false`). The migration is committed and **not applied**.
+Proven locally on 2026-11-09, not in production: against a real tims-suite `/v1` (release/assessments-v1 at b8e3b6dc,
+contract e583dd8) running on one machine, `apps/web/e2e/assessments-cross` drives binding, the vacancy's tests, apply,
+assign, candidate consent (with and without the optional voice consents), the hosted player for LIA, English and
+Personality, signed webhooks, result intake, FIT v2, the HR and team-leader (D6) views, cancel, expiry, consent
+withdrawal and DSAR export and erasure: 14 of 14 hops pass. Not proven: anything that needs AWS (the English speaking
+upload and its AI scoring, the ITC-IA judge), the framed player, approved (non-draft) consent texts, and any
+production deployment. Production remains unproven.
+
+Sources:
+
+- the AS-5 work package in `assessments-integration-2026-11-06` §7.C;
+- the headless direction in `assessment-platform-headless-2026-11-07` §2.4 and §6;
+- the contract on `TIMSInternational/tims-interop` branch `feat/assessments-v1-contract`: `contracts/openapi/tims-assessments.v1.yaml`, `schemas/assessments/**` and `contracts/events/assessments-*`.
+
+## What changed from the AS-5 plan
+
+The 11-06 plan had native MIL instruments in the ATS, and it wrote one `assessment_assignments` row per instrument.
+Here every instrument is a **remote** provider, and provider attempts live only in the new tables:
+
+- **`assessment_assignments` and `assessment_results` are not written.** The TS candidate portal lists those rows
+  and would try to run a provider attempt as a native quiz. Keeping them apart means the native-quiz flow, and its
+  in-flight sessions, are untouched. The HR read surfaces (AS-7) read the new tables.
+- **The per-org instrument enablement is a column of the binding** (`enabled_instruments`), not its own table.
+- **There is no local catalog.** The provider's `GET /v1/catalog/instruments` is the catalog. A binding may enable
+  only instruments that the catalog offers for `selection`.
+
+## Routes (all dark)
+
+| Route                                                                                                 | Who                                                                             | Notes                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /assessments/provider-assignments`                                                              | staff, `assessment:create` plus the vacancy IDOR probe                          | 1–6 instruments, the reason for each, the accommodations, an optional expiry. Each item echoes the locale, multiplier and aids in force                                |
+| `POST /assessments/provider-assignments/{attemptId}/cancel`                                           | staff, `assessment:update` plus the vacancy IDOR probe on the attempt's vacancy | Cancels an attempt whose sitting has not finished, at the provider first. Unknown, foreign and out-of-scope ids are the same 404                                       |
+| `POST /platform/assessment-providers/bindings`                                                        | platform owner                                                                  | Creates or reuses the provider tenant (idempotent on the org) and sets the enabled instruments                                                                         |
+| `GET /assessments/provider-catalog?vacancyId=`                                                        | staff, `assessment:read` (+ the vacancy scope probe with `vacancyId`)           | The instruments this org may assign (binding AND catalog for selection), with delivery, locales, consents, versions and the version the vacancy is pinned to           |
+| `GET /assessments/provider-attempts?candidateId=`                                                     | staff, `assessment:read`; out-of-scope vacancies omitted                        | Status chip, how the vacancy counts it (D3, D20) and the result (validity, reviewPending, minimum met). D6: below company scope, no level, reasons or accommodation    |
+| `GET /assessments/provider-attempts/{attemptId}/reports`                                              | staff, `assessment:read` at company scope or wider (D6) + the vacancy probe     | The PDF reports the attempt's latest result offers: the results report of a native test (`variant: null`) and the variants the `full` projection lists (PCA)         |
+| `GET /assessments/provider-attempts/{attemptId}/report?variant=&locale=`                              | staff, as above                                                                 | One report as `application/pdf`, `private, no-store`, audited (`assessment_provider_report_downloaded`); 404 `report_unavailable`, 503 when the provider is down        |
+| `POST /portal/assessment-attempts/{attemptId}/launch`                                                 | the candidate, by confirmed email                                               | Optional per-purpose consents and `embedded`. Returns the hosted launch (D16): the player's single-use URL and its frame ancestors, body only. Rate limit: `auth` tier |
+| `GET /portal/assessment-attempts?organizationSlug=`                                                   | the candidate, by confirmed email                                               | The candidate's own attempts at that org, one coarse status each (D9), the consent purposes still missing, the start deadline                                          |
+| `GET /portal/assessment-attempts/{attemptId}/consent-templates?locale=es\|en`                         | the candidate, by confirmed email                                               | The provider's consent templates for the purposes the attempt still needs; 404 unless it is the candidate's and needs consent                                          |
+| `POST /webhooks/tims-assessments`                                                                     | anonymous, HMAC                                                                 | `TIMS-Signature`, a 300 s replay window; a `TIMS-Event-Id` that differs from the signed body is a 400; de-duplication on the body's `event_id`                         |
+| `GET /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export`   | platform owner                                                                  | DSAR access: the ATS's provider tables for one candidate plus the provider's own export of each of its subjects, audited fail-closed, `no-store` (D15)                 |
+| `POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure` | platform owner                                                                  | `DELETE /v1/subjects/{id}` for each provider subject of the candidate; 202 when all were accepted, 503 to retry (D15). Every run audited (`assessment_provider_erasure_run`) |
+| `GET /platform/assessment-providers/organizations/{organizationId}/binding`                           | platform owner                                                                  | Round 12: the binding (in force or not), tenant, tests, locale, and the open work an unbind would strand. `no-store`                                                     |
+| `POST /platform/assessment-providers/organizations/{organizationId}/binding/unbind`                   | platform owner                                                                  | Round 12: `{ cancelOpenAttempts }`. 409 `binding_has_open_work` (nothing changed) while open work remains; confirmed, it cancels unfinished sittings first             |
+
+## Hiring guardrails, and where each one is enforced
+
+- **Job-relatedness.**
+  - The vacancy must list the instrument in `job_profiles.fit_requirements.assessments[]`.
+  - The vacancy's `reason` wins over HR's. With neither, the request is refused.
+  - Implemented in `JobRelatedness` and `AssignProviderInstrumentsUseCase`.
+- **#312 withdrawal.**
+  - Checked at assign, and again inside the reserve transaction under the withdrawal's own
+    `pg_advisory_xact_lock(hashtextextended(candidate_id))`.
+  - Checked again at **every** launch.
+  - The predicate is the FIT engine's: the candidate, or a same-org candidate with the same `lower(btrim(email))`.
+  - **It reaches the provider (owner default D15, 2026-11-08).** The withdrawal's own transaction, under the same
+    candidate lock, runs `ProviderWithdrawalSql`: every attempt of the candidate (and of a same-email sibling) gets
+    `withdrawal_state = pending`; one that has not finished is cancelled, and one mapped to a provider assignment gets
+    `provider_cancel_pending`. Registered only when `Platform:AssessmentProvidersEnabled` is on (the tables must exist).
+    After the commit, `ProviderConsentWithdrawalUseCase` looks up unmapped attempts by `external_ref`, cancels the
+    orphans, withdraws every active provider consent of each subject (`POST .../consents/{id}/withdrawal`) and only
+    then moves the attempt to `done` by a conditional write. A failed step stays `pending`: every webhook for such an
+    attempt drives another pass and answers 503 until it is confirmed (the provider's redelivery is the queue).
+  - No result is fetched for an attempt in the cascade, and `StoreResultAsync` re-checks the withdrawal under the
+    candidate lock (lock order subject -> attempt -> candidate), so a result fetched before a withdrawal committed is
+    not stored after it.
+- **Consent per purpose.**
+  - The portal sends the purposes the candidate accepted.
+  - Each one is recorded at the provider, with an `audit_logs` row whose id is the provider's `host_record_ref`.
+  - Where the gate is enforced is the provider's. For a **link-out** instrument (PCA) the launch itself answers
+    `consent_required`, and the ATS returns the missing purposes. For a **native** instrument the contract checks
+    consents when the session starts, not at launch.
+  - So the ATS keeps the provider's `missing_consents` on the attempt (at create, on every poll, on a launch's
+    `consent_required`, minus each purpose a launch recorded), and the portal shows **consent needed** until it is
+    empty: the provider's counsel-reviewed templates (`GET /v1/catalog/consent-templates/{purpose}`) as plain text, one
+    acceptance each, then the launch records each purpose against the exact `text_version` shown.
+- **No automatic rejection.** Nothing here rejects a candidate. Results feed FIT v2 as values or as `needs_review`.
+- **Server-authoritative timing and scoring; no keys on the wire.** These are the provider's job by contract.
+  - The ATS stores only the typed result (percentile / CEFR / level, versions, validity) and the provider's `scores`
+    object for HR.
+  - The parser refuses `scores` on a summary projection.
+- **Age attestation.** The amended contract requires `age_attestation` on every create, and the provider never
+  defaults it. HR attests the band on the assign request (`ageBand`: `18_plus` or `16_17`, required; never an age or a
+  date of birth); it is stored on the attempt (part of its terms: another band is a terms conflict) and sent with every
+  create. A pending attempt without one is refused locally (`age_attestation_required`) before anything is sent; 422
+  `age_band_not_supported` is a definitive refusal.
+- **Accommodations.**
+  - Stored and sent: a `time_multiplier` from 1 to 3, and allowed `aids` codes.
+  - Never stored or sent: a reason or a diagnosis.
+  - A re-send whose accommodation (or locale, or reason) differs from the open attempt's is a 409
+    `open_attempt_terms_differ` naming that attempt, never a 200 that keeps the old terms. HR cancels the attempt
+    (the cancel route) and assigns again. The expiry is not compared; the response echoes the one in force.
+- **Integrity.** `ProviderFitMapping` rules:
+  - One entry per instrument: the most recently assigned attempt that was not cancelled decides.
+  - Only a `valid` `selection` result on a `result_ready` attempt that is not flagged for review, sat at exactly the
+    time multiplier it was assigned with, is `Valid`.
+  - Voided or review results, and a multiplier mismatch, are `NeedsReview`, with no value.
+  - `development` results are never reported.
+- **Visibility.** Results are fetched with `audience=tenant_hr`, and the provider enforces the level. A
+  `result_not_visible` answer stores nothing, and it DELETES a copy of that result stored earlier (round 12, Codex
+  round 11 P1: a tenant that lowers its `tenant_hr` visibility after a result was delivered). The attempt's latest
+  result is cleared, staff reads and FIT stop using it at once, and the deletion enqueues the candidate's FIT v2
+  recompute (migration `20261109233537_assessment_provider_round12` makes the provider result trigger fire on DELETE).
+  Audit action `assessment_provider_result_hidden`.
+- **Audit.** Every write to an attempt, a result or a binding appends its `audit_logs` row in the same transaction.
+  The cases:
+  - assign (the reserve);
+  - the provider ids attached (`created`, or `erased` when a tombstone exists);
+  - a failed create, refused (cancelled) or still pending;
+  - consent capture;
+  - launch;
+  - each webhook state change;
+  - a received result;
+  - a staff cancel;
+  - an erasure;
+  - a binding.
+
+  The webhook inbox is not audited row by row: it is itself the delivery record. Metadata holds ids, versions,
+  codes and states only.
+
+- **Same version for every candidate of a vacancy** (design §6.3). A new attempt takes the version the EARLIEST
+  attempt of the same vacancy and instrument carries (any state), stored on the row at reserve so every re-send of its
+  create carries the same body, and the create sends it as `instrument_version`. The vacancy's first attempt sends
+  none (the provider pins its current GA); the provider also refuses a different version for the vacancy
+  (409 `vacancy_version_mismatch`).
+- **In-flight sessions.**
+  - The provider pins the instrument and content version on the assignment.
+  - The ATS stores both on the attempt and on the result.
+
+## Idempotency and crash safety
+
+- **Assign.**
+  1. Reserve `pending_create` attempts in one transaction: all instruments or none. A partial unique index allows
+     at most one open attempt per candidate + vacancy + instrument.
+  2. Call the provider with `external_ref = <attemptId>` and `Idempotency-Key = ats-attempt-<attemptId>`. An attempt
+     that was already sent once (not reserved by this request) is first looked up with
+     `GET /v1/assignments?tenant_id=&external_ref=<attemptId>` (owner default D11, 2026-11-08): a found assignment is
+     recorded, and only an empty lookup sends the create. A failed lookup keeps the attempt pending and sends nothing.
+     This closes the case where the 24 h `Idempotency-Key` window expired; the provider also keeps
+     (tenant, external_ref) unique permanently.
+  3. Only a contract refusal that proves nothing was created (`ProviderFailure.IsDefinitiveRefusal`:
+     `invalid_request`, `not_found`, `vacancy_version_mismatch`, the 422 validation codes, ...) cancels the attempt.
+  4. Everything else keeps it `pending_create`, and re-sending the same request replays the same key: an outage, a
+     timeout, 429, 5xx, a concurrent request still creating it (409 `idempotency_key_in_use`), a reused key, an
+     off-contract 2xx, an unknown code.
+  5. A staff cancel of a `pending_create` attempt is local. A local cancel lands only while the attempt still names
+     the provider assignment the caller cancelled (or none): if the create was answered between the caller's read
+     and its lock, that assignment is cancelled at the provider first.
+  6. If the create was still in flight when the attempt was cancelled, its answer is recorded on the cancelled
+     attempt (provider ids, `last_error_code = provider_cancel_pending`, audited) and cancelled at the provider. Only
+     a confirmed cancel (or a 404/410) clears the marker. Until then the staff cancel route retries it (503 while the
+     provider is down) and so does any webhook for that assignment (503 to the sender, which redelivers). A crash
+     before the answer was recorded is caught by reconciliation instead.
+- **Subject and tenant keys** carry a hash of the request body, because the contract rejects one key with two bodies.
+  A new key updates nothing: an existing subject comes back unchanged; only `PATCH /v1/subjects/{id}` changes it.
+- **Subject PII.** Names and email go to the provider for every subject of an org whose binding enables a link-out
+  instrument (PCA), and never otherwise. A PCA whose provider subject lacks them (created before the org enabled
+  PCA) is enriched with `PATCH /v1/subjects/{id}` (scope `subjects:write`) before the assignment is created, and a
+  link-out launch answered 422 `subject_data_required` is patched and launched once more. Only a candidate with no
+  usable names or email is refused locally (`subject_data_required`), before any assignment exists.
+- **Webhooks.**
+  - The inbox row is unique on (org, event_id).
+  - A transient failure answers 503, so the provider's 72 h retries are the queue.
+  - Lifecycle events move an attempt forward only (`ProviderAttemptStates.CanTransition`).
+  - `assignment.voided` (the only void signal for a link-out sitting, which has no session) voids the attempt like
+    `session.voided`. An in-progress session is relaunched past `expires_at` (it bounds only the start); the provider
+    decides.
+  - Once a result is stored, its revisions alone decide validity: a `session.voided` never moves an attempt out of
+    `result_ready`, nor lands on any attempt that holds a stored result (checked on the fresh read under the attempt
+    lock that result storage also takes). The provider finalizes a sitting once (voided XOR completed with a result)
+    and re-publishes a later void as a new result revision, so such a `session.voided` is a reordered delivery;
+    applying it would undo a corrected revision that no re-fetch could restore.
+  - A result revision never overwrites a newer one. A corrected (non-voided) revision for a voided or expired attempt
+    restores it, unless a newer attempt that was not cancelled exists (HR re-assigned the instrument, whatever became
+    of the replacement since): then the revision is kept and the attempt is not reopened. This is FIT's rule for the
+    current attempt.
+  - An event for an unknown assignment is reconciled before it is ignored: `GET /v1/assignments/{id}` returns
+    `external_ref` (the attempt id), so an attempt left in `pending_create` by a crash gets its provider id and the
+    event is applied. An attempt the assign request mapped to this very assignment meanwhile is applied too. A
+    cancelled attempt with no provider ids means the assignment is an orphan: it is first recorded on the attempt (ids
+    - `provider_cancel_pending`, under the attempt lock), then cancelled at the provider through the same cleanup as
+      a recorded orphan, so a failed cancel stays retryable by the staff cancel route and later events. A refusal a
+      redelivery would not change is acknowledged and recorded as failed in the inbox; the marker stays. A provider
+      outage during reconciliation or the cancel answers 503.
+- **Locks, fresh reads, and the erasure tombstone.**
+  - Every webhook write, the launch and the subject erasure of one attempt take the same
+    `pg_advisory_xact_lock` on `assessment-provider-attempt:<id>`. Mapping (`MarkCreatedAsync`), result storage and
+    erasure first take `assessment-provider-subject:<provider subject id>`, always before the attempt lock.
+  - Under the lock, every write clears the request's EF change tracker and re-reads, so a value tracked before the
+    lock (for example the `pending_create` row the reserve left) is never written back over a committed transition.
+  - A recorded `subject.erased` inbox row is the erasure tombstone, matched on `lower(data->>'subject_id')` (the
+    payload is stored verbatim, and a UUID may arrive in any case). A mapping that commits after it leaves the attempt
+    `erased`, and a result for that subject is never stored, even when the erasure ran before the attempt had its
+    provider ids.
+  - A launch or a staff cancel never rewinds a state a webhook already set.
+  - The subject lock's interleaving is tested both ways (`AssessmentProviderWithdrawalTests`): an erasure waiting on
+    a mapping in flight erases the attempt that mapping commits, and a mapping waiting on an erasure in flight leaves
+    the attempt erased. Each test goes red when its method's subject lock is removed.
+
+## Hosted launch (D16)
+
+Every launch is `mode: hosted`. The response is checked against the amended contract: the mode echoed, an https
+`hosted_url`, `frame_ancestors` as at most 20 registered origins for a native launch, and **no** candidate token or
+token type (refused as off contract: a hosted launch never hands the host a credential for the sitting). The URL carries
+a single-use launch code: it goes to the candidate's own response body only, and every `ToString` redacts it.
+
+- `return_url` = `AssessmentProviders:PortalBaseUrl` (an https origin registered at the provider) +
+  `/careers/{org slug}/dashboard`, unless the portal asked for an **embedded** launch (it will frame the player, and the
+  portal refuses to be framed, so the player ends on its own screen). The portal asks for one only for a native
+  instrument with a configured player origin, and if the launch then cannot be framed it launches again top-level (the
+  new launch revokes the unused first code), so a top-level sitting always returns to the dashboard.
+- The portal frames the player only when the launch's frame ancestors include its own origin AND the URL is on
+  `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN`, the only origin added to the portal's CSP `frame-src` and delegated camera and
+  microphone. Otherwise it links out (top-level, same tab). A URL that is not https is never opened.
+- **#312 inside the candidate lock.** `LaunchUnderCandidateLockAsync` takes the attempt lock and then the per-candidate
+  lock the withdrawal takes (the order result storage uses), re-reads the attempt and the withdrawn-consent predicate,
+  calls the provider with both locks held, and records the launch before committing. A withdrawal committed first stops
+  the launch before any provider call; one that starts during the call waits and then stages the launched attempt. The
+  record is conditional (`withdrawal_state IS NULL`): a same-email sibling's withdrawal takes only its own candidate
+  lock, so if it staged the attempt during the call, nothing is recorded and the URL never reaches the candidate (the
+  cascade cancels the assignment, revoking the unused code).
+- **Erasure.** An attempt whose provider subject has an accepted erasure is never launched again: refused before any
+  consent capture (the capture announcement is conditional on it too), under the locks, and by the same conditional
+  record if the erasure is accepted during the provider call (it marks the attempt under the subject lock only).
+  The ATS's own stored results for the subject are erased as soon as the provider accepts the request (or confirms
+  the subject gone), never waiting on `subject.erased`: that event may never arrive, and the poller skips attempts
+  under an erasure request. Its handler repeats the local erasure idempotently when it lands. The local erasure runs
+  before the erasure marker (separate transactions), so an interruption between them leaves the results deleted and
+  the run incomplete (retry). A create announced before the markers may still create a NEW provider subject (the
+  provider forgot the erased subject's external_ref): the erasure re-reads the candidate after its markers and stays
+  incomplete (503) while such a create is live or recorded a subject the run did not erase; any unanswered create
+  (whatever its attempt's subject or state) makes the next run resolve (tenant, candidate id) again, which finds a
+  subject that create made after the erasure.
+- **Portal status (D9).** A finished attempt that holds a result shows as completed even when a later revision voided
+  it; "needs review" is only a sitting voided before any result (D4).
+
+## Polling fallback (D17)
+
+Webhooks stay the primary signal; `ProviderAttemptPollHostedService` (every 5 minutes, registered only with the
+connector on) re-reads stale attempts so nothing depends on a webhook arriving:
+
+- **Claimable:** mapped, not in a #312 cascade, no erasure requested, no orphan cleanup pending; a sitting state
+  (`created`, `launched`, `in_progress`, `completed`) untouched for 15 minutes (`created`/`launched` only until a week
+  after the start deadline), or an attempt that HOLDS a stored result (`result_ready`, or `voided`/`expired` by a
+  revision) re-read every 6 hours for 30 days after completion: a later void, or a review overturning one, is a new
+  result revision (D12).
+- **Lease:** one conditional `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)` claims ONE attempt for this
+  process's owner id, lease free or expired (10 minutes, database clock); the poll of that attempt is cancelled after 4
+  minutes, then the lease is released, and the next is claimed (at most 25 per organization per run). The lease
+  therefore always outlives the work done under it: two App Runner instances never poll the same attempt, and neither
+  waits on the other. The release is conditional on the owner and stamps `last_polled_at`; an instance that dies frees
+  its lease when it expires.
+- **Per attempt:** `GET /v1/assignments/{id}` (checked: tenant, subject, instrument, external ref), the missing consents
+  recorded, the status applied through the same forward-only locked write a lifecycle webhook uses, and `result_id`
+  fetched through `ProviderResultIntake`, the same guarded, revision-ordered path as `result.ready`. A 404 (confirmed or
+  not) changes nothing. A withdrawn candidate's attempt is staged for the cascade and nothing is fetched.
+- `listResults` is not needed: `result_id` is stable across revisions and `GET /v1/results/{id}` returns the latest.
+
+## Webhook inbox (contract step 6: acknowledge first, process asynchronously)
+
+`POST /webhooks/tims-assessments` does only what must precede the 2xx: the signature over the raw body (300 s window),
+the envelope and header checks, the tenant lookup, and ONE committed insert into `assessment_provider_webhook_inbox`
+(unique on org + event id) with `next_attempt_at` = now (database clock). It answers 200 `queued` (or `duplicate` for an
+event already processed or ignored) without any provider call, well inside the sender's 10 s timeout. The row is the
+durable record: a crash after the commit loses nothing.
+
+`ProviderInboxWorkerHostedService` (registered only with the connector on) applies the events. It runs as soon as the
+route commits a row (an in-process wake-up) and at least every 15 s otherwise, so a retry that comes due or an event
+another instance received is picked up without a wake-up:
+
+- **Lease:** one conditional `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1)` claims the org's oldest
+  due row for this process's owner id, lease free or expired (15 minutes, database clock). Processing is cancelled after
+  10 minutes, so the lease outlives the work; an instance that dies frees the row when the lease expires. The completion
+  is conditional on the owner.
+- **Outcome:** processed or ignored rows become final (`next_attempt_at` NULL). A transient failure (an outage, a #312
+  cascade still pending, an exception, a run past the budget) is rescheduled: 30 s, doubling, capped at 1 hour, for 72
+  hours from receipt (the sender's own retry window), then left `failed` with `retry_exhausted` for operators. A
+  failure no retry can fix (`invalid_data`) is final at once. A redelivery of a row that is not final makes it due
+  again.
+- **Backstop:** the D17 poller re-reads every stale attempt whatever happened to its events.
+
+Migration `20261109055548_assessment_provider_queues` adds `next_attempt_at`, `lease_owner`, `lease_until` (CHECK: both
+or neither) and the partial index `ix_assessment_provider_webhook_inbox_due`, and makes rows recorded before it that are
+not final due at once.
+
+## Idempotency key in use
+
+The amended contract makes 409 `idempotency_key_in_use` a contract code: an earlier request with the same key and body
+is still being processed and nothing was done for this one. It is transient, never a definitive refusal (a
+`pending_create` attempt stays pending). The client waits it out once in place, with the same key and body, when
+`Retry-After` is at most 2 s (1 s when absent); otherwise it returns the delay to the caller. A consent capture
+answered with it counts as unanswered, so the launch leaves the capture announced for the #312 fence.
+
+## Tables: migration `20261107232524_assessment_providers`
+
+The tables:
+
+- `assessment_provider_bindings`
+- `assessment_provider_attempts`
+- `assessment_provider_results`
+- `assessment_provider_webhook_inbox`
+
+All four are org-scoped, with ENABLE + FORCE RLS and the `tenant_isolation` policy.
+
+Privileges:
+
+- `anon` and `authenticated` are revoked, behind a guard on whether those roles exist.
+- `app_tenant` gets:
+  - SELECT only on bindings, which the platform owner writes on the privileged connection;
+  - no DELETE on the inbox;
+  - full DML on attempts and results.
+
+The generated idempotent SQL is `services/Tims.Platform/db/manual/20261107232524_assessment_providers.sql`. It came
+from `dotnet ef migrations script --idempotent --context AssessmentProviderDbContext`, with the BOM stripped.
+
+Two later migrations alter `assessment_provider_attempts` only (no grant or RLS change; the table's grants and policy
+cover new columns): `20261108224533_assessment_provider_consent_capture` (the consent-capture fence) and
+`20261109010328_assessment_provider_attempt_poll` (`missing_consents` with a CHECK against the four purposes,
+`poll_lease_owner`, `poll_lease_until` with a CHECK that both are set or both null, `last_polled_at`, the partial index
+`ix_assessment_provider_attempts_poll`, and `age_band` with a CHECK against `18_plus`/`16_17`). Each has its own
+idempotent script in `db/manual`, applied in order.
+
+`20261111170159_assessment_provider_proctoring` (proctoring parity with tims-suite, owner decision 2026-11-11) adds
+one org-scoped table, `assessment_provider_settings` (HR's lockdown, anti-cheat threshold + consequence and identity
+check; ENABLE + FORCE RLS + `tenant_isolation`, `app_tenant` SELECT/INSERT/UPDATE only, nothing for
+`anon`/`authenticated`), and to `assessment_provider_attempts` the proctoring block sent with the assignment (a
+snapshot, so a re-sent create carries the same block), `completed_by` and `void_reason`. The identity check is held
+back by `Platform:AssessmentIdentityCheckEnabled` (default false) until TIMS approves a biometric consent text that
+describes the camera checks.
+
+`20261111195336_assessment_provider_subject_checks` (Codex r13 P1) adds one org-scoped table,
+`assessment_provider_subject_checks` (one row per org and provider subject: `last_checked_at`; ENABLE + FORCE RLS +
+`tenant_isolation`, `app_tenant` SELECT/INSERT/UPDATE only, nothing for `anon`/`authenticated`). A lost or exhausted
+`subject.erased` must not leave an erased subject's scores with staff and FIT, and the D17 poller only re-reads attempts
+inside the 30-day revision window, so two repairs run in the poller's scheduled job:
+
+- the poller: a definitive 404/410 on `getAssignment` is checked with `GET /v1/subjects/{id}`; a confirmed erasure (410
+  `subject_erased`, or the same subject reported `erasure_pending`/`erased`) runs the webhook's local erasure (audited
+  `via: poll`);
+- the erasure sweep: every subject that still holds a stored result, whatever its age, is asked about at most once per
+  `Platform:AssessmentProviderErasureCheckIntervalDays` (default 7), at most `Platform:AssessmentProviderErasureCheckMaxSubjects`
+  (default 200) per run, least-recently-attempted first, with the same confirmed-erasure rule (audited `via: sweep`). An
+  outage moves the subject to the back of the queue and makes it eligible again after a bounded backoff (15 minutes,
+  doubling, at most one interval), so a subject that always fails never starves the others; any other non-erasure answer
+  makes it due again after the interval.
+
+## Configuration
+
+`AssessmentProviders:*`, set out of band as App Runner env from Secrets Manager:
+
+- `BaseUrl`: an https origin or base path. Owner default D18: the suite serves `/v1` under `/api`, so production is
+  `https://www.timssuite.com/api`. Every call path (`v1/...`) is joined relative to it.
+- `TokenUrl`
+- `ClientId`
+- `ClientSecret`
+- `Scopes` (default `catalog:read assignments:write subjects:write results:read`). The DSAR export asks for a
+  separate token with `subjects:export` ALONE, and the report downloads one with `reports:read` ALONE, so no ordinary
+  call carries either (a client without `reports:read` keeps every other call; only its report downloads fail, 503).
+- `PortalBaseUrl` (optional, an https origin): the candidate portal the hosted player returns to (D16)
+- `WebhookSigningSecret`
+- `WebhookSigningSecretPrevious` (during a rotation)
+- `RequestTimeoutSeconds` (default 6)
+
+A blank value or the terraform placeholder makes the client unconfigured:
+
+- calls answer `provider_unconfigured`;
+- webhooks are refused.
+
+## FIT v2
+
+Both are on `release/assessments-fit-provider`. `Tims.Application.FitEngine.ProviderFitResultSource` adapts
+`IProviderAssessmentResultSource` to FIT v2's `IAssessmentResultSource`: a field-for-field copy of each
+`ProviderInstrumentResult`, keeping only the six provider instruments (never `native_quiz`), no value on a
+needs-review result, and the source tag `provider`. It is composed into FIT's source only with
+`Platform:AssessmentProvidersEnabled` on, because the provider tables exist only once the migration is applied; with
+the connector off, a provider instrument a vacancy lists shows as `no_result`.
+
+It reads the provider tables on their own connection, under `TenantScope`, while FIT v2 holds its
+per-(organization, candidate, vacancy) advisory lock, so a compute that follows another compute's commit reads every
+provider result committed before its read. A provider attempt's state change or a stored provider result now
+enqueues a FIT v2 recompute of that candidate's row for the vacancy, in the same transaction (EF migration
+`20261109011531_fit_v2_provider_recompute`, triggers only, no model change; it calls the Prisma-owned
+`fit_v2_request_recompute` only when that function exists, so the two migrations apply in either order). See
+`fit-v2-per-instrument.md`, "Recompute on change".
+
+A provider result also CREATES a candidate's first FIT v2 row (round 11). The recompute drain rewrites an existing row,
+and when there is none it creates one only if, under the FIT v2 lock and on the same transaction, the candidate holds
+an active application for the vacancy (the population HR's Compute Rankings scores) and the result read holds a
+provider result for an instrument the vacancy lists. So HR no longer has to press Compute before a provider result
+shows in the ranking. Any other change to a pair without a row (an ATS quiz, a proctoring flag) still writes nothing;
+HR's compute decides those.
+
+An erasure removes the stored FIT row at once (Codex ats round 13 [P1], migration
+`20261112170426_fit_v2_provider_erasure_removes_fit_rows`). When an attempt's erasure is accepted
+(`provider_erasure_requested_at` set) or the provider confirms it (state `erased`), the attempt trigger deletes, in that
+same transaction, the candidate's `fit_scores` row for the attempt's vacancy if its breakdown holds a `provider` entry for
+the attempt's instrument. Before, the erased result's score, id and versions (and the numbers derived from them) stayed
+in that row until the recompute queue drained, and for good with FIT v2 off, because the drain then completes the request
+without writing. A FIT row is derived data: the queued recompute re-creates it at once only when another provider
+result for a listed instrument remains (the round-11 rule above); otherwise HR's next Compute Rankings scores the
+candidate again from what remains. The same holds for a deleted provider RESULT (Codex ats round 13 run 6): when the
+provider hides a result (`result_not_visible`) or the subject is erased, the result trigger deletes, under the same lock,
+the FIT row whose breakdown names that result id, whatever the FIT flags (the recompute worker runs only with them on,
+so before, a hidden result stayed in FIT for good with a flag off).
+
+### PCA job fit (TIMS, 2026-11-12)
+
+TIMS's FIT for a position is its own PCA-vs-JCA fit, computed by its platform: a position is coded in TIMS (its JCA,
+answered by someone who knows the job) and TIMS compares each candidate's PCA with it. The ATS never computes it.
+
+- **The vacancy names the position.** HR enters the TIMS position code (for example `194225`, the code TIMS's team gave
+  the position) on the vacancy's PCA entry: `fit_requirements.assessments[] = {"instrument":"pca","use":"scored",
+  "jobCode":"194225",...}`. A scored or gated PCA without a code is dropped (`job_code_required`); an invalid code drops
+  the entry (`invalid_job_code`); a code on another instrument is ignored (`job_code_ignored`). Advisory PCA needs no code
+  (with one, TIMS's fit is shown to HR without being scored). Personality and MI stay advisory-only.
+- **The assignment carries it.** The code is stored on the attempt at reserve (`assessment_provider_attempts.job_code`,
+  migration `20261112225624_assessment_provider_attempt_job_code`, PCA only by check constraint) and sent as contract
+  `vacancy.job_code` on every create of that attempt, never re-read (the Idempotency-Key is bound to the body).
+- **The provider asks TIMS.** When tims-suite collects the PCA it calls `GET core/api/results/analysisjca`
+  (`tipAns=a`, the only analysis type the live API accepts) and publishes the answer as `PcaResultV1.scores.job_fit`
+  (contract a01bf3e/f009729): `computed` (TIMS's percentage and the position's DISC profile), `job_not_found` (no
+  position with that code and a completed JCA in TIMS's company) or `unavailable` (TIMS did not answer within 24 h).
+- **FIT reads it.** `GetFitRowsAsync` reads `scores.job_fit` from the stored PCA result (no new column); only a
+  `computed` fit is a value. A scored PCA's fit is TIMS's percentage (or the meet-or-exceed curve on `min.jobFit`); a
+  gate compares it with `min.jobFit`. A fit computed for another code than the vacancy's current one (HR re-coded the
+  vacancy) is `no_value`, never a low score. The breakdown entry names the code (`jobCode`).
+- **Requirement edits re-score (Codex ats run 2 [P1], fixed):** saving the vacancy's requirements (re-coding the PCA
+  position, a minimum, a weight or a use) enqueues, in the same transaction, a recompute for every candidate holding a
+  FIT row for the vacancy: the SECURITY DEFINER trigger `fit_v2_requirements_changed` on `job_profiles`
+  (`packages/db/prisma/migrations/20261113090000_fit_v2_requirements_recompute`, psql after
+  `20261109100000_fit_v2_integrity`). It fires for every writer and only when the stored value changed; the queue's
+  worker then re-scores the rows, so a PCA judged on the old code's fit shows `no_value` within one drain. The trigger
+  takes the vacancy's requirements lock exclusively, and every FIT write (v2, and v1 with FIT v2 on) takes it shared and
+  reads the requirements inside its transaction (Codex ats runs 3 and 4), so a compute racing an edit never keeps the
+  old configuration. Removing the assessments deletes the vacancy's FIT v2 rows (HR's next Compute Rankings scores v1).
+- **Weights.** HR sets each scored test's relative weight in the vacancy editor (the per-instrument `weight` FIT v2
+  always read; the editor now exposes it). The five dimension weights stay on the role family (Settings → FIT weights).
+  TIMS is to supply the percentages; nothing is defaulted on its behalf.
+- **Unverified live:** the scale of TIMS's `Res` (documented as "Resultado del análisis", taken as a 0–100 percentage)
+  and TIMS's answer for an unknown code were never observed on a completed evaluation; tims-suite maps an out-of-range
+  value to `unavailable` and a missing JCA graph to `job_not_found`. Check one real answer before turning FIT v2 on.
+
+## Unconfirmed 404s
+
+A provider that does not serve a route answers its catch-all 404 with the same `not_found` code as "no such
+resource". The callers of the cancel route clear their cleanup marker on a 404, and erasure counts a 404 as done, so
+the client confirms a 404 first: `GET /v1/assignments/{id}` for a cancel (404/410 confirms; an assignment already
+`cancelled` is returned as the success), `GET /v1/subjects/{id}` for an erasure (404 confirms, 410 is returned as
+already erased). The #312 cascade's consent calls follow the same rule: a consent-list 404 is confirmed by the subject
+lookup, and a withdrawal 404 by re-listing the subject's consents (absent: the 404 stands; no longer `active`: the
+success; still active: unconfirmed). Anything unconfirmed is the transient `provider_not_found_unconfirmed`, which no
+caller reads as gone, so the attempt's cascade stays pending.
+
+## Consent captures and the withdrawal cascade (completion fence)
+
+A launch records consents at the provider; a #312 withdrawal's cascade lists and withdraws them. Two races could leave
+a consent active behind a completed (`done`) cascade: a pass that listed before a racing capture landed and then
+completed, and a launch cancelled (or failing) after the provider stored a consent but before its re-check. Migration
+`20261108224533_assessment_provider_consent_capture` adds the fence that closes both:
+
+1. Before sending any capture, the launch announces it with ONE conditional write: it bumps
+   `consent_capture_generation` and `consent_captures_in_flight` and stamps `consent_capture_started_at` (database
+   clock), only while `withdrawal_state IS NULL`. An attempt already in a withdrawal is refused (nothing is captured or
+   launched). Row locking orders this write against the withdrawal's staging write.
+2. When every capture of the launch got an HTTP answer, the launch ends it (generation bumped again, in-flight count
+   decremented). A capture without an answer (timeout, outage, cancellation, crash) stays in flight: the provider may
+   still store it.
+3. A pass reads each attempt's fence (generation, in flight, stale = in flight and started more than 10 minutes before,
+   by the database clock) BEFORE it lists consents, and `done` is a conditional write on it: same generation, and no
+   capture in flight unless it was already stale at that read. Otherwise the attempt stays pending, and a later pass
+   (listing after the capture landed) withdraws the consent.
+
+The post-capture #312 re-check stays: it keeps a withdrawn candidate from getting a token and drives the cascade at
+once. A pending attempt is retried by the scheduled sweep (see Known gaps) without waiting for its next webhook or
+the org's next withdrawal.
+
+### The create fence
+
+The same race exists for a create: a pass whose lookup by `external_ref` came back empty while `POST /v1/assignments`
+was still in flight, then completed, would leave the assignment live at the provider if the ATS died before recording
+the create's answer (Codex P1). Migration `20261109055548_assessment_provider_queues` adds `create_started_at`:
+
+1. Before the create is sent, ONE conditional write stamps it (database clock), only while the attempt is
+   `pending_create`, not in a withdrawal and not under an erasure request; refused otherwise, and nothing is sent.
+2. Recording the provider's answer clears it (the mapping, or the orphan with its cleanup marker); so does a definitive
+   refusal. A create without an answer leaves it in place: the provider may still create the assignment.
+3. A pass reads it with the consent fence, BEFORE any lookup. While it is set and not stale (10 minutes), the attempt
+   stays pending unless that pass found and recorded the assignment; `done` is also conditional on it at the database.
+
+**Round 12: one fence per create.** Codex round 11 P1: two overlapping creates of the same pending attempt (a double
+submit, two staff) shared that one timestamp, so the first answer cleared it while the second was still in flight, and
+an erasure in that window could report done while the second create re-created the provider subject with names and
+email. Migration `20261109233537_assessment_provider_round12` replaces it with `create_fences timestamptz[]` (existing
+unanswered fences are copied in; `create_started_at` is kept but no longer read or written):
+
+- `BeginCreateAsync` appends THIS create's own token (the database clock, bumped past every token on the row so it is
+  unique), under the same conditions as before, and keeps the stale ones (Codex ats round 13 run 5: they are the
+  evidence of a create that may have made a subject no attempt records; until round 13 they were pruned here). It
+  returns the token.
+- `EndCreateAsync` removes only that token: after an answer, when the attempt records that assignment AND its subject;
+  after a definitive refusal, when no erasure (requested or done) touched the attempt and the attempt records the subject
+  that create resolved, if it resolved one. Otherwise the token stays (stale after 10 minutes; a complete erasure
+  retires stale ones), and an unanswered token keeps the candidate's export Incomplete unless a current live subject is
+  held, and the erasure resolving by `external_ref` (that create may have made a subject no attempt names).
+- Recording a mapping found by a webhook or a withdrawal pass ends no create. The fence read, the `done` condition and
+  the erasure's subject facts (`CreatesInFlight`, `NeedsResolution`) now ask whether ANY token is live / present, so a
+  withdrawal whose pass found the orphan completes once every create of the attempt has answered or gone stale.
+
+### The cascade's lease
+
+Every pass (after a withdrawal, from a webhook, from a launch, or the scheduled sweep) claims the pending attempts it
+works on with `withdrawal_lease_owner` / `withdrawal_lease_until` (one conditional UPDATE with `FOR UPDATE SKIP
+LOCKED`, 15 minutes, database clock), is cut off after 8 minutes, and releases them when it ends. Two instances never
+send the same cancels and withdrawals at once; the sweep's organization listing skips attempts under a live lease.
+
+## Optional consents: English speaking
+
+The English instrument administers its speaking section only when the optional purposes `voice` and `ai_scoring` are
+active. The portal offers them on the consent step of an English attempt, apart from the required texts, each with its
+own UNTICKED checkbox, with the D22 "draft pending counsel" note: leaving them unticked never blocks the start. The
+launch records the ticked ones at the provider like any consent, and the attempt keeps the candidate's decision
+(`granted_optional_consents`, `declined_optional_consents`, migration `20261109055548`). An attempt shows "consent
+needed" until the candidate has decided. HR's attempt row reads "speaking not assessed (no voice consent)" (or "no
+AI-scoring consent") when the candidate declined. The provider's consent texts themselves are the provider's and
+pending counsel (D2, D22).
+
+## ITC-IA review flag
+
+`requires_human_review` is a top-level field of `ItciaResultV1`, not part of `scores`, so a summary projection carries
+it too. A present non-boolean value is off contract and the result is refused.
+
+## HR PDF reports (contract `getResultReport`)
+
+HR downloads the provider's reports from the results board ("PDF reports" on a result card). A report is never wider
+than the result the ATS shows: the attempt's latest stored result must be valid or under review (a voided one has no
+report), still feed the ATS (no erasure, no withdrawal, #312) and be rendered for `tenant_hr` at `summary` or `full`; a
+provider variant (PCA: TIMS's own PDFs, listed on the result's `full` projection and read live) needs `full`, and a
+link-out instrument has only variants. Readers below company scope are refused (D6). The client streams the body with
+a 20 MB cap and accepts only `application/pdf` starting with `%PDF-`, within a 90 s budget; the web relay
+(`/api/platform`) keeps its own 30 s limit, which a slow TIMS report can exceed.
+
+## Known gaps (not done here)
+
+- The withdrawal cascade's scheduled retry (`ProviderWithdrawalSweepHostedService`, registered only with the connector
+  on) sweeps every 10 minutes: it lists, pre-tenant, the organizations holding pending attempts not under a live lease
+  and propagates each under its own tenant scope, several passes while they make progress. Each pass works only on the
+  attempts it claimed (see "The cascade's lease"). A sweep handles at most 200 organizations and 20 passes of 50
+  attempts per organization. Attempts blocked at the head of an organization's queue hold the rest of that queue until
+  they clear.
+- The poller handles at most 200 organizations and 25 attempts per organization per run; more waits for the next run.
+  A provider that answers 404 forever for an assignment keeps that attempt polled every 15 minutes (until a week past
+  its start deadline for one that never started).
+- The ERASURE resolves the candidate's provider subject through the provider's idempotent (tenant, candidate id)
+  subject key, so a subject created by a failed or crashed assignment is covered too. If the candidate never had a
+  subject, that call creates an empty one (no names or email), which it then erases. A stored erasure is terminal: an
+  attempt erased, under an accepted erasure request, or recorded against a subject whose `subject.erased` is in the inbox
+  (even before its worker erased the attempt) calls for no resolution (the provider forgets an erased subject's
+  external_ref, so resolving would create a fresh subject), and a subject whose `subject.erased` is recorded is listed as
+  `erased` without calling the provider.
+- The access EXPORT never calls `POST /v1/subjects` (Codex ats round 13, runs 1 to 5). The provider keeps one subject
+  per (tenant, external_ref = candidate id) and forgets the external_ref from the erasure request on, so past the 24 h
+  idempotency window that POST creates a fresh subject, also when the ATS never learned of the erasure (an erasure made
+  at the provider whose `subject.erased` was lost), and the contract has no read-only lookup by external_ref. The export
+  reads the subjects the attempts record; each answers for itself (410, or a 404 the subject lookup confirms, is listed
+  as gone). A subject no attempt records can exist only behind an unanswered create fence: a create records the subject
+  it resolved before anything can end its fence, a definitive refusal ends it only when the attempt records the subject
+  that create resolved (a retry whose first subject the provider erased resolves a new one the attempt does not
+  record), and a new create no longer prunes stale tokens (a create that died before recording its subject leaves one,
+  and a later create refused before resolving any subject must not erase it). So:
+  - no unanswered fence: the recorded subjects are the whole answer;
+  - an unanswered fence and a subject recorded on a LIVE attempt (not erased, not under an erasure request, not on a
+    subject whose `subject.erased` is recorded) that the provider still holds AND reports `active` on
+    `GET /v1/subjects/{id}`: complete, since that subject IS the external_ref's subject and the create could not have
+    made another (an erasure requested directly at the provider shows as `erasure_pending`, which does not count);
+  - an unanswered fence otherwise: Incomplete (503); at once, without calling the provider, when no subject is recorded
+    on a live attempt.
+
+  A live fence clears when its create is answered; a fence on an erasure-touched attempt only an erasure clears: the
+  erasure resolves (tenant, candidate id), erases what it finds, records the subject it resolved on the candidate's
+  attempts that name none (Codex ats round 13 run 6: a crashed create's subject is otherwise named by nothing while the
+  provider may still hold its data), and, when the run completes, retires the fences that were already stale at its first
+  read (`RetireStaleCreateFencesAsync`, audited `assessment_provider_create_fences_retired`), but only when that subject
+  is now recorded or the provider confirmed it gone (410 or 404). When every attempt already names another subject and
+  the erasure was only accepted, the fences stay and the export stays Incomplete; an erasure run after the provider
+  confirms (within its 24 h idempotency window, which resolves the same subject) retires them.
+  Operator remedy for an Incomplete export: retry once a live create is answered, or run the erasure first when the
+  candidate is being erased anyway; for a candidate who is not, ask TIMS for the provider-side export.
+- The provider-held export must fit the client's 256 KiB response cap; a larger one fails the export closed (503).
+- D2 (the effects of a withdrawal on completed results and media) is the provider's, and pending counsel.
+
+## The empty-body 401 after a cancel (round 11)
+
+The round-10 e2e saw one `GET /api/platform/assessments/provider-attempts` answer 401 with an empty body right after
+HR cancelled an attempt; it did not recur in 12 direct calls, and the spec now reloads the page after the cancel. The
+Playwright trace (`trace11`) was re-read in round 11. What it shows, and what that rules out:
+
+- The 401 carried no `content-type` and an empty body, through the relay (its `cache-control: no-store` is the
+  relay's). The relay's own refusals are `{"error":"platform_request_rejected"}` with `application/json`, and
+  `apps/web/middleware.ts` returns early for every `/api/` path, so neither produced it: it came from C#.
+- The bearer was the same token (issued 07:51:22, expiring an hour later) that had just succeeded on the same path,
+  and the cancel itself succeeded with it. GoTrue tokens carry no `nbf`, and JWT validation allows 30 s of skew. An
+  expired or not-yet-valid token is ruled out.
+- "Never reached C#" was inferred from the API's request log. That inference does not hold:
+  `RelayAttributionMiddleware` runs right after authentication and before `UseSerilogRequestLogging` (and before the
+  denial observer), and every refusal it makes is exactly this response, an empty-body 401. So the request most
+  likely reached C# and was refused there without a trace.
+- Of that middleware's checks, the ones that could fail once, for one request, with an unchanged token, cookie, path
+  and method are: the envelope's timestamp window (at most 30 s old, at most 5 s ahead of the API's clock), and the
+  nonce claim (`RelayNonceStore`). The relay signs a fresh random nonce per request, so a replay needs the HTTP client
+  to resend a signed request; nothing showed that.
+- The timestamp window is the best-supported candidate, but it is not proven. In that stack the web relay ran on the
+  host and the API in a Docker container, so the signer and the checker used two clocks. The trace also shows the
+  cancel POST starting at 07:51:22.8 while its response's `Date` (stamped by Next on the host) reads 07:51:32, so the
+  cancel took about 10 s of host time. A container that stalled for that long and resumed with its clock behind the
+  host's would refuse the next envelope as "from the future" until the clock re-synced.
+
+What changed: every refusal by `RelayAttributionMiddleware` now logs one warning naming its reason (`FromTheFuture`,
+`Stale` with the clock difference in seconds, `NonceRejected`, `Unauthenticated` with the authentication failure's
+type, and so on), the method and the path (never the query, the envelope, a token or an address). The response is
+unchanged. If it happens again, the API's log names the cause. The cross-system spec's reload after the cancel is
+still in place.
+
+## Platform-owner tools (round 12)
+
+The platform organization page has a **TIMS Assessments** tab (only with the connector on in the build;
+`/platform` itself admits platform owners only, and every C# route above checks `PlatformOwnerGate`):
+
+- **State.** Bound or not, in force or not, the provider tenant, the enabled tests, the default language, and the
+  open work an unbind would strand: unfinished sittings, finished sittings still waiting for their result, #312
+  withdrawals not confirmed at the provider, orphaned cancels not confirmed, and creates still in flight.
+- **Bind or update.** The existing binding route (catalog-checked: selection-allowed tests only).
+- **Unbind, safely.** After the binding the ATS no longer receives the provider's events for the org, so an unbind that
+  left open work would strand it. It is refused (409, nothing changed) while any open work remains. Confirmed with
+  "cancel the unfinished tests first", each is cancelled through HR's cancel path (at the provider first), and the org is
+  unbound only if nothing is left (a sitting awaiting its result always blocks until the result arrives). The final
+  check and the deactivation are one privileged transaction under the advisory lock
+  `assessment-provider-binding:<org>`, which every assignment's reserve takes shared and under which it re-checks the
+  binding: no assignment can slip in between, and a reserve that read the binding before the unbind writes nothing.
+  Stored attempts and results are kept. Audit: `assessment_provider_binding_unset`. Re-binding re-activates the row.
+- **DSAR for one candidate.** The export downloads as JSON (to deliver to the data subject); the erasure asks for a
+  confirmation and reports `requested` of `subjects` (incomplete runs can be retried). Both work after an unbind: the
+  erasure resolves the subject through the binding whether or not it is in force.
+
+## Owner steps, in order
+
+1. Review the SQL. Apply the files in `services/Tims.Platform/db/manual`, in this order, with psql on the direct
+   connection (`:5432`): `20261107232524_assessment_providers.sql`, `20261108224533_assessment_provider_consent_capture.sql`,
+   `20261109010328_assessment_provider_attempt_poll.sql`, `20261109011531_fit_v2_provider_recompute.sql`,
+   `20261109030506_fit_v2_provider_erasure_recompute.sql`, `20261109055548_assessment_provider_queues.sql`, then
+   `20261109233537_assessment_provider_round12.sql` (round 12: per-create fences, and the result trigger on DELETE), then
+   `20261110031301_assessment_provider_result_visibility.sql` (round 12: the hide fence, `result_visibility_generation`),
+   then `20261111170159_assessment_provider_proctoring.sql` (round 13: `assessment_provider_settings` and the attempt's
+   proctoring snapshot, `completed_by`, `void_reason`), then `20261111195336_assessment_provider_subject_checks.sql`
+   (round 13: the erasure sweep's `assessment_provider_subject_checks`), then
+   `20261112170426_fit_v2_provider_erasure_removes_fit_rows.sql` (round 13: an erasure deletes the FIT row built from the
+   erased result; function only, no table change), then `20261112225624_assessment_provider_attempt_job_code.sql` (PCA
+   job fit: the attempt's TIMS position code; one nullable column and its check). Every file is idempotent and records its
+   migration id, so re-running one is safe; skipping one is not: the code reads every table and column unconditionally.
+2. Re-capture `packages/db/baseline/prod-public-schema.sql` in the same change and read the diff (it should be the six
+   new tables — `assessment_provider_bindings`, `_attempts`, `_results`, `_webhook_inbox`, `_settings`,
+   `_subject_checks` — their columns, policies, grants, indexes and the FIT recompute triggers). Then run `/gate`
+   checks 14, 16 and 17.
+   - Check 18 (`pre-flip-scan --flip-diff`) will list the six tables as "newly efcore-owned". They are new tables,
+     not flips.
+3. Register the ATS as an OAuth client at the provider. The provider refuses a token request for any scope the client
+   was not granted (`invalid_scope`), and the ATS then gets no token at all, so grant every one:
+   - `catalog:read`, `assignments:write`, `subjects:write`, `results:read` (the ATS's default `Scopes`; `subjects:write`
+     includes subject enrichment);
+   - `subjects:export` (the DSAR export, which the ATS requests ALONE in a separate token);
+   - `reports:read` (HR's PDF report downloads, also requested ALONE; the suite's `--profile ats` grants it);
+   - `events:subscribe` (managing the webhook subscription in step 4; the ATS's own calls never request it);
+   - as the client's registered origin, the candidate portal's https origin, exactly `AssessmentProviders__PortalBaseUrl`
+     (the hosted player's `return_url`, CORS, and the `frame_ancestors` that let the portal frame the player).
+4. Create the webhook subscription (nothing automates it): with a client-credentials token for that client requesting
+   `events:subscribe`, `POST {BaseUrl}/v1/webhook-subscriptions` with the URL `https://<api>/webhooks/tims-assessments`
+   and the event types `assignment.started`, `session.completed`, `session.voided`, `result.ready`,
+   `assignment.expired`, `assignment.voided`, `subject.erased`, sending an `Idempotency-Key` header. The signing secret
+   is returned ONCE, in that create's response: store it as `AssessmentProviders__WebhookSigningSecret`. On a rotation
+   the provider signs with both secrets for 24 hours; keep the old one in `...Previous` meanwhile.
+5. Store the secrets: `AssessmentProviders__ClientSecret` and `AssessmentProviders__WebhookSigningSecret`. Watch
+   for the placeholder trap. Set `AssessmentProviders__PortalBaseUrl` to the portal origin registered in step 3.
+6. Set `Platform__AssessmentProvidersEnabled=true` first: every connector route, the platform owner's binding routes
+   included, is mapped only with it on. Then bind each org (platform owner, the assessment provider section of the
+   org's page under Platform → Organizations, shown once step 7's build is live). Optional (defaults shown):
+   `Platform__AssessmentProviderErasureCheckIntervalDays=7` and `Platform__AssessmentProviderErasureCheckMaxSubjects=200`
+   (the erasure sweep's per-subject interval and per-run cap); `Platform__AssessmentIdentityCheckEnabled` stays false
+   until a biometric text describing the camera checks is approved.
+7. On Vercel, set `NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true` to show the portal section, and only if the player
+   is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin), and only if PCA is to be
+   framed as timssuite.com frames it, `NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN` (the PCA provider's own https
+   origin, the one timssuite.com's `frame-src` names). Each is added to the portal's CSP `frame-src` only; unset, that
+   instrument links out top-level. All three are build-time: a change needs a new Vercel build.
+8. Team leaders (owner default D6). The seeded `leader` role has no `assessment` grant, so a team leader sees no
+   assessments card at all, which is stricter than D6. To give the pilot organization's leaders the D6 view (only
+   "below minimum", never the level or CEFR, for vacancies of the teams they lead), review and run, once per
+   organization:
+
+   ```
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v org_id=<organization uuid> -f services/Tims.Platform/db/owner/leader_assessment_read.sql
+   ```
+
+   It adds `assessment:read` at `team` scope to that organization's `leader` role only, is idempotent, and leaves an
+   existing `assessment:read` grant at its scope. Its last statement prints the leader's assessment grants (expect
+   `read | team`). This is an owner SQL step rather than a seed change because the grant matrix's source of truth is
+   `packages/db/prisma/seed-access-matrix.ts` (outside this connector's build area), mirrored into the embedded
+   `role-grants.json` with a parity test. Organizations provisioned later get no such grant until that matrix gains
+   `{ module: 'assessment', actions: ['read'], scope: 'team' }` for `leader` and `role-grants.json` is regenerated
+   (`scripts/generate-dotnet-role-grants.ts`). Until the step runs, the candidate page's TIMS Assessments card explains
+   itself to a leader (round 12): the C# read answers 403, and the card says the role lacks `assessment:read` and to
+   ask an administrator, instead of a generic load error.

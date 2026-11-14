@@ -4,13 +4,23 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.Features;
 using Tims.Api.Configuration;
 
 namespace Tims.Api.Http;
 
 /// <summary>Authenticates relay attribution separately from JWT identity and impersonation.</summary>
-public sealed class RelayAttributionMiddleware(RequestDelegate next)
+/// <remarks>
+/// Every refusal is an EMPTY-body 401 (or the 503 below) written before Serilog's request logging and the denial
+/// observer run, so without a log line here it leaves no trace in C# at all. Round 11 (the unexplained empty-body 401
+/// on /api/platform/assessments/provider-attempts in the round-10 e2e): each refusal now logs ONE warning with a
+/// reason code, the request method and path (never the query, the envelope, a token or an address), and for a
+/// timestamp refusal the clock difference in seconds; for an unauthenticated bearer, the authentication failure's
+/// exception type (for example <c>SecurityTokenExpiredException</c>). The response is unchanged.
+/// </remarks>
+public sealed partial class RelayAttributionMiddleware(
+    RequestDelegate next, ILogger<RelayAttributionMiddleware>? logger = null)
 {
     public const string HeaderName = "x-tims-relay-attribution";
     private const string Purpose = "tims-platform-relay-attribution-v1\n";
@@ -46,17 +56,19 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
             && string.IsNullOrEmpty(context.Request.Headers.Authorization);
         if (context.User.Identity?.IsAuthenticated != true && !anonymousInvitationSetup)
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            var failure = context.Features.Get<IAuthenticateResultFeature>()?.AuthenticateResult?.Failure;
+            Reject(context, RejectReason.Unauthenticated, failure?.GetType().Name ?? "none");
             return;
         }
         var envelope = values.ToString();
         // Never reflect or log the signed envelope: it contains client attribution.
-        var metadata = values.Count == 1
+        var (metadata, reason, skew) = values.Count == 1
             ? Verify(envelope, context, options.Value.ImpersonationSecret, anonymousInvitationSetup)
-            : null;
+            : (null, RejectReason.MultipleHeaders, null);
         if (metadata is null || !await nonces.TryUseAsync(metadata.Nonce))
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            if (metadata is not null) (reason, skew) = (RejectReason.NonceRejected, null);
+            Reject(context, reason, skew is { } seconds ? $"skew {seconds}s" : "none");
             return;
         }
         // #329 item 2 — fail closed. An anonymous relayed request has NO principal to key the limiter on, so its
@@ -80,30 +92,82 @@ public sealed class RelayAttributionMiddleware(RequestDelegate next)
         await next(context);
     }
 
-    private static Metadata? Verify(string envelope, HttpContext context, string? secret, bool allowAnonymous)
+    /// <summary>Why a relayed request was refused (the log's reason code).</summary>
+    public enum RejectReason
     {
-        if (string.IsNullOrEmpty(secret) || envelope.Length > 8192) return null;
+        Unauthenticated,
+        MultipleHeaders,
+        Unverifiable,
+        Malformed,
+        BadSignature,
+        Stale,
+        FromTheFuture,
+        BadNonce,
+        MethodMismatch,
+        PathMismatch,
+        AuthorizationMismatch,
+        CookieMismatch,
+        MissingAuthorization,
+        BadUserAgent,
+        BadIp,
+        NonceRejected,
+    }
+
+    private void Reject(HttpContext context, RejectReason reason, string detail)
+    {
+        if (logger is not null)
+        {
+            LogRejected(logger, reason, detail, context.Request.Method, context.Request.Path.Value ?? string.Empty);
+        }
+
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Relay attribution refused with an empty 401: {Reason} ({Detail}) for {Method} {Path}")]
+    private static partial void LogRejected(
+        ILogger logger, RejectReason reason, string detail, string method, string path);
+
+    // The refusal order is the original single condition's, split so each refusal names its reason. Skew is the
+    // envelope's timestamp minus this host's clock, in seconds, reported only for a timestamp refusal.
+    private static (Metadata? Metadata, RejectReason Reason, long? Skew) Verify(
+        string envelope, HttpContext context, string? secret, bool allowAnonymous)
+    {
+        if (string.IsNullOrEmpty(secret) || envelope.Length > 8192) return (null, RejectReason.Unverifiable, null);
         var dot = envelope.IndexOf('.');
-        if (dot <= 0) return null;
+        if (dot <= 0) return (null, RejectReason.Malformed, null);
         try
         {
             var expected = HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(Purpose + envelope[..dot]));
             var signature = Base64Url.DecodeFromChars(envelope.AsSpan(dot + 1));
-            if (!CryptographicOperations.FixedTimeEquals(expected, signature)) return null;
+            if (!CryptographicOperations.FixedTimeEquals(expected, signature)) return (null, RejectReason.BadSignature, null);
             var metadata = JsonSerializer.Deserialize<Metadata>(Base64Url.DecodeFromChars(envelope.AsSpan(0, dot)), JsonOptions);
-            if (metadata is null || metadata.Timestamp < DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 30
-                || metadata.Timestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 5
-                || !Guid.TryParseExact(metadata.Nonce, "D", out _)
-                || metadata.Method != context.Request.Method
-                || metadata.Path != RawTarget(context)
-                || metadata.AuthorizationHash != Hash(context.Request.Headers.Authorization.ToString())
-                || metadata.CookieHash != Hash(context.Request.Headers.Cookie.ToString())
-                || (!allowAnonymous && string.IsNullOrEmpty(context.Request.Headers.Authorization))
-                || metadata.Ua is null || metadata.Ua.Length > 512 || metadata.Ua.Any(char.IsControl)
-                || (metadata.Ip is not null && (metadata.Ip.Length > 45 || !IPAddress.TryParse(metadata.Ip, out _)))) return null;
-            return metadata;
+            if (metadata is null) return (null, RejectReason.Malformed, null);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            RejectReason? reason =
+                metadata.Timestamp < now - 30 ? RejectReason.Stale
+                : metadata.Timestamp > now + 5 ? RejectReason.FromTheFuture
+                : !Guid.TryParseExact(metadata.Nonce, "D", out _) ? RejectReason.BadNonce
+                : metadata.Method != context.Request.Method ? RejectReason.MethodMismatch
+                : metadata.Path != RawTarget(context) ? RejectReason.PathMismatch
+                : metadata.AuthorizationHash != Hash(context.Request.Headers.Authorization.ToString()) ? RejectReason.AuthorizationMismatch
+                : metadata.CookieHash != Hash(context.Request.Headers.Cookie.ToString()) ? RejectReason.CookieMismatch
+                : !allowAnonymous && string.IsNullOrEmpty(context.Request.Headers.Authorization) ? RejectReason.MissingAuthorization
+                : metadata.Ua is null || metadata.Ua.Length > 512 || metadata.Ua.Any(char.IsControl) ? RejectReason.BadUserAgent
+                : metadata.Ip is not null && (metadata.Ip.Length > 45 || !IPAddress.TryParse(metadata.Ip, out _)) ? RejectReason.BadIp
+                : null;
+            if (reason is { } refused)
+            {
+                long? skew = refused is RejectReason.Stale or RejectReason.FromTheFuture ? metadata.Timestamp - now : null;
+                return (null, refused, skew);
+            }
+
+            return (metadata, default, null);
         }
-        catch (Exception ex) when (ex is FormatException or JsonException or ArgumentException) { return null; }
+        catch (Exception ex) when (ex is FormatException or JsonException or ArgumentException)
+        {
+            return (null, RejectReason.Malformed, null);
+        }
     }
 
     private static string RawTarget(HttpContext context) =>

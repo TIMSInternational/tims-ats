@@ -398,10 +398,16 @@ export const assessmentRouter = router({
         });
       }
 
-      return db.assessmentAssignment.update({
-        where: { id: input.assignmentId },
+      // Conditional write (FIT v2 integrity): a submission that commits between the check above and this write must
+      // not leave a 'cancelled' assignment that holds a result. Only an assignment still assigned/in progress changes.
+      const cancelled = await db.assessmentAssignment.updateMany({
+        where: { id: input.assignmentId, organizationId: ctx.user.organizationId, status: { in: ['assigned', 'in_progress'] } },
         data: { status: 'cancelled' },
       });
+      if (cancelled.count === 0) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Asignación no encontrada o ya completada/cancelada' });
+      }
+      return { ...assignment, status: 'cancelled' };
     }),
 
   // 7.8 — Resend assessment invitation

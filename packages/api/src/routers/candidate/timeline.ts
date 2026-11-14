@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { router, permissionProcedure } from '../../trpc';
 import { candidateService } from '../../services/candidate.service';
 import { assertScoped, scopeWhereFor } from '../../access';
+import { hidesBelowMinimum } from '@tims/ai';
 
 export const candidateTimelineRouter = router({
   getTimeline: permissionProcedure('candidate', 'read')
@@ -30,7 +31,7 @@ export const candidateTimelineRouter = router({
     .query(async ({ ctx, input }) => {
       await assertScoped('candidate', input.candidateId, ctx.access, ctx.user.id, ctx.user.organizationId);
       const appScopeWhere = await scopeWhereFor('application', ctx.access, ctx.user.id);
-      return candidateService.getRisks(ctx.user.organizationId, input.candidateId, appScopeWhere);
+      return candidateService.getRisks(ctx.user.organizationId, input.candidateId, appScopeWhere, hidesBelowMinimum(ctx.access.scope));
     }),
 
   getRecommendations: permissionProcedure('candidate', 'read')

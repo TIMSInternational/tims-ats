@@ -5,6 +5,7 @@ import { rejectionEmailService } from '../../services/rejection-email.service';
 import { runAfterResponse } from '../../lib/after-response';
 import type { Prisma } from '@tims/db';
 import { assertScoped, scopeWhereFor } from '../../access';
+import { hidesBelowMinimum } from '@tims/ai';
 
 export const pipelineMovementsRouter = router({
   // Probe the parent vacancy so a narrow-scoped user cannot read board data
@@ -18,7 +19,7 @@ export const pipelineMovementsRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return pipelineService.getBoard(ctx.user.organizationId, input.vacancyId, input.status);
+      return pipelineService.getBoard(ctx.user.organizationId, input.vacancyId, input.status, hidesBelowMinimum(ctx.access.scope));
     }),
 
   moveCandidate: permissionProcedure('pipeline', 'update')

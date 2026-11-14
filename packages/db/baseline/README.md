@@ -60,3 +60,12 @@ the #111 scenario.
 
 **Never re-capture to make a red check green without reading the hunk.** That converts the only working
 control into a rubber stamp.
+
+## `applied-through.txt` (E2E only)
+
+Names the newest `packages/db/prisma/migrations/` directory this baseline already contains. The E2E bring-up
+(`scripts/e2e/up.sh`, `apply_pending_migrations`) loads the baseline and then applies, in order and with
+`ON_ERROR_STOP`, every migration directory after it, so the journeys run a branch's code against that branch's schema
+(a release whose new column the TS reads otherwise fails every query that selects it). After a re-capture that
+includes newer migrations, move the marker forward in the same PR; a stale marker re-applies an already-present
+migration and the bring-up fails loudly instead of silently testing the wrong schema.

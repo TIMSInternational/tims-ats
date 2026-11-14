@@ -7,6 +7,12 @@ import { toast } from '../../../../../lib/toast';
 import { DataTable, FitScoreBadge, ErrorState } from '../../../../../components';
 import { CandidateFitPanel } from './candidate-fit-panel';
 import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
+import { isFitEngineV2Enabled } from '../../../../../lib/platform-api/fit-engine';
+import {
+  useComputeForVacancyViaCsharp,
+  useFitRankingViaCsharp,
+  useSimulateWeightsViaCsharp,
+} from '../../../../../lib/platform-api/fit-engine-reads';
 
 const DIMENSIONS = ['assessment', 'interview', 'experience', 'education', 'languages'] as const;
 type Dimension = (typeof DIMENSIONS)[number];
@@ -21,25 +27,41 @@ export function FitRanking({ vacancyId }: { vacancyId: string }) {
   const [showSimulator, setShowSimulator] = useState(false);
   const [hypotheticalWeights, setHypotheticalWeights] = useState<Record<Dimension, number>>(EVEN_WEIGHTS);
 
-  const ranking = trpc.fitEngine.getRankingForVacancy.useQuery({ vacancyId });
+  // FIT v2 (NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP): the ranking, the what-if and the compute go to C#, which redacts for
+  // a team leader (D6) and computes v2. Flag off: the tRPC procedures, unchanged.
+  const viaCsharp = isFitEngineV2Enabled();
+  const trpcRanking = trpc.fitEngine.getRankingForVacancy.useQuery({ vacancyId }, { enabled: !viaCsharp });
+  const csharpRanking = useFitRankingViaCsharp(vacancyId);
+  const ranking = viaCsharp ? csharpRanking : trpcRanking;
 
-  const compute = trpc.fitEngine.computeForVacancy.useMutation({
+  const onComputed = (computed: number) =>
+    toast(t.fitRanking.computeSuccess.replace('{count}', String(computed)), { type: 'success' });
+  const trpcCompute = trpc.fitEngine.computeForVacancy.useMutation({
     onSuccess: (result) => {
-      toast(t.fitRanking.computeSuccess.replace('{count}', String(result.computed)), { type: 'success' });
+      onComputed(result.computed);
       utils.fitEngine.getRankingForVacancy.invalidate({ vacancyId });
     },
     onError: (err) => toast(err.message, { type: 'error' }),
   });
+  const csharpCompute = useComputeForVacancyViaCsharp(vacancyId, {
+    onSuccess: onComputed,
+    onError: (err) => toast(err.message, { type: 'error' }),
+  });
+  const compute = viaCsharp
+    ? { run: () => csharpCompute.mutate(), isPending: csharpCompute.isPending }
+    : { run: () => trpcCompute.mutate({ vacancyId }), isPending: trpcCompute.isPending };
 
   // Non-destructive what-if simulator (Codex-review fix): re-runs the
   // weighted-sum math in memory against already-stored FitScore breakdowns —
   // zero writes, zero AI calls. Kept as a manually-triggered query (enabled:
   // false + refetch) rather than a mutation because simulateWeights is a
   // side-effect-free read, matching the router's `.query` procedure.
-  const simulation = trpc.fitEngine.simulateWeights.useQuery(
+  const trpcSimulation = trpc.fitEngine.simulateWeights.useQuery(
     { vacancyId, hypotheticalWeights },
     { enabled: false },
   );
+  const csharpSimulation = useSimulateWeightsViaCsharp(vacancyId, hypotheticalWeights);
+  const simulation = viaCsharp ? csharpSimulation : trpcSimulation;
 
   const weightLabels: Record<Dimension, string> = {
     assessment: t.fitWeights.weightAssessment,
@@ -52,14 +74,15 @@ export function FitRanking({ vacancyId }: { vacancyId: string }) {
   const weightSum = DIMENSIONS.reduce((sum, dim) => sum + hypotheticalWeights[dim], 0);
   const weightsValid = Math.abs(weightSum - 1) < 0.001;
 
-  const rows = ranking.data ?? [];
+  const rows: ReadonlyArray<{ candidateId: string; firstName: string; lastName: string; overallScore: number; isPartial: boolean }> =
+    ranking.data ?? [];
 
   return (
     <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.fitRanking.title}</h3>
         <button
-          onClick={() => compute.mutate({ vacancyId })}
+          onClick={() => compute.run()}
           disabled={compute.isPending}
           className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-3 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
         >

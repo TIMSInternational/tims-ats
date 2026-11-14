@@ -97,6 +97,7 @@ export const fitEngineRepository = {
         id: true,
         overallScore: true,
         breakdown: true,
+        weights: true,
         isPartial: true,
         calculatedAt: true,
         candidate: { select: { id: true, firstName: true, lastName: true } },
@@ -112,6 +113,7 @@ export const fitEngineRepository = {
       select: {
         overallScore: true,
         breakdown: true,
+        weights: true,
         candidate: { select: { firstName: true, lastName: true } },
         vacancy: { select: { title: true } },
       },

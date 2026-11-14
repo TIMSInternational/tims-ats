@@ -36,6 +36,6 @@
       "@tanstack/react-query": ["./apps/web/node_modules/@tanstack/react-query"]
     }
   },
-  // e2e/ is type-checked by its own tsconfig (Playwright + Node types, no DOM app paths).
-  "exclude": ["node_modules", "e2e"]
+  // e2e/ and apps/web/e2e/ are type-checked by their own tsconfigs (Playwright + Node types, no DOM app paths).
+  "exclude": ["node_modules", "e2e", "apps/web/e2e"]
 }

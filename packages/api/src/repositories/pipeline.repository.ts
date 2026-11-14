@@ -34,7 +34,7 @@ const boardApplicationSelect = (organizationId: string, vacancyId: string, visib
         fitScores: {
           where: { organizationId, vacancyId, AND: [visibleFit] },
           take: 1,
-          select: { overallScore: true, isPartial: true },
+          select: { overallScore: true, restrictedOverallScore: true, isPartial: true },
         },
       },
     },

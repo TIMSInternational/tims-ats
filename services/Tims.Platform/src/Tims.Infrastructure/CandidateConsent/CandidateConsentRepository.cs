@@ -23,9 +23,11 @@ namespace Tims.Infrastructure.CandidateConsent;
 /// <c>SaveChanges</c> inside the scope's transaction. The reason text is NOT copied into the audit metadata (it
 /// may carry personal data); the audit records who, how and whether a reason and a deletion request exist.</para>
 /// </summary>
-public sealed partial class CandidateConsentRepository(CandidateConsentDbContext db) : ICandidateConsentRepository
+public sealed partial class CandidateConsentRepository(
+    CandidateConsentDbContext db, IConsentWithdrawalCascade? cascade = null) : ICandidateConsentRepository
 {
     private readonly CandidateConsentDbContext _db = db;
+    private readonly IConsentWithdrawalCascade _cascade = cascade ?? new NoConsentWithdrawalCascade();
 
     public async Task<CandidateConsentResult> GetAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
     {
@@ -176,6 +178,12 @@ public sealed partial class CandidateConsentRepository(CandidateConsentDbContext
             newlyWithdrawn = true;
         }
 
+        // D15: the same transaction, under the lock taken above, stops the provider attempts of a newly withdrawn
+        // candidate. A withdrawal that changes nothing does not commit, so it stages nothing either.
+        var providerAttempts = newlyWithdrawn
+            ? await _cascade.StageAsync(_db.Database, organizationId, candidateId, timestamp, cancellationToken).ConfigureAwait(false)
+            : 0;
+
         Guid? requestId = null;
         if (actor.RequestDeletion)
         {
@@ -225,6 +233,7 @@ public sealed partial class CandidateConsentRepository(CandidateConsentDbContext
                     ["consentNewlyWithdrawn"] = newlyWithdrawn,
                     ["hadConsentRecord"] = hadConsentRecord,
                     ["deletionRequested"] = requested,
+                    ["providerAttemptsWithdrawn"] = providerAttempts,
                 }),
             });
         }

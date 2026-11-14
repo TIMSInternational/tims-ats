@@ -30,7 +30,9 @@ export function AssignAssessmentModal({ candidateId, applications, onClose }: {
       await utils.candidate.getById.invalidate({ id: candidateId });
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t.common.error);
+      // The server's code, in words a recruiter can act on (an own quiz with no questions yet).
+      const message = cause instanceof Error ? cause.message : '';
+      setError(message === 'assessment_has_no_questions' ? t.assessments.ownQuizHasNoQuestions : message || t.common.error);
     }
   };
 
@@ -50,6 +52,7 @@ export function AssignAssessmentModal({ candidateId, applications, onClose }: {
             {(types.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
+        <p className="text-[12px] text-[#8B8B8B]">{t.assessments.ownQuizHint}</p>
         {types.data?.length === 0 && <p className="text-[12px] text-[#8B8B8B]">{t.assessments.noTypesDesc}</p>}
         {types.isError && <p role="alert" className="text-[12px] text-red-600">{types.error.message}</p>}
         {error && <p role="alert" className="text-[12px] text-red-600">{error}</p>}

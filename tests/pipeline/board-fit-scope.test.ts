@@ -28,7 +28,8 @@ describe('pipeline board FIT scope', () => {
                 fitScores: {
                   where: { organizationId: 'org-1', vacancyId: 'vacancy-1', AND: [HIDDEN] },
                   take: 1,
-                  select: { overallScore: true, isPartial: true },
+                  // restrictedOverallScore: the D6 overall a narrow-scoped reader sees (FIT v2, slice "fit").
+                  select: { overallScore: true, restrictedOverallScore: true, isPartial: true },
                 },
               }),
             }),
