@@ -136,10 +136,10 @@ test('recruiter sees the application in the pipeline and opens the candidate', a
 /** On the candidate profile: move the (only) application to `stage`. */
 async function moveStage(page: Page, stage: string): Promise<void> {
   if (page.url() !== profileUrl) await page.goto(profileUrl);
-  await page.getByRole('button', { name: 'Mover Etapa' }).first().click();
-  const dialog = page.getByRole('dialog', { name: 'Mover Etapa' });
+  await page.getByRole('button', { name: 'Mover etapa' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Mover etapa' });
   await dialog.getByLabel('Mover a etapa').selectOption({ label: stage });
-  await dialog.getByRole('button', { name: 'Mover Etapa' }).click();
+  await dialog.getByRole('button', { name: 'Mover etapa' }).click();
   await expect(dialog).toBeHidden();
 }
 

@@ -7,11 +7,12 @@ import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { useCan } from '../../../../../lib/permissions';
 import { offerDetailHref } from '../../../../../lib/offer-deep-link';
+import { buttonClasses } from '../../../../../components';
 import { CreateOfferModal } from './create-offer-modal';
 import type { OfferFormApplication } from './create-offer-form';
 
-const BUTTON =
-  'flex items-center gap-2 border border-[#1F114C] text-[#1F114C] px-4 h-9 rounded-lg text-[12px] font-medium hover:bg-[#1F114C]/5 transition disabled:opacity-50';
+// A secondary action in the candidate's page-header group (the navy primary is "Mover etapa").
+const BUTTON = buttonClasses({ variant: 'secondary' });
 
 /**
  * "Crear oferta" on the candidate profile.
@@ -62,9 +63,7 @@ export function CreateOfferButton({
       >
         {t.offers.createOffer}
       </button>
-      {showModal && (
-        <CreateOfferModal candidateId={candidateId} applications={available} onClose={closeModal} />
-      )}
+      {showModal && <CreateOfferModal candidateId={candidateId} applications={available} onClose={closeModal} />}
     </>
   );
 }

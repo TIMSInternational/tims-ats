@@ -5,11 +5,11 @@ import { annualToPeriod, formatMoneyCode, type SalaryPeriod } from '../../../../
 import { currencyOptions } from '../../../../../lib/currency-options';
 import { formatMoneyAmount } from '../../../../../lib/money-amount';
 import { MoneyInput } from '../../../../../components/money-input';
+import { inputClasses, selectClasses } from '../../../../../components';
 import { offerSalaryState, type OfferSalaryInput } from './create-offer-form';
 import { useTenantLocale } from '../../../../../lib/tenant-locale-context';
 
-const INPUT = 'mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]';
-const LABEL = 'block text-[12px] font-medium text-[#585858]';
+const LABEL = 'block text-body font-medium text-primary';
 
 // Salary amount, period and currency. One column on a phone, three from `sm` up (B-33).
 export function CreateOfferSalaryFields({
@@ -49,7 +49,7 @@ export function CreateOfferSalaryFields({
             max={maxInPeriod}
             placeholder={placeholderAmount !== null ? formatMoneyAmount(placeholderAmount, values.currency) : undefined}
             onChange={(text) => onChange({ salary: text })}
-            className={INPUT}
+            className={inputClasses('md', 'mt-1.5')}
           />
         </div>
         <label className={LABEL}>
@@ -59,7 +59,7 @@ export function CreateOfferSalaryFields({
             onChange={(event) =>
               onChange({ period: (event.target.value === 'yearly' ? 'yearly' : 'monthly') as SalaryPeriod })
             }
-            className={`${INPUT} bg-white`}
+            className={selectClasses('md', 'mt-1.5')}
           >
             <option value="monthly">{t.offers.periodMonthly}</option>
             <option value="yearly">{t.offers.periodYearly}</option>
@@ -70,7 +70,7 @@ export function CreateOfferSalaryFields({
           <select
             value={values.currency}
             onChange={(event) => onChange({ currency: event.target.value })}
-            className={`${INPUT} bg-white`}
+            className={selectClasses('md', 'mt-1.5')}
           >
             {currencyList.map((c) => (
               <option key={c.code} value={c.code}>
@@ -81,15 +81,21 @@ export function CreateOfferSalaryFields({
         </label>
       </div>
       {referenceAmount !== null && referenceCurrency !== null && (
-        <p data-testid="offer-salary-reference" className="text-[11px] text-[#8B8B8B]">
-          {t.offers.salaryPlaceholderHint.replace('{amount}', formatMoneyCode(referenceAmount, referenceCurrency, intlLocale))}
+        <p data-testid="offer-salary-reference" className="text-callout text-secondary">
+          {t.offers.salaryPlaceholderHint.replace(
+            '{amount}',
+            formatMoneyCode(referenceAmount, referenceCurrency, intlLocale),
+          )}
         </p>
       )}
       {annualSalary !== null && (
-        <p data-testid="offer-salary-equivalents" className="text-[12px] font-medium text-[#1F114C]">
+        <p data-testid="offer-salary-equivalents" className="text-callout font-medium text-brand">
           {t.offers.salaryEquivalents
             .replace('{annual}', formatMoneyCode(annualSalary, values.currency, intlLocale))
-            .replace('{monthly}', formatMoneyCode(annualToPeriod(annualSalary, 'monthly'), values.currency, intlLocale))}
+            .replace(
+              '{monthly}',
+              formatMoneyCode(annualToPeriod(annualSalary, 'monthly'), values.currency, intlLocale),
+            )}
         </p>
       )}
     </>

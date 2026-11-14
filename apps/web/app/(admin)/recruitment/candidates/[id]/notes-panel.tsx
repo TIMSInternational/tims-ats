@@ -5,6 +5,8 @@ import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
 import { useCan } from '../../../../../lib/permissions';
+import { Button, EmptyState, FIELD_ERROR_CLASSES, textareaClasses } from '../../../../../components';
+import { CARD, CARD_TITLE } from './card-styles';
 
 /** candidate.update bounds `notes` to 5000 characters. */
 const NOTES_MAX = 5000;
@@ -30,25 +32,22 @@ export function CandidateNotesPanel({ candidateId, notes }: { candidateId: strin
   });
   const value = notes?.trim();
   const tooLong = draft.length > NOTES_MAX;
+  const startEditing = () => {
+    setDraft(notes ?? '');
+    setEditing(true);
+  };
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center justify-between gap-3 mb-1">
-        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.candidates.tabNotes}</h3>
-        {canEdit && !editing && (
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(notes ?? '');
-              setEditing(true);
-            }}
-            className="text-[12px] font-medium text-[#1F114C] hover:underline"
-          >
+    <section className={CARD}>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className={`${CARD_TITLE} mb-0`}>{t.candidates.tabNotes}</h2>
+        {canEdit && !editing && value && (
+          <Button variant="secondary" size="sm" onClick={startEditing}>
             {t.candidates.notesEdit}
-          </button>
+          </Button>
         )}
       </div>
-      <p className="text-[11px] text-[#8B8B8B] mb-4">{t.candidates.notesHelp}</p>
+      <p className="mb-4 max-w-prose text-callout text-secondary">{t.candidates.notesHelp}</p>
       {editing ? (
         <div className="space-y-2">
           <label htmlFor="candidate-notes" className="sr-only">
@@ -59,38 +58,39 @@ export function CandidateNotesPanel({ candidateId, notes }: { candidateId: strin
             rows={6}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            aria-invalid={tooLong}
-            className="w-full rounded-lg border border-[#EDEDED] p-3 text-[13px] focus:border-[#1F114C] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
+            aria-invalid={tooLong || undefined}
+            aria-describedby={tooLong ? 'candidate-notes-error' : undefined}
+            autoFocus
+            className={textareaClasses()}
           />
           {tooLong && (
-            <p role="alert" className="text-[11px] text-red-600">
+            <p id="candidate-notes-error" role="alert" className={FIELD_ERROR_CLASSES}>
               {t.candidates.notesTooLong.replace('{max}', String(NOTES_MAX))}
             </p>
           )}
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              disabled={update.isPending}
-              className="h-8 rounded-lg border border-[#EDEDED] px-3 text-[12px] text-[#585858]"
-            >
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" size="sm" onClick={() => setEditing(false)} disabled={update.isPending}>
               {t.common.cancel}
-            </button>
-            <button
-              type="button"
-              disabled={tooLong || update.isPending}
+            </Button>
+            <Button
+              size="sm"
+              disabled={tooLong}
+              loading={update.isPending}
               onClick={() => update.mutate({ id: candidateId, notes: draft.trim() })}
-              className="h-8 rounded-lg bg-[#1F114C] px-3 text-[12px] font-medium text-white disabled:opacity-50"
             >
               {t.candidates.notesSave}
-            </button>
+            </Button>
           </div>
         </div>
       ) : value ? (
-        <p className="text-[13px] text-[#585858] whitespace-pre-wrap leading-relaxed">{value}</p>
+        <p className="max-w-prose whitespace-pre-wrap text-body leading-relaxed text-primary">{value}</p>
       ) : (
-        <p className="text-[12px] text-[#8B8B8B] py-4 text-center">{t.common.noResults}</p>
+        <EmptyState
+          size="compact"
+          title={t.candidates.notesEmpty}
+          action={canEdit ? { label: t.candidates.notesAdd, onClick: startEditing, variant: 'secondary' } : undefined}
+        />
       )}
-    </div>
+    </section>
   );
 }

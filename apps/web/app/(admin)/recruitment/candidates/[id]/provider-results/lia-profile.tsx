@@ -19,20 +19,20 @@ export function LiaProfile({ lia, minimum }: { lia: Lia; minimum: number | null 
     <div>
       <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
         <div>
-          <p className="text-[12px] text-[#585858]">{r.headline}</p>
-          <p className="text-[28px] font-semibold leading-8 tabular-nums text-[#1F114C]">
+          <p className="text-callout text-secondary">{r.headline}</p>
+          <p className="text-[28px] font-semibold leading-8 tabular-nums text-brand">
             {global === null ? '—' : formatNumber(global)}
           </p>
         </div>
         {lia.globalLevel && (
-          <p className="pb-1 text-[13px] font-medium text-[#333333]">{levels[lia.globalLevel] ?? lia.globalLevel}</p>
+          <p className="pb-1 text-body font-medium text-primary">{levels[lia.globalLevel] ?? lia.globalLevel}</p>
         )}
       </div>
       {global !== null && (
         <div className="mt-2 max-w-md">
           <MeterBar value={global} minimum={minimum} />
           {minimum !== null && (
-            <p className="mt-1 text-[11px] text-[#585858]">
+            <p className="mt-1 text-caption text-secondary">
               {fill(t.providerAssessments.results.minimum, { value: formatNumber(minimum) })}
             </p>
           )}
@@ -47,23 +47,29 @@ export function LiaProfile({ lia, minimum }: { lia: Lia; minimum: number | null 
             return (
               <li
                 key={s.subtest}
-                className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] items-center gap-3"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem] sm:gap-y-3"
                 aria-label={
                   s.percentile === null ? name : fill(r.subtestValue, { name, value: formatNumber(s.percentile) })
                 }
               >
-                <span className="truncate text-[13px] text-[#333333]">{name}</span>
-                <MeterBar value={s.percentile} />
-                <span className="text-right text-[13px] font-medium tabular-nums text-[#1F114C]">
+                <span className="text-body text-primary sm:truncate">{name}</span>
+                <div className="order-last col-span-2 sm:order-none sm:col-span-1">
+                  <MeterBar value={s.percentile} />
+                </div>
+                <span className="text-right text-body font-medium tabular-nums text-brand">
                   {s.percentile === null ? '—' : formatNumber(s.percentile)}
                 </span>
-                {!finished && <span className="col-start-2 -mt-2 text-[11px] text-[#6B6B6B]">{r.notFinished}</span>}
+                {!finished && (
+                  <span className="order-last col-span-2 text-caption text-muted sm:col-span-1 sm:col-start-2 sm:-mt-2">
+                    {r.notFinished}
+                  </span>
+                )}
               </li>
             );
           })}
         </ul>
       )}
-      {lia.normStatus === 'provisional' && <p className="mt-4 text-[12px] text-[#6B6B6B]">{r.provisionalNorms}</p>}
+      {lia.normStatus === 'provisional' && <p className="mt-4 text-callout text-muted">{r.provisionalNorms}</p>}
     </div>
   );
 }

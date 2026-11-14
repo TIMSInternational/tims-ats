@@ -21,10 +21,10 @@ function DiscColumns({ graph }: { graph: Graph }) {
           <g key={f}>
             <rect x={x} y={9} width="15" height="50" rx="2" className="fill-[#F4F3F8]" />
             <rect x={x} y={59 - height} width="15" height={height} rx="2" className="fill-[#1F114C]" />
-            <text x={x + 7.5} y={57 - height} textAnchor="middle" className="fill-[#1F114C] text-[6px] font-semibold">
+            <text x={x + 7.5} y={57 - height} textAnchor="middle" className="fill-[#1F114C] text-[7.5px] font-semibold">
               {value}
             </text>
-            <text x={x + 7.5} y={69} textAnchor="middle" className="fill-[#333333] text-[6px] font-semibold">
+            <text x={x + 7.5} y={69} textAnchor="middle" className="fill-[#333333] text-[7.5px] font-semibold">
               {f.toUpperCase()}
             </text>
           </g>
@@ -42,27 +42,29 @@ function JobFit({ jobFit }: { jobFit: NonNullable<Pca['jobFit']> }) {
   const r = t.providerAssessments.results.pca.jobFit;
   const fit = jobFit.status === 'computed' && jobFit.fit !== null ? formatNumber(jobFit.fit) : null;
   return (
-    <section className="mb-4 rounded-xl border border-[#1F114C] bg-[#FAF9FD] p-3" aria-label={r.title}>
+    <section className="mb-4 rounded-xl border border-brand bg-[#FAF9FD] p-3" aria-label={r.title}>
       <div className="flex items-baseline justify-between gap-3">
-        <h4 className="text-[13px] font-semibold text-[#1F114C]">{r.title}</h4>
-        <span className="text-[12px] text-[#585858]">{fill(r.code, { code: jobFit.jobCode })}</span>
+        <h4 className="text-body font-semibold text-brand">{r.title}</h4>
+        <span className="text-callout text-secondary">{fill(r.code, { code: jobFit.jobCode })}</span>
       </div>
       {fit !== null ? (
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-center">
-          <p className="text-[28px] font-semibold text-[#1F114C]" aria-label={fill(r.valueLabel, { fit })}>
+          <p className="text-[28px] font-semibold text-brand" aria-label={fill(r.valueLabel, { fit })}>
             {fill(r.value, { fit })}
           </p>
           {jobFit.jobProfile && (
             <div aria-label={fill(r.profileLabel, { ...jobFit.jobProfile })}>
-              <p className="text-[12px] text-[#585858]">{r.profile}</p>
+              <p className="text-callout text-secondary">{r.profile}</p>
               <DiscColumns graph={{ graph: 'job', ...jobFit.jobProfile }} />
             </div>
           )}
         </div>
       ) : (
-        <p className="mt-2 text-[12px] text-[#585858]">{jobFit.status === 'job_not_found' ? r.notFound : r.unavailable}</p>
+        <p className="mt-2 text-callout text-secondary">
+          {jobFit.status === 'job_not_found' ? r.notFound : r.unavailable}
+        </p>
       )}
-      <p className="mt-2 text-[11px] text-[#6B6B6B]">{r.note}</p>
+      <p className="mt-2 text-caption text-muted">{r.note}</p>
     </section>
   );
 }
@@ -79,7 +81,7 @@ export function PcaProfile({ pca }: { pca: Pca }) {
   return (
     <div>
       {pca.jobFit && <JobFit jobFit={pca.jobFit} />}
-      <p className="text-[12px] text-[#585858]">{r.headline}</p>
+      <p className="text-callout text-secondary">{r.headline}</p>
       <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {pca.graphs.map((g) => {
           const name = graphs[g.graph] ?? g.graph;
@@ -87,13 +89,13 @@ export function PcaProfile({ pca }: { pca: Pca }) {
           return (
             <li
               key={g.graph}
-              className={`rounded-xl border p-3 ${primary ? 'border-[#1F114C] bg-[#FAF9FD]' : 'border-[#EDEDED] bg-white'}`}
+              className={`rounded-xl border p-3 ${primary ? 'border-brand bg-[#FAF9FD]' : 'border-border bg-white'}`}
               aria-label={fill(r.graphLabel, { graph: name, d: g.d, i: g.i, s: g.s, c: g.c })}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-[13px] font-medium text-[#1F114C]">{name}</span>
+                <span className="truncate text-body font-medium text-brand">{name}</span>
                 {primary && (
-                  <span className="shrink-0 rounded-full bg-[#1F114C] px-2 py-0.5 text-[11px] font-medium text-white">
+                  <span className="shrink-0 rounded-full bg-brand px-2 py-0.5 text-caption font-medium text-white">
                     {r.primary}
                   </span>
                 )}
@@ -103,13 +105,13 @@ export function PcaProfile({ pca }: { pca: Pca }) {
           );
         })}
       </ul>
-      <p className="mt-2 text-[12px] text-[#6B6B6B]">
+      <p className="mt-2 text-callout text-muted">
         {FACTORS.map((f) => `${f.toUpperCase()} ${r.factors[f]}`).join(' · ')}
       </p>
 
-      <h4 className="mt-6 text-[13px] font-semibold text-[#1F114C]">{r.competencies}</h4>
+      <h4 className="mt-6 text-body font-semibold text-brand">{r.competencies}</h4>
       {pca.competencies.length === 0 ? (
-        <p className="mt-2 text-[12px] text-[#6B6B6B]">{r.noCompetencies}</p>
+        <p className="mt-2 text-callout text-muted">{r.noCompetencies}</p>
       ) : (
         <ul className="mt-2 divide-y divide-[#F1F0F5]">
           {pca.competencies.map((c) => {
@@ -120,10 +122,10 @@ export function PcaProfile({ pca }: { pca: Pca }) {
                 className="flex items-center justify-between gap-4 py-2"
                 aria-label={`${c.name}: ${level}`}
               >
-                <span className="text-[13px] text-[#333333]">{c.name}</span>
+                <span className="text-body text-primary">{c.name}</span>
                 <span className="flex shrink-0 items-center gap-3">
                   <LevelDots level={c.level} max={c.scaleMax} />
-                  <span className="w-20 text-right text-[12px] text-[#585858]">{level}</span>
+                  <span className="w-20 text-right text-callout text-secondary">{level}</span>
                 </span>
               </li>
             );
