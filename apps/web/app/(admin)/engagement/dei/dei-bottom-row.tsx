@@ -1,135 +1,95 @@
 'use client';
 
-import { useI18n } from '../../../../lib/i18n';
-import {
-  useDeiPromotionEquity,
-  useDeiLeadershipDiversity,
-  useDeiInclusionIndex,
-} from '../../../../lib/platform-api/dei';
-
-const GENDER_BAR: Record<string, string> = {
-  male: 'bg-blue-500',
-  female: 'bg-pink-500',
-  non_binary: 'bg-purple-400',
-  undisclosed: 'bg-gray-300',
-};
-
-function genderLabel(t: ReturnType<typeof useI18n>['t'], g: string): string {
-  return g === 'male'
-    ? t.dei.genderMale
-    : g === 'female'
-      ? t.dei.genderFemale
-      : g === 'non_binary'
-        ? t.dei.genderNonBinary
-        : g === 'undisclosed'
-          ? t.dei.genderUndisclosed
-          : g;
-}
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{title}</h3>
-      {children}
-    </div>
-  );
-}
+import { useI18n, formatMessage } from '../../../../lib/i18n';
+import { formatNumber, formatPercent } from '../../../../lib/format-utils';
+import { useDeiPromotionEquity, useDeiLeadershipDiversity } from '../../../../lib/platform-api/dei';
+import { EmptyState, ErrorState } from '../../../../components';
+import { DEI_CARD, DEI_CARD_TITLE, GENDER_BAR, GENDER_FALLBACK_BAR, genderLabel } from './dei-shared';
+import { DeiNoValue } from './dei-no-value';
+import { DeiCardSkeleton } from './dei-card-skeleton';
 
 export function PromotionEquity() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useDeiPromotionEquity();
 
   return (
-    <Card title={t.dei.promotions}>
+    <section aria-labelledby="dei-promotions" className={DEI_CARD}>
+      <h2 id="dei-promotions" className={DEI_CARD_TITLE}>
+        {t.dei.promotions}
+      </h2>
       {q.isLoading ? (
-        <div className="h-16 bg-gray-50 rounded animate-pulse" />
+        <DeiCardSkeleton rows={2} />
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{t.dei.errPromotions}</p>
+        <ErrorState size="compact" title={t.dei.errPromotions} error={q.error} onRetry={() => q.refetch()} />
       ) : (
         <>
-          <p className="text-[24px] font-bold text-[#1F114C]">
-            {q.data?.totalPromotions == null ? t.dei.na : q.data.totalPromotions}
+          <p className="text-display font-semibold tabular-nums text-primary">
+            {q.data?.totalPromotions == null ? <DeiNoValue /> : formatNumber(q.data.totalPromotions, locale)}
           </p>
-          <p className="text-[10px] text-[#8B8B8B] mt-1">
-            {t.dei.promotionsIn} {q.data?.year}. {t.dei.promotionsBreakdownNote}
+          <p className="mt-1 text-callout text-secondary">
+            {q.data?.year != null && `${formatMessage(t.dei.promotionsYear, { year: q.data.year })} `}
+            {t.dei.promotionsBreakdownNote}
           </p>
         </>
       )}
-    </Card>
+    </section>
   );
 }
 
 export function LeadershipDiversity() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useDeiLeadershipDiversity();
 
   return (
-    <Card title={t.dei.leadershipDiversity}>
+    <section aria-labelledby="dei-leadership" className={DEI_CARD}>
+      <h2 id="dei-leadership" className={DEI_CARD_TITLE}>
+        {t.dei.leadershipDiversity}
+      </h2>
       {q.isLoading ? (
-        <div className="h-24 bg-gray-50 rounded animate-pulse" />
+        <DeiCardSkeleton rows={3} />
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{t.dei.errLeadership}</p>
+        <ErrorState size="compact" title={t.dei.errLeadership} error={q.error} onRetry={() => q.refetch()} />
       ) : !q.data || q.data.byGender.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.dei.noLeaders}</p>
+        <EmptyState size="compact" title={t.dei.noLeaders} />
       ) : (
         <>
-          <div className="flex h-6 rounded-full overflow-hidden mb-3">
+          <div className="mb-3 flex h-6 gap-0.5 overflow-hidden rounded-full bg-white" aria-hidden="true">
             {q.data.byGender.map((g) => (
               <div
                 key={g.gender}
-                className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'}`}
+                className={GENDER_BAR[g.gender] ?? GENDER_FALLBACK_BAR}
                 style={{ width: `${g.percentage ?? 0}%` }}
               />
             ))}
           </div>
-          <div className="space-y-1.5">
+          <ul className="space-y-1.5">
             {q.data.byGender.map((g) => (
-              <div key={g.gender} className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2.5 h-2.5 rounded-sm ${GENDER_BAR[g.gender] ?? 'bg-gray-300'}`} />
-                  <span className="text-[11px] text-[#333]">{genderLabel(t, g.gender)}</span>
-                </div>
+              <li key={g.gender} className="flex items-center justify-between gap-2 text-callout">
+                <span className="flex items-center gap-1.5 text-primary">
+                  <span
+                    className={`size-2.5 rounded-sm ${GENDER_BAR[g.gender] ?? GENDER_FALLBACK_BAR}`}
+                    aria-hidden="true"
+                  />
+                  {genderLabel(t, g.gender)}
+                </span>
                 {/* min-5 mask: percentage is nulled when this leader group is sub-floor
                     OR when any sibling is (all-or-nothing differencing guard). */}
-                <span className="text-[11px] font-semibold text-[#1F114C]">
-                  {g.percentage === null ? t.dei.na : `${g.percentage}%`}
+                <span className="font-semibold tabular-nums text-primary">
+                  {g.percentage === null ? <DeiNoValue /> : formatPercent(g.percentage, locale)}
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
-          <p className="text-[10px] text-[#8B8B8B] mt-2 pt-2 border-t border-[#F0F0F0]">
-            {q.data.totalLeaders ?? t.dei.na} {t.dei.leadersSuffix} · {t.dei.leadershipGoalPrefix}{' '}
-            <strong className="text-[#1F114C]">{t.dei.leadershipGoalValue}</strong>
+          </ul>
+          {/* No invented goal line: a target shows here only once one is configured. */}
+          <p className="mt-2 border-t border-border pt-2 text-callout text-secondary">
+            {q.data.totalLeaders == null ? (
+              <DeiNoValue />
+            ) : (
+              formatMessage(t.dei.leadersCount, { count: q.data.totalLeaders })
+            )}
           </p>
         </>
       )}
-    </Card>
-  );
-}
-
-export function InclusionTrend() {
-  const { t } = useI18n();
-  const q = useDeiInclusionIndex();
-
-  return (
-    <Card title={t.dei.inclusionTitle}>
-      {q.isLoading ? (
-        <div className="h-20 bg-gray-50 rounded animate-pulse" />
-      ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{t.dei.errInclusion}</p>
-      ) : q.data?.index === null || q.data?.index === undefined ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.dei.noInclusionSurvey}</p>
-      ) : (
-        <>
-          <p className="text-[32px] font-bold text-green-600">
-            {q.data.index}
-            <span className="text-[14px] text-[#8B8B8B] font-normal"> / 100</span>
-          </p>
-          <p className="text-[10px] text-[#8B8B8B] mt-1">
-            {t.dei.inclusionResponsesPrefix} {q.data.totalResponses} {t.dei.inclusionResponsesSuffix}
-          </p>
-        </>
-      )}
-    </Card>
+    </section>
   );
 }
