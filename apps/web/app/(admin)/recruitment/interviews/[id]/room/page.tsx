@@ -147,7 +147,7 @@ export default function InterviewRoomPage({
       : (chosenStage ?? (data.status === 'completed' ? 'scoring' : 'lobby'));
 
   let stageNode: ReactNode;
-  let stageClass = 'flex-1 flex flex-col bg-[#0a0a0a] min-w-0';
+  let stageClass = 'flex-1 flex flex-col min-w-0';
   const isInCall = stage === 'call' && roomData !== null;
   if (isRoomClosed && !isInCall) {
     stageNode = <ClosedStage candidateName={candidateName} subtitle={subtitle} message={closedMessage} />;
@@ -163,7 +163,7 @@ export default function InterviewRoomPage({
         {/* Closed while in the call (e.g. cancelled by someone else): keep the call and its
             controls (yanking the provider would not end it) and say so. */}
         {isRoomClosed && (
-          <p role="status" className="absolute top-4 inset-x-4 z-20 bg-black/70 text-white text-[12px] rounded-lg px-3 py-2 text-center">
+          <p role="status" className="absolute top-4 inset-x-4 z-20 bg-black/70 text-white text-callout rounded-lg px-3 py-2 text-center">
             {closedMessage}
           </p>
         )}
@@ -180,7 +180,8 @@ export default function InterviewRoomPage({
       </DailyProvider>
     );
   } else if (stage === 'scoring') {
-    stageClass = 'md:flex-[60] flex flex-col bg-[#0a0a0a] min-w-0 shrink-0 md:shrink';
+    // No call to frame: a narrow white panel beside the scorecard, a compact header row on phones.
+    stageClass = 'md:flex-[35] flex flex-col bg-surface min-w-0 shrink-0 md:shrink border-b border-border md:border-b-0';
     stageNode = (
       <ScoringStage
         candidateName={candidateName}
@@ -240,9 +241,11 @@ export default function InterviewRoomPage({
 }
 
 function InterviewRoomSkeleton() {
+  const { t } = useI18n();
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-6 h-[50px] bg-[#1F114C] shrink-0">
+    <div className="h-full flex flex-col overflow-hidden" aria-busy="true">
+      <span className="sr-only">{t.common.loadingContent}</span>
+      <div className="flex items-center justify-between px-4 md:px-6 h-[50px] bg-brand shrink-0">
         <div className="flex items-center gap-3">
           <Skeleton className="w-24 h-3 bg-white/10 rounded" />
           <Skeleton className="w-40 h-3 bg-white/10 rounded" />

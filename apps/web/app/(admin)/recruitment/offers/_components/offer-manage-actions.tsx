@@ -5,9 +5,7 @@ import { useI18n } from '../../../../../lib/i18n';
 import { CreateOfferModal } from '../../candidates/[id]/create-offer-modal';
 import type { OfferFormSource, OfferFormVacancy } from '../../candidates/[id]/create-offer-form';
 import { WithdrawOfferModal } from './withdraw-offer-modal';
-
-const SECONDARY =
-  'px-4 py-2.5 rounded-lg text-[13px] font-medium border border-[#EDEDED] text-[#1F114C] hover:bg-[#F6F6F6] transition';
+import { Menu, type MenuEntry } from '../../../../../components/menu';
 
 type Dialog = 'edit' | 'withdraw' | 'new' | null;
 
@@ -46,34 +44,23 @@ export function OfferManageActions({
   const linked = offer.applicationId ? [{ id: offer.applicationId, vacancy: offer.vacancy }] : [];
   const editEntry = [{ id: offer.applicationId ?? `offer-${offer.id}`, vacancy: offer.vacancy }];
 
-  if (!canEdit && !canWithdraw && !canCreateNew) return null;
+  // The header keeps one primary action; editing, copying and withdrawing live in a "Más acciones"
+  // menu, withdrawing last and in red after a separator (toolbars.md: "Add a More menu").
+  const items: MenuEntry[] = [];
+  if (canEdit) items.push({ key: 'edit', label: t.offers.editDraftMenu, onSelect: () => setDialog('edit') });
+  if (canCreateNew && linked.length > 0) {
+    items.push({ key: 'new', label: t.offers.createNewOfferMenu, onSelect: () => setDialog('new') });
+  }
+  if (canWithdraw) {
+    if (items.length > 0) items.push({ key: 'sep', type: 'separator' });
+    items.push({ key: 'withdraw', label: t.offers.withdrawOfferMenu, destructive: true, onSelect: () => setDialog('withdraw') });
+  }
+
+  if (items.length === 0) return null;
 
   return (
     <>
-      {canEdit && (
-        <button type="button" className={SECONDARY} onClick={() => setDialog('edit')}>
-          {t.offers.editDraft}
-        </button>
-      )}
-      {canCreateNew && linked.length > 0 && (
-        <button
-          type="button"
-          className={SECONDARY}
-          title={t.offers.createNewOfferHint}
-          onClick={() => setDialog('new')}
-        >
-          {t.offers.createNewOffer}
-        </button>
-      )}
-      {canWithdraw && (
-        <button
-          type="button"
-          className="px-4 py-2.5 rounded-lg text-[13px] font-medium border border-red-200 text-red-700 hover:bg-red-50 transition"
-          onClick={() => setDialog('withdraw')}
-        >
-          {t.offers.withdrawOffer}
-        </button>
-      )}
+      <Menu items={items} label={t.common.moreActions} panelClassName="w-60" />
       {dialog === 'edit' && (
         <CreateOfferModal
           mode="edit"

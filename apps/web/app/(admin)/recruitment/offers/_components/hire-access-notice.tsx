@@ -26,8 +26,8 @@ export function HireAccessNotice({ access, loginUrl }: { access: HireAccess; log
   return (
     <div
       role={failed ? 'alert' : 'status'}
-      className={`rounded-lg border px-4 py-3 text-[12px] ${
-        failed ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-green-200 bg-green-50 text-green-800'
+      className={`rounded-lg border px-4 py-3 text-callout ${
+        failed ? 'border-warning/30 bg-warning-bg text-warning' : 'border-success/30 bg-success-bg text-success'
       }`}
     >
       <p className="font-semibold">{t.offers.hireAccessTitle}</p>

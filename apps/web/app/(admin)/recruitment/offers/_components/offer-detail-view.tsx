@@ -4,7 +4,8 @@ import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { describeOfferActionError } from '../../../../../lib/offer-action-error';
 import { useI18n } from '../../../../../lib/i18n/index';
-import { Skeleton } from '../../../../../components';
+import { Skeleton, EmptyState, ErrorState } from '../../../../../components';
+import { Button } from '../../../../../components/button';
 import { ApprovalChain } from './approval-chain';
 import { OfferTimeline } from './offer-timeline';
 import { OfferValidations } from './offer-validations';
@@ -21,6 +22,12 @@ import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCan } from '../../../../../lib/permissions';
 import { invalidateAfterHire } from './invalidate-after-hire';
+
+const BACK_ICON = (
+  <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M15.75 19.5L8.25 12l7.5-7.5" />
+  </svg>
+);
 
 interface OfferDetailViewProps {
   offerId: string;
@@ -95,7 +102,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
 
   if (offer.isLoading) {
     return (
-      <div className="space-y-4 animate-pulse">
+      <div className="space-y-4" aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-24 w-full rounded-xl" />
         <div className="flex flex-col md:flex-row gap-6">
@@ -106,14 +114,20 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
     );
   }
 
-  if (offer.error || !offer.data) {
+  // A missing or foreign offer is "not found"; any other failure (network, server) can be retried
+  // instead of being told the offer does not exist (writing.md › Best practices).
+  const errorCode = offer.error?.data?.code;
+  const isMissing = errorCode === 'NOT_FOUND' || errorCode === 'FORBIDDEN' || errorCode === 'BAD_REQUEST';
+  if (offer.error && !isMissing && !offer.data) {
+    return <ErrorState error={offer.error} onRetry={() => void offer.refetch()} />;
+  }
+  if (isMissing || !offer.data) {
     return (
-      <div className="text-center py-16">
-        <p className="text-[#8B8B8B] text-sm">{t.offers.notFound}</p>
-        <button onClick={onBack} className="mt-3 text-[13px] text-[#1F114C] hover:underline">
-          {t.offers.backToList}
-        </button>
-      </div>
+      <EmptyState
+        title={t.offers.notFound}
+        description={t.offers.notFoundDesc}
+        action={{ label: t.offers.backToList, onClick: onBack, variant: 'secondary' }}
+      />
     );
   }
 
@@ -158,19 +172,14 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
 
   return (
     <div className="space-y-6">
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5 text-[13px] text-[#8B8B8B] hover:text-[#585858] transition"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-          <path d="M15.75 19.5L8.25 12l7.5-7.5" />
-        </svg>
+      <Button variant="tertiary" size="sm" className="-ml-3" onClick={onBack} icon={BACK_ICON}>
         {t.offers.backToList}
-      </button>
+      </Button>
 
       <CandidateHeader
         offer={o}
         statusLabel={statusInfo.label}
+        statusTone={statusInfo.tone}
         completedValidations={completedValidations}
         totalValidations={totalValidations}
         progressPct={progressPct}
@@ -210,29 +219,30 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       />
       {hireAccess && <HireAccessNotice access={hireAccess} loginUrl={`${window.location.origin}/login`} />}
       {signingError && (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
+        <p role="alert" className="rounded-lg bg-danger-bg px-4 py-2 text-callout text-danger">
           {signingError}
         </p>
       )}
 
       {/* Two columns */}
-      <div className="flex flex-col md:flex-row gap-6">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* LEFT: Offer details 55% (full width when the offer has no pre-employment checks, B-20) */}
-        <div className={`w-full space-y-4 ${model.showValidations ? 'md:flex-[55]' : ''}`}>
-          <OfferCard offer={o} statusInfo={statusInfo} benefitList={benefitList} terms={terms} />
-          <ApprovalChain approvals={o.approvals ?? []} />
+        <div className={`w-full space-y-4 ${model.showValidations ? 'lg:flex-[55]' : ''}`}>
+          {/* What THIS viewer can do (request, decide, withdraw) comes first; it renders nothing otherwise. */}
           <OfferApprovalActions
             offerId={offerId}
             status={o.status}
             approvals={o.approvals ?? []}
             onUpdated={refetchOffer}
           />
+          <OfferCard offer={o} benefitList={benefitList} terms={terms} />
+          <ApprovalChain approvals={o.approvals ?? []} />
           <OfferTimeline offer={o} />
         </div>
 
         {/* RIGHT: Validations 45% */}
         {model.showValidations && (
-          <div className="w-full md:flex-[45]">
+          <div className="w-full lg:flex-[45]">
             <OfferValidations
               offerId={offerId}
               validations={validations}

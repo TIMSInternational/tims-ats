@@ -6,6 +6,10 @@ import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { CANDIDATE_INTL_LOCALE, formatCandidateDate, formatCandidateOfferSalary } from '../../../../lib/candidate-format';
 import { OrgLogo } from '../../../../components/org-logo';
+import { Button } from '../../../../components/button';
+import { CHOICE_INPUT_CLASSES, FIELD_LABEL_CLASSES, inputClasses } from '../../../../components/field-styles';
+import { OfferSignStatus } from './offer-sign-status';
+import { OfferSignDecline } from './offer-sign-decline';
 
 export default function OfferSignPage() {
   const params = useParams();
@@ -31,25 +35,36 @@ export default function OfferSignPage() {
   });
 
   if (offer.isLoading) {
-    return <StatusScreen bg="bg-[#1F114C]/10" color="text-[#1F114C]" icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" title={t.offers.signLoading} subtitle={t.offers.signOneMoment} pulse />;
+    return <OfferSignStatus tone="brand" icon="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" title={t.offers.signLoading} subtitle={t.offers.signOneMoment} pulse />;
   }
 
   if (offer.error || !offer.data) {
-    return <StatusScreen bg="bg-red-100" color="text-[#DD0C15]" icon="M15 9l-6 6M9 9l6 6" circle title={t.offers.signInvalidLink} subtitle={t.offers.signInvalidLinkDesc} />;
+    return <OfferSignStatus tone="danger" icon="M15 9l-6 6M9 9l6 6" circle title={t.offers.signInvalidLink} subtitle={t.offers.signInvalidLinkDesc} />;
   }
 
   const o = offer.data;
+  const org = { name: o.organization.name, logo: o.organization.logo };
 
   if (o.status !== 'sent' && !accepted && !declined) {
-    return <StatusScreen bg="bg-amber-100" color="text-amber-600" icon="M12 6v6l4 2" circle title={t.offers.signAlreadyAnswered} subtitle={`${t.offers.signAlreadyAnsweredPrefix} ${o.status === 'accepted' ? t.offers.signStatusAccepted : t.offers.signStatusProcessed}. ${t.offers.signAlreadyAnsweredSuffix}`} />;
+    // A finished state, not a waiting one: a neutral check, and one full sentence per case.
+    return (
+      <OfferSignStatus
+        tone="brand"
+        icon="M9 12.75L11.25 15 15 9.75"
+        circle
+        organization={org}
+        title={t.offers.signAlreadyAnswered}
+        subtitle={o.status === 'accepted' ? t.offers.signAlreadyAccepted.replace('{org}', o.organization.name) : t.offers.signNoLongerOpen}
+      />
+    );
   }
 
   if (accepted) {
-    return <StatusScreen bg="bg-green-100" color="text-green-600" icon="M22 11.08V12a10 10 0 11-5.93-9.14" title={t.offers.signAccepted} subtitle={`${t.offers.signAcceptedPrefix} ${o.candidate.firstName}. ${t.offers.signAcceptedSuffix}`} />;
+    return <OfferSignStatus tone="success" icon="M9 12.75L11.25 15 15 9.75" circle organization={org} title={t.offers.signAccepted} subtitle={`${t.offers.signAcceptedPrefix} ${o.candidate.firstName}. ${t.offers.signAcceptedSuffix}`} />;
   }
 
   if (declined) {
-    return <StatusScreen bg="bg-gray-100" color="text-gray-500" icon="M6 18L18 6M6 6l12 12" title={t.offers.signDeclined} subtitle={t.offers.signDeclinedDesc} />;
+    return <OfferSignStatus tone="neutral" icon="M6 18L18 6M6 6l12 12" organization={org} title={t.offers.signDeclined} subtitle={t.offers.signDeclinedDesc} />;
   }
 
   const benefits = o.benefits as Record<string, string> | null;
@@ -58,12 +73,12 @@ export default function OfferSignPage() {
   const today = new Intl.DateTimeFormat(CANDIDATE_INTL_LOCALE[locale], { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] py-8 px-4">
-      <div className="max-w-2xl mx-auto">
+    <main className="min-h-dvh bg-surface-hover px-4 py-6 sm:py-8">
+      <div className="mx-auto max-w-2xl">
         {/* Header with org branding */}
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-popover">
           {/* Top bar */}
-          <div className="bg-[#1F114C] px-8 py-5 flex items-center gap-4">
+          <div className="flex items-center gap-4 bg-brand px-5 py-5 sm:px-8">
             <OrgLogo
               logo={o.organization.logo}
               name={o.organization.name}
@@ -72,57 +87,57 @@ export default function OfferSignPage() {
               decorative
             />
             <div>
-              <h2 className="text-white font-semibold text-lg">{o.organization.name}</h2>
-              <p className="text-white/70 text-xs">{t.offers.signLetterTitle}</p>
+              <p className="text-heading font-semibold text-white">{o.organization.name}</p>
+              <h1 className="text-callout text-white/80">{t.offers.signLetterTitle}</h1>
             </div>
           </div>
 
           {/* Content */}
-          <div className="px-8 py-7 space-y-6">
+          <div className="space-y-6 px-5 py-6 sm:px-8 sm:py-7">
             {/* Greeting */}
             <div>
-              <p className="text-[#333] text-[15px] leading-relaxed">
+              <p className="text-base leading-relaxed text-primary sm:text-subheading">
                 {t.offers.signGreeting} <strong>{o.candidate.firstName} {o.candidate.lastName}</strong>,
               </p>
-              <p className="text-[#585858] text-[14px] leading-relaxed mt-3">
+              <p className="mt-3 max-w-prose text-base leading-relaxed text-secondary sm:text-subheading">
                 {t.offers.signIntroPrefix}{' '}
-                <strong className="text-[#1F114C]">{o.vacancy.title}</strong> {t.offers.signIntroAt}{' '}
+                <strong className="text-brand">{o.vacancy.title}</strong> {t.offers.signIntroAt}{' '}
                 {o.organization.name}. {t.offers.signIntroSuffix}
               </p>
             </div>
 
             {/* Offer details grid */}
-            <div className="bg-[#F8F7FC] rounded-xl p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-[#1F114C] mb-3">{t.offers.signOfferDetails}</h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signPosition}</span>
-                  <span className="font-medium text-[#333]">{o.vacancy.title}</span>
+            <section className="space-y-3 rounded-xl bg-brand-tint p-4 sm:p-5" aria-labelledby="offer-sign-details">
+              <h2 id="offer-sign-details" className="mb-3 text-subheading font-semibold text-brand">{t.offers.signOfferDetails}</h2>
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-callout text-secondary">{t.offers.signPosition}</dt>
+                  <dd className="text-base font-medium text-primary sm:text-body">{o.vacancy.title}</dd>
                 </div>
-                <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signBaseSalary}</span>
-                  <span className="font-medium text-[#333]">{formatCandidateOfferSalary(o.salary, o.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth }, locale)}</span>
+                <div>
+                  <dt className="text-callout text-secondary">{t.offers.signBaseSalary}</dt>
+                  <dd className="text-base font-medium text-primary sm:text-body">{formatCandidateOfferSalary(o.salary, o.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth }, locale)}</dd>
                 </div>
-                <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signContractType}</span>
-                  <span className="font-medium text-[#333]">{o.contractType}</span>
+                <div>
+                  <dt className="text-callout text-secondary">{t.offers.signContractType}</dt>
+                  <dd className="text-base font-medium text-primary sm:text-body">{o.contractType}</dd>
                 </div>
-                <div className="text-sm">
-                  <span className="text-[#8B8B8B] block text-xs">{t.offers.signStartDate}</span>
+                <div>
+                  <dt className="text-callout text-secondary">{t.offers.signStartDate}</dt>
                   {/* The organization's zone, like the candidate portal (UTC when it has none). */}
-                  <span className="font-medium text-[#333]">{formatCandidateDate(o.startDate, locale, o.organization.timeZone)}</span>
+                  <dd className="text-base font-medium text-primary sm:text-body">{formatCandidateDate(o.startDate, locale, o.organization.timeZone)}</dd>
                 </div>
-              </div>
-            </div>
+              </dl>
+            </section>
 
             {/* Benefits */}
             {benefitList.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-[#1F114C] mb-2">{t.offers.signBenefits}</h3>
+                <h2 className="mb-2 text-subheading font-semibold text-brand">{t.offers.signBenefits}</h2>
                 <ul className="space-y-1.5">
                   {benefitList.map((b, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-[#585858]">
-                      <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <li key={i} className="flex items-start gap-2 text-base text-secondary sm:text-body">
+                      <svg className="mt-0.5 size-4 shrink-0 text-success" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M5 13l4 4L19 7" />
                       </svg>
                       {b}
@@ -133,114 +148,90 @@ export default function OfferSignPage() {
             )}
 
             {/* Divider */}
-            <hr className="border-[#EDEDED]" />
+            <hr className="border-border" />
 
             {/* Acceptance form */}
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-[#1F114C]">{t.offers.signAcceptanceTitle}</h3>
+              <h2 className="text-subheading font-semibold text-brand">{t.offers.signAcceptanceTitle}</h2>
 
               {/* Terms checkbox */}
-              <label className="flex items-start gap-3 cursor-pointer">
+              <label className="flex min-h-11 cursor-pointer items-start gap-3">
                 <input
                   type="checkbox"
                   checked={agreedTerms}
                   onChange={(e) => setAgreedTerms(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-[#D1D5DB] text-[#1F114C] focus:ring-[#1F114C]"
+                  className={`mt-0.5 ${CHOICE_INPUT_CLASSES}`}
                 />
-                <span className="text-[13px] text-[#585858] leading-snug">
+                <span className="text-base leading-snug text-primary sm:text-body">
                   {t.offers.signTermsAgreement}
                 </span>
               </label>
 
               {/* Signature name */}
               <div>
-                <label className="block text-xs text-[#8B8B8B] mb-1.5">
+                <label htmlFor="offer-sign-name" className={FIELD_LABEL_CLASSES}>
                   {t.offers.signFullNameLabel}
                 </label>
                 <input
+                  id="offer-sign-name"
                   type="text"
+                  autoComplete="name"
                   value={signatureName}
                   onChange={(e) => setSignatureName(e.target.value)}
                   placeholder={t.offers.signFullNamePlaceholder}
-                  className="w-full h-10 px-3 rounded-lg border border-[#E5E5E5] text-base sm:text-sm text-[#333] placeholder:text-[#C4C4C4] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]"
+                  className={inputClasses('lg')}
                 />
               </div>
 
               {/* Date (readonly) */}
               <div>
-                <label className="block text-xs text-[#8B8B8B] mb-1.5">{t.offers.signDate}</label>
+                <label htmlFor="offer-sign-date" className={FIELD_LABEL_CLASSES}>{t.offers.signDate}</label>
                 <input
+                  id="offer-sign-date"
                   type="text"
                   value={today}
                   readOnly
-                  className="w-full h-10 px-3 rounded-lg border border-[#E5E5E5] text-sm text-[#585858] bg-[#FAFAFA]"
+                  className={inputClasses('lg', 'bg-surface-hover text-secondary')}
                 />
               </div>
 
               {/* Error */}
               {acceptMutation.error && (
-                <div className="text-xs text-[#DD0C15] bg-red-50 px-3 py-2 rounded-lg">
+                <div role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">
                   {acceptMutation.error.message}
                 </div>
               )}
               {declineMutation.error && (
-                <div className="text-xs text-[#DD0C15] bg-red-50 px-3 py-2 rounded-lg">
+                <div role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">
                   {declineMutation.error.message}
                 </div>
               )}
 
               {/* Actions */}
-              <div className="flex items-center gap-3 pt-2">
-                <button
+              <div className="space-y-3 pt-2">
+                <Button
+                  size="lg"
+                  fullWidth
                   onClick={() => acceptMutation.mutate({ token, signatureName })}
-                  disabled={!agreedTerms || signatureName.length < 2 || acceptMutation.isPending}
-                  className="flex-1 h-11 rounded-xl bg-[#16A34A] text-white text-sm font-semibold hover:bg-[#15803D] transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={!agreedTerms || signatureName.length < 2}
+                  loading={acceptMutation.isPending}
+                  loadingLabel={t.offers.signAccepting}
                 >
-                  {acceptMutation.isPending ? t.offers.signAccepting : t.offers.signAcceptButton}
-                </button>
+                  {t.offers.signAcceptButton}
+                </Button>
+                <OfferSignDecline isPending={declineMutation.isPending} onDecline={() => declineMutation.mutate({ token })} />
               </div>
-
-              <button
-                onClick={() => {
-                  if (confirm(t.offers.signConfirmDecline)) {
-                    declineMutation.mutate({ token });
-                  }
-                }}
-                disabled={declineMutation.isPending}
-                className="w-full text-center text-xs text-[#8B8B8B] hover:text-[#DD0C15] transition py-2"
-              >
-                {t.offers.signDeclineButton}
-              </button>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="bg-[#FAFAFA] px-8 py-4 border-t border-[#EDEDED]">
-            <p className="text-[10px] text-[#8B8B8B] text-center">
+          <div className="border-t border-border bg-surface-hover px-5 py-4 sm:px-8">
+            <p className="text-caption text-muted text-center">
               {t.offers.signConfidentialFooter}
             </p>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function StatusScreen({ bg, color, icon, circle, title, subtitle, pulse }: {
-  bg: string; color: string; icon: string; title: string; subtitle: string; circle?: boolean; pulse?: boolean;
-}) {
-  return (
-    <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-10 max-w-lg w-full text-center">
-        <div className={`w-14 h-14 rounded-full ${bg} flex items-center justify-center mx-auto mb-4 ${pulse ? 'animate-pulse' : ''}`}>
-          <svg className={`w-7 h-7 ${color}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            {circle && <circle cx="12" cy="12" r="10" />}
-            <path d={icon} />
-          </svg>
-        </div>
-        <h1 className="text-xl font-semibold text-[#333] mb-2">{title}</h1>
-        <p className="text-sm text-[#8B8B8B]">{subtitle}</p>
-      </div>
-    </div>
+    </main>
   );
 }

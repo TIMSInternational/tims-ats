@@ -11,6 +11,7 @@ import { OfferDetailView } from './_components/offer-detail-view';
 import { OFFERS_PATH, OFFER_QUERY_PARAM, offerDetailHref, readOfferIdParam } from '../../../../lib/offer-deep-link';
 import { MINE_PENDING_FILTER } from '../../../../lib/offer-status';
 import { useCan } from '../../../../lib/permissions';
+import { PageHeader } from '../../../../components/page-header';
 
 export default function OffersPage() {
   const { t } = useI18n();
@@ -47,7 +48,7 @@ export default function OffersPage() {
   if (selectedOfferId) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
           <OfferDetailView offerId={selectedOfferId} onBack={closeOffer} />
         </div>
       </div>
@@ -55,7 +56,9 @@ export default function OffersPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
+    <div className="h-full flex flex-col overflow-hidden">
+      <PageHeader title={t.offers.title} description={t.offers.pageDescription} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 md:px-6 md:py-6">
       <OfferKpis
         activeCount={kpis.activeCount}
         acceptanceRate={kpis.acceptanceRate}
@@ -77,6 +80,7 @@ export default function OffersPage() {
         onSelectOffer={openOffer}
         showMinePendingFilter={canApprove}
       />
+      </div>
     </div>
   );
 }

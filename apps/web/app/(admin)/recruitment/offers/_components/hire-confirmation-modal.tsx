@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from 'react';
 import { Modal } from '../../../../../components';
+import { Button } from '../../../../../components/button';
+import { FIELD_LABEL_CLASSES, inputClasses } from '../../../../../components/field-styles';
 import { useI18n } from '../../../../../lib/i18n/index';
 import { formatDate } from '../../../../../lib/format-utils';
 import { roleLabel } from '../../../../../lib/role-labels';
@@ -37,24 +39,40 @@ export function HireConfirmationModal({
   }, [isPending, onClose]);
 
   return (
-    <Modal title={t.offers.confirmHiringTitle} onClose={close} maxWidth="max-w-md">
+    <Modal
+      title={t.offers.confirmHiringTitle}
+      description={t.offers.confirmHiringDescription}
+      onClose={close}
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={close} disabled={isPending}>
+            {t.common.cancel}
+          </Button>
+          {/* A positive step: the navy primary, not red (buttons.md › Role). */}
+          <Button type="submit" form="hire-confirmation-form" disabled={!normalizedJobTitle} loading={isPending} loadingLabel={t.offers.authorizingHiring}>
+            {t.offers.confirmHiring}
+          </Button>
+        </>
+      }
+    >
       <form
+        id="hire-confirmation-form"
         onSubmit={(event) => {
           event.preventDefault();
           if (normalizedJobTitle && !isPending) onConfirm(normalizedJobTitle);
         }}
       >
-        <p className="text-sm font-medium text-[#1F114C]">{candidateName}</p>
-        <p className="mt-3 text-sm text-[#585858]">{t.offers.confirmHiringDescription}</p>
-        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg bg-[#F6F6F6] p-3 text-[13px]">
-          <dt className="text-[#8B8B8B]">{t.offers.hireStartDate}</dt>
-          <dd className="text-[#333]">{formatDate(startDate)}</dd>
-          <dt className="text-[#8B8B8B]">{t.offers.hireAccessEmail}</dt>
-          <dd className="break-all text-[#333]">{accessEmail}</dd>
-          <dt className="text-[#8B8B8B]">{t.offers.hireRole}</dt>
-          <dd className="text-[#333]">{roleLabel(t.roles, 'employee')}</dd>
+        <p className="text-subheading font-semibold text-brand">{candidateName}</p>
+        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg bg-surface p-3 text-body">
+          <dt className="text-secondary">{t.offers.hireStartDate}</dt>
+          <dd className="text-primary">{formatDate(startDate)}</dd>
+          <dt className="text-secondary">{t.offers.hireAccessEmail}</dt>
+          <dd className="break-all text-primary">{accessEmail}</dd>
+          <dt className="text-secondary">{t.offers.hireRole}</dt>
+          <dd className="text-primary">{roleLabel(t.roles, 'employee')}</dd>
         </dl>
-        <label htmlFor="hire-job-title" className="mt-5 block text-sm font-medium text-[#1F114C]">
+        <label htmlFor="hire-job-title" className={`${FIELD_LABEL_CLASSES} mt-5`}>
           {t.offers.hireJobTitle}
         </label>
         <input
@@ -63,25 +81,8 @@ export function HireConfirmationModal({
           onChange={(event) => setJobTitle(event.target.value)}
           maxLength={200}
           required
-          className="mt-1 w-full rounded-lg border border-[#D9D9D9] px-3 py-2 text-sm text-[#333] focus:border-[#5C4B99] focus:outline-none"
+          className={inputClasses()}
         />
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={close}
-            disabled={isPending}
-            className="rounded-lg border border-[#D9D9D9] px-4 py-2 text-sm text-[#333] disabled:opacity-50"
-          >
-            {t.common.cancel}
-          </button>
-          <button
-            type="submit"
-            disabled={!normalizedJobTitle || isPending}
-            className="rounded-lg bg-[#DD0C15] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {isPending ? t.offers.authorizingHiring : t.offers.confirmHiring}
-          </button>
-        </div>
       </form>
     </Modal>
   );

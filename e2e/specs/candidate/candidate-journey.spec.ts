@@ -154,7 +154,7 @@ test('recruiter moves the candidate through screening to the HR interview stage'
 async function scheduleInterview(page: Page): Promise<void> {
   await navigateStaff(page, '/recruitment/interviews');
   await page
-    .getByRole('button', { name: /programar entrevista/i })
+    .getByRole('button', { name: /agendar entrevista/i })
     .first()
     .click();
   const wizard = page.getByRole('dialog', { name: 'Agendar Entrevista' });

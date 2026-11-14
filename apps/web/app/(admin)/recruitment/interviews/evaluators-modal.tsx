@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal, UserPicker, CandidateAvatar, Skeleton } from '../../../../components';
+import { Modal, UserPicker, CandidateAvatar, Skeleton, ErrorState } from '../../../../components';
+import { Button } from '../../../../components/button';
 
 interface EvaluatorsModalProps {
   interviewId: string;
@@ -47,44 +48,79 @@ export function EvaluatorsModal({ interviewId, onClose }: EvaluatorsModalProps) 
   const evaluators = interview.data?.evaluators ?? [];
   const assignedIds = evaluators.map((e) => e.user.id);
 
-  const onRemove = (userId: string) => {
-    if (window.confirm(t.committee.removeConfirm)) {
-      remove.mutate({ interviewId, userId });
-    }
-  };
+  // Removing asks inline, inside the row, instead of stacking a browser confirm() over this dialog
+  // (alerts.md › Buttons, sheets.md: "Display only one sheet at a time").
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   return (
-    <Modal title={t.committee.evaluators} onClose={onClose}>
+    <Modal
+      title={t.committee.evaluators}
+      onClose={onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          {t.committee.close}
+        </Button>
+      }
+    >
       {interview.isLoading ? (
-        <Skeleton className="h-24 w-full rounded-lg" />
+        <div aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          <Skeleton className="h-24 w-full rounded-lg" />
+        </div>
       ) : interview.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{interview.error.message}</p>
+        <ErrorState error={interview.error} onRetry={() => void interview.refetch()} size="compact" />
       ) : (
         <>
           {evaluators.length === 0 ? (
-            <p className="text-[12px] text-[#8B8B8B] py-4 text-center">{t.committee.noEvaluators}</p>
+            <p className="py-4 text-center text-callout text-secondary">{t.committee.noEvaluators}</p>
           ) : (
-            <ul className="space-y-1.5 mb-3">
-              {evaluators.map((ev) => (
-                <li key={ev.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-[#EDEDED]">
-                  <CandidateAvatar
-                    firstName={ev.user.firstName}
-                    lastName={ev.user.lastName}
-                    avatar={ev.user.avatar}
-                    size="sm"
-                  />
-                  <span className="text-[12px] text-[#333] font-medium flex-1">
-                    {ev.user.firstName} {ev.user.lastName}
-                  </span>
-                  <button
-                    onClick={() => onRemove(ev.user.id)}
-                    disabled={remove.isPending}
-                    className="h-7 px-2.5 rounded-md text-[11px] text-[#DD0C15] border border-red-200 hover:bg-red-50 transition disabled:opacity-50"
-                  >
-                    {t.committee.remove}
-                  </button>
-                </li>
-              ))}
+            <ul className="mb-3 space-y-1.5">
+              {evaluators.map((ev) => {
+                const name = `${ev.user.firstName} ${ev.user.lastName}`;
+                const confirming = confirmingId === ev.user.id;
+                return (
+                  <li key={ev.id} className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border px-3 py-2">
+                    <CandidateAvatar
+                      firstName={ev.user.firstName}
+                      lastName={ev.user.lastName}
+                      avatar={ev.user.avatar}
+                      size="sm"
+                      decorative
+                    />
+                    {confirming ? (
+                      <>
+                        <span role="alert" className="min-w-0 flex-1 text-callout font-medium text-primary">
+                          {t.interviews.removeEvaluatorConfirm.replace('{name}', name)}
+                        </span>
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmingId(null)}>
+                          {t.common.cancel}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          loading={remove.isPending}
+                          onClick={() => remove.mutate({ interviewId, userId: ev.user.id }, { onSettled: () => setConfirmingId(null) })}
+                        >
+                          {t.committee.remove}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="min-w-0 flex-1 text-callout font-medium text-primary">{name}</span>
+                        <Button
+                          size="sm"
+                          variant="destructive-secondary"
+                          disabled={remove.isPending}
+                          aria-label={t.interviews.removeEvaluatorLabel.replace('{name}', name)}
+                          onClick={() => setConfirmingId(ev.user.id)}
+                        >
+                          {t.committee.remove}
+                        </Button>
+                      </>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
 
@@ -97,27 +133,21 @@ export function EvaluatorsModal({ interviewId, onClose }: EvaluatorsModalProps) 
               searchPlaceholder={t.committee.searchUser}
               loadingLabel={t.committee.loadingUsers}
               emptyLabel={t.committee.noUsers}
+              ariaLabel={t.committee.addEvaluator}
             />
           ) : (
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setAdding(true)}
-              className="flex items-center gap-1.5 bg-[#1F114C] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#2a1863] transition"
+              icon={
+                <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              }
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
               {t.committee.addEvaluator}
-            </button>
+            </Button>
           )}
-
-          <div className="flex justify-end mt-5">
-            <button
-              onClick={onClose}
-              className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-            >
-              {t.committee.close}
-            </button>
-          </div>
         </>
       )}
     </Modal>

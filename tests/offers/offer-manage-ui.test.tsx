@@ -216,8 +216,11 @@ describe('offer manage actions (B-04)', () => {
 
   it('a draft created without an application link can still be edited, but not copied into a new offer', () => {
     render(<OfferManageActions offer={draft} canEdit canWithdraw canCreateNew onChanged={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: es.offers.createNewOffer })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: es.offers.editDraft }));
+    // The commands live in the header's "Más acciones" menu (HIG pass): open it first.
+    fireEvent.click(screen.getByRole('button', { name: es.common.moreActions }));
+    expect(screen.getByRole('menuitem', { name: es.offers.withdrawOfferMenu })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: es.offers.createNewOfferMenu })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: es.offers.editDraftMenu }));
     expect(screen.getByText(es.offers.editDraftTitle)).toBeTruthy();
   });
 });

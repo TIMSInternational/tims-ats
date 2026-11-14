@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Modal } from '../../../../../components';
+import { Button } from '../../../../../components/button';
+import { FIELD_ERROR_CLASSES, FIELD_LABEL_CLASSES, textareaClasses } from '../../../../../components/field-styles';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
@@ -48,47 +50,48 @@ export function WithdrawOfferModal({
   };
 
   return (
-    <Modal title={t.offers.withdrawOfferTitle} onClose={onClose}>
+    <Modal
+      title={t.offers.withdrawOfferTitle}
+      description={t.offers.withdrawOfferPrompt}
+      onClose={onClose}
+      size="sm"
+      dirty={reason.trim().length > 0 && !withdraw.isPending}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={withdraw.isPending}>
+            {t.common.cancel}
+          </Button>
+          {/* Irreversible: the destructive role, never the navy primary (buttons.md › Role). */}
+          <Button variant="destructive" onClick={confirm} loading={withdraw.isPending}>
+            {t.offers.withdrawOfferConfirm}
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-4">
-        <p className="text-[13px] text-[#585858]">{t.offers.withdrawOfferPrompt}</p>
         {wasSent && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          <p role="note" className="rounded-lg bg-warning-bg px-3 py-2 text-callout text-warning">
             {t.offers.withdrawOfferSentWarning}
           </p>
         )}
-        <label className="block text-[12px] font-medium text-[#585858]">
-          {t.offers.withdrawOfferReason}
+        <div>
+          <label htmlFor="withdraw-offer-reason" className={FIELD_LABEL_CLASSES}>
+            {t.offers.withdrawOfferReason}
+          </label>
           <textarea
+            id="withdraw-offer-reason"
             value={reason}
             maxLength={MAX_REASON}
             rows={3}
             onChange={(event) => setReason(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]"
+            className={textareaClasses('resize-none')}
           />
-        </label>
+        </div>
         {error && (
-          <p role="alert" className="text-[12px] text-[#DD0C15]">
+          <p role="alert" className={FIELD_ERROR_CLASSES}>
             {error}
           </p>
         )}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={withdraw.isPending}
-            className="rounded-lg border border-[#EDEDED] px-4 py-2 text-[12px]"
-          >
-            {t.common.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={withdraw.isPending}
-            className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
-          >
-            {t.offers.withdrawOfferConfirm}
-          </button>
-        </div>
       </div>
     </Modal>
   );
