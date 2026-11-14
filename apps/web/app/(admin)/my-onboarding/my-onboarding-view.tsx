@@ -7,6 +7,7 @@ import { MyPlanSummary } from './my-plan-summary';
 import { MyTaskList } from './my-task-list';
 import { MyCheckInList } from './my-check-in-list';
 import { MyBuddyPlans } from './my-buddy-plans';
+import { EmptyState, ErrorState, Skeleton } from '../../../components';
 
 // `mine: true` makes the SERVER return only plans where the caller is the hire
 // (without it the own-scoped list also returns plans where the caller is the
@@ -28,18 +29,34 @@ export function MyOnboardingView() {
   const detail = trpc.onboarding.getById.useQuery({ id: ownPlan?.id ?? '' }, { enabled: !!ownPlan });
 
   if (plans.isError || detail.isError) {
-    return <p className="rounded-xl border border-red-100 bg-red-50 p-4 text-[13px] text-red-700">{m.loadError}</p>;
+    return (
+      <section className="rounded-xl border border-border bg-white shadow-card">
+        <ErrorState
+          title={m.loadError}
+          error={plans.error ?? detail.error}
+          onRetry={() => {
+            void plans.refetch();
+            if (ownPlan) void detail.refetch();
+          }}
+        />
+      </section>
+    );
   }
   if (!userId || plans.isLoading || (ownPlan && detail.isLoading)) {
-    return <div className="h-40 animate-pulse rounded-xl bg-[#F4F4F6]" aria-busy="true" />;
+    return (
+      <div aria-busy="true" className="space-y-4">
+        <span className="sr-only">{t.common.loadingContent}</span>
+        <Skeleton className="h-40 rounded-xl" />
+        <Skeleton className="h-56 rounded-xl" />
+      </div>
+    );
   }
   if (!ownPlan || !detail.data) {
     return (
       <>
-        <div className="rounded-xl border border-[#EDEDED] bg-white p-8 text-center">
-          <p className="text-[14px] font-semibold text-[#1F114C]">{m.noPlan}</p>
-          <p className="mt-1 text-[13px] text-[#585858]">{m.noPlanDesc}</p>
-        </div>
+        <section className="rounded-xl border border-border bg-white shadow-card">
+          <EmptyState title={m.noPlan} description={m.noPlanDesc} />
+        </section>
         {/* A buddy may have no plan of their own. */}
         <MyBuddyPlans />
       </>

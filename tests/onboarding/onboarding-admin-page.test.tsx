@@ -180,11 +180,14 @@ describe('HR onboarding page — who sees what (B-09 / E-08)', () => {
     expect(screen.getByRole('button', { name: /Nuevo onboarding/ })).toBeInTheDocument();
   });
 
-  it('reads "Personas › Onboarding" in Spanish (B-22 / E-09), with no English header text', () => {
+  it('titles the page "Onboarding" in its one h1 (B-22 / E-09), with no English header text', () => {
     state.grants = new Set(HR);
     state.sessionPermissions = [{ module: 'onboarding', action: 'read', scope: 'organization' }];
     renderPage();
-    expect(screen.getByText('Personas')).toBeInTheDocument();
+    // HIG pass: the in-page "Personas ›" crumb is gone (the shell top bar carries the path); the page
+    // header owns the single h1.
+    expect(screen.getByRole('heading', { level: 1, name: 'Onboarding' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.queryByText('People')).not.toBeInTheDocument();
     expect(screen.queryByText(/Dashboard/)).not.toBeInTheDocument();
     expect(screen.queryByText(/!/)).not.toBeInTheDocument();

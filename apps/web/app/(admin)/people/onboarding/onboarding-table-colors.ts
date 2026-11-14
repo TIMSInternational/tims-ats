@@ -1,30 +1,35 @@
-// Row colors for the onboarding table (onboarding-table.tsx). Labels come from i18n
-// (onboarding.phase*, myOnboarding.labels.statuses.completed); these maps hold colors only.
+// Status tones for the onboarding table (onboarding-table.tsx). Labels come from i18n
+// (onboarding.phase*, onboarding.risk*, myOnboarding.labels.statuses.completed); these maps hold tones only.
+// Colour marks real status only (color.md › Best practices): a plan is red only when it has an overdue task.
+import type { StatusTone } from '../../../../components';
 
-export const PHASE_BADGE: Record<string, { bg: string; text: string }> = {
-  day1_30: { bg: 'bg-green-50', text: 'text-green-600' },
-  day31_60: { bg: 'bg-amber-50', text: 'text-amber-600' },
-  day61_90: { bg: 'bg-purple-50', text: 'text-[#5C4B99]' },
-  completed: { bg: 'bg-blue-50', text: 'text-blue-600' },
+export const PHASE_TONE: Record<string, StatusTone> = {
+  day1_30: 'brand',
+  day31_60: 'warning',
+  day61_90: 'neutral',
+  completed: 'success',
 };
 
-export function getRiskDot(score: number): string {
-  if (score > 0.3) return 'bg-[#DD0C15] animate-pulse';
-  if (score > 0.15) return 'bg-amber-500';
-  return 'bg-green-500';
+export type RiskLevel = 'high' | 'medium' | 'low';
+
+export function getRiskLevel(score: number): RiskLevel {
+  if (score > 0.3) return 'high';
+  if (score > 0.15) return 'medium';
+  return 'low';
 }
 
-export function getProgressColor(risk: number): { bar: string; text: string } {
-  if (risk > 0.3) return { bar: 'bg-[#DD0C15]', text: 'text-[#DD0C15] font-medium' };
-  if (risk > 0.15) return { bar: 'bg-amber-500', text: 'text-amber-600' };
-  return { bar: 'bg-green-500', text: 'text-[#585858]' };
+export const RISK_TONE: Record<RiskLevel, StatusTone> = {
+  high: 'danger',
+  medium: 'warning',
+  low: 'success',
+};
+
+/** Progress bar tone and % text: neutral, or danger only when the plan has an overdue task. */
+export function getProgressColor(hasOverdue: boolean): { tone: 'brand' | 'danger'; text: string } {
+  return hasOverdue ? { tone: 'danger', text: 'text-danger font-medium' } : { tone: 'brand', text: 'text-secondary' };
 }
 
-export function fractionColor(done: number, total: number, risk: number): string {
-  if (total === 0) return 'text-[#585858]';
-  const ratio = done / total;
-  if (risk > 0.3 && ratio < 0.5) return 'text-[#DD0C15] font-medium';
-  if (ratio >= 0.8) return 'text-green-600 font-medium';
-  if (ratio >= 0.5) return 'text-amber-600 font-medium';
-  return 'text-[#DD0C15] font-medium';
+/** The "done/total" fraction: secondary text, danger only when the plan has an overdue task. */
+export function fractionColor(hasOverdue: boolean): string {
+  return hasOverdue ? 'text-danger font-medium' : 'text-secondary';
 }

@@ -5,6 +5,8 @@ import { useI18n } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
 import { BUDDY_TASK_OWNER } from '../../../lib/onboarding-labels';
 import { formatDueDate, isTaskOverdue, sortByDueDate } from '../../../lib/onboarding-schedule';
+import { intlLocale } from '../../../lib/format-utils';
+import { CHOICE_INPUT_CLASSES, ErrorState, StatusBadge } from '../../../components';
 
 /** Plans one person accompanies at once; more than this is not a realistic buddy load. */
 const BUDDY_PLAN_LIMIT = 20;
@@ -29,52 +31,57 @@ export function MyBuddyPlans() {
   });
 
   if (plans.isError) {
-    return <p className="rounded-xl border border-red-100 bg-red-50 p-4 text-[13px] text-red-700">{m.loadError}</p>;
+    return (
+      <section className="rounded-xl border border-border bg-white shadow-card">
+        <ErrorState size="compact" title={m.buddyLoadError} error={plans.error} onRetry={() => void plans.refetch()} />
+      </section>
+    );
   }
   const buddyPlans = plans.data?.plans ?? [];
   if (plans.isLoading || buddyPlans.length === 0) return null;
 
   return (
-    <section className="rounded-xl border border-[#EDEDED] bg-white p-5">
-      <h2 className="text-sm font-semibold text-[#1F114C]">{m.buddyPlansTitle}</h2>
-      <p className="mt-1 text-[12px] text-[#585858]">{m.buddyPlansDesc}</p>
+    <section className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5">
+      <h2 className="text-subheading font-semibold text-primary">{m.buddyPlansTitle}</h2>
+      <p className="mt-1 text-callout text-secondary">{m.buddyPlansDesc}</p>
       <ul className="mt-3 space-y-4">
         {buddyPlans.map((plan) => {
           const tasks = sortByDueDate(plan.tasks.filter((task) => task.responsible === BUDDY_TASK_OWNER));
           const name = `${plan.user.firstName} ${plan.user.lastName}`;
           return (
-            <li key={plan.id} className="rounded-lg border border-[#F0F0F0] p-3">
-              <p className="text-[13px] font-medium text-[#333]">{name}</p>
-              <p className="text-[11px] text-[#8B8B8B]">
-                {m.startDate}: {new Date(plan.startDate).toLocaleDateString(locale === 'EN' ? 'en' : 'es-CR')}
+            <li key={plan.id} className="rounded-lg border border-border p-3">
+              <p className="text-body font-medium text-primary">{name}</p>
+              <p className="text-callout text-secondary">
+                {m.startDate}:{' '}
+                {new Intl.DateTimeFormat(intlLocale(locale), { day: '2-digit', month: 'short', year: 'numeric' }).format(
+                  new Date(plan.startDate),
+                )}
               </p>
               {tasks.length === 0 ? (
-                <p className="mt-2 text-[12px] text-[#8B8B8B]">{m.noBuddyTasks}</p>
+                <p className="mt-2 text-callout text-secondary">{m.noBuddyTasks}</p>
               ) : (
-                <ul className="mt-2 divide-y divide-[#F0F0F0]">
+                <ul className="mt-2 divide-y divide-border">
                   {tasks.map((task) => (
-                    <li key={task.id} className="flex flex-wrap items-center gap-2 py-1.5">
+                    <li key={task.id}>
+                      <label className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
                       <input
                         type="checkbox"
                         checked={task.completed}
                         disabled={toggle.isPending}
                         onChange={(event) => toggle.mutate({ id: task.id, completed: event.target.checked })}
                         aria-label={`${task.title} — ${name}`}
-                        className="h-4 w-4 rounded border-[#EDEDED] text-[#DD0C15] focus:ring-[#1F114C]/40 disabled:opacity-50"
+                        className={`size-5! ${CHOICE_INPUT_CLASSES}`}
                       />
-                      <span className={`text-[13px] ${task.completed ? 'line-through text-[#8B8B8B]' : 'text-[#333]'}`}>
+                      <span className={`text-body ${task.completed ? 'text-secondary line-through' : 'text-primary'}`}>
                         {task.title}
                       </span>
                       {task.dueDate && (
-                        <span className="text-[11px] text-[#8B8B8B]">
+                        <span className="text-callout tabular-nums text-secondary">
                           {m.dueDate}: {formatDueDate(task.dueDate, locale)}
                         </span>
                       )}
-                      {isTaskOverdue(task) && (
-                        <span className="rounded bg-[#DD0C15]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#DD0C15]">
-                          {m.overdue}
-                        </span>
-                      )}
+                      {isTaskOverdue(task) && <StatusBadge tone="danger">{m.overdue}</StatusBadge>}
+                      </label>
                     </li>
                   ))}
                 </ul>

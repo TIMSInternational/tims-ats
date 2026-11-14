@@ -31,8 +31,11 @@ export function AssignBuddyModal({ planId, hireId, hireName, currentBuddyId, onC
   });
 
   return (
-    <Modal title={t.onboarding.assignBuddyTitle.replace('{name}', hireName)} onClose={onClose}>
-      <p className="mb-3 text-[12px] text-[#585858]">{t.onboarding.assignBuddyDesc.replace('{name}', hireName)}</p>
+    <Modal
+      title={t.onboarding.assignBuddyTitle.replace('{name}', hireName)}
+      description={t.onboarding.assignBuddyDesc.replace('{name}', hireName)}
+      onClose={onClose}
+    >
       <UserPicker
         purpose="colleague"
         excludeIds={currentBuddyId ? [hireId, currentBuddyId] : [hireId]}

@@ -1,81 +1,81 @@
 'use client';
 
-import { ErrorState } from '../../../../components';
+import { ErrorState, KpiCard, KpiCardSkeleton } from '../../../../components';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
+import { isForbiddenError } from '../../../../lib/forbidden-error';
+import { formatPercent } from '../../../../lib/format-utils';
 
-interface PerformanceKpi {
-  label: string;
-  value: string | number;
-  valueColor?: string;
-  change?: { text: string; color: string };
-  extra?: React.ReactNode;
-  progressBar?: { pct: number; color: string };
+export interface DashboardKpis {
+  activeOkrs: number;
+  averageOkrProgress: number;
+  scheduledSessions: number;
+  completedSessions: number;
+  pendingCommitments: number;
+  completedCommitments: number;
+  commitmentCompletionRate: number;
+  totalFeedback: number;
+  totalRecognitions: number;
 }
 
 interface PerformanceKpisProps {
-  kpis: PerformanceKpi[];
+  data?: DashboardKpis;
   isLoading?: boolean;
   isError?: boolean;
+  error?: unknown;
   onRetry?: () => void;
 }
 
-export function PerformanceKpis({ kpis, isLoading, isError, onRetry }: PerformanceKpisProps) {
+// Five tiles: two per row on phones with the last one spanning the row, so no tile is orphaned.
+const GRID =
+  'grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1';
+
+/**
+ * Performance KPI strip. Every figure comes from getDashboardKpis; nothing is derived by ratio
+ * (a status the system did not compute is never shown as fact). Counts stay neutral: colour is
+ * reserved for real status (color.md › Best practices).
+ */
+export function PerformanceKpis({ data, isLoading, isError, error, onRetry }: PerformanceKpisProps) {
+  const { t, locale } = useI18n();
+
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className={GRID} aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-            <div className="h-3 w-24 bg-gray-200 rounded animate-pulse mb-3" />
-            <div className="h-7 w-14 bg-gray-200 rounded animate-pulse mb-2" />
-            <div className="h-2 w-20 bg-gray-200 rounded animate-pulse" />
-          </div>
+          <KpiCardSkeleton key={i} />
         ))}
       </div>
     );
   }
 
+  // A permission denial (leader, employee) is not a failure: the rest of the page still works, so
+  // the strip simply does not render instead of offering a retry that can never succeed.
   if (isError) {
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="col-span-2 md:col-span-5">
-          <ErrorState onRetry={onRetry} />
-        </div>
-      </div>
-    );
+    if (isForbiddenError(error)) return null;
+    return <ErrorState size="compact" error={error} onRetry={onRetry} />;
   }
 
+  if (!data) return null;
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-      {kpis.map((kpi) => (
-        <div
-          key={kpi.label}
-          className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4"
-        >
-          <div className="text-[11px] text-[#8B8B8B] font-medium mb-1">
-            {kpi.label}
-          </div>
-          <div className="flex items-end gap-2">
-            <span
-              className={`text-[22px] md:text-[28px] font-bold leading-none ${kpi.valueColor || 'text-[#333]'}`}
-            >
-              {kpi.value}
-            </span>
-            {kpi.change && (
-              <span className={`text-[11px] font-medium mb-1 ${kpi.change.color}`}>
-                {kpi.change.text}
-              </span>
-            )}
-          </div>
-          {kpi.progressBar && (
-            <div className="w-full h-1.5 bg-[#EDEDED] rounded-full mt-2">
-              <div
-                className={`h-full rounded-full ${kpi.progressBar.color}`}
-                style={{ width: `${kpi.progressBar.pct}%` }}
-              />
-            </div>
-          )}
-          {kpi.extra && <div className="mt-2">{kpi.extra}</div>}
-        </div>
-      ))}
+    <div className={GRID}>
+      <KpiCard label={t.performance.kpiOkrCompletion} value={formatPercent(data.averageOkrProgress, locale)} />
+      <KpiCard label={t.performance.kpiActiveOkrs} value={data.activeOkrs} />
+      <KpiCard
+        label={t.performance.kpiCoachingSessions}
+        value={data.scheduledSessions + data.completedSessions}
+        subtitle={formatMessage(t.performance.pendingThisWeek, { n: data.scheduledSessions })}
+      />
+      <KpiCard
+        label={t.performance.kpiPendingCommitments}
+        value={data.pendingCommitments}
+        subtitle={formatMessage(t.performance.completedCount, { n: data.completedCommitments })}
+      />
+      <KpiCard
+        label={t.performance.kpiRecognitions}
+        value={data.totalRecognitions}
+        subtitle={formatMessage(t.performance.feedbackCount, { n: data.totalFeedback })}
+      />
     </div>
   );
 }

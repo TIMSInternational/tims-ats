@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
+import { Button } from '../../../../components';
 import { AssignBuddyModal } from './assign-buddy-modal';
 
 interface OnboardingBuddyCellProps {
@@ -20,36 +21,32 @@ export function OnboardingBuddyCell({ planId, hire, buddy, canAssign }: Onboardi
   return (
     <>
       {buddy ? (
-        <p className="text-[10px] text-[#8B8B8B]">
+        <p className="flex flex-wrap items-center gap-x-1 text-callout text-secondary">
           {t.onboarding.buddyPrefix} {buddy.firstName} {buddy.lastName.charAt(0)}.
           {canAssign && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setOpen(true);
-              }}
-              className="ml-1.5 text-[#1F114C] underline hover:text-[#DD0C15] transition"
+            <Button
+              variant="tertiary"
+              size="sm"
+              className="h-6 px-1.5"
+              onClick={() => setOpen(true)}
               aria-label={`${t.onboarding.changeBuddy}: ${t.onboarding.assignBuddyTitle.replace('{name}', hireName)}`}
             >
               {t.onboarding.changeBuddy}
-            </button>
+            </Button>
           )}
         </p>
       ) : canAssign ? (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setOpen(true);
-          }}
-          className="text-[10px] font-medium text-[#DD0C15] underline hover:text-[#c40b13] transition"
+        <Button
+          variant="tertiary"
+          size="sm"
+          className="-ml-1.5 h-6 px-1.5"
+          onClick={() => setOpen(true)}
           aria-label={`${t.onboarding.assignBuddy}: ${hireName}`}
         >
           {t.onboarding.assignBuddy}
-        </button>
+        </Button>
       ) : (
-        <p className="text-[10px] text-[#8B8B8B]">{t.onboarding.noBuddyAssigned}</p>
+        <p className="text-callout text-secondary">{t.onboarding.noBuddyAssigned}</p>
       )}
       {open && (
         <AssignBuddyModal

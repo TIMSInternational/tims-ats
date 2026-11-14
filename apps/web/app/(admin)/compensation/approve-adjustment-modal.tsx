@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useI18n } from '../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../lib/i18n';
 import { toast } from '../../../lib/toast';
-import { Modal } from '../../../components';
+import { BUTTON_GROUP_CLASSES, Button, Field, Modal, TextArea } from '../../../components';
 import { useCompensationApproveAdjustment } from '../../../lib/platform-api/compensation';
 
 interface ApproveAdjustmentModalProps {
@@ -41,52 +41,51 @@ export function ApproveAdjustmentModal({ adjustmentId, employeeName, mode, onClo
     submit.mutate({ id: adjustmentId, approved: mode === 'approve', comment: comment.trim() || undefined });
   };
 
-  const title = mode === 'approve' ? t.compensation.approveTitle : t.compensation.rejectTitle;
-  const confirmBody = mode === 'approve' ? t.compensation.approveConfirmBody : t.compensation.rejectConfirmBody;
-  const actionLabel = mode === 'approve' ? t.compensation.approveAction : t.compensation.rejectAction;
+  const isApprove = mode === 'approve';
+  // The title states the outcome and names the person; one line says what happens next.
+  const title = formatMessage(isApprove ? t.compensation.approveTitle : t.compensation.rejectTitle, {
+    name: employeeName,
+  });
+  const consequence = isApprove ? t.compensation.approveConsequence : t.compensation.rejectConsequence;
+  const actionLabel = isApprove ? t.compensation.approveConfirm : t.compensation.rejectConfirm;
 
   return (
-    <Modal title={title} onClose={onClose} maxWidth="max-w-md">
-      <div className="space-y-4">
-        <p className="text-[13px] text-[#585858]">
-          {confirmBody} <span className="font-semibold text-[#333]">{employeeName}</span>?
-        </p>
-
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.compensation.commentLabel}</label>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value.slice(0, MAX_COMMENT))}
-            maxLength={MAX_COMMENT}
-            rows={3}
-            placeholder={t.compensation.commentPlaceholder}
-            disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] placeholder:text-[#B8B8B8] resize-none focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
-          />
-          <p className="text-[10px] text-[#8B8B8B] text-right mt-1">
-            {comment.length}/{MAX_COMMENT}
-          </p>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submit.isPending}
-            className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition disabled:opacity-50"
-          >
+    <Modal
+      title={title}
+      description={consequence}
+      onClose={onClose}
+      size="sm"
+      footer={
+        <div className={BUTTON_GROUP_CLASSES}>
+          <Button variant="secondary" onClick={onClose} disabled={submit.isPending}>
             {t.common.cancel}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant={isApprove ? 'primary' : 'destructive'}
             onClick={onSubmit}
+            loading={submit.isPending}
+            loadingLabel={t.common.saving}
             disabled={submit.isPending}
-            className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submit.isPending ? t.common.saving : actionLabel}
-          </button>
+            {actionLabel}
+          </Button>
         </div>
-      </div>
+      }
+    >
+      <Field
+        label={t.compensation.commentLabel}
+        help={formatMessage(t.compensation.commentCount, { n: comment.length, max: MAX_COMMENT })}
+      >
+        <TextArea
+          value={comment}
+          onChange={(e) => setComment(e.target.value.slice(0, MAX_COMMENT))}
+          maxLength={MAX_COMMENT}
+          rows={3}
+          placeholder={t.compensation.commentPlaceholder}
+          disabled={submit.isPending}
+          className="resize-none"
+        />
+      </Field>
     </Modal>
   );
 }
