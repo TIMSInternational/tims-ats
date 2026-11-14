@@ -4076,8 +4076,8 @@
   "assessments": {
     "assignAssessment": "Assign assessment",
     "assignOwnQuiz": "Assign a company quiz",
-    "title": "Assessment Authoring",
-    "subtitle": "Create and manage the questions candidates will answer.",
+    "title": "Company quizzes",
+    "subtitle": "Create the company's own quizzes and the questions candidates will answer.",
     "selectType": "Assessment type",
     "selectTypePlaceholder": "Select an assessment type…",
     "noTypes": "No assessment types yet",
@@ -4087,7 +4087,7 @@
     "typeAuthoring": {
       "newType": "New assessment type",
       "editType": "Edit type",
-      "deactivateType": "Deactivate type",
+      "deactivateType": "Deactivate type…",
       "createTitle": "New assessment type",
       "editTitle": "Edit assessment type",
       "name": "Name",
@@ -4108,7 +4108,12 @@
       "notFound": "That assessment type no longer exists.",
       "failed": "The assessment type could not be saved. Please try again.",
       "unavailable": "Creating assessment types is not enabled for your organization yet. Contact your platform administrator.",
-      "emptyCta": "Create your first assessment type to start authoring questions."
+      "emptyCta": "Create your first assessment type to start authoring questions.",
+      "emptyTitle": "Create your first quiz",
+      "deactivateConfirmTitle": "Deactivate {name}?",
+      "deactivateConfirmBody": "Existing assignments don't change, but it can no longer be assigned.",
+      "deactivateConfirm": "Deactivate",
+      "deactivating": "Deactivating…"
     },
     "noQuestions": "No questions yet",
     "noQuestionsDesc": "Add the first question for this assessment.",
@@ -4137,7 +4142,10 @@
       "markCorrect": "Mark correct answer(s)",
       "points": "Points",
       "order": "Order",
-      "active": "Active"
+      "active": "Active",
+      "optionN": "Option {n}",
+      "markCorrectN": "Mark option {n} as correct",
+      "removeOptionN": "Remove option {n}"
     },
     "types": {
       "single_choice": "Single choice",
@@ -4153,7 +4161,14 @@
       "multi_needs_correct": "Select at least one correct answer.",
       "correct_not_in_options": "A correct answer references a missing option.",
       "duplicate_correct_ids": "Correct answers must be unique."
-    }
+    },
+    "pointsShort": "{n} pts",
+    "optionCount": "{n} answer options",
+    "deleteConfirmTitle": "Delete this question?",
+    "deleteConfirmBody": "“{prompt}”. This can't be undone.",
+    "deleteConfirm": "Delete question",
+    "deleting": "Deleting…",
+    "saving": "Saving…"
   },
   "units": {
     "breadcrumbParent": "Settings",

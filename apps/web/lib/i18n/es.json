@@ -4076,8 +4076,8 @@
   "assessments": {
     "assignAssessment": "Asignar evaluación",
     "assignOwnQuiz": "Asignar un cuestionario propio",
-    "title": "Autoría de Evaluaciones",
-    "subtitle": "Crea y administra las preguntas que responderán los candidatos.",
+    "title": "Cuestionarios de la empresa",
+    "subtitle": "Crea los cuestionarios propios de la empresa y las preguntas que responderán los candidatos.",
     "selectType": "Tipo de evaluación",
     "selectTypePlaceholder": "Selecciona un tipo de evaluación…",
     "noTypes": "Aún no hay tipos de evaluación",
@@ -4087,7 +4087,7 @@
     "typeAuthoring": {
       "newType": "Nuevo tipo de evaluación",
       "editType": "Editar tipo",
-      "deactivateType": "Desactivar tipo",
+      "deactivateType": "Desactivar tipo…",
       "createTitle": "Nuevo tipo de evaluación",
       "editTitle": "Editar tipo de evaluación",
       "name": "Nombre",
@@ -4108,7 +4108,12 @@
       "notFound": "El tipo de evaluación ya no existe.",
       "failed": "No se pudo guardar el tipo de evaluación. Inténtalo de nuevo.",
       "unavailable": "La creación de tipos de evaluación aún no está habilitada para tu organización. Contacta al administrador de la plataforma.",
-      "emptyCta": "Crea tu primer tipo de evaluación para empezar a redactar preguntas."
+      "emptyCta": "Crea tu primer tipo de evaluación para empezar a redactar preguntas.",
+      "emptyTitle": "Crea tu primer cuestionario",
+      "deactivateConfirmTitle": "¿Desactivar {name}?",
+      "deactivateConfirmBody": "Las asignaciones existentes no cambian, pero ya no podrá asignarse de nuevo.",
+      "deactivateConfirm": "Desactivar",
+      "deactivating": "Desactivando…"
     },
     "noQuestions": "Aún no hay preguntas",
     "noQuestionsDesc": "Agrega la primera pregunta para esta evaluación.",
@@ -4137,7 +4142,10 @@
       "markCorrect": "Marca la(s) respuesta(s) correcta(s)",
       "points": "Puntos",
       "order": "Orden",
-      "active": "Activa"
+      "active": "Activa",
+      "optionN": "Opción {n}",
+      "markCorrectN": "Marcar la opción {n} como correcta",
+      "removeOptionN": "Quitar la opción {n}"
     },
     "types": {
       "single_choice": "Opción única",
@@ -4153,7 +4161,14 @@
       "multi_needs_correct": "Selecciona al menos una respuesta correcta.",
       "correct_not_in_options": "Una respuesta correcta hace referencia a una opción inexistente.",
       "duplicate_correct_ids": "Las respuestas correctas deben ser únicas."
-    }
+    },
+    "pointsShort": "{n} pts",
+    "optionCount": "{n} opciones de respuesta",
+    "deleteConfirmTitle": "¿Eliminar esta pregunta?",
+    "deleteConfirmBody": "«{prompt}». No se puede deshacer.",
+    "deleteConfirm": "Eliminar pregunta",
+    "deleting": "Eliminando…",
+    "saving": "Guardando…"
   },
   "units": {
     "breadcrumbParent": "Configuración",
