@@ -25,11 +25,20 @@ export function AssessmentConsentNotice({
   orgName,
   vacancyTitle,
   instruments,
+  scroll = true,
+  children,
 }: {
   orgName: string;
   vacancyTitle: string;
   /** The display names of the tests, in order. */
   instruments: string[];
+  /**
+   * true (HR's dialog): the text sits in a bounded box that is a focusable, named region, so it scrolls from the
+   * keyboard. false (the candidate portal): the text flows in the page, never clipped mid-sentence (privacy.md).
+   */
+  scroll?: boolean;
+  /** The acknowledgment row, shown inside the notice under its text. */
+  children?: React.ReactNode;
 }) {
   const { t } = useI18n();
   const n = t.assessmentConsentNotice;
@@ -40,34 +49,49 @@ export function AssessmentConsentNotice({
     [n.decisionTitle, fill(n.decision)],
     [n.withdrawTitle, fill(n.withdraw)],
   ];
+  const body = (
+    <>
+      <p>{fill(n.intro)}</p>
+      <h4 className="text-subheading font-semibold text-primary">{n.testsTitle}</h4>
+      <ul className="list-disc pl-5">
+        {instruments.map((name) => (
+          <li key={name}>{name}</li>
+        ))}
+      </ul>
+      {sections.map(([heading, text]) => (
+        <div key={heading}>
+          <h4 className="text-subheading font-semibold text-primary">{heading}</h4>
+          <p>{text}</p>
+        </div>
+      ))}
+      <p>{n.providerConsents}</p>
+      <p className="text-caption text-secondary">{n.versionLabel.replace('{version}', ATS_NOTICE_VERSION)}</p>
+    </>
+  );
 
   return (
     <section
       aria-labelledby={titleId}
-      className="rounded-xl border border-[#EDEDED] p-4 space-y-2 text-[12px] text-[#585858]"
+      className="space-y-3 rounded-xl border border-border p-4"
       data-testid="assessment-consent-notice"
       data-notice-version={ATS_NOTICE_VERSION}
     >
-      <h3 id={titleId} className="text-[13px] font-semibold text-[#1F114C]">
+      <h3 id={titleId} className="text-subheading font-semibold text-brand">
         {n.title}
       </h3>
-      <div className="max-h-64 overflow-y-auto space-y-2">
-        <p>{fill(n.intro)}</p>
-        <h4 className="font-semibold text-[#1F114C]">{n.testsTitle}</h4>
-        <ul className="list-disc pl-5">
-          {instruments.map((name) => (
-            <li key={name}>{name}</li>
-          ))}
-        </ul>
-        {sections.map(([heading, text]) => (
-          <div key={heading}>
-            <h4 className="font-semibold text-[#1F114C]">{heading}</h4>
-            <p>{text}</p>
-          </div>
-        ))}
-        <p>{n.providerConsents}</p>
-        <p className="text-[11px] text-muted">{n.versionLabel.replace('{version}', ATS_NOTICE_VERSION)}</p>
-      </div>
+      {scroll ? (
+        <div
+          tabIndex={0}
+          role="region"
+          aria-labelledby={titleId}
+          className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border-subtle p-3 text-body leading-relaxed text-secondary"
+        >
+          {body}
+        </div>
+      ) : (
+        <div className="max-w-prose space-y-2 text-body leading-relaxed text-primary">{body}</div>
+      )}
+      {children}
     </section>
   );
 }

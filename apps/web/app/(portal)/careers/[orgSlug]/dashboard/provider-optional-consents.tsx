@@ -22,13 +22,13 @@ export function ProviderOptionalConsents({
   return (
     <section
       aria-labelledby="provider-optional-consents-title"
-      className="space-y-3 rounded-xl border border-dashed border-[#D9D3F2] p-4"
+      className="space-y-3 rounded-xl border border-dashed border-field-border p-4"
       data-testid="provider-optional-consents"
     >
-      <h3 id="provider-optional-consents-title" className="text-[13px] font-semibold text-[#1F114C]">
+      <h3 id="provider-optional-consents-title" className="text-subheading font-semibold text-brand">
         {t.portalDashboard.providerOptionalTitle}
       </h3>
-      <p className="text-[12px] text-[#585858]">{t.portalDashboard.providerOptionalIntro}</p>
+      <p className="max-w-prose text-body text-secondary">{t.portalDashboard.providerOptionalIntro}</p>
       {templates.map((template) => (
         <ProviderConsentTemplateCard
           key={template.purpose}

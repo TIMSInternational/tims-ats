@@ -2,15 +2,13 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import {
-  AssessmentConsentNotice,
-  atsNoticeAcknowledgment,
-} from '../../../../../components/assessment-consent-notice';
+import { AssessmentConsentNotice, atsNoticeAcknowledgment } from '../../../../../components/assessment-consent-notice';
 import {
   useProviderConsentTemplates,
   type ConsentDecision,
   type ConsentTemplate,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
+import { BUTTON_GROUP_CLASSES, Button, CHOICE_INPUT_CLASSES, ErrorState, Skeleton } from '../../../../../components';
 import { ProviderConsentTemplateCard } from './provider-consent-template-card';
 import { ProviderOptionalConsents } from './provider-optional-consents';
 
@@ -42,20 +40,34 @@ export function ProviderAssessmentConsent({
   onCancel: () => void;
 }) {
   const { t, locale } = useI18n();
-  const { data, isLoading, isError } = useProviderConsentTemplates(attemptId, locale === 'EN' ? 'en' : 'es', true);
+  const { data, isLoading, isError, refetch } = useProviderConsentTemplates(
+    attemptId,
+    locale === 'EN' ? 'en' : 'es',
+    true,
+  );
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [noticeRead, setNoticeRead] = useState(false);
 
-  if (isLoading) return <p className="text-[12px] text-muted mt-3">{t.portalDashboard.providerConsentLoading}</p>;
-  if (isError || !data || data.templates.length === 0) {
+  if (isLoading)
     return (
-      <div className="mt-3">
-        <p role="alert" className="text-[12px] text-[#B42318]">
-          {t.portalDashboard.providerConsentError}
-        </p>
-        <button type="button" onClick={onCancel} className="mt-2 text-[12px] text-[#1F114C] underline">
+      <div aria-busy="true" className="mt-3 space-y-2">
+        <span className="sr-only">{t.portalDashboard.providerConsentLoading}</span>
+        <Skeleton className="h-4 w-1/3" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+      </div>
+    );
+  if (isError || !data || data.templates.length === 0) {
+    // A network blip must not be a dead end: retry the read, or step back out.
+    return (
+      <div className="mt-3 space-y-2">
+        <ErrorState
+          size="compact"
+          title={t.portalDashboard.providerConsentError}
+          onRetry={isError ? () => void refetch() : undefined}
+        />
+        <Button variant="tertiary" size="sm" onClick={onCancel}>
           {t.portalDashboard.providerCancel}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -71,16 +83,23 @@ export function ProviderAssessmentConsent({
   });
   const toggle = (purpose: string, value: boolean) => setAccepted((current) => ({ ...current, [purpose]: value }));
   return (
-    <div className="mt-3 space-y-3" aria-label={t.portalDashboard.providerConsentTitle}>
+    <div className="mt-3 space-y-3" role="group" aria-label={t.portalDashboard.providerConsentTitle}>
       <AssessmentConsentNotice
         orgName={notice.orgName}
         vacancyTitle={notice.vacancyTitle}
         instruments={[notice.instrumentName]}
-      />
-      <label className="flex items-start gap-2 text-[12px] text-[#1F114C]">
-        <input type="checkbox" checked={noticeRead} onChange={(event) => setNoticeRead(event.target.checked)} />
-        <span>{t.assessmentConsentNotice.readAck}</span>
-      </label>
+        scroll={false}
+      >
+        <label className="mt-1 flex min-h-7 cursor-pointer items-start gap-2 border-t border-border pt-3 text-body font-medium text-primary pointer-coarse:min-h-11">
+          <input
+            type="checkbox"
+            checked={noticeRead}
+            onChange={(event) => setNoticeRead(event.target.checked)}
+            className={`${CHOICE_INPUT_CLASSES} mt-0.5`}
+          />
+          <span>{t.assessmentConsentNotice.readAck}</span>
+        </label>
+      </AssessmentConsentNotice>
       {required.map((template) => (
         <ProviderConsentTemplateCard
           key={template.purpose}
@@ -91,23 +110,19 @@ export function ProviderAssessmentConsent({
         />
       ))}
       <ProviderOptionalConsents templates={offered} accepted={accepted} onChange={toggle} />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!allAccepted || busy}
-          onClick={() => onAccept(decide())}
-          className="inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition disabled:opacity-50"
-        >
-          {busy ? t.portalDashboard.providerOpening : t.portalDashboard.providerAcceptAndStart}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="inline-flex h-9 items-center rounded-xl border border-[#EDEDED] px-4 text-[12px] font-medium text-[#1F114C]"
-        >
+      <div className={BUTTON_GROUP_CLASSES}>
+        <Button variant="secondary" size="lg" onClick={onCancel} disabled={busy}>
           {t.portalDashboard.providerCancel}
-        </button>
+        </Button>
+        <Button
+          size="lg"
+          disabled={!allAccepted}
+          loading={busy}
+          loadingLabel={t.portalDashboard.providerOpening}
+          onClick={() => onAccept(decide())}
+        >
+          {t.portalDashboard.providerAcceptAndStart}
+        </Button>
       </div>
     </div>
   );

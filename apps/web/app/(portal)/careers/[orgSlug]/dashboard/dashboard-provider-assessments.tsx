@@ -14,6 +14,7 @@ import {
   type PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
+import { ErrorState, Skeleton } from '../../../../../components';
 import { ProviderAssessmentFrame } from './provider-assessment-frame';
 import { frameMessages } from './provider-frame-messages';
 import { ProviderAssessmentItem, portalInstrumentName, type PortalMessages } from './provider-assessment-item';
@@ -33,7 +34,9 @@ export const PCA_POLL_MS = 15_000;
 /** After a sitting ends, re-read every 2 s for at most 60 s until its result has arrived. */
 export const SETTLE_POLL_MS = 2_000;
 const SETTLE_MAX_MS = 60_000;
-const INSTRUMENT_ORDER: Record<string, number> = { lia: 0, english: 1, personality: 2, pca: 3 };
+// The order HR reads them in (the results board): LIA, English, Personality, PCA, ITC-IA, MI.
+const INSTRUMENT_ORDER: Record<string, number> = { lia: 0, english: 1, personality: 2, pca: 3, itcia: 4, mi: 5 };
+const ACTIONABLE = new Set<PortalStatus>(['consent_needed', 'ready', 'in_progress']);
 const FINISHED_STATUSES = new Set<PortalStatus>(['completed', 'needs_review', 'expired']);
 
 /** The message for a failed launch, from the route's stable code (or its status). */
@@ -63,7 +66,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   // attempt leaves "in progress" (not just once): otherwise the dashboard can keep offering "Continue" for a finished
   // test. A framed PCA (TIMS's page sends no message) is polled as timssuite.com polls it.
   const [settling, setSettling] = useState<{ attemptId: string; until: number } | null>(null);
-  const { data, isLoading, isError } = useMyProviderAssessments(orgSlug, {
+  const { data, isLoading, isError, refetch } = useMyProviderAssessments(orgSlug, {
     pollMs: settling ? SETTLE_POLL_MS : frame?.sandboxed ? PCA_POLL_MS : false,
   });
   // The same (cached) read as "My applications": the consent notice names the vacancy of each assessment.
@@ -72,6 +75,9 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   const [consentFor, setConsentFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ attemptId: string; key: keyof PortalMessages } | null>(null);
+  // Provider pages (PCA) the candidate closed in this session: until the result arrives the card says it may be on its
+  // way instead of inviting a second sitting. UI state only: no data or polling change.
+  const [closedPages, setClosedPages] = useState<ReadonlySet<string>>(() => new Set());
 
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: providerAttemptsKey(orgSlug) }),
@@ -116,11 +122,13 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   };
 
   const framedAttemptId = frame?.attemptId ?? null;
+  const framedSandboxed = frame?.sandboxed === true;
   const closeFrame = useCallback(() => {
     if (framedAttemptId) setSettling({ attemptId: framedAttemptId, until: Date.now() + SETTLE_MAX_MS });
+    if (framedAttemptId && framedSandboxed) setClosedPages((current) => new Set(current).add(framedAttemptId));
     setFrame(null);
     void refresh();
-  }, [framedAttemptId, refresh]);
+  }, [framedAttemptId, framedSandboxed, refresh]);
 
   // The player says the sitting ended: keep its receipt on screen (as timssuite.com shows it) and start re-reading.
   const finishFrame = useCallback(() => {
@@ -147,12 +155,14 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     return () => window.clearTimeout(timer);
   }, [settling, settlingStatus]);
 
-  const header = (
-    <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.providerAssessments}</h2>
-  );
   const section = (body: React.ReactNode) => (
-    <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-      {header}
+    <section
+      aria-labelledby="provider-assessments-heading"
+      className="rounded-2xl border border-border bg-white p-4 sm:p-5"
+    >
+      <h2 id="provider-assessments-heading" className="mb-3 text-subheading font-semibold text-brand">
+        {t.portalDashboard.providerAssessments}
+      </h2>
       {body}
     </section>
   );
@@ -171,12 +181,28 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
       onFinished={finishFrame}
     />
   );
-  const errorLine = <p className="text-[12px] text-[#B42318]">{t.portalDashboard.providerError}</p>;
+  const retry = () => void refetch();
 
   if (!data) {
     return section(
       <>
-        {isLoading ? <p className="text-[12px] text-muted">{t.portalDashboard.providerLoading}</p> : isError ? errorLine : null}
+        {isLoading ? (
+          <div aria-busy="true" className="space-y-3">
+            <span className="sr-only">{t.portalDashboard.providerLoading}</span>
+            {[0, 1].map((row) => (
+              <div key={row} className="flex items-start gap-3 rounded-xl border border-border p-4">
+                <Skeleton className="size-10 rounded-xl" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : isError ? (
+          <ErrorState size="compact" title={t.portalDashboard.providerError} onRetry={retry} />
+        ) : null}
         {frameNode}
       </>,
     );
@@ -191,11 +217,19 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     timeStyle: 'short',
   });
 
+  // The next test to take (first actionable in this order) is the one filled button on the list.
+  const isAwaiting = (a: PortalProviderAttempt) => closedPages.has(a.attemptId) && a.status === 'ready';
+  const nextId = attempts.find((a) => ACTIONABLE.has(a.status) && !isAwaiting(a))?.attemptId ?? null;
+
   return section(
     <>
-      {isError && <div className="mb-3">{errorLine}</div>}
+      {isError && (
+        <div className="mb-3">
+          <ErrorState size="inline" title={t.portalDashboard.providerError} onRetry={retry} />
+        </div>
+      )}
       {attempts.length === 0 ? (
-        <p className="text-[12px] text-muted">{t.portalDashboard.providerEmpty}</p>
+        <p className="text-body text-secondary">{t.portalDashboard.providerEmpty}</p>
       ) : (
         <ul className="space-y-3">
           {attempts.map((attempt) => (
@@ -207,6 +241,8 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
               busy={busy === attempt.attemptId}
               failureKey={failure?.attemptId === attempt.attemptId ? failure.key : null}
               consentOpen={consentFor === attempt.attemptId}
+              primary={attempt.attemptId === nextId}
+              justClosed={closedPages.has(attempt.attemptId)}
               notice={{ orgName, vacancyTitle: vacancyTitles.get(attempt.vacancyId) ?? '' }}
               onOpenConsent={() => setConsentFor(attempt.attemptId)}
               onCancelConsent={() => setConsentFor(null)}
