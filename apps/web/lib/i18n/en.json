@@ -5752,9 +5752,8 @@
   },
   "assessmentSecurity": {
     "title": "Assessment security",
-    "subtitle": "Choose how the TIMS tests your candidates take from the ATS are protected. These are the same controls timssuite.com offers.",
+    "subtitle": "Choose how the TIMS tests your candidates take from the ATS are protected. These are the same controls the TIMS assessment platform uses.",
     "loading": "Loading the settings…",
-    "unavailable": "TIMS assessments are not active for your organization.",
     "noPermission": "You don't have permission to change these settings. Ask an HR administrator.",
     "lockdownLabel": "Lockdown mode",
     "lockdownHelp": "The test opens full screen and blocks shortcuts such as copy and paste. If the candidate has a second screen connected, they can't start until they disconnect it.",
@@ -5790,7 +5789,9 @@
     "saving": "Saving…",
     "saved": "Settings saved. They apply to the next tests you assign.",
     "saveError": "The settings couldn't be saved. Try again.",
-    "identityRefused": "The identity check isn't available yet."
+    "identityRefused": "The identity check isn't available yet.",
+    "unavailableTitle": "TIMS assessments aren't active",
+    "unavailableBody": "Ask TIMS to turn them on for your organization; these settings will appear here."
   },
   "fitScoreBadge": {
     "label": "FIT score {score} of 100, {band}",

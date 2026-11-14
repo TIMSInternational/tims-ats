@@ -14,6 +14,7 @@ import {
   type ProctoringSettings,
 } from '../../../../lib/platform-api/assessment-provider-settings';
 import { SettingSwitch } from './setting-switch';
+import { Button, CHOICE_INPUT_CLASSES } from '../../../../components';
 import { ThresholdStepper } from './threshold-stepper';
 
 const formSchema = z.object({
@@ -76,11 +77,7 @@ export function AssessmentSecurityForm({ settings }: { settings: ProctoringSetti
   );
 
   return (
-    <form
-      onSubmit={submit}
-      aria-label={m.title}
-      className="max-w-2xl rounded-xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]"
-    >
+    <form onSubmit={submit} aria-label={m.title} className="max-w-3xl rounded-xl bg-white p-4 shadow-card md:p-5">
       <Controller
         control={form.control}
         name="lockdown"
@@ -106,7 +103,7 @@ export function AssessmentSecurityForm({ settings }: { settings: ProctoringSetti
             onChange={field.onChange}
           >
             {antiCheatEnabled ? (
-              <div className="mt-4 flex flex-col gap-4 rounded-lg bg-[#FAFAFA] p-4">
+              <div className="mt-3 flex flex-col gap-4 rounded-lg bg-surface p-4">
                 <Controller
                   control={form.control}
                   name="threshold"
@@ -115,20 +112,28 @@ export function AssessmentSecurityForm({ settings }: { settings: ProctoringSetti
                   )}
                 />
                 <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-1 text-[12px] font-medium text-[#585858]">{m.consequenceLegend}</legend>
+                  <legend className="mb-1 text-body font-medium text-primary">{m.consequenceLegend}</legend>
                   {ANTI_CHEAT_CONSEQUENCES.map((consequence) => (
-                    <label key={consequence} className="flex items-start gap-2 text-[13px] text-[#1F114C]">
-                      <input type="radio" value={consequence} className="mt-1" {...form.register('consequence')} />
+                    <label
+                      key={consequence}
+                      className="flex items-start gap-2 text-body text-primary pointer-coarse:min-h-11"
+                    >
+                      <input
+                        type="radio"
+                        value={consequence}
+                        className={`${CHOICE_INPUT_CLASSES} mt-0.5`}
+                        {...form.register('consequence')}
+                      />
                       <span>
                         <span className="font-medium">{m.consequence[consequence].label}</span>
-                        <span className="block text-[12px] text-[#585858]">{m.consequence[consequence].help}</span>
+                        <span className="block text-callout text-secondary">{m.consequence[consequence].help}</span>
                       </span>
                     </label>
                   ))}
                 </fieldset>
               </div>
             ) : (
-              <p className="mt-2 text-[11px] text-[#8B8B8B]">{m.antiCheatOffHint}</p>
+              <p className="mt-2 text-callout text-secondary">{m.antiCheatOffHint}</p>
             )}
           </SettingSwitch>
         )}
@@ -147,7 +152,7 @@ export function AssessmentSecurityForm({ settings }: { settings: ProctoringSetti
           >
             {!settings.identityCheckAvailable && (
               <p
-                className="mt-2 rounded-lg bg-amber-50 p-3 text-[12px] text-amber-900"
+                className="mt-2 rounded-lg bg-warning-bg p-3 text-callout text-warning"
                 data-testid="identity-unavailable"
               >
                 {m.identityUnavailable}
@@ -156,19 +161,15 @@ export function AssessmentSecurityForm({ settings }: { settings: ProctoringSetti
           </SettingSwitch>
         )}
       />
-      <div className="mt-4 space-y-1 text-[12px] text-[#585858]">
+      <div className="mt-4 space-y-1 text-callout text-secondary">
         <p>{m.appliesNote}</p>
         <p>{m.pcaNote}</p>
-        {updated && <p className="text-[11px] text-[#8B8B8B]">{m.updatedAt.replace('{date}', updated)}</p>}
+        {updated && <p className="text-caption text-secondary">{m.updatedAt.replace('{date}', updated)}</p>}
       </div>
       <div className="mt-5 flex justify-end">
-        <button
-          type="submit"
-          disabled={save.isPending || !form.formState.isDirty}
-          className="h-9 rounded-lg bg-[#1F114C] px-4 text-[13px] font-semibold text-white hover:bg-[#2a1866] transition disabled:opacity-50"
-        >
-          {save.isPending ? m.saving : m.save}
-        </button>
+        <Button type="submit" disabled={!form.formState.isDirty} loading={save.isPending} loadingLabel={m.saving}>
+          {m.save}
+        </Button>
       </div>
     </form>
   );

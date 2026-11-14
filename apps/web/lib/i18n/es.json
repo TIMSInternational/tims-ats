@@ -5752,9 +5752,8 @@
   },
   "assessmentSecurity": {
     "title": "Seguridad de las evaluaciones",
-    "subtitle": "Elige cómo se protegen las pruebas TIMS que tus candidatos hacen desde el ATS. Son los mismos controles que ofrece timssuite.com.",
+    "subtitle": "Elige cómo se protegen las pruebas TIMS que tus candidatos hacen desde el ATS. Son los mismos controles que usa la plataforma de evaluaciones TIMS.",
     "loading": "Cargando la configuración…",
-    "unavailable": "Las evaluaciones TIMS no están activas para tu organización.",
     "noPermission": "No tienes permiso para cambiar esta configuración. Pídeselo a un administrador de RR. HH.",
     "lockdownLabel": "Modo bloqueado",
     "lockdownHelp": "La prueba se abre en pantalla completa y bloquea atajos como copiar y pegar. Si el candidato tiene una segunda pantalla conectada, no puede empezar hasta desconectarla.",
@@ -5790,7 +5789,9 @@
     "saving": "Guardando…",
     "saved": "Configuración guardada. Se aplica a las próximas pruebas que asignes.",
     "saveError": "No se pudo guardar la configuración. Inténtalo de nuevo.",
-    "identityRefused": "La verificación de identidad todavía no está disponible."
+    "identityRefused": "La verificación de identidad todavía no está disponible.",
+    "unavailableTitle": "Las evaluaciones TIMS no están activas",
+    "unavailableBody": "Pide a TIMS que las active para tu organización; esta configuración aparecerá aquí."
   },
   "fitScoreBadge": {
     "label": "Puntuación FIT {score} de 100, {band}",
