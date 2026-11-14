@@ -8,12 +8,13 @@ import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { Skeleton } from '../../../../components/skeleton';
 import { ErrorState } from '../../../../components/error-state';
+import { Button } from '../../../../components/button';
+import { Field } from '../../../../components/field';
+import { TextInput } from '../../../../components/text-input';
+import { Select } from '../../../../components/select';
 import { useCreateTenantInvitation, useTenantInvitationRoles } from '../../../../lib/platform-api/tenant-invitations';
 import { roleOptions } from '../../../../lib/role-labels';
 import { invitationErrorMessage } from './invitation-error-message';
-
-const INPUT_CLS =
-  'w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm bg-white focus:outline-none focus:border-[#1F114C]';
 
 export function InviteForm() {
   const { t } = useI18n();
@@ -44,12 +45,19 @@ export function InviteForm() {
 
   if (roles.isLoading) return <Skeleton className="h-24 w-full rounded-xl" />;
   if (roles.isError)
-    return <ErrorState message={invitationErrorMessage(roles.error, 'read', m)} onRetry={() => void roles.refetch()} error={roles.error} />;
+    return (
+      <ErrorState
+        size="compact"
+        message={invitationErrorMessage(roles.error, 'read', m)}
+        onRetry={() => void roles.refetch()}
+        error={roles.error}
+      />
+    );
 
   // Labels come from the shared role map (never the seeded DB name) and the launch scope hides the roles the
   // pilot does not use (PILOT_HIDDEN_ROLE_SLUGS). The API still enforces what this caller may grant.
   const available = roleOptions(roles.data ?? [], t.roles);
-  if (available.length === 0) return <p className="text-sm text-[#8B8B8B]">{m.rolesEmpty}</p>;
+  if (available.length === 0) return <p className="text-body text-secondary">{m.rolesEmpty}</p>;
   const selectedRole = form.watch('roleSlug');
   const roleHint = Object.prototype.hasOwnProperty.call(m.roleDescriptions, selectedRole)
     ? m.roleDescriptions[selectedRole as keyof typeof m.roleDescriptions]
@@ -61,53 +69,29 @@ export function InviteForm() {
       onSubmit={form.handleSubmit((values) => create.mutate(values))}
       className="grid gap-3 md:grid-cols-[1fr_220px_auto] md:items-start"
     >
-      <div>
-        <label htmlFor="team-invite-email" className="block text-xs font-medium text-[#585858] mb-1.5">
-          {m.emailLabel}
-        </label>
-        <input
-          id="team-invite-email"
+      {/* Field wires label, help and error (aria-describedby + role=alert) to each control (settings-16). */}
+      <Field id="team-invite-email" label={m.emailLabel} error={errors.email?.message}>
+        <TextInput
           type="email"
           maxLength={254}
           autoComplete="off"
           placeholder={m.emailPlaceholder}
-          aria-invalid={errors.email ? true : undefined}
-          className={INPUT_CLS}
           {...form.register('email')}
         />
-        {errors.email && <p className="mt-1 text-xs text-[#DD0C15]">{errors.email.message}</p>}
-      </div>
-      <div>
-        <label htmlFor="team-invite-role" className="block text-xs font-medium text-[#585858] mb-1.5">
-          {m.roleLabel}
-        </label>
-        <select
-          id="team-invite-role"
-          className={INPUT_CLS}
-          aria-describedby={roleHint ? 'team-invite-role-hint' : undefined}
-          {...form.register('roleSlug')}
-        >
+      </Field>
+      <Field id="team-invite-role" label={m.roleLabel} help={roleHint} error={errors.roleSlug?.message}>
+        <Select {...form.register('roleSlug')}>
           <option value="">{m.rolePlaceholder}</option>
           {available.map((role) => (
             <option key={role.slug} value={role.slug}>
               {role.label}
             </option>
           ))}
-        </select>
-        {errors.roleSlug && <p className="mt-1 text-xs text-[#DD0C15]">{errors.roleSlug.message}</p>}
-        {roleHint && !errors.roleSlug && (
-          <p id="team-invite-role-hint" className="mt-1 text-xs text-[#8B8B8B]">
-            {roleHint}
-          </p>
-        )}
-      </div>
-      <button
-        type="submit"
-        disabled={create.isPending}
-        className="h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50 md:mt-6"
-      >
-        {create.isPending ? m.inviting : m.inviteSubmit}
-      </button>
+        </Select>
+      </Field>
+      <Button type="submit" loading={create.isPending} loadingLabel={m.inviting} className="md:mt-6">
+        {m.inviteSubmit}
+      </Button>
     </form>
   );
 }

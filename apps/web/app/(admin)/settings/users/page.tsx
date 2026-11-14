@@ -3,14 +3,16 @@
 import type { ReactNode } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { usePermissions } from '../../../../lib/permissions';
-import { EmptyState, Skeleton } from '../../../../components';
-import { isTenantInvitationsEnabled } from '../../../../lib/platform-api/tenant-invitations';
+import { EmptyState, PageHeader, Skeleton } from '../../../../components';
+import { isTenantInvitationsEnabled, useTenantInvitationRoles } from '../../../../lib/platform-api/tenant-invitations';
 import { InviteForm } from './invite-form';
 import { PendingInvitationsTable } from './pending-invitations-table';
 import { MembersTable } from './members-table';
+import { isInvitationForbidden } from './invitation-error-message';
+import { ForbiddenLine } from './forbidden-line';
 
-const SECTION_CLS = 'bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]';
-const HEADING_CLS = 'text-sm font-semibold text-[#1F114C] mb-4';
+const SECTION_CLS = 'rounded-xl bg-white p-5 shadow-card';
+const HEADING_CLS = 'text-subheading font-semibold text-primary';
 
 // /settings/users ("Equipo"): a company admin invites their own team into THEIR org (finding F8).
 // The route itself is gated on user:read (lib/nav/routes.ts) so the member list is visible to
@@ -22,6 +24,11 @@ export default function TeamSettingsPage() {
   const { can, isLoading } = usePermissions();
   const invitationsEnabled = isTenantInvitationsEnabled();
   const canInvite = can('user', 'create');
+  const inviteAllowed = invitationsEnabled && !isLoading && canInvite;
+  // The same roles query the invite form runs (shared cache key): no extra request. A 401/403 means this
+  // role can read members but not invite, which is one line, not two full "no access" blocks (settings-17).
+  const roles = useTenantInvitationRoles(inviteAllowed);
+  const inviteForbidden = inviteAllowed && roles.isError && isInvitationForbidden(roles.error);
 
   let inviteBody: ReactNode;
   if (!invitationsEnabled)
@@ -32,34 +39,30 @@ export default function TeamSettingsPage() {
   else inviteBody = <InviteForm />;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <header>
-        <h1 className="text-lg font-semibold text-[#1F114C]">{m.title}</h1>
-        <p className="mt-1 text-sm text-[#8B8B8B]">{m.subtitle}</p>
-      </header>
+    <div className="flex h-full min-w-0 flex-1 flex-col">
+      <PageHeader title={m.title} description={m.subtitle} />
 
-      <section className={SECTION_CLS} aria-labelledby="team-invite-heading">
-        <h2 id="team-invite-heading" className={HEADING_CLS}>
-          {m.inviteTitle}
-        </h2>
-        {inviteBody}
-      </section>
+      <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
+        {inviteForbidden ? (
+          <ForbiddenLine text={m.inviteForbiddenLine} />
+        ) : (
+          <section className={SECTION_CLS} aria-labelledby="team-invite-heading">
+            <h2 id="team-invite-heading" className={`mb-4 ${HEADING_CLS}`}>
+              {m.inviteTitle}
+            </h2>
+            {inviteBody}
+          </section>
+        )}
 
-      {invitationsEnabled && !isLoading && canInvite && (
-        <section aria-labelledby="team-pending-heading" className="flex flex-col">
-          <h2 id="team-pending-heading" className={HEADING_CLS}>
-            {m.pendingTitle}
+        {inviteAllowed && !inviteForbidden && <PendingInvitationsTable headingClassName={HEADING_CLS} />}
+
+        <section aria-labelledby="team-members-heading" className="flex flex-col">
+          <h2 id="team-members-heading" className={`mb-4 ${HEADING_CLS}`}>
+            {m.membersTitle}
           </h2>
-          <PendingInvitationsTable />
+          <MembersTable />
         </section>
-      )}
-
-      <section aria-labelledby="team-members-heading" className="flex flex-col">
-        <h2 id="team-members-heading" className={HEADING_CLS}>
-          {m.membersTitle}
-        </h2>
-        <MembersTable />
-      </section>
+      </div>
     </div>
   );
 }

@@ -1,11 +1,12 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage, pluralize } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
 import { useOrgStructureMutation, type OrgTeam } from '../../../../lib/platform-api/org-structure';
+import { Button, Menu, StatusBadge, type MenuEntry } from '../../../../components';
 import { useOrgErrorMessage } from './use-org-error-message';
 import type { OrgStructureAbilities } from './use-org-abilities';
-import { dangerSmallBtn, smallBtn } from './units-styles';
 
 interface TeamRowProps {
   team: OrgTeam;
@@ -17,67 +18,72 @@ interface TeamRowProps {
   onFailure: (message: string) => void;
 }
 
-/** One team inside a business unit card: leader, member count, and its management actions. */
+/**
+ * One team inside a business unit card: leader, member count, one visible action ("Miembros") and the rest in
+ * a "Más acciones" menu, so a row never shows five equal buttons (toolbars.md › Item groupings).
+ */
 export function TeamRow({ team, abilities, onRename, onSetLeader, onManageMembers, onFailure }: TeamRowProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const errorMessage = useOrgErrorMessage();
   const update = useOrgStructureMutation('updateTeam', {
     onSuccess: () => toast(t.units.teamUpdated, { type: 'success' }),
-    onError: (error: unknown) => {
-      const message = errorMessage(error);
-      toast(message, { type: 'error' });
-      onFailure(message);
-    },
+    // The card shows the failure inline; no second copy as a toast.
+    onError: (error: unknown) => onFailure(errorMessage(error)),
   });
 
+  const items: MenuEntry[] = [];
+  if (abilities.setLeader) {
+    items.push({
+      key: 'leader',
+      label: team.leader ? t.units.changeLeaderEllipsis : t.units.setLeaderEllipsis,
+      onSelect: onSetLeader,
+      disabled: update.isPending,
+    });
+    if (team.leader)
+      items.push({
+        key: 'clearLeader',
+        label: t.units.clearLeader,
+        onSelect: () => update.mutate({ id: team.id, leaderUserId: null }),
+        disabled: update.isPending,
+      });
+  }
+  if (abilities.updateStructure) {
+    items.push({ key: 'rename', label: t.units.renameEllipsis, onSelect: onRename });
+    items.push({ key: 'sep', type: 'separator' });
+    items.push({
+      key: 'toggle',
+      label: team.isActive ? t.units.deactivateTeam : t.units.reactivateTeam,
+      destructive: team.isActive,
+      disabled: update.isPending,
+      onSelect: () => update.mutate({ id: team.id, isActive: !team.isActive }),
+    });
+  }
+
+  const members = pluralize(
+    team.members.length,
+    { one: t.units.membersCountOne, other: t.units.membersCountOther },
+    locale,
+  );
+
   return (
-    <li className={`flex flex-wrap items-center justify-between gap-2 py-2.5 ${team.isActive ? '' : 'opacity-60'}`}>
+    <li className="flex flex-wrap items-center justify-between gap-2 py-2.5">
       <div className="min-w-0">
-        <p className="text-[12px] font-medium text-[#333]">
+        <p className="flex flex-wrap items-center gap-2 text-body font-medium text-primary">
           {team.name}
-          {!team.isActive && <span className="ml-2 text-[10px] text-[#8B8B8B]">{t.units.inactive}</span>}
+          {!team.isActive && <StatusBadge tone="neutral">{t.units.inactiveTeam}</StatusBadge>}
         </p>
-        <p className="text-[11px] text-[#8B8B8B]">
-          {t.units.leader}: {team.leader ? team.leader.fullName : t.units.noLeader} · {team.members.length}{' '}
-          {t.units.membersCount}
+        <p className="text-callout text-secondary">
+          {team.leader ? formatMessage(t.units.leaderNamed, { name: team.leader.fullName }) : t.units.noLeaderAssigned}{' '}
+          · {members}
         </p>
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex items-center gap-1">
         {(abilities.assignPeople || abilities.unassignPeople) && (
-          <button type="button" onClick={onManageMembers} className={smallBtn}>
+          <Button variant="secondary" size="sm" onClick={onManageMembers}>
             {t.units.members}
-          </button>
+          </Button>
         )}
-        {abilities.setLeader && (
-          <button type="button" onClick={onSetLeader} disabled={update.isPending} className={smallBtn}>
-            {team.leader ? t.units.changeLeader : t.units.setLeader}
-          </button>
-        )}
-        {abilities.setLeader && team.leader && (
-          <button
-            type="button"
-            disabled={update.isPending}
-            onClick={() => update.mutate({ id: team.id, leaderUserId: null })}
-            className={smallBtn}
-          >
-            {t.units.clearLeader}
-          </button>
-        )}
-        {abilities.updateStructure && (
-          <>
-            <button type="button" onClick={onRename} className={smallBtn}>
-              {t.units.rename}
-            </button>
-            <button
-              type="button"
-              disabled={update.isPending}
-              onClick={() => update.mutate({ id: team.id, isActive: !team.isActive })}
-              className={team.isActive ? dangerSmallBtn : smallBtn}
-            >
-              {team.isActive ? t.units.deactivate : t.units.reactivate}
-            </button>
-          </>
-        )}
+        {items.length > 0 && <Menu items={items} label={formatMessage(t.units.teamActions, { name: team.name })} />}
       </div>
     </li>
   );

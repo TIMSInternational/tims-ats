@@ -3,11 +3,25 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
-import { CandidateAvatar, Skeleton, ErrorState } from '../../../../components';
+import {
+  Button,
+  CandidateAvatar,
+  ConfirmDialog,
+  ErrorState,
+  Field,
+  PageHeader,
+  Select,
+  Skeleton,
+} from '../../../../components';
 import { AssignUserModal } from './assign-user-modal';
-import { UnitsTopBar } from './units-top-bar';
 import { isPilotScope } from '../../../../lib/launch-scope';
+
+interface RemoveTarget {
+  userId: string;
+  name: string;
+}
 
 /** Today's viewer (tRPC): browse units and manage unit assignees. Used while the C# org-structure flag is off. */
 export function LegacyBusinessUnitsView() {
@@ -17,158 +31,138 @@ export function LegacyBusinessUnitsView() {
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [unitId, setUnitId] = useState<string | null>(null);
   const [showAssign, setShowAssign] = useState(false);
+  const [removing, setRemoving] = useState<RemoveTarget | null>(null);
 
   const companies = trpc.organization.listCompanies.useQuery();
-  const units = trpc.organization.listBusinessUnits.useQuery(
-    { companyId: companyId! },
-    { enabled: !!companyId },
-  );
-  const members = trpc.organization.listUnitMembers.useQuery(
-    { businessUnitId: unitId! },
-    { enabled: !!unitId },
-  );
+  const units = trpc.organization.listBusinessUnits.useQuery({ companyId: companyId! }, { enabled: !!companyId });
+  const members = trpc.organization.listUnitMembers.useQuery({ businessUnitId: unitId! }, { enabled: !!unitId });
 
   const unassign = trpc.organization.unassignUserFromUnit.useMutation({
     onSuccess: () => {
+      setRemoving(null);
       toast(t.units.removed, { type: 'success' });
       if (unitId) utils.organization.listUnitMembers.invalidate({ businessUnitId: unitId });
-    },
-    onError: (err) => {
-      toast(err.message, { type: 'error' });
     },
   });
 
   const memberRows = members.data ?? [];
   const assignedIds = memberRows.map((m) => m.user.id);
 
-  const onRemove = (userId: string) => {
-    if (!unitId) return;
-    if (window.confirm(t.units.removeConfirm)) {
-      unassign.mutate({ userId, businessUnitId: unitId });
-    }
-  };
-
   return (
-    <div className="flex flex-col flex-1 min-w-0 h-full">
-      <UnitsTopBar />
+    <div className="flex h-full min-w-0 flex-1 flex-col">
+      <PageHeader title={t.units.title} />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
         {/* In the pilot the organization structure stays off by decision, so "ask support to enable it" would
             send admins to a request support must refuse (D-12). */}
-        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-[#92400e]">
+        <p
+          role="status"
+          className="rounded-lg border border-warning/30 bg-warning-bg px-4 py-3 text-callout text-primary"
+        >
           {isPilotScope() ? t.units.managementDisabledPilot : t.units.managementDisabled}
         </p>
-        {/* Selectors */}
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mb-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <div className="rounded-xl bg-white p-5 shadow-card">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label htmlFor="legacy-units-company" className="block text-[12px] font-medium text-[#585858] mb-1.5">
-                {t.units.selectCompany}
-              </label>
               {companies.isLoading ? (
                 <Skeleton className="h-9 w-full rounded-lg" />
               ) : companies.isError ? (
-                <ErrorState onRetry={() => companies.refetch()} error={companies.error} />
+                <ErrorState size="compact" onRetry={() => companies.refetch()} error={companies.error} />
               ) : (companies.data ?? []).length === 0 ? (
-                <p className="text-[12px] text-[#8B8B8B] py-2">{t.units.noCompanies}</p>
+                <p className="py-2 text-body text-secondary">{t.units.noCompanies}</p>
               ) : (
-                <select
-                  id="legacy-units-company"
-                  value={companyId ?? ''}
-                  onChange={(e) => {
-                    setCompanyId(e.target.value || null);
-                    setUnitId(null);
-                  }}
-                  className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40"
-                >
-                  <option value="">{t.units.selectCompany}</option>
-                  {(companies.data ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <Field id="legacy-units-company" label={t.units.selectCompany}>
+                  <Select
+                    value={companyId ?? ''}
+                    onChange={(e) => {
+                      setCompanyId(e.target.value || null);
+                      setUnitId(null);
+                    }}
+                  >
+                    <option value="">{t.units.selectCompany}</option>
+                    {(companies.data ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
               )}
             </div>
             <div>
-              <label htmlFor="legacy-units-unit" className="block text-[12px] font-medium text-[#585858] mb-1.5">
-                {t.units.selectUnit}
-              </label>
               {units.isError ? (
-                <ErrorState onRetry={() => units.refetch()} error={units.error} />
+                <ErrorState size="compact" onRetry={() => units.refetch()} error={units.error} />
               ) : companyId && units.data && units.data.length === 0 ? (
-                <p className="text-[12px] text-[#8B8B8B] py-2">{t.units.noUnits}</p>
+                <p className="py-2 text-body text-secondary">{t.units.noUnits}</p>
               ) : (
-                <select
-                  id="legacy-units-unit"
-                  value={unitId ?? ''}
-                  onChange={(e) => setUnitId(e.target.value || null)}
-                  disabled={!companyId || units.isLoading}
-                  className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] focus:outline-none focus:border-[#1F114C]/40 disabled:bg-[#F6F6F6] disabled:text-[#B8B8B8]"
-                >
-                  <option value="">{t.units.selectUnit}</option>
-                  {(units.data ?? []).map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
+                <Field id="legacy-units-unit" label={t.units.selectUnit}>
+                  <Select
+                    value={unitId ?? ''}
+                    onChange={(e) => setUnitId(e.target.value || null)}
+                    disabled={!companyId || units.isLoading}
+                  >
+                    <option value="">{t.units.selectUnit}</option>
+                    {(units.data ?? []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
               )}
             </div>
           </div>
         </div>
 
-        {/* Members */}
         {unitId && (
-          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.units.membersTitle}</h3>
-              <button
-                onClick={() => setShowAssign(true)}
-                className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                {t.units.assignUser}
-              </button>
+          <section aria-labelledby="legacy-unit-members" className="rounded-xl bg-white p-5 shadow-card">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 id="legacy-unit-members" className="text-subheading font-semibold text-primary">
+                {t.units.membersTitle}
+              </h2>
+              <Button onClick={() => setShowAssign(true)}>{t.units.assignUser}</Button>
             </div>
 
             {members.isLoading ? (
               <Skeleton className="h-24 w-full rounded-lg" />
             ) : members.isError ? (
-              <p className="text-[12px] text-[#DD0C15]">{members.error.message}</p>
+              <ErrorState size="compact" message={t.units.membersLoadError} onRetry={() => members.refetch()} />
             ) : memberRows.length === 0 ? (
-              <p className="text-[12px] text-[#8B8B8B] py-6 text-center">{t.units.noMembers}</p>
+              <p className="py-6 text-center text-body text-secondary">{t.units.noAssignees}</p>
             ) : (
-              <table className="w-full text-[12px]">
-                <thead>
-                  <tr className="text-[#8B8B8B] border-b border-[#EDEDED]">
-                    <th className="text-left pb-2 font-medium">{t.units.member}</th>
-                    <th className="text-left pb-2 font-medium">{t.units.email}</th>
-                    <th className="text-right pb-2 font-medium">{t.units.actions}</th>
-                  </tr>
-                </thead>
-                <tbody className="text-[#333]">
-                  {memberRows.map((m) => (
-                    <tr key={m.id} className="border-b border-[#F6F6F6]">
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <CandidateAvatar firstName={m.user.firstName} lastName={m.user.lastName} avatar={m.user.avatar} size="sm" />
-                          <span className="font-medium">{m.user.firstName} {m.user.lastName}</span>
+              <ul className="divide-y divide-border-subtle">
+                {memberRows.map((m) => {
+                  const name = `${m.user.firstName} ${m.user.lastName}`;
+                  return (
+                    <li key={m.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <CandidateAvatar
+                          firstName={m.user.firstName}
+                          lastName={m.user.lastName}
+                          avatar={m.user.avatar}
+                          size="sm"
+                          decorative
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-body font-medium text-primary">{name}</p>
+                          <p className="truncate text-callout text-secondary">{m.user.email}</p>
                         </div>
-                      </td>
-                      <td className="py-2.5 text-[#585858]">{m.user.email}</td>
-                      <td className="py-2.5 text-right">
-                        <button
-                          onClick={() => onRemove(m.user.id)}
-                          disabled={unassign.isPending}
-                          className="h-7 px-2.5 rounded-md text-[11px] text-[#DD0C15] border border-red-200 hover:bg-red-50 transition disabled:opacity-50"
-                        >
-                          {t.units.remove}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                      <Button
+                        variant="tertiary"
+                        size="sm"
+                        disabled={unassign.isPending}
+                        onClick={() => setRemoving({ userId: m.user.id, name })}
+                      >
+                        {t.units.remove}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          </div>
+          </section>
         )}
       </div>
 
@@ -180,6 +174,23 @@ export function LegacyBusinessUnitsView() {
           onAssigned={() => {
             setShowAssign(false);
             utils.organization.listUnitMembers.invalidate({ businessUnitId: unitId });
+          }}
+        />
+      )}
+
+      {removing && unitId && (
+        <ConfirmDialog
+          title={formatMessage(t.units.removeAssigneeTitle, { name: removing.name })}
+          description={t.units.removeLegacyBody}
+          confirmLabel={t.units.removeFromUnit}
+          confirmingLabel={t.units.removing}
+          destructive
+          loading={unassign.isPending}
+          error={unassign.isError ? t.units.errorGeneric : undefined}
+          onConfirm={() => unassign.mutate({ userId: removing.userId, businessUnitId: unitId })}
+          onCancel={() => {
+            unassign.reset();
+            setRemoving(null);
           }}
         />
       )}

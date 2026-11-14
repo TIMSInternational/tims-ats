@@ -117,7 +117,7 @@ test('company admin invites the recruiter and the hiring leader from the team pa
     [j.recruiter, 'Reclutador'],
     [j.leader, 'Líder'],
   ] as const) {
-    await page.getByLabel('Email', { exact: true }).fill(who.email);
+    await page.getByLabel('Correo electrónico', { exact: true }).fill(who.email);
     await page.getByLabel('Rol', { exact: true }).selectOption({ label: role });
     await page.getByRole('button', { name: 'Enviar invitación' }).click();
     await expect(page.getByText('Invitación enviada.').first()).toBeVisible();
@@ -157,7 +157,7 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   await main.getByRole('button', { name: 'Nueva unidad' }).first().click();
   const unit = page.getByRole('dialog', { name: 'Nueva unidad' });
   await unit.getByLabel('Nombre', { exact: true }).fill(UNIT);
-  await unit.getByRole('button', { name: 'Guardar' }).click();
+  await unit.getByRole('button', { name: 'Crear unidad' }).click();
   await expect(unit).toBeHidden();
 
   // Each business unit card is a <section aria-label={unit.name}>.
@@ -165,11 +165,13 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   await unitCard.getByRole('button', { name: 'Nuevo equipo' }).click();
   const team = page.getByRole('dialog', { name: 'Nuevo equipo' });
   await team.getByLabel('Nombre', { exact: true }).fill(TEAM);
-  await team.getByRole('button', { name: 'Guardar' }).click();
+  await team.getByRole('button', { name: 'Crear equipo' }).click();
   await expect(team).toBeHidden();
 
   const teamRow = unitCard.getByRole('listitem').filter({ hasText: TEAM });
-  await teamRow.getByRole('button', { name: 'Asignar líder' }).click();
+  // Leader actions live in the team row's "Acciones de <team>" menu.
+  await teamRow.getByRole('button', { name: `Acciones de ${TEAM}` }).click();
+  await page.getByRole('menuitem', { name: 'Asignar líder…' }).click();
   const picker = page.getByRole('dialog', { name: 'Asignar líder' });
   await picker.getByPlaceholder('Buscar por nombre o email...').fill(j.leader.firstName);
   await picker

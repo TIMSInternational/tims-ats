@@ -25,7 +25,7 @@ export function AssignPersonModal({ target, onClose }: AssignPersonModalProps) {
       toast(t.units.saved, { type: 'success' });
       onClose();
     },
-    onError: (error: unknown) => toast(errorMessage(error), { type: 'error' }),
+    // The failure shows inside the open picker only (settings-15).
   };
   const addAssignee = useOrgStructureMutation('addUnitAssignee', handlers);
   const setLeader = useOrgStructureMutation('updateTeam', handlers);
