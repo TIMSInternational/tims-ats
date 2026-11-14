@@ -62,7 +62,7 @@ test.afterAll(async () => {
 test('careers page lists the published vacancy', async () => {
   const { page } = candidate;
   await page.goto(`/careers/${j.orgSlug}`);
-  await page.getByText(j.vacancy!.title).first().click();
+  await page.getByText(j.vacancy!.title).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(new RegExp(`/careers/${j.orgSlug}/${j.vacancy!.id}`));
   await expect(page.getByRole('heading', { name: j.vacancy!.title })).toBeVisible();
 });
@@ -70,7 +70,7 @@ test('careers page lists the published vacancy', async () => {
 test('recruiter views the empty pipeline before the candidate applies', async () => {
   const { page } = recruiter;
   await navigateStaff(page, '/recruitment/pipeline');
-  await expect(page.getByText('Postulación recibida', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Postulación recibida', { exact: true }).filter({ visible: true }).first()).toBeVisible();
   await expect(page.getByText(fullName())).toHaveCount(0);
   await navigateStaff(page, '/dashboard');
 });
@@ -105,7 +105,7 @@ async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
     await form.getByRole('checkbox').check();
   }
   await submit.click();
-  await expect(page.getByText(/postulaci[oó]n enviada/i).first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText(/postulaci[oó]n enviada/i).filter({ visible: true }).first()).toBeVisible({ timeout: 45_000 });
 }
 
 test('candidate applies with a CV upload and explicit consent', async () => {
@@ -127,7 +127,7 @@ test('candidate receives the "application received" email', async () => {
 test('recruiter sees the application in the pipeline and opens the candidate', async () => {
   const { page } = recruiter;
   await navigateStaff(page, '/recruitment/pipeline');
-  await page.getByText(fullName()).first().click();
+  await page.getByText(fullName()).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/\/recruitment\/candidates\/[0-9a-f-]{36}/);
   profileUrl = page.url();
   await expect(page.getByRole('heading', { name: fullName() })).toBeVisible();
@@ -147,7 +147,7 @@ test('recruiter moves the candidate through screening to the HR interview stage'
   await moveStage(recruiter.page, 'Preselección');
   await moveStage(recruiter.page, 'Entrevista con RR. HH.');
   await recruiter.page.reload();
-  await expect(recruiter.page.getByText('Entrevista con RR. HH.', { exact: true }).first()).toBeVisible();
+  await expect(recruiter.page.getByText('Entrevista con RR. HH.', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 /** Schedule an in-person interview (never video — no Daily in E2E) with the leader as evaluator. */
@@ -176,7 +176,7 @@ async function scheduleInterview(page: Page): Promise<void> {
   await wizard.getByPlaceholder('Oficina central — Sala 3').fill('Oficina central, San José — Sala 2');
   await wizard.getByRole('button', { name: 'Siguiente' }).click();
 
-  await wizard.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first().click();
+  await wizard.getByText(`${j.leader.firstName} ${j.leader.lastName}`).filter({ visible: true }).first().click();
   await wizard.getByRole('button', { name: 'Agendar Entrevista' }).click();
   await expect(wizard).toBeHidden();
 
@@ -293,7 +293,7 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
   await requester.getByRole('button', { name: 'Solicitar aprobación' }).click();
   // Wait for the request to land (the offer leaves Borrador) before anyone navigates away —
   // otherwise a fast navigation can abort the mutation (seen when requester and approver are one page).
-  await expect(requester.getByText('Pendiente', { exact: true }).first()).toBeVisible();
+  await expect(requester.getByText('Pendiente', { exact: true }).filter({ visible: true }).first()).toBeVisible();
   await openOffer(approverPage);
   const approved = approverPage.getByText('Aprobada', { exact: true });
   await expect(approved).toHaveCount(0);
@@ -349,7 +349,7 @@ test('company admin authorizes the hire; the new employee has an onboarding plan
   await dialog.getByRole('button', { name: 'Crear colaborador y plan' }).click();
   await expect(page.getByText('Colaborador y plan de onboarding creados')).toBeVisible();
   await navigateStaff(page, '/people/onboarding');
-  await expect(page.getByText(fullName()).first()).toBeVisible();
+  await expect(page.getByText(fullName()).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('the onboarding plan starts with the default task template', async () => {

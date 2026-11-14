@@ -84,7 +84,7 @@ test('platform owner creates the company', async () => {
   await expect(form).toBeHidden();
 
   await page.getByPlaceholder(/buscar organizaci[oó]n/i).fill(j.orgSlug);
-  await expect(page.getByText(j.orgName).first()).toBeVisible();
+  await expect(page.getByText(j.orgName).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('platform owner invites the company admin; the invitation arrives by email', async () => {
@@ -120,7 +120,7 @@ test('company admin invites the recruiter and the hiring leader from the team pa
     await page.getByLabel('Correo electrónico', { exact: true }).fill(who.email);
     await page.getByLabel('Rol', { exact: true }).selectOption({ label: role });
     await page.getByRole('button', { name: 'Enviar invitación' }).click();
-    await expect(page.getByText('Invitación enviada.').first()).toBeVisible();
+    await expect(page.getByText('Invitación enviada.').filter({ visible: true }).first()).toBeVisible();
   }
 });
 
@@ -216,11 +216,11 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
 
   // Creating a vacancy opens it: a draft's next step ("Enviar para aprobación") lives on its page.
   await expect(page).toHaveURL(/\/recruitment\/vacancies\/[0-9a-f-]{36}$/);
-  await expect(page.getByText(title).first()).toBeVisible();
+  await expect(page.getByText(title).filter({ visible: true }).first()).toBeVisible();
   const id = page.url().split('/').pop()!;
   j.vacancy = { id, title };
   saveJourney(j);
-  await expect(page.getByText('Borrador', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Borrador', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 /** Open the vacancy and submit it for approval to `approverName`. */
@@ -249,7 +249,7 @@ test('hiring leader approves the vacancy', async () => {
   await page.goto(`/recruitment/vacancies/${j.vacancy!.id}`);
   await expect(page.getByText('Aprobada', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
-  await expect(page.getByText('Aprobada', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Aprobada', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('company admin submits the vacancy for approval and approves it (main-only path)', async () => {
@@ -258,7 +258,7 @@ test('company admin submits the vacancy for approval and approves it (main-only 
   await submitForApproval(page, `${j.admin.firstName} ${j.admin.lastName}`);
   await expect(page.getByText('Aprobada', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
-  await expect(page.getByText('Aprobada', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Aprobada', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('recruiter publishes the approved vacancy to the careers site', async () => {
@@ -271,5 +271,5 @@ test('recruiter publishes the approved vacancy to the careers site', async () =>
   await dialog.locator('select').selectOption({ label: 'Sitio web' });
   await dialog.getByRole('button', { name: 'Agregar Canal' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Publicada', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Publicada', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
