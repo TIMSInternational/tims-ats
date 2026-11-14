@@ -1,31 +1,21 @@
 'use client';
 
+import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
+import { TEXT_LINK_CLASSES } from '../../../../components';
 
-// The change-audit feed lives in the platform Audit section, and tenant integration
-// health is not monitored (integration.getSystemHealth reports 'unmonitored', #323).
-// Render explicit unavailable states rather than fabricated audit rows / uptime numbers.
+// Change history lives in the tenant audit log (/settings/audit-log). Tenant integration health is not
+// monitored (integration.getSystemHealth reports 'unmonitored', #323), so no health card is shown rather
+// than an empty one.
 
-export function AuditTrail() {
+export function AuditLogLink() {
   const { t } = useI18n();
   return (
-    <div className="w-full md:w-[60%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 max-h-[155px]">
-      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.integrations.auditTitle}</h3>
-      <div className="flex items-center justify-center h-[90px] text-center">
-        <p className="text-[12px] text-[#8B8B8B] max-w-sm">{t.integrations.auditUnavailable}</p>
-      </div>
-    </div>
-  );
-}
-
-export function SystemHealth() {
-  const { t } = useI18n();
-  return (
-    <div className="w-full md:w-[40%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 max-h-[155px]">
-      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.integrations.systemHealth}</h3>
-      <div className="flex items-center justify-center h-[90px] text-center">
-        <p className="text-[12px] text-[#8B8B8B] max-w-xs">{t.integrations.systemHealthUnavailable}</p>
-      </div>
-    </div>
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-callout text-secondary">
+      {t.integrations.auditHint}
+      <Link href="/settings/audit-log" className={TEXT_LINK_CLASSES}>
+        {t.integrations.viewAuditLog}
+      </Link>
+    </p>
   );
 }

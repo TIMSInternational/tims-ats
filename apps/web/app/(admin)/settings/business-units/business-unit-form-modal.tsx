@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal } from '../../../../components';
+import { Button, Field, Modal, Select, TextInput } from '../../../../components';
 import { useOrgStructureMutation, type OrgBusinessUnit } from '../../../../lib/platform-api/org-structure';
 import { useOrgErrorMessage } from './use-org-error-message';
-import { alertCls, inputCls, labelCls, primaryBtn, secondaryBtn } from './units-styles';
 
 const NAME_MAX = 120;
 const CODE_MAX = 40;
+const FORM_ID = 'business-unit-form';
 
 interface BusinessUnitFormModalProps {
   /** Present = rename/edit that unit; absent = create a new one. */
@@ -26,12 +26,12 @@ export function BusinessUnitFormModal({ unit, companies, onClose }: BusinessUnit
   const [code, setCode] = useState(unit?.code ?? '');
   const [companyId, setCompanyId] = useState(companies.length === 1 ? companies[0]!.id : '');
 
+  // The failure shows inside the open dialog only (settings-15): no toast on top of it.
   const handlers = {
     onSuccess: () => {
       toast(unit ? t.units.unitUpdated : t.units.unitCreated, { type: 'success' });
       onClose();
     },
-    onError: (error: unknown) => toast(errorMessage(error), { type: 'error' }),
   };
   const create = useOrgStructureMutation('createBusinessUnit', handlers);
   const update = useOrgStructureMutation('updateBusinessUnit', handlers);
@@ -41,7 +41,8 @@ export function BusinessUnitFormModal({ unit, companies, onClose }: BusinessUnit
   const needsCompany = !unit && companies.length > 1;
   const canSubmit = trimmedName.length > 0 && (!needsCompany || companyId !== '') && !active.isPending;
 
-  const submit = () => {
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!canSubmit) return;
     const trimmedCode = code.trim();
     if (unit) {
@@ -56,66 +57,51 @@ export function BusinessUnitFormModal({ unit, companies, onClose }: BusinessUnit
   };
 
   return (
-    <Modal title={unit ? t.units.editUnit : t.units.newUnit} onClose={onClose}>
-      <div className="space-y-3">
-        <div>
-          <label htmlFor="bu-name" className={labelCls}>
-            {t.units.nameLabel}
-          </label>
-          <input
-            id="bu-name"
-            value={name}
-            maxLength={NAME_MAX}
-            onChange={(e) => setName(e.target.value)}
-            className={inputCls}
-          />
-        </div>
-        <div>
-          <label htmlFor="bu-code" className={labelCls}>
-            {t.units.codeLabel}
-          </label>
-          <input
-            id="bu-code"
-            value={code}
-            maxLength={CODE_MAX}
-            onChange={(e) => setCode(e.target.value)}
-            className={inputCls}
-          />
-        </div>
+    <Modal
+      title={unit ? t.units.editUnit : t.units.newUnit}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t.units.cancel}
+          </Button>
+          <Button
+            type="submit"
+            form={FORM_ID}
+            disabled={!canSubmit && !active.isPending}
+            loading={active.isPending}
+            loadingLabel={t.units.saving}
+          >
+            {unit ? t.units.saveChanges : t.units.createUnit}
+          </Button>
+        </>
+      }
+    >
+      <form id={FORM_ID} onSubmit={submit} className="space-y-4">
+        <Field id="bu-name" label={t.units.nameLabel}>
+          <TextInput value={name} maxLength={NAME_MAX} onChange={(e) => setName(e.target.value)} autoFocus />
+        </Field>
+        <Field id="bu-code" label={t.units.codeLabel}>
+          <TextInput value={code} maxLength={CODE_MAX} onChange={(e) => setCode(e.target.value)} />
+        </Field>
         {needsCompany && (
-          <div>
-            <label htmlFor="bu-company" className={labelCls}>
-              {t.units.companyLabel}
-            </label>
-            <select
-              id="bu-company"
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              className={inputCls}
-            >
+          <Field id="bu-company" label={t.units.companyLabel}>
+            <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
               <option value="">{t.units.selectCompany}</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
         )}
         {active.error && (
-          <p role="alert" className={alertCls}>
+          <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">
             {errorMessage(active.error)}
           </p>
         )}
-      </div>
-      <div className="flex justify-end gap-2 mt-5">
-        <button type="button" onClick={onClose} className={secondaryBtn}>
-          {t.units.cancel}
-        </button>
-        <button type="button" onClick={submit} disabled={!canSubmit} className={primaryBtn}>
-          {active.isPending ? t.units.saving : t.units.save}
-        </button>
-      </div>
+      </form>
     </Modal>
   );
 }

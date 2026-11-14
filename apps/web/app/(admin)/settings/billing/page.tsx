@@ -2,78 +2,42 @@
 
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../../lib/i18n';
-import {
-  useBillingConfig,
-  useBillingCurrentPlan,
-  useBillingUsage,
-  useBillingCreatePortalSession,
-  useBillingCancelSubscription,
-} from '../../../../lib/platform-api/billing';
+import { useBillingConfig, useBillingCurrentPlan } from '../../../../lib/platform-api/billing';
 import { toast } from '../../../../lib/toast';
-import { ErrorState } from '../../../../components';
+import { getSupportEmail } from '../../../../lib/support-email';
+import { ErrorState, PageHeader, TEXT_LINK_CLASSES } from '../../../../components';
+import { BillingCurrentPlan } from './billing-current-plan';
+import { BillingUsage } from './billing-usage';
 import { BillingPlans } from './billing-plans';
 import { BillingInvoices } from './billing-invoices';
 
-type T = ReturnType<typeof useI18n>['t'];
-
-function planLabel(t: T, plan: string | null | undefined): string {
-  switch (plan) {
-    case 'starter':
-      return t.billing.planStarter;
-    case 'professional':
-      return t.billing.planProfessional;
-    case 'enterprise':
-      return t.billing.planEnterprise;
-    default:
-      return t.billing.planTrial;
-  }
-}
-
-function statusLabel(t: T, status: string | null | undefined): string {
-  switch (status) {
-    case 'active':
-      return t.billing.statusActive;
-    case 'past_due':
-      return t.billing.statusPastDue;
-    case 'cancelled':
-      return t.billing.statusCancelled;
-    default:
-      return t.billing.statusTrialing;
-  }
-}
-
-function UsageRow({
-  label,
-  used,
-  limit,
-  noLimit,
-}: {
-  label: string;
-  used: number;
-  limit: number | null;
-  noLimit: string;
-}) {
-  const pct = limit && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : null;
-  const over = limit != null && used > limit;
+function NotConfiguredNotice() {
+  const { t } = useI18n();
+  const supportEmail = getSupportEmail();
   return (
-    <div className="py-2 border-b border-[#F2F2F2] last:border-0">
-      <div className="flex items-center justify-between">
-        <span className="text-[12px] text-[#585858]">{label}</span>
-        <span className="text-[13px] font-medium text-[#1F114C]">
-          {used}
-          <span className="text-[#8B8B8B] font-normal"> / {limit ?? noLimit}</span>
-        </span>
+    <div role="status" className="flex gap-3 rounded-xl border border-warning/30 bg-warning-bg p-4">
+      <svg
+        className="mt-0.5 size-4 shrink-0 text-warning"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path d="M12 9v3.75m0 3.75h.008M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      </svg>
+      <div>
+        <p className="text-subheading font-semibold text-warning">{t.billing.notConfiguredTitle}</p>
+        <p className="mt-1 text-callout text-primary">
+          {t.billing.notConfiguredDesc}{' '}
+          {supportEmail && (
+            <a href={`mailto:${supportEmail}`} className={TEXT_LINK_CLASSES}>
+              {t.billing.contactSupport}
+            </a>
+          )}
+        </p>
       </div>
-      {pct !== null && (
-        <div className="mt-1.5 h-1.5 w-full rounded-full bg-[#F2F2F2] overflow-hidden">
-          <div
-            className={`h-full rounded-full ${over ? 'bg-[#DD0C15]' : 'bg-[#1F114C]'}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -82,24 +46,6 @@ export default function BillingPage() {
   const { t } = useI18n();
   const config = useBillingConfig();
   const plan = useBillingCurrentPlan();
-  const usage = useBillingUsage();
-  const queryClient = useQueryClient();
-
-  const portal = useBillingCreatePortalSession({
-    onSuccess: ({ url }) => {
-      window.location.href = url;
-    },
-    onError: () => toast(t.billing.manageError, { type: 'error' }),
-  });
-  const cancel = useBillingCancelSubscription({
-    onSuccess: () => {
-      toast(t.billing.cancelScheduled, { type: 'success' });
-      // getCurrentPlan's TS tRPC procedure has been deleted — the platform-api query key is
-      // the only read path left to invalidate.
-      queryClient.invalidateQueries({ queryKey: ['platform-api', 'billing', 'plan'] });
-    },
-    onError: () => toast(t.billing.cancelError, { type: 'error' }),
-  });
 
   // Surface the Stripe checkout return state (?checkout=success|cancelled) once.
   const params = useSearchParams();
@@ -118,113 +64,24 @@ export default function BillingPage() {
 
   const configured = config.data?.configured ?? false;
   const currentPlan = plan.data?.plan ?? null;
-  const renewsOn = plan.data?.currentPeriodEnd ? new Date(plan.data.currentPeriodEnd).toLocaleDateString() : null;
-  const hasCustomer = Boolean(plan.data?.stripeCustomerId);
-  const hasActiveSub = Boolean(plan.data?.stripeSubscriptionId) && plan.data?.status !== 'cancelled';
-
-  const onCancel = () => {
-    if (window.confirm(t.billing.cancelConfirm)) cancel.mutate();
-  };
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 h-full">
-      {/* Top bar */}
-      <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
-        <span className="text-[13px] text-[#8B8B8B]">{t.billing.breadcrumbParent}</span>
-        <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-          <path d="m9 18 6-6-6-6" />
-        </svg>
-        <span className="text-sm font-medium text-[#1F114C]">{t.billing.title}</span>
-      </div>
+    <div className="flex h-full min-w-0 flex-1 flex-col">
+      <PageHeader title={t.billing.title} description={t.billing.description} />
 
-      <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
         {config.isError ? (
-          <ErrorState onRetry={() => config.refetch()} />
+          <ErrorState size="compact" onRetry={() => config.refetch()} />
         ) : (
-          !config.isLoading &&
-          !configured && (
-            <div className="bg-[#FFF7E6] border border-[#FFE2A8] rounded-xl p-4">
-              <div className="text-sm font-semibold text-[#7A5B00]">{t.billing.notConfiguredTitle}</div>
-              <p className="text-[12px] text-[#7A5B00]/80 mt-1">{t.billing.notConfiguredDesc}</p>
-            </div>
-          )
+          !config.isLoading && !configured && <NotConfiguredNotice />
         )}
 
-        {/* Current plan + usage */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white border border-[#EDEDED] rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-[#1F114C]">{t.billing.currentPlanTitle}</h2>
-            {plan.isError ? (
-              <ErrorState onRetry={() => plan.refetch()} />
-            ) : (
-              <>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-2xl font-semibold text-[#1F114C]">{planLabel(t, currentPlan)}</span>
-                  <span className="text-[12px] text-[#8B8B8B]">· {statusLabel(t, plan.data?.status)}</span>
-                </div>
-                {renewsOn && (
-                  <p className="text-[12px] text-[#8B8B8B] mt-2">
-                    {t.billing.renewsOn} {renewsOn}
-                  </p>
-                )}
-                {configured && hasCustomer && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => portal.mutate()}
-                      disabled={portal.isPending}
-                      className="h-9 px-4 rounded-lg border border-[#EDEDED] text-[#1F114C] text-[12px] font-medium disabled:opacity-50"
-                    >
-                      {portal.isPending ? t.billing.redirecting : t.billing.manageBilling}
-                    </button>
-                    {hasActiveSub && (
-                      <button
-                        type="button"
-                        onClick={onCancel}
-                        disabled={cancel.isPending}
-                        className="h-9 px-4 rounded-lg border border-[#F3C0C2] text-[#DD0C15] text-[12px] font-medium disabled:opacity-50"
-                      >
-                        {t.billing.cancelSubscription}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="bg-white border border-[#EDEDED] rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-[#1F114C] mb-2">{t.billing.usageTitle}</h2>
-            {usage.isError ? (
-              <ErrorState onRetry={() => usage.refetch()} />
-            ) : (
-              usage.data && (
-                <div>
-                  <UsageRow
-                    label={t.billing.usageEmployees}
-                    used={usage.data.employees.used}
-                    limit={usage.data.employees.limit}
-                    noLimit={t.billing.noLimit}
-                  />
-                  <UsageRow
-                    label={t.billing.usageVacancies}
-                    used={usage.data.vacancies.used}
-                    limit={usage.data.vacancies.limit}
-                    noLimit={t.billing.noLimit}
-                  />
-                  <UsageRow
-                    label={t.billing.usageAssessments}
-                    used={usage.data.assessments.used}
-                    limit={usage.data.assessments.limit}
-                    noLimit={t.billing.noLimit}
-                  />
-                </div>
-              )
-            )}
-          </div>
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+          <BillingCurrentPlan configured={configured} />
+          <BillingUsage />
         </div>
 
-        <BillingPlans currentPlan={currentPlan} configured={configured} />
+        <BillingPlans currentPlan={currentPlan} configured={configured} loading={plan.isLoading || config.isLoading} />
         <BillingInvoices />
       </div>
     </div>

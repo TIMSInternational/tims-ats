@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { timeZoneLabel } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
-import { ErrorState, Skeleton } from '../../../../components';
+import { Button, ErrorState, PageHeader, Skeleton, StatusBadge, TEXT_LINK_CLASSES } from '../../../../components';
+import { getSupportEmail } from '../../../../lib/support-email';
 import { careersPageUrl, countryLabel, currencyLabel, languageLabel } from '../../../../lib/org-profile-format';
 
 // /settings/organization — "Datos de la organización" (audit finding D-11). A read-only card that shows the
@@ -12,15 +13,15 @@ import { careersPageUrl, countryLabel, currencyLabel, languageLabel } from '../.
 // resolves them, so an admin can verify the setup without asking support. Changes still go through support.
 // Data: organization.getCurrent (an explicit, non-sensitive projection; no raw settings or billing data).
 
-const SECTION_CLS = 'bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] max-w-3xl';
+const SECTION_CLS = 'max-w-3xl rounded-xl bg-white p-5 shadow-card';
 
 function Row({ label, value, hint }: { label: string; value: ReactNode; hint?: string | null }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-1 md:gap-4 py-3 border-b border-[#F3F3F3] last:border-0">
-      <dt className="text-[12px] font-medium text-[#585858]">{label}</dt>
-      <dd className="text-sm text-[#333] min-w-0 break-words">
+    <div className="grid grid-cols-1 gap-1 border-b border-border-subtle py-3 last:border-0 md:grid-cols-[220px_1fr] md:gap-4">
+      <dt className="text-callout font-medium text-secondary">{label}</dt>
+      <dd className="min-w-0 break-words text-body text-primary">
         {value}
-        {hint && <p className="mt-0.5 text-[11px] text-[#8B8B8B]">{hint}</p>}
+        {hint && <p className="mt-0.5 text-callout text-secondary">{hint}</p>}
       </dd>
     </div>
   );
@@ -34,12 +35,15 @@ export default function OrganizationProfilePage() {
   const [origin, setOrigin] = useState('');
   useEffect(() => setOrigin(window.location.origin), []);
 
-  const missing = <span className="text-[#8B8B8B]">{m.notConfigured}</span>;
+  // A gap in setup reads as a state, not as data (settings-22).
+  const missing = <StatusBadge tone="warning">{m.notConfigured}</StatusBadge>;
+  const supportEmail = getSupportEmail();
   const fromCompany = (company: string | null) => (company ? m.fromCompany.replace('{company}', company) : null);
 
   let body: ReactNode;
   if (profile.isLoading) body = <Skeleton className="h-48 w-full rounded-lg" />;
-  else if (profile.isError || !profile.data) body = <ErrorState onRetry={() => void profile.refetch()} error={profile.error} />;
+  else if (profile.isError || !profile.data)
+    body = <ErrorState onRetry={() => void profile.refetch()} error={profile.error} />;
   else {
     const p = profile.data;
     const careers = origin ? careersPageUrl(origin, p.slug) : null;
@@ -62,14 +66,30 @@ export default function OrganizationProfilePage() {
           label={m.careersUrl}
           value={
             careers ? (
-              <a
-                href={careers}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#1F114C] underline underline-offset-2"
-              >
-                {careers}
-              </a>
+              <>
+                <a
+                  href={careers}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-describedby="org-careers-new-tab"
+                  className={`${TEXT_LINK_CLASSES} break-all underline`}
+                >
+                  {careers}
+                  <svg
+                    className="size-3.5 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                  </svg>
+                </a>
+                <span id="org-careers-new-tab" className="sr-only">
+                  {m.opensInNewTab}
+                </span>
+              </>
             ) : (
               missing
             )
@@ -77,28 +97,40 @@ export default function OrganizationProfilePage() {
         />
         <Row
           label={m.candidateContact}
-          value={
-            p.candidateContactEmail ?? (
-              <span className="text-[#8B8B8B]">
-                {p.candidateContactSource === 'billing' ? m.candidateContactBilling : m.candidateContactMissing}
-              </span>
-            )
+          value={p.candidateContactEmail ?? missing}
+          hint={
+            p.candidateContactEmail
+              ? m.candidateContactHint
+              : p.candidateContactSource === 'billing'
+                ? m.candidateContactBilling
+                : m.candidateContactMissing
           }
-          hint={p.candidateContactEmail ? m.candidateContactHint : null}
         />
       </dl>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <header>
-        <h1 className="text-lg font-semibold text-[#1F114C]">{m.title}</h1>
-        <p className="mt-1 text-sm text-[#8B8B8B]">{m.subtitle}</p>
-      </header>
-      <section className={SECTION_CLS} aria-label={m.title}>
-        {body}
-      </section>
+    <div className="flex h-full min-w-0 flex-1 flex-col">
+      <PageHeader
+        title={m.title}
+        description={m.subtitle}
+        actions={
+          supportEmail && (
+            <Button
+              variant="secondary"
+              href={`mailto:${supportEmail}?subject=${encodeURIComponent(m.requestChangeSubject)}`}
+            >
+              {m.requestChange}
+            </Button>
+          )
+        }
+      />
+      <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
+        <section className={SECTION_CLS} aria-label={m.title}>
+          {body}
+        </section>
+      </div>
     </div>
   );
 }

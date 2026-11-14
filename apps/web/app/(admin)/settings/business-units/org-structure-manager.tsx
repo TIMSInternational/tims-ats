@@ -2,17 +2,15 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { EmptyState, ErrorState, Skeleton } from '../../../../components';
+import { Button, EmptyState, ErrorState, PageHeader, Select, Skeleton } from '../../../../components';
 import { useOrgStructure, type OrgBusinessUnit, type OrgTeam } from '../../../../lib/platform-api/org-structure';
 import { AssignPersonModal, type AssignPersonTarget } from './assign-person-modal';
 import { BusinessUnitCard } from './business-unit-card';
 import { BusinessUnitFormModal } from './business-unit-form-modal';
 import { TeamFormModal } from './team-form-modal';
 import { TeamMembersModal } from './team-members-modal';
-import { UnitsTopBar } from './units-top-bar';
 import { useOrgStructureAbilities } from './use-org-abilities';
 import { UserBusinessUnitModal } from './user-business-unit-modal';
-import { inputCls, primaryBtn, secondaryBtn } from './units-styles';
 
 type Dialog =
   | { kind: 'unit'; unit?: OrgBusinessUnit }
@@ -42,29 +40,24 @@ export function OrgStructureManager() {
   const topActions = (
     <>
       {abilities.setHomeUnit && (
-        <button type="button" onClick={() => setDialog({ kind: 'primaryUnit' })} className={secondaryBtn}>
-          {t.units.primaryUnitTitle}
-        </button>
+        <Button variant="secondary" onClick={() => setDialog({ kind: 'primaryUnit' })}>
+          {t.units.primaryUnitAction}
+        </Button>
       )}
-      {canCreate && (
-        <button type="button" onClick={() => setDialog({ kind: 'unit' })} className={primaryBtn}>
-          {t.units.newUnit}
-        </button>
-      )}
+      {canCreate && <Button onClick={() => setDialog({ kind: 'unit' })}>{t.units.newUnit}</Button>}
     </>
   );
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 h-full">
-      <UnitsTopBar actions={topActions} />
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        <p className="text-[12px] text-[#585858]">{t.units.managementIntro}</p>
+    <div className="flex h-full min-w-0 flex-1 flex-col">
+      <PageHeader title={t.units.title} description={t.units.managementIntro} actions={topActions} />
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
         {companies.length > 1 && (
-          <select
+          <Select
             aria-label={t.units.selectCompany}
             value={companyId}
             onChange={(e) => setCompanyId(e.target.value)}
-            className={`${inputCls} max-w-xs`}
+            className="max-w-xs"
           >
             <option value="">{t.units.allCompanies}</option>
             {companies.map((c) => (
@@ -72,19 +65,20 @@ export function OrgStructureManager() {
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
 
         {structure.isLoading ? (
           <Skeleton className="h-40 w-full rounded-xl" />
         ) : structure.isError ? (
-          <ErrorState onRetry={() => structure.refetch()} message={structure.error.message} error={structure.error} />
+          <ErrorState onRetry={() => structure.refetch()} message={t.units.loadError} error={structure.error} />
         ) : units.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+          <div className="rounded-xl bg-white shadow-card">
             <EmptyState
               icon={
                 <svg
-                  className="w-8 h-8 text-[#B8B8B8]"
+                  className="size-8 text-muted"
+                  aria-hidden="true"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.5"

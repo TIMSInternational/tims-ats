@@ -9,7 +9,11 @@ const mocks = vi.hoisted(() => ({ mutate: vi.fn() }));
 
 vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: es, locale: 'ES' }) }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: vi.fn() }));
-vi.mock('../../apps/web/components', () => ({ Skeleton: () => null, ErrorState: () => null }));
+vi.mock('../../apps/web/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../apps/web/components')>()),
+  Skeleton: () => null,
+  ErrorState: () => null,
+}));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     useUtils: () => ({
@@ -24,7 +28,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
 
 import BrandingPage from '../../apps/web/app/(admin)/settings/branding/page';
 
-const saveButton = () => screen.getByRole('button', { name: es.common.save });
+const saveButton = () => screen.getByRole('button', { name: es.branding.save });
 
 beforeEach(() => {
   mocks.mutate.mockReset();

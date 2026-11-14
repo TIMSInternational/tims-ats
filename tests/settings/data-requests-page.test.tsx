@@ -78,17 +78,27 @@ beforeEach(() => {
   ]);
 });
 
-const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr') as HTMLElement;
+// The page renders the same rows twice: a table (md and up) and a stacked list (phones, hidden by CSS).
+const table = () => within(screen.getByRole('table'));
+const rowOf = (name: string) => table().getByRole('link', { name }).closest('tr') as HTMLElement;
 
 describe('/settings/data-requests', () => {
   it('lists pending requests with a link to the candidate profile, type, source and the due-date note', () => {
     render(<DataRequestsPage />);
     expect(mocks.statuses).toContain('pending');
-    expect(screen.getByRole('link', { name: 'Laura Pérez' }).getAttribute('href')).toBe(`/recruitment/candidates/${PAST_ID}`);
-    expect(screen.getByRole('link', { name: 'Carlos Pérez' }).getAttribute('href')).toBe(`/recruitment/candidates/${FUTURE_ID}`);
+    expect(table().getByRole('link', { name: 'Laura Pérez' }).getAttribute('href')).toBe(
+      `/recruitment/candidates/${PAST_ID}`,
+    );
+    expect(table().getByRole('link', { name: 'Carlos Pérez' }).getAttribute('href')).toBe(
+      `/recruitment/candidates/${FUTURE_ID}`,
+    );
+    // The phone list links to the same profiles.
+    for (const link of screen.getAllByRole('link', { name: 'Laura Pérez' }))
+      expect(link.getAttribute('href')).toBe(`/recruitment/candidates/${PAST_ID}`);
+    expect(screen.getAllByRole('link', { name: 'Laura Pérez' })).toHaveLength(2);
     expect(within(rowOf('Laura Pérez')).getByText(m.sourceCandidatePortal)).toBeTruthy();
     expect(within(rowOf('Carlos Pérez')).getByText(m.sourceStaff)).toBeTruthy();
-    expect(screen.getAllByText(m.typeDeletion)).toHaveLength(2);
+    expect(table().getAllByText(m.typeDeletion)).toHaveLength(2);
     expect(screen.getByText(m.dueDateNote)).toBeTruthy();
   });
 
@@ -103,6 +113,7 @@ describe('/settings/data-requests', () => {
     render(<DataRequestsPage />);
     expect(screen.getByText(m.emptyTitle)).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByText(m.dueDateNote)).toBeNull();
   });
 
   it('renders the error state with retry on a failed load', () => {
@@ -137,6 +148,7 @@ describe('/settings/data-requests', () => {
     render(<DataRequestsPage />);
     expect(screen.getByText(m.unavailableTitle)).toBeTruthy();
     expect(screen.queryByText(m.colCandidate)).toBeNull();
+    expect(screen.queryByText(m.dueDateNote)).toBeNull();
   });
 
   it('shows the no-permission state without candidate:update', () => {
