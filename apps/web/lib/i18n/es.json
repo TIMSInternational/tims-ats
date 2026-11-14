@@ -77,7 +77,13 @@
     "users": "Usuarios",
     "suspended": "Suspendida",
     "owner": "Owner",
-    "security": "Seguridad (2FA)"
+    "security": "Seguridad (2FA)",
+    "mainNav": "Navegación principal",
+    "breadcrumb": "Ruta",
+    "searchLabel": "Buscar organizaciones, usuarios y páginas",
+    "searchResults": "Resultados de búsqueda",
+    "openSearch": "Abrir búsqueda",
+    "profileMenu": "Menú de {name}"
   },
   "sidebar": {
     "recruitment": "Reclutamiento",
@@ -105,25 +111,25 @@
     "billing": "Facturación",
     "settings": "Configuración",
     "organizationProfile": "Datos de la organización",
-    "businessUnits": "Unidades de Negocio",
+    "businessUnits": "Unidades de negocio",
     "team": "Equipo",
     "branding": "Marca",
     "fitWeights": "Pesos FIT",
     "commandCenter": "Inicio",
     "assessments": "Evaluaciones",
-    "myHiring": "Mi Reclutamiento",
-    "myTeam": "Mi Equipo",
-    "finalistCandidates": "Candidatos Finalistas",
-    "offersToApprove": "Ofertas por Aprobar",
-    "myTasks": "Mis Tareas",
-    "myHome": "Mi Espacio",
-    "myPanels": "Mis Paneles",
-    "myPerformance": "Mi Desempeño",
-    "myLearning": "Mi Aprendizaje",
+    "myHiring": "Mi reclutamiento",
+    "myTeam": "Mi equipo",
+    "finalistCandidates": "Candidatos finalistas",
+    "offersToApprove": "Ofertas por aprobar",
+    "myTasks": "Mis tareas",
+    "myHome": "Mi espacio",
+    "myPanels": "Mis paneles",
+    "myPerformance": "Mi desempeño",
+    "myLearning": "Mi aprendizaje",
     "myOnboarding": "Mi Onboarding",
     "my360": "Mi 360",
     "evaluations360": "Evaluación 360",
-    "auditLog": "Registro de Auditoría",
+    "auditLog": "Registro de auditoría",
     "assessmentSecurity": "Seguridad de las evaluaciones"
   },
   "platformSidebar": {
@@ -132,8 +138,8 @@
     "subscriptions": "Suscripciones",
     "users": "Usuarios",
     "system": "Sistema",
-    "systemHealth": "Salud del Sistema",
-    "featureFlags": "Feature Flags",
+    "systemHealth": "Salud del sistema",
+    "featureFlags": "Feature flags",
     "analytics": "Analítica",
     "aiAgents": "Agentes IA",
     "support": "Soporte",
@@ -141,8 +147,8 @@
     "invoices": "Facturas",
     "invitations": "Invitaciones",
     "audit": "Auditoría",
-    "accessReview": "Revisión de Acceso",
-    "supportPage": "Soporte"
+    "accessReview": "Revisión de acceso",
+    "supportPage": "Centro de soporte"
   },
   "breadcrumbs": {
     "/dashboard": {
@@ -168,11 +174,11 @@
     },
     "/platform/health": {
       "parent": "Sistema",
-      "label": "Salud del Sistema"
+      "label": "Salud del sistema"
     },
     "/platform/feature-flags": {
       "parent": "Sistema",
-      "label": "Feature Flags"
+      "label": "Feature flags"
     },
     "/platform/analytics": {
       "parent": "Sistema",
@@ -200,11 +206,11 @@
     },
     "/platform/access-review": {
       "parent": "Soporte",
-      "label": "Revisión de Acceso"
+      "label": "Revisión de acceso"
     },
     "/platform/support": {
       "parent": "Soporte",
-      "label": "Soporte"
+      "label": "Centro de soporte"
     },
     "/recruitment": {
       "label": "Reclutamiento"
@@ -245,44 +251,44 @@
       "label": "Onboarding"
     },
     "/my-onboarding": {
-      "parent": "Mi Espacio",
+      "parent": "Mi espacio",
       "label": "Mi Onboarding"
     },
     "/people/performance": {
       "parent": "Personas",
-      "label": "Performance & OKR"
+      "label": "Performance"
     },
     "/learning": {
       "parent": "Personas",
-      "label": "Capacitación & Desarrollo"
+      "label": "Capacitación"
     },
     "/talent/nine-box": {
       "parent": "Talento",
-      "label": "Nine Box Predictivo"
+      "label": "Nine Box"
     },
     "/talent/succession": {
       "parent": "Talento",
-      "label": "Mapa de Sucesión"
+      "label": "Sucesión"
     },
     "/talent/team-intelligence": {
       "parent": "Talento",
-      "label": "Inteligencia de Equipo"
+      "label": "Inteligencia de equipo"
     },
     "/engagement/climate": {
       "parent": "Organización",
-      "label": "Engagement & Clima"
+      "label": "Clima"
     },
     "/engagement/dei": {
       "parent": "Organización",
-      "label": "Analítica DEI"
+      "label": "DEI"
     },
     "/compensation": {
       "parent": "Organización",
-      "label": "Compensación & Beneficios"
+      "label": "Compensación"
     },
     "/monitoring": {
-      "parent": "Estrategia",
-      "label": "Monitoreo Estratégico"
+      "parent": "Organización",
+      "label": "Monitoreo"
     },
     "/settings": {
       "label": "Configuración"
@@ -297,7 +303,7 @@
     },
     "/settings/business-units": {
       "parent": "Configuración",
-      "label": "Unidades de Negocio"
+      "label": "Unidades de negocio"
     },
     "/settings/branding": {
       "parent": "Configuración",
@@ -309,7 +315,7 @@
     },
     "/settings/audit-log": {
       "parent": "Configuración",
-      "label": "Registro de Auditoría"
+      "label": "Registro de auditoría"
     },
     "/settings/data-requests": {
       "parent": "Configuración",
@@ -321,7 +327,19 @@
     },
     "/settings/integrations": {
       "parent": "Configuración",
-      "label": "HRIS & Integraciones"
+      "label": "Integraciones"
+    },
+    "/platform/email-preview": {
+      "parent": "Sistema",
+      "label": "Vista previa de correos"
+    },
+    "/my-360": {
+      "parent": "Mi espacio",
+      "label": "Mi 360"
+    },
+    "/talent/360": {
+      "parent": "Talento",
+      "label": "Evaluación 360"
     }
   },
   "auth": {
@@ -473,7 +491,29 @@
     "nextPage": "Página siguiente",
     "copy": "Copiar",
     "copied": "Copiado",
-    "somethingWentWrong": "Algo salió mal"
+    "somethingWentWrong": "Algo salió mal",
+    "optional": "opcional",
+    "showingRange": "Mostrando {from}–{to} de {total}",
+    "page": "Página",
+    "pagination": "Paginación",
+    "loadErrorTitle": "No se pudo cargar la información",
+    "loadErrorHint": "Revisa tu conexión e inténtalo de nuevo.",
+    "notFoundTitle": "No se encontró este elemento",
+    "notFoundHint": "Puede que se haya eliminado o que el enlace sea incorrecto.",
+    "stepOf": "Paso {current} de {total}",
+    "stepDone": "completado",
+    "steps": "Pasos",
+    "moreActions": "Más acciones",
+    "discardTitle": "¿Descartar los cambios?",
+    "discardBody": "Los cambios que no guardaste se perderán.",
+    "keepEditing": "Seguir editando",
+    "discard": "Descartar",
+    "clearFilters": "Borrar filtros",
+    "exporting": "Exportando…",
+    "exportError": "No se pudo exportar. Inténtalo de nuevo.",
+    "deleting": "Eliminando…",
+    "unavailable": "No disponible",
+    "loadingContent": "Cargando contenido"
   },
   "invoices": {
     "title": "Facturas",
@@ -4795,7 +4835,11 @@
     "checkInsTitle": "Mis check-ins",
     "noCheckIns": "No hay check-ins programados",
     "labels": {
-      "phases": { "day1_30": "Día 1-30", "day31_60": "Día 31-60", "day61_90": "Día 61-90" },
+      "phases": {
+        "day1_30": "Día 1-30",
+        "day31_60": "Día 31-60",
+        "day61_90": "Día 61-90"
+      },
       "owners": {
         "hr": "Recursos Humanos",
         "it": "TI",
@@ -4803,7 +4847,12 @@
         "buddy": "Compañero guía",
         "employee": "Tú"
       },
-      "checkInTypes": { "day1": "Día 1", "day30": "Día 30", "day60": "Día 60", "day90": "Día 90" },
+      "checkInTypes": {
+        "day1": "Día 1",
+        "day30": "Día 30",
+        "day60": "Día 60",
+        "day90": "Día 90"
+      },
       "statuses": {
         "pending": "Pendiente",
         "overdue": "Vencido",

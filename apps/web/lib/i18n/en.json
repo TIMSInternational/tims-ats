@@ -77,7 +77,13 @@
     "users": "Users",
     "suspended": "Suspended",
     "owner": "Owner",
-    "security": "Security (2FA)"
+    "security": "Security (2FA)",
+    "mainNav": "Main navigation",
+    "breadcrumb": "Breadcrumb",
+    "searchLabel": "Search organizations, users and pages",
+    "searchResults": "Search results",
+    "openSearch": "Open search",
+    "profileMenu": "Menu for {name}"
   },
   "sidebar": {
     "recruitment": "Recruitment",
@@ -105,25 +111,25 @@
     "billing": "Billing",
     "settings": "Settings",
     "organizationProfile": "Organization details",
-    "businessUnits": "Business Units",
+    "businessUnits": "Business units",
     "team": "Team",
     "branding": "Branding",
-    "fitWeights": "FIT Weights",
+    "fitWeights": "FIT weights",
     "commandCenter": "Home",
     "assessments": "Assessments",
-    "myHiring": "My Hiring",
-    "myTeam": "My Team",
-    "finalistCandidates": "Finalist Candidates",
-    "offersToApprove": "Offers to Approve",
-    "myTasks": "My Tasks",
-    "myHome": "My Home",
-    "myPanels": "My Panels",
-    "myPerformance": "My Performance",
-    "myLearning": "My Learning",
+    "myHiring": "My hiring",
+    "myTeam": "My team",
+    "finalistCandidates": "Finalist candidates",
+    "offersToApprove": "Offers to approve",
+    "myTasks": "My tasks",
+    "myHome": "My home",
+    "myPanels": "My panels",
+    "myPerformance": "My performance",
+    "myLearning": "My learning",
     "myOnboarding": "My Onboarding",
     "my360": "My 360",
     "evaluations360": "360 Evaluation",
-    "auditLog": "Audit Log",
+    "auditLog": "Audit log",
     "assessmentSecurity": "Assessment security"
   },
   "platformSidebar": {
@@ -132,17 +138,17 @@
     "subscriptions": "Subscriptions",
     "users": "Users",
     "system": "System",
-    "systemHealth": "System Health",
-    "featureFlags": "Feature Flags",
+    "systemHealth": "System health",
+    "featureFlags": "Feature flags",
     "analytics": "Analytics",
-    "aiAgents": "AI Agents",
+    "aiAgents": "AI agents",
     "support": "Support",
     "notifications": "Notifications",
     "invoices": "Invoices",
     "invitations": "Invitations",
     "audit": "Audit",
-    "accessReview": "Access Review",
-    "supportPage": "Support"
+    "accessReview": "Access review",
+    "supportPage": "Support center"
   },
   "breadcrumbs": {
     "/dashboard": {
@@ -168,11 +174,11 @@
     },
     "/platform/health": {
       "parent": "System",
-      "label": "System Health"
+      "label": "System health"
     },
     "/platform/feature-flags": {
       "parent": "System",
-      "label": "Feature Flags"
+      "label": "Feature flags"
     },
     "/platform/analytics": {
       "parent": "System",
@@ -180,7 +186,7 @@
     },
     "/platform/ai-agents": {
       "parent": "System",
-      "label": "AI Agents"
+      "label": "AI agents"
     },
     "/platform/notifications": {
       "parent": "Platform",
@@ -200,11 +206,11 @@
     },
     "/platform/access-review": {
       "parent": "Support",
-      "label": "Access Review"
+      "label": "Access review"
     },
     "/platform/support": {
       "parent": "Support",
-      "label": "Support"
+      "label": "Support center"
     },
     "/recruitment": {
       "label": "Recruitment"
@@ -231,7 +237,7 @@
     },
     "/recruitment/talent-pools": {
       "parent": "Recruitment",
-      "label": "Talent Pool"
+      "label": "Talent pool"
     },
     "/recruitment/analytics": {
       "parent": "Recruitment",
@@ -245,44 +251,44 @@
       "label": "Onboarding"
     },
     "/my-onboarding": {
-      "parent": "My Home",
+      "parent": "My home",
       "label": "My Onboarding"
     },
     "/people/performance": {
       "parent": "People",
-      "label": "Performance & OKR"
+      "label": "Performance"
     },
     "/learning": {
       "parent": "People",
-      "label": "Training & Development"
+      "label": "Training"
     },
     "/talent/nine-box": {
       "parent": "Talent",
-      "label": "Nine Box Predictive"
+      "label": "Nine Box"
     },
     "/talent/succession": {
       "parent": "Talent",
-      "label": "Succession Map"
+      "label": "Succession"
     },
     "/talent/team-intelligence": {
       "parent": "Talent",
-      "label": "Team Intelligence"
+      "label": "Team intelligence"
     },
     "/engagement/climate": {
       "parent": "Organization",
-      "label": "Engagement & Climate"
+      "label": "Climate"
     },
     "/engagement/dei": {
       "parent": "Organization",
-      "label": "DEI Analytics"
+      "label": "DEI"
     },
     "/compensation": {
       "parent": "Organization",
-      "label": "Compensation & Benefits"
+      "label": "Compensation"
     },
     "/monitoring": {
-      "parent": "Strategy",
-      "label": "Strategic Monitoring"
+      "parent": "Organization",
+      "label": "Monitoring"
     },
     "/settings": {
       "label": "Settings"
@@ -297,7 +303,7 @@
     },
     "/settings/business-units": {
       "parent": "Settings",
-      "label": "Business Units"
+      "label": "Business units"
     },
     "/settings/branding": {
       "parent": "Settings",
@@ -305,11 +311,11 @@
     },
     "/settings/fit-weights": {
       "parent": "Settings",
-      "label": "FIT Weights"
+      "label": "FIT weights"
     },
     "/settings/audit-log": {
       "parent": "Settings",
-      "label": "Audit Log"
+      "label": "Audit log"
     },
     "/settings/data-requests": {
       "parent": "Settings",
@@ -321,7 +327,19 @@
     },
     "/settings/integrations": {
       "parent": "Settings",
-      "label": "HRIS & Integrations"
+      "label": "Integrations"
+    },
+    "/platform/email-preview": {
+      "parent": "System",
+      "label": "Email preview"
+    },
+    "/my-360": {
+      "parent": "My home",
+      "label": "My 360"
+    },
+    "/talent/360": {
+      "parent": "Talent",
+      "label": "360 Evaluation"
     }
   },
   "auth": {
@@ -473,7 +491,29 @@
     "nextPage": "Next page",
     "copy": "Copy",
     "copied": "Copied",
-    "somethingWentWrong": "Something went wrong"
+    "somethingWentWrong": "Something went wrong",
+    "optional": "optional",
+    "showingRange": "Showing {from}–{to} of {total}",
+    "page": "Page",
+    "pagination": "Pagination",
+    "loadErrorTitle": "Couldn't load this information",
+    "loadErrorHint": "Check your connection and try again.",
+    "notFoundTitle": "This item wasn't found",
+    "notFoundHint": "It may have been deleted, or the link may be wrong.",
+    "stepOf": "Step {current} of {total}",
+    "stepDone": "completed",
+    "steps": "Steps",
+    "moreActions": "More actions",
+    "discardTitle": "Discard changes?",
+    "discardBody": "Changes you haven't saved will be lost.",
+    "keepEditing": "Keep editing",
+    "discard": "Discard",
+    "clearFilters": "Clear filters",
+    "exporting": "Exporting…",
+    "exportError": "Couldn't export. Try again.",
+    "deleting": "Deleting…",
+    "unavailable": "Unavailable",
+    "loadingContent": "Loading content"
   },
   "invoices": {
     "title": "Invoices",
@@ -1417,7 +1457,13 @@
     "phaseDay90": "Day 90+",
     "tasks": "tasks completed",
     "tasksByResponsible": "Tasks by Responsible",
-    "ownerLabels": { "hr": "HR", "it": "IT", "manager": "Manager", "buddy": "Buddy", "employee": "New hire" },
+    "ownerLabels": {
+      "hr": "HR",
+      "it": "IT",
+      "manager": "Manager",
+      "buddy": "Buddy",
+      "employee": "New hire"
+    },
     "ownerUnassigned": "Unassigned",
     "tasksDoneOfTotal": "{done}/{total} completed",
     "lowestProgressAlert": "Alert: {owner} has the lowest progress ({pct}%).",
@@ -2124,7 +2170,12 @@
     "readOnlyNotice": "Read-only view: rejected or hired applications cannot be moved or rejected.",
     "noRejectedCandidates": "No rejected candidates for this vacancy",
     "rejectedOn": "Rejected on {date}",
-    "applicationStatus": { "active": "Active", "rejected": "Rejected", "withdrawn": "Withdrawn", "hired": "Hired" },
+    "applicationStatus": {
+      "active": "Active",
+      "rejected": "Rejected",
+      "withdrawn": "Withdrawn",
+      "hired": "Hired"
+    },
     "advance": "Advance →",
     "viewProfile": "View profile",
     "fitScore": "FIT score",
@@ -4784,9 +4835,24 @@
     "checkInsTitle": "My check-ins",
     "noCheckIns": "No check-ins scheduled",
     "labels": {
-      "phases": { "day1_30": "Day 1-30", "day31_60": "Day 31-60", "day61_90": "Day 61-90" },
-      "owners": { "hr": "Human Resources", "it": "IT", "manager": "Manager", "buddy": "Buddy", "employee": "You" },
-      "checkInTypes": { "day1": "Day 1", "day30": "Day 30", "day60": "Day 60", "day90": "Day 90" },
+      "phases": {
+        "day1_30": "Day 1-30",
+        "day31_60": "Day 31-60",
+        "day61_90": "Day 61-90"
+      },
+      "owners": {
+        "hr": "Human Resources",
+        "it": "IT",
+        "manager": "Manager",
+        "buddy": "Buddy",
+        "employee": "You"
+      },
+      "checkInTypes": {
+        "day1": "Day 1",
+        "day30": "Day 30",
+        "day60": "Day 60",
+        "day90": "Day 90"
+      },
       "statuses": {
         "pending": "Pending",
         "overdue": "Overdue",

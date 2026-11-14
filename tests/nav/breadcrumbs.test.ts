@@ -39,17 +39,17 @@ describe('pilot routes all get a real breadcrumb (no "TIMS Platform" fallback)',
   // Every page an INVU staff role can reach in the pilot, including detail pages.
   const PILOT_ROUTES: Array<[string, string, string | undefined]> = [
     ['/dashboard', 'Inicio', undefined],
-    ['/my-onboarding', 'Mi Onboarding', 'Mi Espacio'],
+    ['/my-onboarding', 'Mi Onboarding', 'Mi espacio'],
     ['/people/onboarding', 'Onboarding', 'Personas'],
     ['/recruitment/vacancies/7f0c', 'Vacantes', 'Reclutamiento'],
     ['/recruitment/candidates/7f0c', 'Candidatos', 'Reclutamiento'],
     ['/recruitment/interviews/7f0c/room', 'Entrevistas', 'Reclutamiento'],
     ['/recruitment/offers', 'Ofertas', 'Reclutamiento'],
     ['/settings/users', 'Equipo', 'Configuración'],
-    ['/settings/business-units', 'Unidades de Negocio', 'Configuración'],
+    ['/settings/business-units', 'Unidades de negocio', 'Configuración'],
     ['/settings/branding', 'Marca', 'Configuración'],
     ['/settings/fit-weights', 'Pesos FIT', 'Configuración'],
-    ['/settings/audit-log', 'Registro de Auditoría', 'Configuración'],
+    ['/settings/audit-log', 'Registro de auditoría', 'Configuración'],
     ['/settings/data-requests', 'Solicitudes de titulares', 'Configuración'],
     ['/platform/organizations/7f0c', 'Organizaciones', 'Plataforma'],
   ];
@@ -59,6 +59,22 @@ describe('pilot routes all get a real breadcrumb (no "TIMS Platform" fallback)',
     expect(crumb?.label).toBe(label);
     expect(crumb?.parent).toBe(parent);
     expect(resolveBreadcrumb(path, enCrumbs)?.label).toBeTruthy();
+  });
+
+  it('every crumb label equals its sidebar label, so the top bar and the nav never disagree', () => {
+    const pairs: Array<[string, string]> = [
+      ['/engagement/climate', es.sidebar.climate],
+      ['/engagement/dei', es.sidebar.dei],
+      ['/talent/succession', es.sidebar.succession],
+      ['/talent/360', es.sidebar.evaluations360],
+      ['/my-360', es.sidebar.my360],
+      ['/platform/support', es.platformSidebar.supportPage],
+    ];
+    for (const [path, label] of pairs) expect(resolveBreadcrumb(path, esCrumbs)?.label).toBe(label);
+    // A section page no longer repeats its section ("Soporte › Soporte").
+    const support = resolveBreadcrumb('/platform/support', esCrumbs);
+    expect(support?.label).not.toBe(support?.parent);
+    expect(resolveBreadcrumb('/platform/email-preview', esCrumbs)?.label).toBeTruthy();
   });
 
   it('the home page reads "Inicio", not "Dashboard"', () => {
