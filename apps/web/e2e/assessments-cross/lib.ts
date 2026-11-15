@@ -152,8 +152,14 @@ export async function passwordToken(s: CrossState, email: string, password: stri
 export async function staffSignIn(page: Page, email: string, password: string): Promise<void> {
   await page.goto('/login');
   await page.getByPlaceholder('tu@empresa.com').fill(email);
-  await page.getByPlaceholder('••••••••').fill(password);
-  await page.getByRole('button', { name: /^(iniciar sesi[oó]n|sign in)$/i }).click();
+  // The password field is found by its label: the HIG pass dropped the dots placeholder.
+  await page.getByLabel(/^(contraseña|password)$/i).fill(password);
+  // Wait for the Turnstile check to enable the button and the form to settle: a click fired at the instant it
+  // enables can be dropped.
+  const submit = page.getByRole('button', { name: /^(iniciar sesi[oó]n|sign in)$/i });
+  await expect(submit).toBeEnabled({ timeout: 30_000 });
+  await page.waitForTimeout(1_000);
+  await submit.click();
   await expect(page).not.toHaveURL(/\/login(\?|$)/, { timeout: 45_000 });
 }
 

@@ -817,7 +817,9 @@ test('H11 HR cancels B’s English assignment; the suite cancels it', async ({ b
   await hr.goto(`/recruitment/candidates/${candidateB}`);
   const card = hr.getByRole('region', { name: 'TIMS Assessments' });
   const english = card.getByTestId('provider-attempt').filter({ hasText: 'English' });
-  await english.getByRole('button', { name: 'Cancel English' }).click();
+  // Cancelling is a deliberate step since the HIG pass: the row button opens a confirmation dialog.
+  await english.getByRole('button', { name: 'Cancel the English test…' }).click();
+  await hr.getByRole('dialog', { name: 'Cancel the English test?' }).getByRole('button', { name: 'Cancel test' }).click();
   await expect(hr.getByText('Assessment cancelled')).toBeVisible();
   // Read the list fresh: one local run saw the post-mutation refetch answered with an empty-body 401 (see README).
   await hr.reload();
