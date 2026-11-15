@@ -60,8 +60,10 @@ export function OrgFunnel({ stages, conversionPct, totalHired, isLoading, error,
         <EmptyState size="compact" message={occ.noData} />
       ) : (
         <ol className="space-y-2">
+          {/* The stage name leads each row, next to its bar, so a short bar is never far from its label. */}
           {stages.map((item, idx) => (
             <li key={item.name} className="flex items-center gap-3">
+              <span className="w-32 shrink-0 text-callout text-secondary sm:w-44">{item.name}</span>
               <div className="min-w-0 flex-1">
                 <div
                   className={`flex h-6 min-w-6 items-center justify-center rounded-sm ${FUNNEL_STAGE_COLORS[idx % FUNNEL_STAGE_COLORS.length]}`}
@@ -70,7 +72,6 @@ export function OrgFunnel({ stages, conversionPct, totalHired, isLoading, error,
                   <span className="text-caption font-semibold tabular-nums">{item.count}</span>
                 </div>
               </div>
-              <span className="w-32 shrink-0 text-callout text-secondary sm:w-44">{item.name}</span>
             </li>
           ))}
         </ol>

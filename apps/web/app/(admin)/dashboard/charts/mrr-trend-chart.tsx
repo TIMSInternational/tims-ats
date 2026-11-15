@@ -3,7 +3,7 @@
 import { useId } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useDashboardMrrTrend } from '../../../../lib/platform-api/dashboard';
-import { formatCurrency, Skeleton } from '../dashboard-utils';
+import { formatCurrency, formatCurrencyTick, Skeleton } from '../dashboard-utils';
 import { useI18n } from '../../../../lib/i18n';
 import { formatMessage } from '../../../../lib/i18n/format';
 import { ErrorState } from '../../../../components';
@@ -11,6 +11,8 @@ import { ChartFigure } from './chart-figure';
 
 const NAVY = 'var(--color-brand)';
 const TICK = { fontSize: 11, fill: 'var(--color-muted)' };
+/** Room for the longest money tick at either locale ("$120 mil", "$1.2M") without clipping. */
+const AXIS_WIDTH = 64;
 
 interface MrrTooltipProps {
   active?: boolean;
@@ -74,7 +76,7 @@ export function MrrTrendChart() {
           rows={series.map((m) => ({ label: m.month, value: formatCurrency(m.mrr, locale) }))}
         >
           <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={series} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+            <AreaChart data={series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="mrrGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={NAVY} stopOpacity={0.4} />
@@ -84,11 +86,11 @@ export function MrrTrendChart() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" vertical={false} />
               <XAxis dataKey="month" tick={TICK} axisLine={false} tickLine={false} />
               <YAxis
-                tickFormatter={(v: number) => formatCurrency(v, locale, true)}
+                tickFormatter={(v: number) => formatCurrencyTick(v, locale)}
                 tick={TICK}
                 axisLine={false}
                 tickLine={false}
-                width={56}
+                width={AXIS_WIDTH}
               />
               <Tooltip content={<MrrTooltip />} />
               <Area

@@ -5,13 +5,17 @@ import { useDashboardMrrForecast } from '../../../../lib/platform-api/dashboard'
 import { useId } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { formatMessage } from '../../../../lib/i18n/format';
-import { formatCurrency, Skeleton } from '../dashboard-utils';
+import { formatCurrency, formatCurrencyTick, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
 import { ChartFigure } from './chart-figure';
 
 const CARD = 'flex flex-col rounded-xl border border-border bg-white p-5 shadow-card';
 const NAVY = 'var(--color-brand)';
 const TICK = { fontSize: 11, fill: 'var(--color-muted)' };
+/** Room for the longest money tick at either locale ("$120 mil", "$1.2M") without clipping. */
+const AXIS_WIDTH = 64;
+/** Minimum space between two month labels before one is dropped. */
+const MONTH_TICK_GAP = 16;
 
 interface ForecastTooltipProps {
   active?: boolean;
@@ -144,7 +148,7 @@ export function MrrForecastChart() {
         }))}
       >
         <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="historicalGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={NAVY} stopOpacity={0.3} />
@@ -152,13 +156,21 @@ export function MrrForecastChart() {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" vertical={false} />
-            <XAxis dataKey="month" tick={TICK} axisLine={false} tickLine={false} interval={2} />
-            <YAxis
-              tickFormatter={(v: number) => formatCurrency(v, locale, true)}
+            {/* Recharts drops the month labels that would collide, so 24 months stay legible at phone width too. */}
+            <XAxis
+              dataKey="month"
               tick={TICK}
               axisLine={false}
               tickLine={false}
-              width={56}
+              interval="preserveStartEnd"
+              minTickGap={MONTH_TICK_GAP}
+            />
+            <YAxis
+              tickFormatter={(v: number) => formatCurrencyTick(v, locale)}
+              tick={TICK}
+              axisLine={false}
+              tickLine={false}
+              width={AXIS_WIDTH}
             />
             <Tooltip content={<ForecastTooltip />} />
             <ReferenceLine

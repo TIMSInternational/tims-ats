@@ -17,6 +17,9 @@ const STAGE_COLORS = [
   'bg-brand text-white',
 ];
 
+/** Placeholder bars that taper like a funnel, one fixed width per row. */
+const SKELETON_WIDTHS = ['w-full', 'w-11/12', 'w-4/5', 'w-2/3', 'w-3/5', 'w-1/2', 'w-2/5'];
+
 interface PipelineFunnelProps {
   vacancies: VacancyListItem[];
 }
@@ -93,12 +96,11 @@ export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
       ) : funnelQuery.isLoading ? (
         <div className="space-y-2" aria-busy="true">
           <span className="sr-only">{t.common.loadingContent}</span>
-          {Array.from({ length: 7 }).map((_, i) => (
+          {SKELETON_WIDTHS.map((width, i) => (
             <div
               key={i}
               aria-hidden="true"
-              className="h-6 animate-pulse rounded bg-gray-100 motion-reduce:animate-none"
-              style={{ width: `${100 - i * 12}%` }}
+              className={`h-6 animate-pulse rounded bg-gray-100 motion-reduce:animate-none ${width}`}
             />
           ))}
         </div>
@@ -108,10 +110,14 @@ export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
         <p className="py-6 text-center text-callout text-muted">{rd.noPipelineData}</p>
       ) : (
         <ol className="space-y-2">
+          {/* The stage name leads each row, next to its bar, so a short bar is never far from its label. */}
           {stages.map((stage, idx) => {
             const widthPct = Math.max((stage.count / maxCount) * 100, 3);
             return (
               <li key={stage.label} className="flex items-center gap-3">
+                <span className="w-32 shrink-0 text-callout text-secondary sm:w-44">
+                  {stage.label} {stage.pct && <span className="text-caption tabular-nums text-muted">{stage.pct}</span>}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div
                     className={`flex h-6 min-w-6 items-center justify-center rounded-sm ${STAGE_COLORS[idx % STAGE_COLORS.length]}`}
@@ -120,9 +126,6 @@ export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
                     <span className="text-caption font-semibold tabular-nums">{stage.count}</span>
                   </div>
                 </div>
-                <span className="w-32 shrink-0 text-callout text-secondary sm:w-44">
-                  {stage.label} {stage.pct && <span className="text-caption tabular-nums text-muted">{stage.pct}</span>}
-                </span>
               </li>
             );
           })}
@@ -140,8 +143,8 @@ export function PipelineFunnelSkeleton() {
     >
       <div className="h-5 w-60 bg-gray-200 rounded mb-4" />
       <div className="space-y-2">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <div key={i} className="h-6 bg-gray-200 rounded" style={{ width: `${100 - i * 12}%` }} />
+        {SKELETON_WIDTHS.map((width, i) => (
+          <div key={i} className={`h-6 rounded bg-gray-200 ${width}`} />
         ))}
       </div>
     </div>

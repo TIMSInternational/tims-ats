@@ -6,6 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { useDashboardRevenueByCustomer } from '../../../../lib/platform-api/dashboard';
 import {
   formatCurrency,
+  formatCurrencyTick,
   PLAN_COLORS,
   PLAN_FALLBACK_COLOR,
   PLAN_LABELS,
@@ -18,6 +19,10 @@ import { ErrorState } from '../../../../components';
 import { ChartFigure } from './chart-figure';
 
 const TICK = { fontSize: 11, fill: 'var(--color-muted)' };
+/** Height per customer row (a 20 px bar plus its gap), so every name fits beside its bar. */
+const ROW_HEIGHT = 32;
+/** Height of the money axis under the bars. */
+const AXIS_HEIGHT = 32;
 
 interface RevenueTooltipProps {
   active?: boolean;
@@ -94,7 +99,7 @@ export function RevenueByCustomerChart() {
           columns={[d.orgName, d.mrr]}
           rows={chartData.map((row) => ({ label: row.orgName, value: formatCurrency(row.mrr, locale) }))}
         >
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={chartData.length * ROW_HEIGHT + AXIS_HEIGHT}>
             <BarChart
               data={chartData}
               layout="vertical"
@@ -107,7 +112,7 @@ export function RevenueByCustomerChart() {
             >
               <XAxis
                 type="number"
-                tickFormatter={(v: number) => formatCurrency(v, locale, true)}
+                tickFormatter={(v: number) => formatCurrencyTick(v, locale)}
                 tick={TICK}
                 axisLine={false}
                 tickLine={false}
@@ -120,6 +125,8 @@ export function RevenueByCustomerChart() {
                 axisLine={false}
                 tickLine={false}
                 width={140}
+                // Every bar keeps its name: Recharts would otherwise skip every other category label.
+                interval={0}
               />
               <Tooltip content={<RevenueTooltip />} cursor={{ fill: 'var(--color-surface)' }} />
               <Bar dataKey="mrr" radius={[0, 4, 4, 0]} cursor="pointer" barSize={20}>
