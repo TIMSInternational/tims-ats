@@ -86,7 +86,7 @@ export function PlatformOwnerSection() {
                 value={confirmEmail}
                 onChange={(e) => setConfirmEmail(e.target.value)}
                 onPaste={(e) => e.preventDefault()}
-                className="min-w-0 flex-1"
+                className="min-w-0 sm:flex-1"
               />
               <Button
                 type="submit"

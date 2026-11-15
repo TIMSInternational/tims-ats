@@ -136,7 +136,7 @@ export default function PlatformHealthPage() {
           })}
         </ul>
 
-        <div className="grid min-h-[260px] flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="grid shrink-0 grid-cols-1 gap-3 lg:min-h-[260px] lg:flex-1 lg:shrink lg:grid-cols-2">
           <LatencyCard />
           <RecentErrorsCard recentErrors={recentErrors} />
         </div>

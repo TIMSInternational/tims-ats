@@ -67,6 +67,7 @@ export default function PlatformFeatureFlagsPage() {
       const rowKey = `${vars.organizationId}:${vars.key}`;
       setLocalToggles((prev) => withoutKey(prev, rowKey));
       setToggleErrors((prev) => ({ ...prev, [rowKey]: err.message }));
+      toast(err.message, { type: 'error' });
     },
     onSettled: (_data, _err, vars) => {
       setPendingToggles((prev) => withoutKey(prev, `${vars.organizationId}:${vars.key}`));

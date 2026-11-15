@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatMessage, useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Button, Field, Modal, TextArea } from '../../../../components';
+import { Button, DialogCancelButton, Field, Modal, TextArea } from '../../../../components';
 import { useAccessReviewAttest } from '../../../../lib/platform-api/access-review';
 
 interface AttestModalProps {
@@ -48,9 +48,7 @@ export function AttestModal({ organizationId, onClose }: AttestModalProps) {
       dirty={notes.trim().length > 0 && !attest.isPending}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={attest.isPending}>
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={attest.isPending} />
           <Button onClick={onSubmit} loading={attest.isPending} loadingLabel={ar.attesting}>
             {ar.attestAction}
           </Button>
