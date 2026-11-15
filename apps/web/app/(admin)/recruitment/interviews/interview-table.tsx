@@ -67,7 +67,10 @@ export function InterviewTable(props: InterviewTableProps) {
   const columns = [
     { key: 'candidate', label: t.interviews.colCandidate },
     { key: 'vacancy', label: t.interviews.colVacancy },
-    { key: 'type', label: t.interviews.colType },
+    // Type and the email line only fit beside the calendar rail on 2xl screens; below that the status column
+    // would be covered by the pinned actions cell (lists-and-tables.md › Best practices). The type stays on the
+    // phone list and the interview room.
+    { key: 'type', label: t.interviews.colType, className: 'hidden 2xl:table-cell' },
     { key: 'date', label: t.interviews.colDate },
     { key: 'evaluators', label: t.interviews.colEvaluators },
     { key: 'status', label: t.interviews.colStatus },
@@ -160,7 +163,7 @@ export function InterviewTable(props: InterviewTableProps) {
                 />
                 <div className="min-w-0 max-w-48">
                   <div className="truncate">{candidateName(iv)}</div>
-                  <p className="truncate text-caption text-muted" title={iv.candidate.email}>
+                  <p className="hidden truncate text-caption text-muted 2xl:block" title={iv.candidate.email}>
                     {iv.candidate.email}
                   </p>
                 </div>
@@ -171,7 +174,7 @@ export function InterviewTable(props: InterviewTableProps) {
                 {iv.vacancy.title}
               </span>
             </td>
-            <td className="px-4 py-3">
+            <td className="hidden px-4 py-3 2xl:table-cell">
               <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-surface px-2 py-0.5 text-caption font-medium text-secondary">
                 <InterviewTypeIcon type={iv.type} />
                 {interviewTypeLabel(t, iv.type)}
@@ -205,7 +208,7 @@ export function InterviewTable(props: InterviewTableProps) {
               Sticky makes the cell a stacking context that traps the "More actions" panel, and the next
               row's opaque sticky cell would paint over it — so the cell with an open menu is lifted
               above its siblings (and the sticky header's z-10) while it is open. */}
-            <td className="sticky right-0 bg-white has-[[aria-expanded=true]]:z-20 px-4 py-3 text-right transition-colors group-hover:bg-surface-hover">
+            <td className="sticky right-0 border-l border-border bg-white has-[[aria-expanded=true]]:z-20 px-4 py-3 text-right transition-colors group-hover:bg-surface-hover">
               <InterviewRowActions {...props} iv={iv} now={now} />
             </td>
           </tr>

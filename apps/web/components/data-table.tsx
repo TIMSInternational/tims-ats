@@ -16,6 +16,8 @@ interface Column {
   onSort?: () => void;
   /** Visually hidden heading (e.g. an actions column). */
   srOnly?: boolean;
+  /** Extra classes for the heading and skeleton cells, e.g. `hidden 2xl:table-cell` for a column that only fits wide screens. */
+  className?: string;
 }
 
 interface DataTableProps {
@@ -55,7 +57,7 @@ function renderHeader(col: Column) {
     <th
       key={col.key}
       scope="col"
-      className={`px-4 py-2.5 text-callout font-semibold text-secondary ${ALIGN[col.align ?? 'left']}`}
+      className={`px-4 py-2.5 text-callout font-semibold text-secondary ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}
     >
       {col.srOnly ? <span className="sr-only">{col.label}</span> : col.label}
     </th>
@@ -68,7 +70,7 @@ function SkeletonRows({ columns, count }: { columns: Column[]; count: number }) 
       {Array.from({ length: count }).map((_, rowIdx) => (
         <tr key={rowIdx} className="border-b border-border-subtle">
           {columns.map((col) => (
-            <td key={col.key} className={`px-4 py-3 ${ALIGN[col.align ?? 'left']}`}>
+            <td key={col.key} className={`px-4 py-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}>
               <Skeleton
                 className={`h-4 ${col.align === 'right' ? 'w-16 ml-auto' : col.align === 'center' ? 'w-16 mx-auto' : 'w-24'} rounded`}
               />

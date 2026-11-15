@@ -61,8 +61,13 @@ export function QuestionModal({ assessmentTypeId, question, onClose, onSaved }: 
   const isFreeText = type === 'free_text';
   const errorMap = t.assessments.errors as Record<string, string>;
 
-  // The dialog stays open on failure, so the error shows inline (role="alert") rather than as a second toast.
-  const onError = (err: { message: string }) => setError(errorMap[err.message] ?? err.message);
+  // The dialog stays open on failure: the error shows inline (role="alert") and, per the project rule
+  // (.claude/rules/frontend.md: onError toast on every mutation), as a toast too.
+  const onError = (err: { message: string }) => {
+    const message = errorMap[err.message] ?? err.message;
+    setError(message);
+    toast(message, { type: 'error' });
+  };
 
   const createM = trpc.assessment.createQuestion.useMutation({
     onSuccess: () => {

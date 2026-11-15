@@ -47,10 +47,13 @@ export function ConsentWithdrawModal({ candidateId, onClose }: { candidateId: st
       toast(m.success, { type: 'success' });
       onClose();
     },
-    // The dialog stays open on failure, so the message shows in it (role="alert") instead of only in a toast.
+    // The dialog stays open on failure, so the message shows in it (role="alert") and, per the project rule
+    // (.claude/rules/frontend.md: onError toast on every mutation), as a toast too.
     onError: (error) => {
       const kind = classifyConsentError(error);
-      setServerError(kind === 'forbidden' ? m.errorForbidden : kind === 'not_found' ? m.errorNotFound : m.errorGeneric);
+      const message = kind === 'forbidden' ? m.errorForbidden : kind === 'not_found' ? m.errorNotFound : m.errorGeneric;
+      setServerError(message);
+      toast(message, { type: 'error' });
     },
   });
 
