@@ -57,9 +57,9 @@ export function PipelineStageHeader({
   return (
     <div className={`shrink-0 bg-white ${className}`}>
       <div className={`h-1 ${stageBarColor(index)}`} aria-hidden="true" />
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 id={headingId} className="truncate text-subheading font-semibold text-brand">
+      <div className="flex items-start justify-between gap-2 px-3 py-2.5">
+        <div className="flex min-w-0 items-start gap-2">
+          <h2 id={headingId} title={name} className="line-clamp-2 min-w-0 break-words text-subheading font-semibold text-brand">
             {name}
           </h2>
           <span
@@ -75,7 +75,7 @@ export function PipelineStageHeader({
             {overdueCount === 1 ? p.slaOverdueCountOne : formatMessage(p.slaOverdueCount, { n: overdueCount })}
           </StatusBadge>
         ) : slaHours ? (
-          <span className="shrink-0 text-caption text-secondary" title={formatMessage(p.slaHintLabel, { h: slaHours })}>
+          <span className="mt-0.5 shrink-0 text-caption text-secondary" title={formatMessage(p.slaHintLabel, { h: slaHours })}>
             {formatMessage(p.slaHint, { h: slaHours })}
           </span>
         ) : null}
