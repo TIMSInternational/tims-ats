@@ -17,6 +17,9 @@ export default function Evaluation360Page() {
   const cycles = useEvaluation360ListCycles();
 
   const managingCycle = (cycles.data ?? []).find((c) => c.id === managingCycleId) ?? null;
+  // The empty state carries its own "Nuevo ciclo", so the header does not repeat it: one primary at a time
+  // (buttons.md › Best practices).
+  const isEmpty = cycles.isSuccess && (cycles.data ?? []).length === 0;
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -25,7 +28,8 @@ export default function Evaluation360Page() {
         description={t.evaluation360.pageDescription}
         actions={
           // While the inline form is open its own "Crear ciclo" is the one primary (buttons.md › Style).
-          !showCreateForm && <Button onClick={() => setShowCreateForm(true)}>{t.evaluation360.createButton}</Button>
+          !showCreateForm &&
+          !isEmpty && <Button onClick={() => setShowCreateForm(true)}>{t.evaluation360.createButton}</Button>
         }
       />
 

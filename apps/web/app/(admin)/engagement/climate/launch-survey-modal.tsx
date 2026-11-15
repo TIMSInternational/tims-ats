@@ -8,6 +8,7 @@ import { toast } from '../../../../lib/toast';
 import {
   Button,
   BUTTON_GROUP_CLASSES,
+  DialogCancelButton,
   Field,
   FIELD_LABEL_CLASSES,
   Modal,
@@ -109,9 +110,7 @@ export function LaunchSurveyModal({ onClose }: LaunchSurveyModalProps) {
           {/* The click creates AND activates: say so before the person commits. */}
           <p className="text-callout text-secondary">{t.climate.launchNotice}</p>
           <div className={BUTTON_GROUP_CLASSES}>
-            <Button variant="secondary" onClick={onClose} disabled={isPending}>
-              {t.common.cancel}
-            </Button>
+            <DialogCancelButton onCancel={onClose} disabled={isPending} />
             <Button onClick={onSubmit} disabled={!canSubmit} loading={isPending} loadingLabel={t.climate.launching}>
               {t.climate.launchAction}
             </Button>
