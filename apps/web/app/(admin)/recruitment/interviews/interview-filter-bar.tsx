@@ -43,7 +43,7 @@ export function InterviewFilterBar({
         value={statusFilter}
         onChange={(e) => onStatusChange(e.target.value)}
         aria-label={t.interviews.filterStatusLabel}
-        className={selectClasses('md', 'w-auto max-w-full')}
+        className={selectClasses('md', 'sm:w-auto max-w-full')}
       >
         <option value="">{t.interviews.allStatuses}</option>
         {/* Values filter by what the rows SHOW (interview-status.ts), not by the stored status. */}
@@ -58,7 +58,7 @@ export function InterviewFilterBar({
         value={typeFilter}
         onChange={(e) => onTypeChange(e.target.value)}
         aria-label={t.interviews.filterTypeLabel}
-        className={selectClasses('md', 'w-auto max-w-full')}
+        className={selectClasses('md', 'sm:w-auto max-w-full')}
       >
         <option value="">{t.interviews.allTypes}</option>
         <option value="phone">{t.interviews.typePhone}</option>

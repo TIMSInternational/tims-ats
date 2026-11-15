@@ -46,7 +46,8 @@ export default function OfferSignPage() {
   const org = { name: o.organization.name, logo: o.organization.logo };
 
   if (o.status !== 'sent' && !accepted && !declined) {
-    // A finished state, not a waiting one: a neutral check, and one full sentence per case.
+    // A finished state, not a waiting one: a neutral check, and one full sentence per case. A converted
+    // offer (the candidate accepted and was hired) reads as accepted, not as "no longer open".
     return (
       <OfferSignStatus
         tone="brand"
@@ -54,7 +55,7 @@ export default function OfferSignPage() {
         circle
         organization={org}
         title={t.offers.signAlreadyAnswered}
-        subtitle={o.status === 'accepted' ? t.offers.signAlreadyAccepted.replace('{org}', o.organization.name) : t.offers.signNoLongerOpen}
+        subtitle={o.status === 'accepted' || o.status === 'converted' ? t.offers.signAlreadyAccepted.replace('{org}', o.organization.name) : t.offers.signNoLongerOpen}
       />
     );
   }
