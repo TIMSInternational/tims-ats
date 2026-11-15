@@ -13,10 +13,13 @@ const mocks = vi.hoisted(() => ({
   templates: null as unknown,
 }));
 
-vi.mock('../../apps/web/lib/i18n', async () => {
+vi.mock('../../apps/web/lib/i18n', async (original) => {
   const { default: en } = await import('../../apps/web/lib/i18n/en.json');
   const { default: es } = await import('../../apps/web/lib/i18n/es.json');
-  return { useI18n: () => ({ t: mocks.locale === 'en' ? en : es, locale: mocks.locale === 'en' ? 'EN' : 'ES' }) };
+  return {
+    ...(await original<typeof import('../../apps/web/lib/i18n')>()),
+    useI18n: () => ({ t: mocks.locale === 'en' ? en : es, locale: mocks.locale === 'en' ? 'EN' : 'ES' }),
+  };
 });
 vi.mock('../../apps/web/lib/toast', () => ({ toast: vi.fn() }));
 vi.mock('../../apps/web/lib/platform-api/assessment-provider-settings', async (original) => ({
@@ -207,7 +210,7 @@ describe('candidate portal: the biometric consent', () => {
     disclosures: [],
   });
 
-  it('is shown in full like the others and must be accepted before starting', () => {
+  it('is a required step like the others, opens in full, and must be accepted before starting', () => {
     mocks.templates = {
       templates: [
         template('assessment', 'Consentimiento de evaluación'),
@@ -225,12 +228,26 @@ describe('candidate portal: the biometric consent', () => {
         onCancel={() => undefined}
       />,
     );
+    const m = es.portalDashboard;
+    const next = () => screen.getByRole('button', { name: m.providerGuideContinue });
+    const tick = () => fireEvent.click(within(screen.getByTestId('consent-step')).getByRole('checkbox'));
 
-    const biometric = screen.getByRole('heading', { name: 'Consentimiento biométrico' }).closest('section')!;
-    expect(within(biometric).getByText('Texto de biometric')).toBeInTheDocument();
-    const start = screen.getByRole('button', { name: es.portalDashboard.providerAcceptAndStart });
-
-    for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box);
+    tick(); // the notice
+    fireEvent.click(next());
+    tick(); // assessment
+    fireEvent.click(next());
+    const biometric = screen.getByTestId('consent-step');
+    expect(within(biometric).getByRole('heading', { name: 'Consentimiento biométrico' })).toBeInTheDocument();
+    expect(biometric).not.toHaveAttribute('data-optional');
+    fireEvent.click(within(biometric).getByRole('button', { name: m.providerGuideReadFull }));
+    expect(
+      within(screen.getByRole('dialog', { name: 'Consentimiento biométrico' })).getByText('Texto de biometric'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button', { name: es.common.close })[0]!);
+    expect(next()).toBeDisabled();
+    tick();
+    fireEvent.click(next());
+    const start = screen.getByRole('button', { name: m.providerAcceptAndStart });
     expect(start).toBeEnabled();
     fireEvent.click(start);
 

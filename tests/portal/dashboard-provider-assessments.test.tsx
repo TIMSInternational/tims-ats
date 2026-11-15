@@ -99,16 +99,32 @@ function renderSection(locale: 'EN' | 'ES' = 'EN') {
   );
 }
 
-// A sitting not started yet shows the organization's notice first (Codex atsux run 1): Start opens it, the notice is
-// marked read, and only then does Start launch.
+// A sitting not started yet shows the organization's notice first (Codex atsux run 1): Start opens its one-step guide,
+// whose full text names the vacancy; the notice is marked read, and only then does Start launch.
 async function startReady() {
   fireEvent.click(await screen.findByRole('button', { name: m.providerStart }));
-  const notice = await screen.findByTestId('assessment-consent-notice');
-  expect(notice).toHaveTextContent('Data Analyst');
+  fireEvent.click(await screen.findByRole('button', { name: m.providerGuideReadFull }));
+  expect(within(screen.getByRole('dialog')).getByTestId('assessment-consent-notice')).toHaveTextContent('Data Analyst');
+  fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button', { name: en.common.close })[0]!);
   const start = screen.getByRole('button', { name: m.providerStart });
   expect(start).toBeDisabled();
   fireEvent.click(screen.getByLabelText(en.assessmentConsentNotice.readAck));
   fireEvent.click(start);
+}
+
+// The consent guide: tick the step's box (when asked) and go on.
+function nextStep(tick = true) {
+  if (tick) fireEvent.click(within(screen.getByTestId('consent-step')).getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: m.providerGuideContinue }));
+}
+
+/** Opens the current step's full text, returns the sheet's text, and closes it. */
+function readFullText(): string {
+  fireEvent.click(within(screen.getByTestId('consent-step')).getByRole('button', { name: m.providerGuideReadFull }));
+  const sheet = screen.getByRole('dialog');
+  const text = sheet.textContent ?? '';
+  fireEvent.click(within(sheet).getAllByRole('button', { name: en.common.close })[0]!);
+  return text;
 }
 
 describe('DashboardProviderAssessments', () => {
@@ -314,7 +330,9 @@ describe('DashboardProviderAssessments', () => {
     await act(async () => {});
     // Any other origin (or another message) is ignored.
     window.dispatchEvent(new MessageEvent('message', { data: ended, origin: 'https://evil.test' }));
-    window.dispatchEvent(new MessageEvent('message', { data: { type: 'sitting_ended' }, origin: 'https://player.test' }));
+    window.dispatchEvent(
+      new MessageEvent('message', { data: { type: 'sitting_ended' }, origin: 'https://player.test' }),
+    );
     expect(screen.getByTitle(liaName)).toBeInTheDocument();
     window.dispatchEvent(new MessageEvent('message', { data: ended, origin: 'https://player.test' }));
     // The suite's receipt stays visible; the way out becomes one clear button that does not ask.
@@ -403,11 +421,12 @@ describe('DashboardProviderAssessments', () => {
     renderSection();
 
     fireEvent.click(await screen.findByRole('button', { name: m.providerReviewConsent }));
-    expect(await screen.findByText('<b>Plain</b> text only.')).toBeInTheDocument(); // never parsed as HTML
-    expect(screen.getByText('Who sees it')).toBeInTheDocument();
-    // Design §6.3: the ATS's own short notice comes first: TIMS Assessments named as processor for the organization,
-    // the purpose "selection for vacancy X", a person decides, how to withdraw; with its version and no draft marker.
-    const notice = screen.getByTestId('assessment-consent-notice');
+    // Step 1, design §6.3: the ATS's own short notice comes first. Its full text names TIMS Assessments as processor for
+    // the organization, the purpose "selection for vacancy X", that a person decides, how to withdraw; with its version
+    // and no draft marker.
+    await screen.findByTestId('consent-step');
+    fireEvent.click(screen.getByRole('button', { name: m.providerGuideReadFull }));
+    const notice = within(screen.getByRole('dialog')).getByTestId('assessment-consent-notice');
     expect(notice).toHaveTextContent('TIMS Assessments');
     expect(notice).toHaveTextContent('Acme Corp');
     expect(notice).toHaveTextContent(
@@ -416,12 +435,21 @@ describe('DashboardProviderAssessments', () => {
     expect(notice).toHaveTextContent(en.assessmentConsentNotice.decision.replaceAll('{org}', 'Acme Corp'));
     expect(notice).toHaveTextContent('2026-11-09-ats-notice-v1');
     expect(notice).not.toHaveTextContent(/draft|counsel|D22/i);
-    const accept = screen.getByRole('button', { name: m.providerAcceptAndStart });
-    expect(accept).toBeDisabled();
+    fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button', { name: en.common.close })[0]!);
+    const next = screen.getByRole('button', { name: m.providerGuideContinue });
+    expect(next).toBeDisabled(); // the notice is not read yet
+    nextStep();
 
+    // Step 2: the provider's text, in full in its sheet, as plain text (never parsed as HTML).
+    const full = readFullText();
+    expect(full).toContain('<b>Plain</b> text only.');
+    expect(full).toContain('Who sees it');
+    expect(screen.getByRole('button', { name: m.providerGuideContinue })).toBeDisabled();
     fireEvent.click(screen.getByLabelText(m.providerConsentAccept));
-    expect(accept).toBeDisabled(); // the notice is not read yet
-    fireEvent.click(screen.getByLabelText(en.assessmentConsentNotice.readAck));
+    fireEvent.click(screen.getByRole('button', { name: m.providerGuideContinue }));
+
+    // Step 3, "Start": the choices, then the launch.
+    const accept = screen.getByRole('button', { name: m.providerAcceptAndStart });
     expect(accept).toBeEnabled();
     fireEvent.click(accept);
 
@@ -471,20 +499,27 @@ describe('DashboardProviderAssessments', () => {
     renderSection();
 
     fireEvent.click(await screen.findByRole('button', { name: m.providerReviewConsent }));
-    const section = await screen.findByTestId('provider-optional-consents');
-    expect(section).toHaveTextContent(m.providerOptionalTitle);
-    // The provider's own approved texts, rendered as served: no draft marker of the ATS's.
-    expect(section).toHaveTextContent('Voice recording text.');
-    expect(section).toHaveTextContent('AI scoring text.');
-    expect(section).not.toHaveTextContent(/draft|counsel|D22/i);
-    const boxes = within(section).getAllByLabelText(m.providerOptionalAccept);
-    expect(boxes).toHaveLength(2);
-    boxes.forEach((box) => expect(box).not.toBeChecked()); // optional: never pre-ticked
+    await screen.findByTestId('consent-step');
+    nextStep(); // the notice
+    // Each optional text is its own step, marked optional, unticked, and never required to go on. The provider's own
+    // approved text opens in full, as served: no draft marker of the ATS's.
+    for (const title of ['Voice recording', 'AI scoring']) {
+      const current = screen.getByTestId('consent-step');
+      expect(current).toHaveAttribute('data-optional', 'true');
+      expect(within(current).getByRole('heading', { level: 3 })).toHaveTextContent(title);
+      expect(within(current).getByText(m.providerGuideOptional)).toBeInTheDocument();
+      const box = within(current).getByLabelText(m.providerOptionalAccept);
+      expect(box).not.toBeChecked(); // optional: never pre-ticked
+      const full = readFullText();
+      expect(full).toContain(`${title} text.`);
+      expect(full).not.toMatch(/draft|counsel|D22/i);
+      expect(screen.getByRole('button', { name: m.providerGuideContinue })).toBeEnabled();
+      nextStep(title === 'AI scoring'); // ai_scoring yes, voice left unticked
+    }
+    const review = screen.getByTestId('consent-review');
+    expect(review).toHaveTextContent(m.providerOptionalTitle);
     const accept = screen.getByRole('button', { name: m.providerAcceptAndStart });
-    fireEvent.click(screen.getByLabelText(en.assessmentConsentNotice.readAck));
     expect(accept).toBeEnabled(); // nothing optional is required to start
-
-    fireEvent.click(boxes[1]!); // ai_scoring yes, voice left unticked
     fireEvent.click(accept);
 
     await screen.findByTitle(portalInstrumentName(m, 'english'));
