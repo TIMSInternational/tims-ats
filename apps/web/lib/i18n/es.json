@@ -5940,7 +5940,7 @@
     "saveButton": "Guardar perfil",
     "saved": "Perfil guardado",
     "roleFamilyLabel": "Familia de rol",
-    "roleFamilyNone": "Ninguna (usa los pesos por defecto)",
+    "roleFamilyNone": "Ninguna (pesos por defecto)",
     "roleFamilySaved": "Familia de rol actualizada",
     "formTitle": "Nuevo perfil de pesos",
     "sumOf": "Suma: {sum} % de 100 %",

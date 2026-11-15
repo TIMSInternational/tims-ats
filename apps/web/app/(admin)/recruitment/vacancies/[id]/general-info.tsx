@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatDate } from '../../../../../lib/format-utils';
 import type { VacancyDetail } from '../../../../../lib/trpc-types';
@@ -34,8 +35,10 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
     urgent: t.vacancies.priorityUrgent,
   };
 
-  // The title is the page's h1, so it is not repeated here.
-  const fields = [
+  // The title is the page's h1, which truncates to one line; on a phone the full name is repeated here so the
+  // part that tells similar vacancies apart is never lost (typography.md › Keep text truncation to a minimum).
+  const fields: { label: string; value?: string; render?: ReactNode; className?: string }[] = [
+    { label: t.vacancies.titleLabel, value: v.title, className: 'sm:hidden' },
     { label: t.vacancies.company, value: v.company?.name ?? '—' },
     { label: t.vacancies.department, value: v.unit?.name ?? '—' },
     { label: t.vacancies.location, value: locationText || '—' },
@@ -71,10 +74,10 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
       </h2>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
         {fields.map((f) => (
-          <div key={f.label} className="min-w-0">
+          <div key={f.label} className={`min-w-0 ${f.className ?? ''}`}>
             <dt className="text-callout text-secondary">{f.label}</dt>
             <dd className="mt-0.5 break-words text-body text-primary">
-              {'render' in f && f.render ? f.render : f.value}
+              {f.render ?? f.value}
             </dd>
           </div>
         ))}

@@ -5940,7 +5940,7 @@
     "saveButton": "Save profile",
     "saved": "Profile saved",
     "roleFamilyLabel": "Role family",
-    "roleFamilyNone": "None (uses the default weights)",
+    "roleFamilyNone": "None (default weights)",
     "roleFamilySaved": "Role family updated",
     "formTitle": "New weight profile",
     "sumOf": "Total: {sum}% of 100%",

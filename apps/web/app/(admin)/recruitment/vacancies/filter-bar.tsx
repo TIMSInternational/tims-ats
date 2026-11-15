@@ -63,7 +63,7 @@ export function FilterBar({
         />
       </div>
 
-      <div className="min-w-0 flex-1 sm:flex-none">
+      <div className="w-full min-w-0 sm:w-auto sm:flex-none">
         <label htmlFor={statusId} className="sr-only">
           {t.vacancies.filterStatusLabel}
         </label>
@@ -83,7 +83,7 @@ export function FilterBar({
         </Select>
       </div>
 
-      <div className="min-w-0 flex-1 sm:flex-none">
+      <div className="w-full min-w-0 sm:w-auto sm:flex-none">
         <label htmlFor={priorityId} className="sr-only">
           {t.vacancies.filterPriorityLabel}
         </label>

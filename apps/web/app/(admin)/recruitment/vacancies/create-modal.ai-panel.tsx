@@ -63,6 +63,7 @@ export function AiGeneratePanel({
       // Shown for review in "Competencias del puesto", right below this panel.
       if (data.competencies.length > 0) onSuggestedCompetencies?.(data.competencies);
     },
+    onError: (err) => toast(err.message, { type: 'error' }),
   });
 
   const canGenerate = title.trim().length > 0;
@@ -100,11 +101,6 @@ export function AiGeneratePanel({
       </div>
 
       {!canGenerate && <p className="text-callout text-secondary">{t.vacancies.aiGenerateNeedsTitle}</p>}
-      {generate.isError && (
-        <p role="alert" className="text-callout text-danger">
-          {generate.error.message}
-        </p>
-      )}
 
       {variants && (
         <div className="space-y-2">
@@ -180,6 +176,7 @@ export function InclusiveCheckPanel({ text }: InclusiveCheckPanelProps) {
       setResult(data);
       setCheckedText(variables.text);
     },
+    onError: (err) => toast(err.message, { type: 'error' }),
   });
 
   const canCheck = text.trim().length > 0;
@@ -206,11 +203,6 @@ export function InclusiveCheckPanel({ text }: InclusiveCheckPanelProps) {
         {t.vacancies.inclusiveCheckAction}
       </Button>
 
-      {check.isError && (
-        <p role="alert" className="text-callout text-danger">
-          {check.error.message}
-        </p>
-      )}
 
       {result && (
         <div className="space-y-2 rounded-lg border border-border bg-surface-hover p-3">
