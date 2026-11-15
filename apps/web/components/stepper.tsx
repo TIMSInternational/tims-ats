@@ -10,22 +10,27 @@ interface StepperProps {
   /** Accessible name; defaults to t.common.steps. */
   label?: string;
   className?: string;
+  /**
+   * 'compact' shows only the numbered steps plus one line "Paso n de m · current label" at every width, for flows
+   * whose labels are long or whose container is narrow (labels must never be truncated: layout.md › Best practices).
+   */
+  variant?: 'labels' | 'compact';
 }
 
 /**
  * Progress through a multi-step flow. Done steps show a check, the current one is navy with
  * aria-current="step". Below sm only "Paso n de m" and the current label are shown.
  */
-export function Stepper({ steps, current, label, className = '' }: StepperProps) {
+export function Stepper({ steps, current, label, className = '', variant = 'labels' }: StepperProps) {
   const { t } = useI18n();
   const position = formatMessage(t.common.stepOf, { current: current + 1, total: steps.length });
   return (
-    <nav aria-label={label ?? t.common.steps} className={className}>
-      <p className="text-callout text-secondary sm:hidden">
+    <nav aria-label={label ?? t.common.steps} className={`${variant === 'compact' ? 'flex flex-col' : ''} ${className}`}>
+      <p className={`text-callout text-secondary ${variant === 'compact' ? 'order-last mt-2' : 'sm:hidden'}`}>
         <span className="font-semibold text-brand">{position}</span>
         {steps[current] ? ` · ${steps[current]}` : ''}
       </p>
-      <ol className="hidden items-center gap-2 sm:flex">
+      <ol className={`items-center gap-2 ${variant === 'compact' ? 'flex' : 'hidden sm:flex'}`}>
         {steps.map((step, index) => {
           const done = index < current;
           const active = index === current;
@@ -56,7 +61,7 @@ export function Stepper({ steps, current, label, className = '' }: StepperProps)
                 )}
               </span>
               <span
-                className={`truncate text-callout ${active ? 'font-semibold text-brand' : done ? 'text-primary' : 'text-secondary'}`}
+                className={`${variant === 'compact' ? 'sr-only' : 'truncate'} text-callout ${active ? 'font-semibold text-brand' : done ? 'text-primary' : 'text-secondary'}`}
               >
                 {step}
                 {done && <span className="sr-only"> ({t.common.stepDone})</span>}

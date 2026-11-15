@@ -78,7 +78,7 @@ export function ProviderConsentGuide({
 
   return (
     <div className="mt-4 space-y-4 border-t border-border pt-4" role="group" aria-label={m.providerConsentTitle}>
-      {total > 1 && <Stepper steps={steps} current={index} />}
+      {total > 1 && <Stepper steps={steps} current={index} variant="compact" />}
       <div ref={stepRef} tabIndex={-1} className="rounded-lg">
         {item ? (
           <ConsentStep
