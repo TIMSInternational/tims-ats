@@ -224,10 +224,16 @@ async function assignVacancyTests(hr: Page, candidateId: string, shots = false):
   await dialog.getByLabel('18 or older').check();
   if (shots) await shot(hr, 'hr-assign-dialog-four-tests');
   await dialog.getByRole('button', { name: 'Continue' }).click();
-  await expect(dialog.getByTestId('assessment-consent-notice')).toBeVisible();
-  await dialog.getByLabel('I have reviewed this notice.', { exact: false }).check();
+  // Step 2 of 2: the notice as a consent-guide step; its full text opens in place, inside the same dialog.
+  await expect(dialog.getByTestId('consent-step')).toBeVisible();
   if (shots) await shot(hr, 'hr-assign-dialog-notice');
-  await dialog.getByRole('button', { name: 'Assign', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Read the full text' }).click();
+  await expect(dialog.getByTestId('assessment-consent-notice')).toBeVisible();
+  if (shots) await shot(hr, 'hr-assign-dialog-notice-full-text');
+  await dialog.getByRole('button', { name: 'Close the full text' }).click();
+  await dialog.getByLabel('I have reviewed this notice.', { exact: false }).check();
+  // The submit names the count ("Assign 4 tests", round-2 HIG copy).
+  await dialog.getByRole('button', { name: /^Assign \d+ tests?$/ }).click();
   await expect(hr.getByRole('dialog')).toHaveCount(0, { timeout: 60_000 });
   await expect(card.getByTestId('provider-status-chip')).toHaveCount(4, { timeout: 60_000 });
   if (shots) await shot(hr, 'hr-candidate-four-tests-awaiting-consent');
@@ -366,16 +372,44 @@ async function consentAndOpen(
   const item = portalItem(page, instrument);
   await expect(item).toBeVisible({ timeout: 60_000 });
   await item.getByRole('button', { name: 'Read the consent' }).click();
-  if (shots) await shot(page, `candidate-${instrument}-consent`);
-  await item.getByLabel('I have read this notice.').check();
-  for (const box of await item.getByLabel('I have read this text and I accept it.').all()) await box.check();
-  const optionalSection = item.getByTestId('provider-optional-consents');
-  if (optional === 'none') await expect(optionalSection).toHaveCount(0);
-  else {
-    await expect(optionalSection).toBeVisible();
-    if (optional === 'accept')
-      for (const box of await optionalSection.getByLabel('I agree (optional).').all()) await box.check();
+  // The consent guide, one step at a time: the notice, each required consent, the optional ones, then Start (the
+  // stepper's last step). Each step's box starts unticked; only the required ones block Continue.
+  const guide = item.getByRole('group', { name: 'Consent' });
+  const stepper = guide.getByRole('navigation', { name: 'Steps' }).getByRole('listitem');
+  await expect(stepper.first()).toBeVisible();
+  const total = await stepper.count();
+  let optionalSteps = 0;
+  for (let index = 0; index < total - 1; index += 1) {
+    await expect(stepper.nth(index)).toHaveAttribute('aria-current', 'step');
+    const step = guide.getByTestId('consent-step');
+    const isOptional = (await step.getAttribute('data-optional')) === 'true';
+    const label =
+      index === 0
+        ? 'I have read this notice.'
+        : isOptional
+          ? 'I agree (optional).'
+          : 'I have read this text and I accept it.';
+    const box = step.getByLabel(label);
+    await expect(box).not.toBeChecked();
+    if (shots && index === 0) await shot(page, `candidate-${instrument}-consent`);
+    if (shots && index === 1) {
+      await step.getByRole('button', { name: 'Read the full text' }).click();
+      const sheet = page.getByRole('dialog');
+      await expect(sheet).toBeVisible();
+      await shot(page, `candidate-${instrument}-consent-full-text`);
+      await sheet.getByRole('button', { name: 'Close' }).last().click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    }
+    if (isOptional) {
+      optionalSteps += 1;
+      if (optional === 'accept') await box.check();
+      if (shots) await shot(page, `candidate-${instrument}-consent-optional-${optionalSteps}`);
+    } else await box.check();
+    await guide.getByRole('button', { name: 'Continue' }).click();
   }
+  if (optional === 'none') expect(optionalSteps).toBe(0);
+  else expect(optionalSteps).toBeGreaterThan(0);
+  if (shots) await shot(page, `candidate-${instrument}-consent-review`);
   await item.getByRole('button', { name: 'Accept and start' }).click();
   // Embedded: the portal frames the player (or PCA's provider page, sandboxed). Link-out: the page itself goes there.
   if (st.embedded) await frameOn(page, instrument === 'pca' ? PCA_SURVEY : st.suite.playerOrigin);
@@ -653,10 +687,11 @@ test('H7 FIT v2 scores the candidate from the provider results, with no HR compu
   );
   // TIMS's job fit for 194225 (the stand-in answers Res 78), sent with the assignment and copied by the suite.
   // The PCA result is the last to arrive (the scheduled poll, H6); its recompute drains asynchronously.
-  const pcaQuery = () => atsSql(
-    st,
-    `select (e->>'use')||'|'||(e->>'status')||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
-  );
+  const pcaQuery = () =>
+    atsSql(
+      st,
+      `select (e->>'use')||'|'||(e->>'status')||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
+    );
   await expect.poll(pcaQuery, { timeout: 120_000, intervals: [2_000] }).toBe('scored|completed|78|194225');
   const pcaEntry = pcaQuery();
   const suiteFit = suiteSql(
@@ -732,7 +767,10 @@ test('H8 HR reads each result on the candidate (exact levels; PCA advisory)', as
     `select count(*) from audit_logs where action='assessment_provider_report_downloaded' and entity_id in (${sqlStr(attemptsA.lia)}, ${sqlStr(attemptsA.pca)})`,
   );
   expect(downloads).toBe('2');
-  record('H8 PDF reports', `${liaReport.name} (suite-rendered) and ${pcaReport.name} (TIMS variant via the stand-in), ${downloads} audit rows`);
+  record(
+    'H8 PDF reports',
+    `${liaReport.name} (suite-rendered) and ${pcaReport.name} (TIMS variant via the stand-in), ${downloads} audit rows`,
+  );
   if (shotsDir) {
     await hr.goto(`/recruitment/candidates/${candidateA}?tab=tabFitGaps`);
     await hr.waitForLoadState('networkidle').catch(() => undefined);
@@ -819,7 +857,10 @@ test('H11 HR cancels B’s English assignment; the suite cancels it', async ({ b
   const english = card.getByTestId('provider-attempt').filter({ hasText: 'English' });
   // Cancelling is a deliberate step since the HIG pass: the row button opens a confirmation dialog.
   await english.getByRole('button', { name: 'Cancel the English test…' }).click();
-  await hr.getByRole('dialog', { name: 'Cancel the English test?' }).getByRole('button', { name: 'Cancel test' }).click();
+  await hr
+    .getByRole('dialog', { name: 'Cancel the English test?' })
+    .getByRole('button', { name: 'Cancel test' })
+    .click();
   await expect(hr.getByText('Assessment cancelled')).toBeVisible();
   // Read the list fresh: one local run saw the post-mutation refetch answered with an empty-body 401 (see README).
   await hr.reload();

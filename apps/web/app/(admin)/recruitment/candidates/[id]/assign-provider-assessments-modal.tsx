@@ -1,11 +1,10 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Button, CHOICE_INPUT_CLASSES, ErrorState, Modal, Skeleton } from '../../../../../components';
-import { AssessmentConsentNotice } from '../../../../../components/assessment-consent-notice';
+import { Button, ErrorState, Modal, Skeleton, Stepper } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatMessage } from '../../../../../lib/i18n/format';
 import { toast } from '../../../../../lib/toast';
@@ -22,6 +21,7 @@ import {
   type AccommodationAid,
   type ProviderInstrument,
 } from '../../../../../lib/platform-api/assessment-providers-staff';
+import { AssignProviderNoticeStep } from './assign-provider-notice-step';
 import { AssignProviderTermsStep, type AssignTermsForm } from './assign-provider-terms-step';
 
 const termsSchema = z.object({
@@ -38,8 +38,9 @@ const isProviderInstrument = (instrument: string): instrument is ProviderInstrum
 
 // Assigning a vacancy's tests to one candidate (AS-14): every provider test the vacancy lists and this organization
 // may assign, never a hand-picked subset (design §6.3: every candidate gets the same tests and versions; the server
-// pins the version). Step 1 sets the conditions; step 2 shows the notice the candidate will read before the provider's
-// own consent texts, which HR must acknowledge before anything is sent.
+// pins the version). Step 1 sets the conditions; step 2 is the notice the candidate will read before the provider's
+// own consent texts, as a step of the consent guide (title, "Leer el texto completo", an unchecked acknowledgment), which
+// HR must tick before anything is sent. A "Paso n de 2" Stepper says where HR is.
 export function AssignProviderAssessmentsModal({
   candidateId,
   vacancy,
@@ -57,8 +58,12 @@ export function AssignProviderAssessmentsModal({
   const assign = useAssignProviderAssessments();
   const [step, setStep] = useState<'terms' | 'consent'>('terms');
   const [acknowledged, setAcknowledged] = useState(false);
+  const [readingNotice, setReadingNotice] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const termsRef = useRef<HTMLDivElement>(null);
+  const stepRef = useRef<HTMLDivElement>(null);
+  const moved = useRef(false);
+  const hintId = useId();
   const form = useForm<AssignTermsForm>({
     resolver: zodResolver(termsSchema),
     defaultValues: { ageBand: '', timeMultiplier: '1', aids: [] },
@@ -129,31 +134,36 @@ export function AssignProviderAssessmentsModal({
       );
     }
     return (
-      <div className="space-y-3">
-        <AssessmentConsentNotice
-          orgName={organization.data?.name ?? ''}
-          vacancyTitle={vacancy.title}
-          instruments={names}
-        />
-        <label className="flex items-start gap-2 text-body text-primary pointer-coarse:min-h-11">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(event) => setAcknowledged(event.target.checked)}
-            className={`${CHOICE_INPUT_CLASSES} mt-0.5`}
-          />
-          <span>{ap.consentAck}</span>
-        </label>
-      </div>
+      <AssignProviderNoticeStep
+        orgName={organization.data?.name ?? ''}
+        vacancyTitle={vacancy.title}
+        instrumentNames={names}
+        acknowledged={acknowledged}
+        onAcknowledge={setAcknowledged}
+        reading={readingNotice}
+        onRead={() => setReadingNotice(true)}
+        hintId={hintId}
+      />
     );
   };
 
   const ready = instruments.length > 0 && !requirements.isError && !catalog.isError;
+  const steps = [ap.stepTermsLabel, ap.stepConsentLabel];
+  const stepIndex = step === 'terms' ? 0 : 1;
   const submitLabel =
     instruments.length === 1 ? ap.submitOne : formatMessage(ap.submitCount, { count: instruments.length });
+  // A new step replaces the button that was pressed: the keyboard (and a screen reader) starts on the new step.
+  useEffect(() => {
+    if (moved.current) stepRef.current?.focus();
+  }, [step]);
+  const goTo = (next: 'terms' | 'consent') => {
+    moved.current = true;
+    setReadingNotice(false);
+    setStep(next);
+  };
   const goToConsent = async () => {
     if (await form.trigger()) {
-      setStep('consent');
+      goTo('consent');
       return;
     }
     // A missing age band: focus its first radio so the error under it is the next thing read.
@@ -165,32 +175,42 @@ export function AssignProviderAssessmentsModal({
       onClose={onClose}
       size="lg"
       footer={
-        <>
-          <Button
-            variant="secondary"
-            onClick={step === 'consent' ? () => setStep('terms') : onClose}
-            disabled={assign.isPending}
-          >
-            {step === 'consent' ? ap.back : t.common.cancel}
+        readingNotice ? (
+          <Button variant="secondary" onClick={() => setReadingNotice(false)}>
+            {ap.closeFull}
           </Button>
-          {ready && step === 'terms' && <Button onClick={() => void goToConsent()}>{ap.next}</Button>}
-          {ready && step === 'consent' && (
+        ) : (
+          <>
             <Button
-              onClick={() => void submit()}
-              disabled={!acknowledged || !organization.data}
-              loading={assign.isPending}
-              loadingLabel={ap.submitting}
+              variant="secondary"
+              onClick={step === 'consent' ? () => goTo('terms') : onClose}
+              disabled={assign.isPending}
             >
-              {submitLabel}
+              {step === 'consent' ? ap.back : t.common.cancel}
             </Button>
-          )}
-        </>
+            {ready && step === 'terms' && <Button onClick={() => void goToConsent()}>{ap.next}</Button>}
+            {ready && step === 'consent' && (
+              <Button
+                onClick={() => void submit()}
+                disabled={!acknowledged || !organization.data}
+                loading={assign.isPending}
+                loadingLabel={ap.submitting}
+                aria-describedby={acknowledged ? undefined : hintId}
+              >
+                {submitLabel}
+              </Button>
+            )}
+          </>
+        )
       }
     >
-      <p className="mb-3 text-callout text-secondary" aria-live="polite">
-        {step === 'terms' ? ap.stepTerms : ap.stepConsent}
+      <Stepper steps={steps} current={stepIndex} className="mb-4" />
+      <p className="sr-only" aria-live="polite">
+        {formatMessage(t.common.stepOf, { current: stepIndex + 1, total: steps.length })} · {steps[stepIndex]}
       </p>
-      {body()}
+      <div ref={stepRef} tabIndex={-1} className="rounded-lg">
+        {body()}
+      </div>
       {failure && (
         <p role="alert" className="mt-3 text-callout text-danger">
           {failure}

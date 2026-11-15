@@ -25,10 +25,13 @@ const mocks = vi.hoisted(() => ({
   locale: 'en' as 'en' | 'es',
 }));
 
-vi.mock('../../apps/web/lib/i18n', async () => {
+vi.mock('../../apps/web/lib/i18n', async (original) => {
   const { default: en } = await import('../../apps/web/lib/i18n/en.json');
   const { default: es } = await import('../../apps/web/lib/i18n/es.json');
-  return { useI18n: () => ({ t: mocks.locale === 'en' ? en : es, locale: mocks.locale === 'en' ? 'EN' : 'ES' }) };
+  return {
+    ...(await original<typeof import('../../apps/web/lib/i18n')>()),
+    useI18n: () => ({ t: mocks.locale === 'en' ? en : es, locale: mocks.locale === 'en' ? 'EN' : 'ES' }),
+  };
 });
 vi.mock('../../apps/web/lib/toast', () => ({ toast: mocks.toast }));
 vi.mock('../../apps/web/lib/permissions', () => ({
@@ -393,7 +396,16 @@ describe('ProviderAssessmentsCard', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: ap.next }));
     });
 
-    const notice = await within(dialog).findByTestId('assessment-consent-notice');
+    // Step 2 of 2: the notice as a consent-guide step (title, "Read the full text", HR's unchecked acknowledgment).
+    expect(within(dialog).getByRole('navigation', { name: en.common.steps })).toHaveTextContent(ap.stepConsentLabel);
+    const step = await within(dialog).findByTestId('consent-step');
+    expect(within(step).getByRole('heading', { name: en.assessmentConsentNotice.title })).toBeInTheDocument();
+    expect(within(step).getByLabelText(ap.consentAck)).not.toBeChecked();
+    expect(within(dialog).queryByTestId('assessment-consent-notice')).not.toBeInTheDocument();
+    // The full text opens in place, inside this one dialog (no second dialog on top), with a single way back.
+    fireEvent.click(within(step).getByRole('button', { name: ap.readFull }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    const notice = within(dialog).getByTestId('assessment-consent-notice');
     expect(notice).toHaveTextContent('TIMS Assessments');
     expect(notice).toHaveTextContent('Acme Corp');
     expect(notice).toHaveTextContent(
@@ -403,6 +415,12 @@ describe('ProviderAssessmentsCard', () => {
     expect(notice).toHaveTextContent(en.assessmentConsentNotice.decisionTitle);
     expect(notice).toHaveTextContent(en.assessmentConsentNotice.withdrawTitle);
     expect(notice).not.toHaveTextContent(/draft|counsel|D22/i);
+    expect(
+      within(dialog).queryByRole('button', { name: ap.submitCount.replace('{count}', '2') }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: ap.closeFull }));
+    expect(within(dialog).queryByTestId('assessment-consent-notice')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: ap.readFull })).toHaveFocus();
     const submit = within(dialog).getByRole('button', { name: ap.submitCount.replace('{count}', '2') });
     expect(submit).toBeDisabled();
     fireEvent.click(within(dialog).getByLabelText(ap.consentAck));

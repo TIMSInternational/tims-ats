@@ -20,39 +20,48 @@ export function atsNoticeAcknowledgment(locale: string): { textVersion: string; 
 // does: who receives the data (TIMS Assessments, as processor for the hiring organization), the purpose (selection for
 // this vacancy), that a person decides, and how to withdraw in the portal. The provider's own per-purpose consent texts
 // (the approved wording, served by the provider) follow it. The SAME text is what HR reviews when assigning and what the
-// candidate reads in the portal. Rendered as text nodes only (names and titles are never HTML).
+// candidate reads in the portal: both now reach it through "Leer el texto completo" in a consent guide, where it is shown
+// whole, in the page's flow (never a clipped scroll box). Rendered as text nodes only (names and titles are never HTML).
 export function AssessmentConsentNotice({
   orgName,
   vacancyTitle,
   instruments,
-  scroll = true,
-  children,
+  titled = true,
 }: {
   orgName: string;
   vacancyTitle: string;
   /** The display names of the tests, in order. */
   instruments: string[];
   /**
-   * true (HR's dialog): the text sits in a bounded box that is a focusable, named region, so it scrolls from the
-   * keyboard. false (the candidate portal): the text flows in the page, never clipped mid-sentence (privacy.md).
+   * true (HR's dialog): the notice shows its own title. false (the candidate's full-text sheet): the sheet's heading is
+   * already the notice title, so the notice starts at its first paragraph and its section headings move up one level.
    */
-  scroll?: boolean;
-  /** The acknowledgment row, shown inside the notice under its text. */
-  children?: React.ReactNode;
+  titled?: boolean;
 }) {
   const { t } = useI18n();
   const n = t.assessmentConsentNotice;
   const titleId = useId();
+  const Section = titled ? 'h4' : 'h3';
   const fill = (text: string) => text.replaceAll('{org}', orgName).replaceAll('{vacancy}', vacancyTitle);
   const sections: Array<[string, string]> = [
     [n.purposeTitle, fill(n.purpose)],
     [n.decisionTitle, fill(n.decision)],
     [n.withdrawTitle, fill(n.withdraw)],
   ];
-  const body = (
-    <>
+  return (
+    <section
+      aria-labelledby={titled ? titleId : undefined}
+      className="max-w-prose space-y-2 text-base leading-relaxed text-primary sm:text-body"
+      data-testid="assessment-consent-notice"
+      data-notice-version={ATS_NOTICE_VERSION}
+    >
+      {titled && (
+        <h3 id={titleId} className="text-subheading font-semibold text-brand">
+          {n.title}
+        </h3>
+      )}
       <p>{fill(n.intro)}</p>
-      <h4 className="text-subheading font-semibold text-primary">{n.testsTitle}</h4>
+      <Section className="text-subheading font-semibold text-primary">{n.testsTitle}</Section>
       <ul className="list-disc pl-5">
         {instruments.map((name) => (
           <li key={name}>{name}</li>
@@ -60,38 +69,12 @@ export function AssessmentConsentNotice({
       </ul>
       {sections.map(([heading, text]) => (
         <div key={heading}>
-          <h4 className="text-subheading font-semibold text-primary">{heading}</h4>
+          <Section className="text-subheading font-semibold text-primary">{heading}</Section>
           <p>{text}</p>
         </div>
       ))}
       <p>{n.providerConsents}</p>
       <p className="text-caption text-secondary">{n.versionLabel.replace('{version}', ATS_NOTICE_VERSION)}</p>
-    </>
-  );
-
-  return (
-    <section
-      aria-labelledby={titleId}
-      className="space-y-3 rounded-xl border border-border p-4"
-      data-testid="assessment-consent-notice"
-      data-notice-version={ATS_NOTICE_VERSION}
-    >
-      <h3 id={titleId} className="text-subheading font-semibold text-brand">
-        {n.title}
-      </h3>
-      {scroll ? (
-        <div
-          tabIndex={0}
-          role="region"
-          aria-labelledby={titleId}
-          className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-border-subtle p-3 text-body leading-relaxed text-secondary"
-        >
-          {body}
-        </div>
-      ) : (
-        <div className="max-w-prose space-y-2 text-body leading-relaxed text-primary">{body}</div>
-      )}
-      {children}
     </section>
   );
 }
