@@ -4,7 +4,15 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Button, BUTTON_GROUP_CLASSES, Field, Modal, TextArea, TextInput } from '../../../../components';
+import {
+  Button,
+  BUTTON_GROUP_CLASSES,
+  DialogCancelButton,
+  Field,
+  Modal,
+  TextArea,
+  TextInput,
+} from '../../../../components';
 import { useCompensationCreateAdjustment } from '../../../../lib/platform-api/compensation';
 
 interface RequestAdjustmentModalProps {
@@ -83,9 +91,7 @@ export function RequestAdjustmentModal({
       dirty={dirty}
       footer={
         <div className={BUTTON_GROUP_CLASSES}>
-          <Button variant="secondary" onClick={onClose} disabled={submit.isPending}>
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={submit.isPending} />
           <Button
             onClick={onSubmit}
             disabled={!canSubmit}

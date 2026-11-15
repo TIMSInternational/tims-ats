@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { useEngagementEnps, useEngagementDashboardKpis } from '../../../../lib/platform-api/engagement';
 import { Button, ErrorState, PageHeader } from '../../../../components';
+import { isForbiddenError } from '../../../../lib/forbidden-error';
 import { ClimateKpis } from './climate-kpis';
 import { ClimateHeatmap } from './climate-heatmap';
 import { ClimateResults } from './climate-results';
@@ -20,6 +21,9 @@ export default function ClimatePage() {
   // A denial (or any failure of the two page-level reads) is said once, for the whole page, instead of
   // repeating the same red line in every card. ErrorState turns a 403 into "no access" with no retry.
   const pageError = enps.isError ? enps.error : kpis.isError ? kpis.error : null;
+  // While the page says "no access", it does not also offer "Lanzar encuesta": the user cannot take it
+  // (feedback.md › Best practices). Presentation only — the server still decides who may launch.
+  const isDenied = isForbiddenError(pageError);
 
   return (
     <>
@@ -28,23 +32,25 @@ export default function ClimatePage() {
           title={t.sidebar.climate}
           description={t.climate.pageDescription}
           actions={
-            <Button
-              onClick={() => setShowLaunch(true)}
-              icon={
-                <svg
-                  className="size-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-              }
-            >
-              {t.climate.launchSurvey}
-            </Button>
+            isDenied ? undefined : (
+              <Button
+                onClick={() => setShowLaunch(true)}
+                icon={
+                  <svg
+                    className="size-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                }
+              >
+                {t.climate.launchSurvey}
+              </Button>
+            )
           }
         />
 
@@ -84,7 +90,7 @@ export default function ClimatePage() {
           )}
         </div>
       </div>
-      {showLaunch && <LaunchSurveyModal onClose={() => setShowLaunch(false)} />}
+      {showLaunch && !isDenied && <LaunchSurveyModal onClose={() => setShowLaunch(false)} />}
     </>
   );
 }

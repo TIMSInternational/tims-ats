@@ -7,6 +7,7 @@ import { toast } from '../../../../lib/toast';
 import {
   Button,
   BUTTON_GROUP_CLASSES,
+  DialogCancelButton,
   Field,
   FIELD_LABEL_CLASSES,
   Modal,
@@ -92,9 +93,7 @@ export function AddSuccessorModal({
       dirty={dirty}
       footer={
         <div className={BUTTON_GROUP_CLASSES}>
-          <Button variant="secondary" onClick={onClose} disabled={submit.isPending}>
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} disabled={submit.isPending} />
           <Button
             onClick={onSubmit}
             disabled={!canSubmit}

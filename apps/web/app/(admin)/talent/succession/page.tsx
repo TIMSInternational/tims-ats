@@ -51,6 +51,9 @@ export default function SuccessionPage() {
     setShowAdd(true);
   };
   const onAssign = (roleId: string) => openAdd({ roleId });
+  // With no critical roles the modal's role list would be empty, so the header does not offer "Agregar sucesor";
+  // the empty states say why (writing.md › Best practices). Shown while loading or on error, as before.
+  const hasNoRoles = roles.isSuccess && roleItems.length === 0;
 
   return (
     <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -58,23 +61,25 @@ export default function SuccessionPage() {
         title={t.succession.pageTitle}
         description={t.succession.pageDescription}
         actions={
-          <Button
-            onClick={() => openAdd(null)}
-            icon={
-              <svg
-                className="size-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-            }
-          >
-            {t.succession.addSuccessor}
-          </Button>
+          hasNoRoles ? undefined : (
+            <Button
+              onClick={() => openAdd(null)}
+              icon={
+                <svg
+                  className="size-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              }
+            >
+              {t.succession.addSuccessor}
+            </Button>
+          )
         }
       />
 
