@@ -13,7 +13,6 @@ import { ApplyModalReview } from './apply-modal-review';
 import { ApplySuccess } from './apply-success';
 import { ApplyStepIndicator } from './apply-step-indicator';
 import { ApplyModalFooter } from './apply-modal-footer';
-import { ApplySubmitError } from './apply-submit-error';
 import { DiscardChangesPrompt } from '../../../../../../components/discard-changes-prompt';
 import { useCvUpload } from '../_lib/use-cv-upload';
 import {
@@ -67,7 +66,6 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   const [consentAccepted, setConsentAccepted] = useState(false);
   // A field the server rejected: its step shows the field error until the value changes.
   const [rejectedField, setRejectedField] = useState<ApplyErrorField | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const cv = useCvUpload(vacancyId);
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -110,7 +108,6 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
 
   const submit = async ({ skipCv }: { skipCv: boolean }) => {
     if (!isStep1Valid || !isStep2Valid || !consentAccepted) return;
-    setSubmitError(null);
     setSubmitting(true);
     let cvFields: { cvFileKey?: string; cvFileName?: string } = {};
     if (!skipCv) {
@@ -158,22 +155,17 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         handleVacancyClosed();
         return;
       }
-      // A field the candidate can fix: take them back to the step that holds it, where the field shows
-      // the error. Anything else is said inline, inside the dialog, until the next attempt.
+      // Every failed submit toasts (frontend.md: onError toast on every mutation; error toasts stay until
+      // dismissed). A field the candidate can fix also takes them back to the step that holds it, where the
+      // field itself shows the error.
+      toast(applyErrorMessage(err, p), { type: 'error' });
       const field = applyErrorField(err);
       if (field) {
         setRejectedField(field);
         setStep(applyErrorStep(field));
-      } else {
-        setSubmitError(applyErrorMessage(err, p));
       }
       setSubmitting(false);
     }
-  };
-
-  const goToStep = (next: Step) => {
-    setSubmitError(null);
-    setStep(next);
   };
 
   const removeCvAndContinue = () => {
@@ -187,7 +179,9 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
 
   return (
     <Modal
-      title={`${p.applyTitlePrefix} ${vacancyTitle}`}
+      // A short title that never truncates on a phone; the vacancy (often long) wraps in full beneath it.
+      title={p.applyDialogTitle}
+      description={vacancyTitle}
       onClose={requestClose}
       size="lg"
       fullScreenOnMobile
@@ -206,9 +200,9 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
                 ? isStep2Valid
                 : isStep1Valid && isStep2Valid && !submitting && captchaSatisfied && consentAccepted && !cvUploadFailed
           }
-          onBack={() => goToStep((step - 1) as Step)}
+          onBack={() => setStep((step - 1) as Step)}
           onCancel={cancel}
-          onNext={() => goToStep((step + 1) as Step)}
+          onNext={() => setStep((step + 1) as Step)}
           onSubmit={() => void submit({ skipCv: false })}
         />
         )
@@ -297,8 +291,6 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
           body={p.applyDiscardBody}
         />
       )}
-
-      {submitError && <ApplySubmitError message={submitError} />}
     </Modal>
   );
 }

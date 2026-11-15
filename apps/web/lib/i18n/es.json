@@ -5715,7 +5715,7 @@
     "phonePlaceholder": "Código de país y número",
     "salaryLabel": "Salario",
     "departmentLabel": "Departamento",
-    "applyTitlePrefix": "Postularse a",
+    "applyDialogTitle": "Postularse",
     "applyDiscardTitle": "¿Descartar la postulación?",
     "applyDiscardBody": "Los datos que escribió y el CV adjunto se perderán.",
     "stepPersonal": "Datos personales",

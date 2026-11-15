@@ -13,6 +13,7 @@ import {
 } from '@tims/shared';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { toast } from '../../../../../lib/toast';
 import { Button } from '../../../../../components/button';
 import { Field } from '../../../../../components/field';
 import { TextInput } from '../../../../../components/text-input';
@@ -37,7 +38,6 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
   const [current, setCurrent] = useState(profile);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
 
   // Same bounds as the server (candidatePortalProfileSchema), with candidate-facing messages.
   const schema = useMemo(
@@ -74,18 +74,16 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
       form.reset(toValues(view));
       setEditing(false);
       setSaved(true);
-      setSaveFailed(false);
       // The greeting in the header is server-rendered from the same record.
       router.refresh();
     },
-    // Said inline above the buttons: the form is still open, so the candidate can retry right there.
-    onError: () => setSaveFailed(true),
+    // frontend.md: onError toast on every mutation. The form stays open, so the candidate can retry.
+    onError: () => toast(pd.profileError, { type: 'error' }),
   });
 
   const startEditing = () => {
     form.reset(toValues(current));
     setSaved(false);
-    setSaveFailed(false);
     setEditing(true);
   };
 
@@ -107,10 +105,7 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
       {editing ? (
         <form
           noValidate
-          onSubmit={form.handleSubmit((values) => {
-            setSaveFailed(false);
-            update.mutate({ orgSlug, ...values });
-          })}
+          onSubmit={form.handleSubmit((values) => update.mutate({ orgSlug, ...values }))}
           className="space-y-4"
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -152,12 +147,6 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
               />
             )}
           </Field>
-
-          {saveFailed && (
-            <p role="alert" className="rounded-lg bg-danger-bg p-3 text-callout text-danger">
-              {pd.profileError}
-            </p>
-          )}
 
           <div className={BUTTON_GROUP_CLASSES}>
             <Button variant="secondary" disabled={update.isPending} onClick={() => setEditing(false)}>

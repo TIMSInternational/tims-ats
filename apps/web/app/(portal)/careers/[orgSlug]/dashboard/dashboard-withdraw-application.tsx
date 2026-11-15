@@ -56,8 +56,11 @@ export function DashboardWithdrawApplication({
       await refresh();
     },
     onError: (err) => {
-      // Said inside the dialog, beside the action that failed; the dialog stays open.
-      setError(withdrawErrorMessage(err.data?.code, pd, orgName));
+      // Said inside the dialog, beside the action that failed (the dialog stays open), and as a toast
+      // (frontend.md: onError toast on every mutation).
+      const message = withdrawErrorMessage(err.data?.code, pd, orgName);
+      setError(message);
+      toast(message, { type: 'error' });
       // The status changed elsewhere (e.g. a decision was recorded meanwhile): show the current one.
       if (err.data?.code === 'CONFLICT') void refresh();
     },

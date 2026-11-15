@@ -1,17 +1,24 @@
 import Link from 'next/link';
 import { OrgLogo } from '../../../../../../components/org-logo';
 import { useI18n } from '../../../../../../lib/i18n';
+import { usePortalOrgBrand } from '../../_components/portal-org-brand';
 
 interface JobPageBarProps {
   orgSlug: string;
-  /** Unknown while the vacancy loads, or when it does not exist. */
+  /**
+   * From the vacancy once it loads. While it loads, and on the closed / not-found / error states, the bar
+   * falls back to the organization the careers layout already read by slug, so every state carries it.
+   */
   orgName?: string;
   orgLogo?: string | null;
 }
 
 /** The job page's top bar: the way back to the board leading, the organization trailing. */
-export function JobPageBar({ orgSlug, orgName, orgLogo = null }: JobPageBarProps) {
+export function JobPageBar({ orgSlug, orgName: vacancyOrgName, orgLogo: vacancyOrgLogo = null }: JobPageBarProps) {
   const { t } = useI18n();
+  const layoutBrand = usePortalOrgBrand();
+  const orgName = vacancyOrgName ?? layoutBrand?.name;
+  const orgLogo = vacancyOrgName ? vacancyOrgLogo : (layoutBrand?.logo ?? null);
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-white px-4 sm:px-6">
       <Link

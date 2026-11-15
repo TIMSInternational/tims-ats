@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { toast } from '../../../../lib/toast';
 import { Button } from '../../../../components/button';
 import { CHOICE_INPUT_CLASSES } from '../../../../components/field-styles';
 
@@ -27,13 +28,11 @@ export function ConsentScreen({ candidateToken, onConsented }: ConsentScreenProp
 
   const recordConsent = trpc.aiInterview.recordConsent.useMutation({
     onSuccess: () => onConsented(),
+    // frontend.md: onError toast on every mutation. Never the server's own text (it may be English or a
+    // validation dump): one mapped candidate message.
+    onError: (err) =>
+      toast(isUnusableLink(err.data?.code) ? t.aiInterview.invalidToken : t.aiInterview.consentError, { type: 'error' }),
   });
-  // Never the server's own text (it may be English or a validation dump): one mapped message, said once.
-  const errorMessage = recordConsent.error
-    ? isUnusableLink(recordConsent.error.data?.code)
-      ? t.aiInterview.invalidToken
-      : t.aiInterview.consentError
-    : null;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface p-4">
@@ -59,16 +58,6 @@ export function ConsentScreen({ candidateToken, onConsented }: ConsentScreenProp
           />
           <span className="text-base leading-snug text-secondary sm:text-body">{t.aiInterview.consentCheckbox}</span>
         </label>
-
-        {errorMessage && (
-          <div role="alert" className="mb-4 flex items-start gap-2 rounded-lg bg-danger-bg p-3 text-callout text-danger">
-            <svg className="mt-px size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M12 8v4m0 4h.01" strokeLinecap="round" />
-            </svg>
-            <span>{errorMessage}</span>
-          </div>
-        )}
 
         <Button
           size="lg"
