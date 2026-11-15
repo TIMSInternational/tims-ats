@@ -18,6 +18,8 @@ export function SlaCard({ vacancy }: SlaCardProps) {
   const daysElapsed = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
   const isOverdue = daysElapsed > slaTarget;
   const daysRemaining = Math.max(slaTarget - daysElapsed, 0);
+  // A closed or frozen vacancy is not counting down, so it shows no days remaining.
+  const isCounting = vacancy.status !== 'closed' && vacancy.status !== 'frozen';
 
   return (
     <section aria-labelledby="vacancy-sla-title" className="rounded-xl border border-border bg-white p-5 shadow-card">
@@ -58,7 +60,7 @@ export function SlaCard({ vacancy }: SlaCardProps) {
         </div>
         <div className="flex-1 rounded-lg bg-surface p-3 text-center">
           <p className="text-caption text-secondary">{t.vacancies.daysRemaining}</p>
-          <p className="text-2xl font-semibold tabular-nums text-brand">{daysRemaining}</p>
+          <p className="text-2xl font-semibold tabular-nums text-brand">{isCounting ? daysRemaining : '—'}</p>
           <p className="text-caption text-secondary">
             {t.vacancies.positions}: {vacancy.positions}
           </p>
