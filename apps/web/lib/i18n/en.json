@@ -3694,6 +3694,7 @@
   "teamSettings": {
     "title": "Team",
     "subtitle": "Invite your team to the platform and manage your organization's pending invitations.",
+    "subtitleMembersOnly": "Your organization's members and their roles.",
     "membersTitle": "Members",
     "membersEmpty": "Your organization has no members yet.",
     "membersError": "Members could not be loaded.",
@@ -5079,6 +5080,7 @@
     "redirecting": "Redirecting to Stripe…",
     "notConfiguredTitle": "Billing unavailable",
     "notConfiguredDesc": "Online plan changes are not available yet.",
+    "notConfiguredNextStep": "To change your plan, contact your TIMS account executive.",
     "checkoutSuccess": "Checkout started. Your plan will update shortly.",
     "checkoutCancelled": "Checkout cancelled.",
     "checkoutError": "Could not start checkout. Please try again.",
@@ -5117,6 +5119,7 @@
     "notAvailableYet": "Not available yet",
     "overLimit": "Limit exceeded",
     "usageOf": "{used} of {limit}",
+    "usageUnlimited": "{used} · no limit",
     "openInvoice": "Open invoice from {date}",
     "invoiceDownloadNewTab": "(opens in a new tab)",
     "cancelSubscriptionEllipsis": "Cancel subscription…"

@@ -19,7 +19,7 @@ export function UsageRow({ label, used, limit }: UsageRowProps) {
   const valueText =
     limit != null
       ? formatMessage(t.billing.usageOf, { used: usedText, limit: formatNumber(limit, locale) })
-      : formatMessage(t.billing.usageOf, { used: usedText, limit: t.billing.noLimit });
+      : formatMessage(t.billing.usageUnlimited, { used: usedText });
   return (
     <div className="border-b border-border-subtle py-2.5 last:border-0">
       <div className="flex flex-wrap items-center justify-between gap-2">

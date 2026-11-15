@@ -24,12 +24,13 @@ export function TeamFormModal({ team, businessUnitId, onClose }: TeamFormModalPr
   const errorMessage = useOrgErrorMessage();
   const [name, setName] = useState(team?.name ?? '');
 
-  // The failure shows inside the open dialog only (settings-15): no toast on top of it.
   const handlers = {
     onSuccess: () => {
       toast(team ? t.units.teamUpdated : t.units.teamCreated, { type: 'success' });
       onClose();
     },
+    // Project rule: every mutation toasts its failure; the dialog keeps its inline copy too.
+    onError: (error: unknown) => toast(errorMessage(error), { type: 'error' }),
   };
   const create = useOrgStructureMutation('createTeam', handlers);
   const update = useOrgStructureMutation('updateTeam', handlers);

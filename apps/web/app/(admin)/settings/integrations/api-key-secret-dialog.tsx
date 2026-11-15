@@ -5,6 +5,9 @@ import { useI18n } from '../../../../lib/i18n';
 import { useDialogA11y } from '../../../../lib/use-dialog-a11y';
 import { Button } from '../../../../components';
 
+// Escape must not discard the only copy of the key.
+function ignoreEscape(): void {}
+
 interface ApiKeySecretDialogProps {
   rawKey: string;
   onClose: () => void;
@@ -12,7 +15,8 @@ interface ApiKeySecretDialogProps {
 
 /**
  * The one-time key. Deliberately NOT the shared Modal: that closes on an overlay click and would discard the
- * only copy of the secret. Only the explicit button or Escape closes it (settings-26).
+ * only copy of the secret. Only the explicit "Cerrar" button closes it: Escape is ignored on purpose, as it
+ * was before this dialog was extracted (settings-26). Tab still stays inside and focus still returns.
  */
 export function ApiKeySecretDialog({ rawKey, onClose }: ApiKeySecretDialogProps) {
   const { t } = useI18n();
@@ -20,7 +24,7 @@ export function ApiKeySecretDialog({ rawKey, onClose }: ApiKeySecretDialogProps)
   const titleId = `api-key-secret-${useId()}`;
   const warnId = `${titleId}-warn`;
   const [copied, setCopied] = useState(false);
-  useDialogA11y(ref, onClose);
+  useDialogA11y(ref, ignoreEscape);
 
   function copyKey() {
     navigator.clipboard.writeText(rawKey).then(() => setCopied(true));

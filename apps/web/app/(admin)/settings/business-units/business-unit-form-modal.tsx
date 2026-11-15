@@ -26,12 +26,13 @@ export function BusinessUnitFormModal({ unit, companies, onClose }: BusinessUnit
   const [code, setCode] = useState(unit?.code ?? '');
   const [companyId, setCompanyId] = useState(companies.length === 1 ? companies[0]!.id : '');
 
-  // The failure shows inside the open dialog only (settings-15): no toast on top of it.
   const handlers = {
     onSuccess: () => {
       toast(unit ? t.units.unitUpdated : t.units.unitCreated, { type: 'success' });
       onClose();
     },
+    // Project rule: every mutation toasts its failure; the dialog keeps its inline copy too.
+    onError: (error: unknown) => toast(errorMessage(error), { type: 'error' }),
   };
   const create = useOrgStructureMutation('createBusinessUnit', handlers);
   const update = useOrgStructureMutation('updateBusinessUnit', handlers);

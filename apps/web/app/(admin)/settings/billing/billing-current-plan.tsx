@@ -65,6 +65,8 @@ export function BillingCurrentPlan({ configured }: { configured: boolean }) {
       // the only read path left to invalidate.
       queryClient.invalidateQueries({ queryKey: ['platform-api', 'billing', 'plan'] });
     },
+    // Project rule: every mutation toasts its failure; the dialog keeps its inline copy too.
+    onError: () => toast(t.billing.cancelError, { type: 'error' }),
   });
 
   const data = plan.data;

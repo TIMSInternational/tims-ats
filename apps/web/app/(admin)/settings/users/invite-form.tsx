@@ -69,10 +69,12 @@ export function InviteForm() {
       onSubmit={form.handleSubmit((values) => create.mutate(values))}
       className="grid gap-3 md:grid-cols-[1fr_220px_auto] md:items-start"
     >
-      {/* Field wires label, help and error (aria-describedby + role=alert) to each control (settings-16). */}
+      {/* Field wires label, help and error (aria-describedby + role=alert) to each control (settings-16).
+          Both are required: aria-required says so without changing the visible label text. */}
       <Field id="team-invite-email" label={m.emailLabel} error={errors.email?.message}>
         <TextInput
           type="email"
+          aria-required="true"
           maxLength={254}
           autoComplete="off"
           placeholder={m.emailPlaceholder}
@@ -80,7 +82,7 @@ export function InviteForm() {
         />
       </Field>
       <Field id="team-invite-role" label={m.roleLabel} help={roleHint} error={errors.roleSlug?.message}>
-        <Select {...form.register('roleSlug')}>
+        <Select aria-required="true" {...form.register('roleSlug')}>
           <option value="">{m.rolePlaceholder}</option>
           {available.map((role) => (
             <option key={role.slug} value={role.slug}>

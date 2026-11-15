@@ -24,10 +24,12 @@ export function NotConfiguredNotice() {
         <p className="text-subheading font-semibold text-warning">{t.billing.notConfiguredTitle}</p>
         <p className="mt-1 text-callout text-primary">
           {t.billing.notConfiguredDesc}{' '}
-          {supportEmail && (
+          {supportEmail ? (
             <a href={`mailto:${supportEmail}`} className={TEXT_LINK_CLASSES}>
               {t.billing.contactSupport}
             </a>
+          ) : (
+            t.billing.notConfiguredNextStep
           )}
         </p>
       </div>

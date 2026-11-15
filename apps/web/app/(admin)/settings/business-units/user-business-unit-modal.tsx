@@ -22,12 +22,13 @@ export function UserBusinessUnitModal({ units, onClose }: UserBusinessUnitModalP
   const [user, setUser] = useState<PickedUser | null>(null);
   const [unitId, setUnitId] = useState('');
 
-  // The failure shows inside the open dialog only (settings-15).
   const save = useOrgStructureMutation('setUserBusinessUnit', {
     onSuccess: () => {
       toast(t.units.primaryUnitSaved, { type: 'success' });
       onClose();
     },
+    // Project rule: every mutation toasts its failure; the dialog keeps its inline copy too.
+    onError: (error: unknown) => toast(errorMessage(error), { type: 'error' }),
   });
 
   const submit = (event: React.FormEvent) => {

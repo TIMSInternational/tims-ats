@@ -27,8 +27,12 @@ export function TeamRow({ team, abilities, onRename, onSetLeader, onManageMember
   const errorMessage = useOrgErrorMessage();
   const update = useOrgStructureMutation('updateTeam', {
     onSuccess: () => toast(t.units.teamUpdated, { type: 'success' }),
-    // The card shows the failure inline; no second copy as a toast.
-    onError: (error: unknown) => onFailure(errorMessage(error)),
+    // Project rule: every mutation toasts its failure; the card keeps its inline copy too.
+    onError: (error: unknown) => {
+      const message = errorMessage(error);
+      toast(message, { type: 'error' });
+      onFailure(message);
+    },
   });
 
   const items: MenuEntry[] = [];
