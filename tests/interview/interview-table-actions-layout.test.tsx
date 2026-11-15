@@ -75,6 +75,8 @@ describe('interview table — actions stay in view', () => {
       expect(cell?.className).toContain('right-0');
       // An opaque background, so scrolled columns pass under it instead of showing through.
       expect(cell?.className).toContain('bg-white');
+      // Sticky cells are stacking contexts: the one whose menu is open must rise above the next row's.
+      expect(cell?.className).toContain('has-[[aria-expanded=true]]:z-20');
     }
   });
 

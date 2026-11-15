@@ -201,8 +201,11 @@ export function InterviewTable(props: InterviewTableProps) {
               <StatusBadge status={displayInterviewStatus(iv, now)} map={map} />
             </td>
             {/* Pinned to the right edge of the scroller, so the row's primary action ("Calificar" / "Unirse")
-              is visible at every width without scrolling sideways (buttons.md › Best practices). */}
-            <td className="sticky right-0 bg-white px-4 py-3 text-right transition-colors group-hover:bg-surface-hover">
+              is visible at every width without scrolling sideways (buttons.md › Best practices).
+              Sticky makes the cell a stacking context that traps the "More actions" panel, and the next
+              row's opaque sticky cell would paint over it — so the cell with an open menu is lifted
+              above its siblings (and the sticky header's z-10) while it is open. */}
+            <td className="sticky right-0 bg-white has-[[aria-expanded=true]]:z-20 px-4 py-3 text-right transition-colors group-hover:bg-surface-hover">
               <InterviewRowActions {...props} iv={iv} now={now} />
             </td>
           </tr>

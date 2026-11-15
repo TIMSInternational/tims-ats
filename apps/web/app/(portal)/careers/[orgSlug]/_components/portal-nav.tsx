@@ -85,10 +85,13 @@ export function PortalNav({ orgName, orgSlug, orgLogo = null }: PortalNavProps) 
             <span className="max-sm:sr-only">{p.signInNav}</span>
           </Button>
 
-          {/* The page's one primary: navy, like every other primary (red means attention). */}
-          <Button href="#vacantes" variant="primary" className="hidden sm:inline-flex">
-            {p.navVacancies}
-          </Button>
+          {/* The page's one primary: navy, like every other primary (red means attention). Hidden below
+              sm through a wrapper: Button's own inline-flex would beat a "hidden" passed as className. */}
+          <span className="hidden sm:inline-flex">
+            <Button href="#vacantes" variant="primary">
+              {p.navVacancies}
+            </Button>
+          </span>
         </div>
       </div>
     </nav>
