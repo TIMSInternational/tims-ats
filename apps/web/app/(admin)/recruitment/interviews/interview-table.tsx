@@ -161,7 +161,7 @@ export function InterviewTable(props: InterviewTableProps) {
                   size="sm"
                   decorative
                 />
-                <div className="min-w-0 max-w-48">
+                <div className="min-w-0 max-w-32 2xl:max-w-48">
                   <div className="truncate">{candidateName(iv)}</div>
                   <p className="hidden truncate text-caption text-muted 2xl:block" title={iv.candidate.email}>
                     {iv.candidate.email}
@@ -170,7 +170,7 @@ export function InterviewTable(props: InterviewTableProps) {
               </div>
             </td>
             <td className="px-4 py-3">
-              <span className="line-clamp-2 max-w-44 text-callout text-secondary" title={iv.vacancy.title}>
+              <span className="line-clamp-2 max-w-36 text-callout text-secondary 2xl:max-w-44" title={iv.vacancy.title}>
                 {iv.vacancy.title}
               </span>
             </td>
