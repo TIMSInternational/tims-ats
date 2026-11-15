@@ -101,7 +101,7 @@ export function VacancySelector({ vacancies, selectedId, onSelect, isLoading }: 
   if (isLoading) return <Skeleton className="h-9 w-56 rounded-lg" />;
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative min-w-0 max-w-full">
       <span id={labelId} className="sr-only">
         {p.vacancyLabel}
       </span>
@@ -113,13 +113,13 @@ export function VacancySelector({ vacancies, selectedId, onSelect, isLoading }: 
         aria-controls={open ? listId : undefined}
         aria-labelledby={`${labelId} ${listId}-value`}
         onClick={() => (open ? close() : setOpen(true))}
-        className="flex h-9 max-w-full items-center gap-2 rounded-lg border border-field-border bg-white px-3 text-left transition-colors hover:bg-surface pointer-coarse:min-h-11"
+        className="flex h-9 w-full max-w-full items-center gap-2 rounded-lg border border-field-border bg-white px-3 text-left transition-colors hover:bg-surface pointer-coarse:min-h-11 md:w-auto"
       >
         <Briefcase className="size-4 shrink-0 text-brand" />
-        <span aria-hidden="true" className="text-caption text-muted">
+        <span aria-hidden="true" className="hidden shrink-0 text-caption text-muted sm:inline">
           {p.vacancyLabel}
         </span>
-        <span id={`${listId}-value`} className="min-w-0 max-w-64 truncate text-body font-medium text-brand">
+        <span id={`${listId}-value`} className="min-w-0 flex-1 truncate text-body font-medium text-brand md:max-w-64 md:flex-none">
           {selected ? selected.title : p.selectVacancy}
         </span>
         <svg
