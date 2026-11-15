@@ -79,7 +79,8 @@ test('recruiter views the empty pipeline before the candidate applies', async ()
 async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
   await page.goto(`/careers/${j.orgSlug}/${j.vacancy!.id}`);
   await page.getByRole('button', { name: 'Postularse' }).first().click();
-  const form = page.getByRole('dialog', { name: `Postularse a ${j.vacancy!.title}` });
+  // The dialog is titled "Postularse"; the vacancy title is its description line.
+  const form = page.getByRole('dialog', { name: 'Postularse', exact: true }).filter({ hasText: j.vacancy!.title });
 
   await form.getByPlaceholder('María', { exact: true }).fill(cand().firstName);
   await form.getByPlaceholder('López Rodríguez').fill(cand().lastName);

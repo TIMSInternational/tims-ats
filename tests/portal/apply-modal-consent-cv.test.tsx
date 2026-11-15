@@ -26,9 +26,20 @@ vi.mock('../../apps/web/lib/trpc', () => ({
 }));
 vi.mock('../../apps/web/components', () => ({
   // The action row is the Modal's pinned `footer`; render it after the body as the real Modal does.
-  Modal: ({ title, children, footer }: { title: string; children: React.ReactNode; footer?: React.ReactNode }) => (
+  Modal: ({
+    title,
+    description,
+    children,
+    footer,
+  }: {
+    title: string;
+    description?: React.ReactNode;
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+  }) => (
     <div role="dialog" aria-label={title}>
       <h2>{title}</h2>
+      {description && <p data-testid="modal-description">{description}</p>}
       {children}
       {footer}
     </div>
@@ -93,6 +104,14 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('apply modal — header', () => {
+  it('has a short title that never truncates, with the vacancy title in full beneath it', () => {
+    renderModal();
+    expect(screen.getByRole('dialog', { name: p.applyDialogTitle })).toBeInTheDocument();
+    expect(screen.getByTestId('modal-description')).toHaveTextContent('Backend Engineer');
+  });
 });
 
 describe('apply modal — explicit consent (F14)', () => {
@@ -261,16 +280,15 @@ describe('apply modal — submit error copy', () => {
       { data: { code: 'BAD_REQUEST' } },
     );
 
-  // A failed submit is said INSIDE the dialog (role="alert"): inline above the actions, or under the field
-  // the server rejected. Only a vacancy that closed meanwhile still toasts (the dialog's purpose is gone).
+  // Every failed submit toasts once (frontend.md: onError toast on every mutation); a field the server
+  // rejected is also shown under that field.
   async function submitWith(error: unknown) {
     mocks.applyMutateAsync.mockRejectedValue(error);
     goToReview();
     fireEvent.click(consentBox());
     fireEvent.click(submitButton());
-    const alert = await screen.findByRole('alert');
-    expect(mocks.toast).not.toHaveBeenCalled();
-    return alert.textContent;
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledOnce());
+    return mocks.toast.mock.calls[0]![0] as string;
   }
 
   it('a stale consent text version (stale bundle) asks the candidate to reload — never raw zod JSON', async () => {
@@ -309,7 +327,7 @@ describe('apply modal — submit error copy', () => {
     expect(await submitWith(captcha)).toBe('Verificación de seguridad fallida.');
   });
 
-  it('an internal error (e.g. a raw Prisma unique-constraint message) never reaches the candidate verbatim', async () => {
+  it('an internal error (e.g. a raw Prisma unique-constraint message) never reaches the toast verbatim', async () => {
     const internal = Object.assign(new Error('Unique constraint failed on the fields: (`email`)'), {
       data: { code: 'INTERNAL_SERVER_ERROR' },
     });

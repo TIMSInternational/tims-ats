@@ -135,10 +135,13 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
               <span>{v.applicantCount} {v.applicantCount === 1 ? p.oneApplicant : p.manyApplicants}</span>
               {v.priority === 'urgent' && <StatusBadge tone="warning">{p.urgentBadge}</StatusBadge>}
             </p>
-            {/* Phones/tablets use the pinned bar below instead, so the first screen has one "Postularse". */}
-            <Button size="lg" onClick={openApply} className="hidden px-8 lg:inline-flex">
-              {p.applyNow}
-            </Button>
+            {/* Phones/tablets use the pinned bar below instead, so the first screen has one "Postularse". The
+                wrapper does the hiding: Button's own inline-flex would beat a "hidden" passed in className. */}
+            <div className="hidden lg:block">
+              <Button size="lg" onClick={openApply} className="px-8">
+                {p.applyNow}
+              </Button>
+            </div>
             {showApply && (
               <ApplyModal
                 vacancyId={v.id}

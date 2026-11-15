@@ -111,13 +111,13 @@ describe('Retirar mi postulación', () => {
     expect(mocks.withdrawMutate).not.toHaveBeenCalled();
   });
 
-  it('explains an open offer inside the dialog, once (no toast: the dialog is still open)', async () => {
+  it('explains an open offer inside the dialog (and as a toast)', async () => {
     render(<DashboardApplications orgSlug="acme" orgName="Acme" />);
     fireEvent.click(screen.getByRole('button', { name: pd.withdrawAction }));
     await mocks.withdrawOptions.onError?.({ data: { code: 'PRECONDITION_FAILED' } });
     const expected = pd.withdrawErrorOpenOffer.replace('{org}', 'Acme');
     expect((await screen.findByRole('alert')).textContent).toBe(expected);
-    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(mocks.toast).toHaveBeenCalledWith(expected, { type: 'error' });
   });
 
   it('maps every server outcome to candidate copy, never a raw server message', () => {
@@ -192,9 +192,7 @@ describe('Mis datos', () => {
     render(<DashboardProfile orgSlug="acme" profile={profile} />);
     fireEvent.click(screen.getByRole('button', { name: pd.profileEdit }));
     act(() => mocks.profileOptions.onError?.(new Error('boom')));
-    // Said inline, inside the still-open form (not a toast that disappears while the form waits).
-    expect(screen.getByRole('alert')).toHaveTextContent(pd.profileError);
-    expect(mocks.toast).not.toHaveBeenCalled();
+    expect(mocks.toast).toHaveBeenCalledWith(pd.profileError, { type: 'error' });
     expect(screen.getByRole('button', { name: pd.profileSave })).toBeTruthy();
   });
 });

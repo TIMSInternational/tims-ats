@@ -5724,7 +5724,7 @@
     "phonePlaceholder": "Country code and number",
     "salaryLabel": "Salary",
     "departmentLabel": "Department",
-    "applyTitlePrefix": "Apply to",
+    "applyDialogTitle": "Apply",
     "applyDiscardTitle": "Discard the application?",
     "applyDiscardBody": "What you typed and the attached CV will be lost.",
     "stepPersonal": "Personal details",
