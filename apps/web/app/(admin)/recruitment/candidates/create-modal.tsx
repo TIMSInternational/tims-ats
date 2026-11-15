@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { Button, Modal, Stepper } from '../../../../components';
 import { DiscardChangesPrompt } from '../../../../components/discard-changes-prompt';
-import type { Step } from './create-modal.helpers';
+import { createErrorMessage, type Step } from './create-modal.helpers';
 import { Step1Fields, Step2Fields, Step3Fields } from './create-modal.fields';
 
 interface CreateModalProps {
@@ -79,14 +79,7 @@ export function CreateModal({ onConfirm, onClose, isPending, errorCode }: Create
     if (errorCode === 'CONFLICT') setStep(1);
   }, [errorCode]);
   const emailError = errorCode === 'CONFLICT' ? t.candidates.emailTaken : undefined;
-  const generalError =
-    !errorCode || errorCode === 'CONFLICT'
-      ? undefined
-      : errorCode === 'FORBIDDEN'
-        ? t.candidates.createErrorForbidden
-        : errorCode === 'BAD_REQUEST'
-          ? t.candidates.createErrorInvalid
-          : t.candidates.createError;
+  const generalError = !errorCode || errorCode === 'CONFLICT' ? undefined : createErrorMessage(errorCode, t.candidates);
 
   const handleCancel = () => (dirty ? setConfirmingCancel(true) : onClose());
 

@@ -60,7 +60,7 @@ export function FilterBar({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+      <div className="grid grid-cols-1 gap-2 sm:flex sm:gap-3">
         <select
           value={poolFilter}
           onChange={(e) => onPoolChange(e.target.value)}

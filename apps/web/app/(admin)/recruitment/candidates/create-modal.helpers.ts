@@ -22,3 +22,18 @@ export const CHOICE_CARD_CLASSES =
   'flex min-h-9 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-body transition-colors pointer-coarse:min-h-11 has-[:checked]:border-brand has-[:checked]:bg-brand-tint has-[:checked]:font-medium has-[:checked]:text-brand border-border text-primary hover:bg-surface';
 
 export const LEGEND_CLASSES = 'mb-2 text-subheading font-semibold text-primary';
+
+interface CreateErrorCopy {
+  emailTaken: string;
+  createErrorForbidden: string;
+  createErrorInvalid: string;
+  createError: string;
+}
+
+/** The message for a failed create, by tRPC error code: the same words in the toast and in the dialog. */
+export function createErrorMessage(code: string | undefined, copy: CreateErrorCopy): string {
+  if (code === 'CONFLICT') return copy.emailTaken;
+  if (code === 'FORBIDDEN') return copy.createErrorForbidden;
+  if (code === 'BAD_REQUEST') return copy.createErrorInvalid;
+  return copy.createError;
+}

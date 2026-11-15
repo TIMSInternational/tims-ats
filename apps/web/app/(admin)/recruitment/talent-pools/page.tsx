@@ -10,6 +10,7 @@ import { TalentPoolFilters } from './talent-pool-filters';
 import { TalentPoolResultsHeader } from './talent-pool-results-header';
 import { TalentPoolTable } from './talent-pool-table';
 import { CreateModal } from '../candidates/create-modal';
+import { createErrorMessage } from '../candidates/create-modal.helpers';
 
 export interface TalentPoolFilterState {
   search: string;
@@ -67,7 +68,8 @@ export default function TalentPoolsPage() {
       utils.candidate.list.invalidate();
       setShowCreateModal(false);
     },
-    // The error shows inside the dialog, next to the step it concerns.
+    // Said twice on purpose: in the dialog, next to the step it concerns, and as a toast (frontend.md).
+    onError: (error) => toast(createErrorMessage(error.data?.code, t.candidates), { type: 'error' }),
   });
   const openCreate = () => {
     createMutation.reset();
@@ -105,7 +107,8 @@ export default function TalentPoolsPage() {
     }
   };
 
-  const filterButtonLabel = activeFilterCount > 0 ? formatMessage(tp.filtersCount, { n: activeFilterCount }) : tp.filters;
+  const filterButtonLabel =
+    activeFilterCount > 0 ? formatMessage(tp.filtersCount, { n: activeFilterCount }) : tp.filters;
 
   return (
     <div className="flex flex-col md:h-full md:overflow-hidden">

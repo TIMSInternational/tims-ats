@@ -24,7 +24,12 @@ import { CreateOfferModal } from '../../apps/web/app/(admin)/recruitment/candida
 const applications = [
   {
     id: 'app-1',
-    vacancy: { id: 'vac-1', title: 'Analista', status: 'published', salary: { min: 600_000, max: 1_000_000, currency: 'CRC', period: 'monthly' } },
+    vacancy: {
+      id: 'vac-1',
+      title: 'Analista',
+      status: 'published',
+      salary: { min: 600_000, max: 1_000_000, currency: 'CRC', period: 'monthly' },
+    },
   },
 ] as unknown as Parameters<typeof CreateOfferModal>[0]['applications'];
 
@@ -34,10 +39,16 @@ describe('create offer from the 360', () => {
   it('toasts the new draft and opens it by id', async () => {
     m.mutateAsync.mockResolvedValue({ id: 'offer-9' });
     const onClose = vi.fn();
-    const { container } = render(<CreateOfferModal candidateId="cand-1" applications={applications} onClose={onClose} />);
-    fireEvent.change(container.querySelector('#offer-salary-amount') as HTMLInputElement, { target: { value: '800000' } });
+    const { container } = render(
+      <CreateOfferModal candidateId="cand-1" applications={applications} onClose={onClose} />,
+    );
+    fireEvent.change(container.querySelector('#offer-salary-amount') as HTMLInputElement, {
+      target: { value: '800000' },
+    });
     const startDate = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
-    fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, { target: { value: startDate } });
+    fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
+      target: { value: startDate },
+    });
     fireEvent.change(screen.getByLabelText(/Tipo de contrato|Contract type/), { target: { value: 'indefinido' } });
     const buttons = screen.getAllByRole('button');
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
@@ -45,5 +56,26 @@ describe('create offer from the 360', () => {
     expect(m.toast).toHaveBeenCalledWith(es.offers.draftCreated, { type: 'success' });
     expect(m.toast).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('a failed save stays in the open form inline and is also toasted (frontend.md)', async () => {
+    m.mutateAsync.mockRejectedValue(Object.assign(new Error('raw'), { data: { code: 'FORBIDDEN' } }));
+    const onClose = vi.fn();
+    const { container } = render(
+      <CreateOfferModal candidateId="cand-1" applications={applications} onClose={onClose} />,
+    );
+    fireEvent.change(container.querySelector('#offer-salary-amount') as HTMLInputElement, {
+      target: { value: '800000' },
+    });
+    const startDate = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
+      target: { value: startDate },
+    });
+    fireEvent.change(screen.getByLabelText(/Tipo de contrato|Contract type/), { target: { value: 'indefinido' } });
+    const buttons = screen.getAllByRole('button');
+    fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
+    await waitFor(() => expect(m.toast).toHaveBeenCalledWith(es.offers.errorForbiddenAction, { type: 'error' }));
+    expect(screen.getByText(es.offers.errorForbiddenAction)).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
