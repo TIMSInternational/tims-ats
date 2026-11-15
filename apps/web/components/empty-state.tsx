@@ -30,39 +30,17 @@ interface EmptyStateProps {
   className?: string;
 }
 
-function DefaultIcon({ className }: { className: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859M2.25 13.5V18A2.25 2.25 0 004.5 20.25h15A2.25 2.25 0 0021.75 18v-4.5M2.25 13.5l2.394-7.183A2.25 2.25 0 016.78 4.75h10.44a2.25 2.25 0 012.136 1.567L21.75 13.5" />
-    </svg>
-  );
-}
+const DEFAULT_ICON_PATH =
+  'M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859M2.25 13.5V18A2.25 2.25 0 004.5 20.25h15A2.25 2.25 0 0021.75 18v-4.5M2.25 13.5l2.394-7.183A2.25 2.25 0 016.78 4.75h10.44a2.25 2.25 0 012.136 1.567L21.75 13.5';
 
-function ActionButton({
-  action,
-  fallback,
-  size,
-}: {
-  action: EmptyStateAction;
-  fallback: ButtonVariant;
-  size: 'sm' | 'md';
-}) {
+// A render helper, not a component (one component per file): an action is a link or a button.
+function renderAction(action: EmptyStateAction, fallback: ButtonVariant, size: 'sm' | 'md') {
   const variant = action.variant ?? fallback;
-  if (action.href) {
-    return (
-      <Button href={action.href} variant={variant} size={size}>
-        {action.label}
-      </Button>
-    );
-  }
-  return (
+  return action.href ? (
+    <Button href={action.href} variant={variant} size={size}>
+      {action.label}
+    </Button>
+  ) : (
     <Button onClick={action.onClick} variant={variant} size={size}>
       {action.label}
     </Button>
@@ -87,7 +65,18 @@ export function EmptyState({
       className={`flex flex-col items-center text-center ${compact ? 'px-4 py-4' : 'px-5 py-12 md:py-16'} ${className}`}
     >
       <div className={`flex justify-center text-muted ${compact ? 'mb-2' : 'mb-3'}`} aria-hidden="true">
-        {icon ?? <DefaultIcon className={compact ? 'size-5' : 'size-8'} />}
+        {icon ?? (
+          <svg
+            className={compact ? 'size-5' : 'size-8'}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d={DEFAULT_ICON_PATH} />
+          </svg>
+        )}
       </div>
       {heading && (
         <p className={compact ? 'text-body font-medium text-primary' : 'text-subheading font-semibold text-primary'}>
@@ -97,10 +86,8 @@ export function EmptyState({
       {description && <p className="mt-1 max-w-sm text-callout text-secondary">{description}</p>}
       {(action || secondaryAction) && (
         <div className={`flex flex-wrap items-center justify-center gap-2 ${compact ? 'mt-3' : 'mt-4'}`}>
-          {secondaryAction && (
-            <ActionButton action={secondaryAction} fallback="secondary" size={compact ? 'sm' : 'md'} />
-          )}
-          {action && <ActionButton action={action} fallback="primary" size={compact ? 'sm' : 'md'} />}
+          {secondaryAction && renderAction(secondaryAction, 'secondary', compact ? 'sm' : 'md')}
+          {action && renderAction(action, 'primary', compact ? 'sm' : 'md')}
         </div>
       )}
     </div>

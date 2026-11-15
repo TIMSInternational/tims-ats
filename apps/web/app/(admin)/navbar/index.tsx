@@ -7,6 +7,7 @@ import { resolveBreadcrumb, type Crumb } from '../../../lib/nav/breadcrumbs';
 import { IconButton } from '../../../components/icon-button';
 import { Menu } from '../../../components/menu';
 import { SearchCommand } from './search-command';
+import { SearchSheetButton } from './search-sheet-button';
 import { NotificationDropdown } from './notification-dropdown';
 import { SupportEmailLink } from './support-email-link';
 
@@ -101,9 +102,15 @@ export function Navbar({
             a tenant user can only ever get a FORBIDDEN from it, so it is not rendered for them at all — no
             broken box, and no denied request (and authz_denied audit event) per keystroke. */}
         {isPlatformOwner && (
-          <div className="hidden md:block">
-            <SearchCommand />
-          </div>
+          <>
+            <div className="hidden md:block">
+              <SearchCommand />
+            </div>
+            {/* Below md the field does not fit: a search button opens it in a full-screen sheet. */}
+            <div className="md:hidden">
+              <SearchSheetButton />
+            </div>
+          </>
         )}
 
         <NotificationDropdown isPlatformOwner={isPlatformOwner} />

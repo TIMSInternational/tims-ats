@@ -63,8 +63,26 @@ export function PortalNav({ orgName, orgSlug, orgLogo = null }: PortalNavProps) 
         {/* Right: the candidate's own applications (the dashboard sends a signed-out visitor to the
             portal login), then a jump to the vacancy list. */}
         <div className="flex shrink-0 items-center gap-4">
-          <Button href={`/careers/${orgSlug}/dashboard`} variant="secondary">
-            {p.signInNav}
+          {/* Below sm the button shrinks to its icon (the label stays its accessible name), so the
+              organisation's name has the row (branding.md). */}
+          <Button
+            href={`/careers/${orgSlug}/dashboard`}
+            variant="secondary"
+            className="max-sm:min-w-11 max-sm:gap-0 max-sm:px-2.5"
+            icon={
+              <svg
+                className="size-4 shrink-0 sm:hidden"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
+              </svg>
+            }
+          >
+            <span className="max-sm:sr-only">{p.signInNav}</span>
           </Button>
 
           {/* The page's one primary: navy, like every other primary (red means attention). */}

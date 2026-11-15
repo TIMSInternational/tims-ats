@@ -82,6 +82,15 @@
     "breadcrumb": "Ruta",
     "searchLabel": "Buscar organizaciones, usuarios y páginas",
     "searchResults": "Resultados de búsqueda",
+    "tabLabels": {
+      "commandCenter": "Inicio",
+      "myPanels": "Paneles",
+      "myPerformance": "Desempeño",
+      "myLearning": "Aprendizaje",
+      "myOnboarding": "Onboarding",
+      "my360": "360°"
+    },
+    "searchSheetTitle": "Buscar",
     "openSearch": "Abrir búsqueda",
     "profileMenu": "Menú de {name}"
   },

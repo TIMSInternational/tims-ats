@@ -20,9 +20,11 @@ const GROUP_LABEL = 'bg-surface-hover px-3 py-2 text-caption font-semibold text-
 
 /**
  * Platform-owner global search: a combobox with a listbox of results (searching.md). Arrow keys move,
- * Enter opens, Escape (in the field) clears and closes; ⌘K / Ctrl+K focuses it from anywhere.
+ * Enter opens, Escape (in the field) clears and closes; ⌘K / Ctrl+K focuses it from anywhere. `inSheet`: the
+ * phone layout inside the search sheet (full-width field, results inline below it, `onPick` closes the sheet).
  */
-export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
+type SearchCommandProps = { onFocus?: () => void; inSheet?: boolean; onPick?: () => void };
+export function SearchCommand({ onFocus, inSheet = false, onPick }: SearchCommandProps) {
   const router = useRouter();
   const { t } = useI18n();
   const listId = `search-results-${useId()}`;
@@ -36,6 +38,7 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useDismissable(searchFocused, searchRef, () => setSearchFocused(false));
+  const active = inSheet || searchFocused;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery), 250);
@@ -55,7 +58,7 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
 
   const searchResults = useDashboardSearch(
     { query: debouncedQuery },
-    { enabled: debouncedQuery.length >= 1 && searchFocused },
+    { enabled: debouncedQuery.length >= 1 && active },
   );
 
   // The static page results come from the server's fixed page list (TS dashboard.helpers + C# search use
@@ -147,7 +150,7 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
     })),
   ];
 
-  const showDropdown = searchFocused && searchQuery.length >= 1;
+  const showDropdown = active && searchQuery.length >= 1;
   const showOptions = showDropdown && !searchResults.isLoading && !searchResults.isError && options.length > 0;
 
   const pick = (option: ResultOption) => {
@@ -155,6 +158,7 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
     setSearchFocused(false);
     setSearchQuery('');
     setActiveIndex(-1);
+    onPick?.();
   };
 
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -211,26 +215,27 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
         onKeyDown={onInputKeyDown}
         placeholder={t.nav.search}
         maxLength={100}
+        autoFocus={inSheet}
         onFocus={() => {
           setSearchFocused(true);
           onFocus?.();
         }}
         className={`h-8 rounded-lg border border-border bg-surface-hover pl-9 pr-16 text-body text-primary placeholder:text-muted transition-[width] duration-200 ease-out ${
-          searchFocused ? 'w-[320px]' : 'w-[200px]'
+          inSheet ? 'w-full pointer-coarse:h-11' : searchFocused ? 'w-[320px]' : 'w-[200px]'
         }`}
       />
-      {!searchFocused && (
+      {!active && (
         <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5" aria-hidden="true">
           <kbd className="rounded bg-border px-1 py-0.5 font-mono text-caption text-secondary">⌘K</kbd>
         </div>
       )}
-      {searchFocused && searchQuery && (
+      {active && searchQuery && (
         <button
           type="button"
           aria-label={t.common.clearSearch}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setSearchQuery('')}
-          className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted hover:text-secondary"
+          className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted hover:text-secondary pointer-coarse:size-11 pointer-coarse:right-0"
         >
           <svg
             className="size-3.5"
@@ -246,7 +251,9 @@ export function SearchCommand({ onFocus }: { onFocus?: () => void }) {
       )}
 
       {showDropdown && (
-        <div className="tims-surface absolute left-0 right-0 top-full z-50 mt-2 max-h-[420px] overflow-hidden overflow-y-auto rounded-xl border border-border bg-white shadow-popover">
+        <div
+          className={`overflow-hidden rounded-xl border border-border bg-white ${inSheet ? 'mt-3' : 'tims-surface absolute left-0 right-0 top-full z-50 mt-2 max-h-[420px] overflow-y-auto shadow-popover'}`}
+        >
           {searchResults.isLoading ? (
             <div className="flex items-center justify-center gap-2 px-4 py-6 text-callout text-secondary" role="status">
               <Spinner className="size-4 text-brand" />
