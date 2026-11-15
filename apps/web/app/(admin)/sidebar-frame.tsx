@@ -44,14 +44,17 @@ export function SidebarFrame({
   const navRef = useRef<HTMLElement>(null);
   const activeHref = sections.flatMap((s) => s.items).find((i) => i.active)?.href;
 
-  // Keep the current page visible in a long nav (e.g. a settings page under the profile footer).
+  // Keep the current page visible in a long nav (e.g. a settings page under the profile footer). Only the nav
+  // scrolls: it is min-h-0 so it shrinks to the space between the logo bar and the profile footer, and the aside
+  // is overflow-clip (not a scroll container), so neither this nor the focus the drawer moves in can push the
+  // footer (sign-out) out of a phone viewport.
   useEffect(() => {
     navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest' });
   }, [activeHref]);
 
   return (
     <aside
-      className={`tims-sidebar flex h-full shrink-0 flex-col overflow-hidden bg-[var(--chrome-bg)] ${
+      className={`tims-sidebar flex h-full max-h-dvh min-h-0 shrink-0 flex-col overflow-clip bg-[var(--chrome-bg)] ${
         expanded ? 'w-[var(--sidebar-w-expanded)]' : 'w-[var(--sidebar-w-collapsed)]'
       } ${ready ? 'transition-[width] duration-200 ease-out' : ''}`}
     >
@@ -99,7 +102,7 @@ export function SidebarFrame({
       <nav
         ref={navRef}
         aria-label={t.nav.mainNav}
-        className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 py-1"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-1"
       >
         {sections.map((section, si) => (
           <div key={si}>

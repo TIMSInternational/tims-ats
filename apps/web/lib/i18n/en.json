@@ -82,6 +82,15 @@
     "breadcrumb": "Breadcrumb",
     "searchLabel": "Search organizations, users and pages",
     "searchResults": "Search results",
+    "tabLabels": {
+      "commandCenter": "Home",
+      "myPanels": "Panels",
+      "myPerformance": "Performance",
+      "myLearning": "Learning",
+      "myOnboarding": "Onboarding",
+      "my360": "360°"
+    },
+    "searchSheetTitle": "Search",
     "openSearch": "Open search",
     "profileMenu": "Menu for {name}"
   },

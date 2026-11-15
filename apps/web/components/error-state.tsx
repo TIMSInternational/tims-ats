@@ -33,56 +33,12 @@ interface ErrorStateProps {
   className?: string;
 }
 
-function AlertIcon({ className }: { className: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-      />
-    </svg>
-  );
-}
-
-function LockIcon({ className }: { className: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="5" y="11" width="14" height="10" rx="2" />
-      <path d="M8 11V7a4 4 0 018 0v4" />
-    </svg>
-  );
-}
-
-function SearchIcon({ className }: { className: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-    </svg>
-  );
-}
+// The path data of the state's one <svg> (a lookup, not extra icon components: one component per file).
+const ICON_PATHS = {
+  alert: ['M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z'],
+  lock: ['M7 11h10a2 2 0 012 2v6a2 2 0 01-2 2H7a2 2 0 01-2-2v-6a2 2 0 012-2z', 'M8 11V7a4 4 0 018 0v4'],
+  search: ['M18 11a7 7 0 11-14 0 7 7 0 0114 0z', 'm20 20-3.5-3.5'],
+} as const;
 
 // Shared error state for data-driven surfaces (foundation-spec.md §13). Rendered when a query fails
 // (`query.isError`) so the page says what failed and offers a retry, instead of a blank shell. Complements
@@ -114,7 +70,23 @@ export function ErrorState({
       ? (description ?? t.common.notFoundHint)
       : (description ?? (canRetry ? t.common.loadErrorHint : undefined));
   const iconTone = forbidden || notFound ? 'text-brand' : 'text-danger';
-  const Icon = forbidden ? LockIcon : notFound ? SearchIcon : AlertIcon;
+  const paths = ICON_PATHS[forbidden ? 'lock' : notFound ? 'search' : 'alert'];
+  const icon = (className: string) => (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      viewBox="0 0 24 24"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths.map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
 
   const retry = canRetry && (
     <Button
@@ -134,7 +106,7 @@ export function ErrorState({
   if (size === 'inline') {
     return (
       <div role="alert" className={`flex flex-wrap items-center gap-2 text-callout text-danger ${className}`}>
-        <Icon className="size-4 shrink-0" />
+        {icon('size-4 shrink-0')}
         <span>{heading}</span>
         {retry}
         {backLink}
@@ -148,7 +120,7 @@ export function ErrorState({
       role="alert"
       className={`flex flex-col items-center text-center ${compact ? 'px-4 py-6' : 'px-5 py-12 md:py-16'} ${className}`}
     >
-      <Icon className={`${compact ? 'mb-2 size-6' : 'mb-3 size-8'} ${iconTone}`} />
+      {icon(`${compact ? 'mb-2 size-6' : 'mb-3 size-8'} ${iconTone}`)}
       <p className={compact ? 'text-body font-medium text-primary' : 'text-subheading font-semibold text-primary'}>
         {heading}
       </p>

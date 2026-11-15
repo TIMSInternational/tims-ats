@@ -11,6 +11,11 @@ import { NavIcon } from '../../components/nav-icon';
 
 const MAX_TABS = 5;
 
+// Tab labels are single words where possible (tab-bars.md); the full sidebar name stays the accessible name.
+function tabLabel(tabLabels: Record<string, string>, labelKey: string): string | undefined {
+  return tabLabels[labelKey.split('.').pop() ?? ''];
+}
+
 /**
  * Bottom tab bar for the participant shell (employees, committee members) below lg: their 2–5 destinations
  * one tap away instead of behind the hamburger (sidebars.md › Mobile: "Consider using a tab bar first";
@@ -36,17 +41,20 @@ export function ParticipantTabBar() {
     >
       {items.map((item) => {
         const active = isNavItemActive(pathname, item.href);
+        const fullLabel = resolveLabel(t, item.labelKey);
+        const shortLabel = tabLabel(t.nav.tabLabels, item.labelKey);
         return (
           <Link
             key={item.href}
             href={item.href}
             aria-current={active ? 'page' : undefined}
+            aria-label={shortLabel && shortLabel !== fullLabel ? fullLabel : undefined}
             className={`flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-caption transition-colors ${
               active ? 'font-semibold text-brand' : 'text-secondary hover:text-primary'
             }`}
           >
             <NavIcon name={item.icon} className="size-5 shrink-0" />
-            <span className="max-w-full truncate">{resolveLabel(t, item.labelKey)}</span>
+            <span className="max-w-full truncate">{shortLabel ?? fullLabel}</span>
           </Link>
         );
       })}
