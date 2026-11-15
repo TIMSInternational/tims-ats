@@ -189,7 +189,7 @@ export default function PlatformUsersPage() {
         ) : (
           <select
             aria-label={u.filterOrg}
-            className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
+            className={selectClasses('md', 'w-full sm:w-auto')}
             value={orgFilter}
             onChange={(e) => { setOrgFilter(e.target.value); setPage(0); }}
           >
@@ -201,7 +201,7 @@ export default function PlatformUsersPage() {
         )}
         <select
           aria-label={u.filterRole}
-          className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
+          className={selectClasses('md', 'w-full sm:w-auto')}
           value={roleFilter}
           onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
         >

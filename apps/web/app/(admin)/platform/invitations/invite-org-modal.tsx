@@ -12,6 +12,7 @@ import { OrgLocaleFields } from '../organizations/org-locale-fields';
 import {
   BUTTON_GROUP_CLASSES,
   Button,
+  DialogCancelButton,
   CHOICE_INPUT_CLASSES,
   CHOICE_ROW_CLASSES,
   FIELD_LABEL_CLASSES,
@@ -103,7 +104,7 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
             <p id="invite-org-blocked-hint" className="text-callout text-secondary sm:text-right">{t.organizations.chooseCountryFirst}</p>
           )}
           <div className={BUTTON_GROUP_CLASSES}>
-            <Button variant="secondary" onClick={onClose}>{inv.cancel}</Button>
+            <DialogCancelButton onCancel={onClose}>{inv.cancel}</DialogCancelButton>
             <Button
               type="submit"
               disabled={!email || !orgName || !orgSlug || blocked || needsConfirm}

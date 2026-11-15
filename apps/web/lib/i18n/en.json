@@ -966,6 +966,7 @@
     "selectOrg": "Select {name}",
     "mrr": "MRR",
     "pendingInvoicesCount": "{count} pending",
+    "pendingInvoicesCountOne": "{count} pending",
     "slugLabel": "Slug",
     "slugHint": "URL identifier: lowercase letters, numbers and hyphens.",
     "createError": "Couldn't create the organization",

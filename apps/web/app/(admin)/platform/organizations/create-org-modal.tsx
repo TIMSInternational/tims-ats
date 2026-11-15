@@ -10,6 +10,7 @@ import { OrgLocaleFields } from './org-locale-fields';
 import {
   BUTTON_GROUP_CLASSES,
   Button,
+  DialogCancelButton,
   FIELD_HELP_CLASSES,
   FIELD_LABEL_CLASSES,
   Modal,
@@ -130,9 +131,7 @@ export function CreateOrgModal({ onClose, onSuccess }: { onClose: () => void; on
             <p id={blockedHintId} className="text-callout text-secondary sm:text-right">{o.chooseCountryFirst}</p>
           )}
           <div className={BUTTON_GROUP_CLASSES}>
-            <Button variant="secondary" onClick={onClose}>
-              {t.common.cancel}
-            </Button>
+            <DialogCancelButton onCancel={onClose} />
             <Button
               type="submit"
               disabled={!localeProfile}

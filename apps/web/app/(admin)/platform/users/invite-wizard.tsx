@@ -10,6 +10,7 @@ import { formatMessage } from '../../../../lib/i18n/format';
 import {
   BUTTON_GROUP_CLASSES,
   Button,
+  DialogCancelButton,
   ErrorState,
   FIELD_ERROR_CLASSES,
   FIELD_LABEL_CLASSES,
@@ -222,7 +223,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
             {roleError && <p id="invite-wizard-role-error" role="alert" className={FIELD_ERROR_CLASSES}>{inv.roleRequired}</p>}
           </div>
           <div className={`${BUTTON_GROUP_CLASSES} pt-2`}>
-            <Button variant="secondary" onClick={onClose}>{t.common.cancel}</Button>
+            <DialogCancelButton onCancel={onClose} />
             <Button type="submit" disabled={!email || !orgId} loading={createSingle.isPending} loadingLabel={inv.sending}>
               {inv.sendInvitation}
             </Button>

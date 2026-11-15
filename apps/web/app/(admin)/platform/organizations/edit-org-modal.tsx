@@ -9,6 +9,7 @@ import { formatCurrency } from '../../../../lib/format-utils';
 import {
   BUTTON_GROUP_CLASSES,
   Button,
+  DialogCancelButton,
   ConfirmDialog,
   FIELD_HELP_CLASSES,
   FIELD_LABEL_CLASSES,
@@ -161,9 +162,7 @@ export function EditOrgModal({
           </p>
         )}
         <div className={`${BUTTON_GROUP_CLASSES} pt-2`}>
-          <Button variant="secondary" onClick={onClose}>
-            {t.common.cancel}
-          </Button>
+          <DialogCancelButton onCancel={onClose} />
           <Button type="submit" disabled={settingsPatch === null} loading={updateOrg.isPending} loadingLabel={t.common.saving}>
             {t.common.save}
           </Button>

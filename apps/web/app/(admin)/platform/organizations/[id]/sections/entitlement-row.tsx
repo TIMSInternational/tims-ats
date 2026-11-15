@@ -97,7 +97,7 @@ export function EntitlementRow({ entitlement, disabled, onToggle, onLimitCommit,
             onBlur={handleLimitBlur}
             disabled={disabled}
             aria-label={formatMessage(e.limitFor, { module: entitlement.name })}
-            className={inputClasses('md', 'w-24 tabular-nums')}
+            className={inputClasses('md', 'w-20 tabular-nums')}
           />
         ) : (
           dash
@@ -106,7 +106,7 @@ export function EntitlementRow({ entitlement, disabled, onToggle, onLimitCommit,
       <td className="px-4 py-2.5">
         {entitlement.metered ? (
           <div>
-            <div className="relative w-32">
+            <div className="relative w-44">
               <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-callout text-secondary" aria-hidden="true">USD</span>
               <input
                 type="number"

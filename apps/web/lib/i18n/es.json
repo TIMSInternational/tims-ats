@@ -966,6 +966,7 @@
     "selectOrg": "Seleccionar {name}",
     "mrr": "MRR",
     "pendingInvoicesCount": "{count} pendientes",
+    "pendingInvoicesCountOne": "{count} pendiente",
     "slugLabel": "Slug",
     "slugHint": "Identificador en la URL: minúsculas, números y guiones.",
     "createError": "No se pudo crear la organización",

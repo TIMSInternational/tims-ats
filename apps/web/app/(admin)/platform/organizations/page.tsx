@@ -167,7 +167,7 @@ export default function OrganizationsPage() {
             aria-label={o.filterPlan}
             value={planFilter}
             onChange={(e) => { setPlanFilter(e.target.value); setPage(0); }}
-            className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
+            className={selectClasses('md', 'w-full sm:w-auto')}
           >
             <option value="">{o.allPlans}</option>
             {PLAN_KEYS.map((p) => <option key={p} value={p}>{planLabel(p, t)}</option>)}
@@ -176,7 +176,7 @@ export default function OrganizationsPage() {
             aria-label={o.filterStatus}
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-            className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
+            className={selectClasses('md', 'w-full sm:w-auto')}
           >
             <option value="">{o.allStatuses}</option>
             <option value="active">{o.statusActive}</option>

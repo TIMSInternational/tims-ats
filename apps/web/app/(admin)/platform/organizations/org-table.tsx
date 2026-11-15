@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
-import { formatMessage } from '../../../../lib/i18n/format';
+import { formatMessage, pluralize } from '../../../../lib/i18n/format';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 import {
   getInitials,
@@ -158,14 +158,15 @@ export function OrgTable({
                     {getInitials(org.name)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <Link href={`/platform/organizations/${org.id}`} className="block truncate text-body font-medium text-primary hover:text-brand">
+                    <Link href={`/platform/organizations/${org.id}`} className="line-clamp-2 break-words text-body font-medium text-primary hover:text-brand">
                       {org.name}
                     </Link>
+                    <p className="truncate font-mono text-caption text-muted">{org.slug}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <StatusBadge tone="brand" icon="none">{planLabel(plan, t)}</StatusBadge>
                       <StatusBadge tone={HEALTH_TONE[health]}>{healthLabel[health]}</StatusBadge>
                       {pendingCount > 0 && (
-                        <StatusBadge tone="warning" icon="none">{formatMessage(o.pendingInvoicesCount, { count: pendingCount })}</StatusBadge>
+                        <StatusBadge tone="warning" icon="none">{pluralize(pendingCount, { one: o.pendingInvoicesCountOne, other: o.pendingInvoicesCount }, locale)}</StatusBadge>
                       )}
                     </div>
                   </div>
@@ -265,7 +266,7 @@ export function OrgTable({
                     <span className="text-body font-medium tabular-nums text-primary">{invoiceTotal}</span>
                     {pendingCount > 0 && (
                       <StatusBadge tone="warning" icon="none">
-                        {formatMessage(o.pendingInvoicesCount, { count: pendingCount })}
+                        {pluralize(pendingCount, { one: o.pendingInvoicesCountOne, other: o.pendingInvoicesCount }, locale)}
                       </StatusBadge>
                     )}
                   </div>

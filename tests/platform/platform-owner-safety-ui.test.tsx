@@ -101,7 +101,10 @@ describe('org detail → Users role picker (D-14)', () => {
     const { UsersSection } =
       await import('../../apps/web/app/(admin)/platform/organizations/[id]/sections/users-section');
     render(<UsersSection organizationId="22222222-2222-4222-8222-222222222222" organizationName="Pilot" />);
-    fireEvent.change(screen.getByLabelText('Rol — Rita Recluta'), { target: { value: 'committee' } });
+    // The picker renders twice: the phone stacked list (below md) and the table (md and up); CSS picks one.
+    const pickers = screen.getAllByLabelText('Rol — Rita Recluta');
+    expect(pickers).toHaveLength(2);
+    fireEvent.change(pickers[0], { target: { value: 'committee' } });
     expect(m.changeRole).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('Pasará de Reclutador a Comité de entrevista.');
     fireEvent.click(screen.getByRole('button', { name: 'Sí, cambiar rol' }));
