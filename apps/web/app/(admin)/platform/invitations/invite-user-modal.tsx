@@ -10,6 +10,7 @@ import { formatMessage } from '../../../../lib/i18n/format';
 import {
   BUTTON_GROUP_CLASSES,
   Button,
+  DialogCancelButton,
   ErrorState,
   FIELD_ERROR_CLASSES,
   FIELD_LABEL_CLASSES,
@@ -114,7 +115,7 @@ export function InviteUserModal({ onClose, onSuccess, preselectedOrgId, preselec
           <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">{create.error.message}</p>
         )}
         <div className={`${BUTTON_GROUP_CLASSES} pt-2`}>
-          <Button variant="secondary" onClick={onClose}>{inv.cancel}</Button>
+          <DialogCancelButton onCancel={onClose}>{inv.cancel}</DialogCancelButton>
           <Button type="submit" disabled={!email || !orgId} loading={create.isPending} loadingLabel={inv.sending}>
             {inv.sendInvitation}
           </Button>

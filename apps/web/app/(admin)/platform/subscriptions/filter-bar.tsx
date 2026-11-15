@@ -47,7 +47,7 @@ export function FilterBar({
         aria-label={sb.filterPlan}
         value={planFilter}
         onChange={(e) => onPlanChange(e.target.value)}
-        className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
+        className={selectClasses('md', 'w-full sm:w-auto')}
       >
         <option value="">{sb.allPlans}</option>
         {PLAN_KEYS.map((p) => (
@@ -58,7 +58,7 @@ export function FilterBar({
         aria-label={sb.filterStatus}
         value={statusFilter}
         onChange={(e) => onStatusChange(e.target.value)}
-        className={selectClasses('md', 'min-w-0 flex-1 sm:w-auto sm:flex-none')}
+        className={selectClasses('md', 'w-full sm:w-auto')}
       >
         <option value="">{sb.allStatuses}</option>
         <option value="active">{sb.statusActive}</option>

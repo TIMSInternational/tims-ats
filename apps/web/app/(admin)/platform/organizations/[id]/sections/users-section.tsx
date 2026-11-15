@@ -20,7 +20,7 @@ import { roleLabel, staffRoleOptions } from '../../../../../../lib/role-labels';
 
 // Picking a role no longer applies it on the spot: a confirmation names the old and the new role first
 // (D-14). Owner support requests change pilot tenant roles from here.
-function RoleSelector({ userId, userName, organizationId, currentRole }: { userId: string; userName: string; organizationId: string; currentRole: string }) {
+function RoleSelector({ userId, userName, organizationId, currentRole, fullWidth }: { userId: string; userName: string; organizationId: string; currentRole: string; fullWidth?: boolean }) {
   const { t } = useI18n();
   const utils = trpc.useUtils();
   const [pendingRole, setPendingRole] = useState<string | null>(null);
@@ -42,7 +42,7 @@ function RoleSelector({ userId, userName, organizationId, currentRole }: { userI
         onChange={(e) => {
           if (e.target.value !== currentRole) setPendingRole(e.target.value);
         }}
-        className={selectClasses('md', 'w-auto min-w-36')}
+        className={selectClasses('md', fullWidth ? 'w-full' : 'w-auto min-w-36')}
       >
         {staffRoleOptions(t.roles, { keep: currentRole }).map((r) => (
           <option key={r.slug} value={r.slug}>{r.label}</option>
@@ -114,15 +114,16 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
   const statusBadge = (isActive: boolean) => (
     <StatusBadge tone={isActive ? 'success' : 'neutral'}>{isActive ? t.users.statusActive : t.users.statusInactive}</StatusBadge>
   );
-  const roleCell = (user: (typeof users)[number], fullName: string, roleSlug: string) => {
+  const roleCell = (user: (typeof users)[number], fullName: string, roleSlug: string, fullWidth = false) => {
     if (user.isPlatformOwner) return <StatusBadge tone="brand" icon="none">{t.roles.platform_owner}</StatusBadge>;
-    return <RoleSelector userId={user.id} userName={fullName} organizationId={organizationId} currentRole={roleSlug} />;
+    return <RoleSelector userId={user.id} userName={fullName} organizationId={organizationId} currentRole={roleSlug} fullWidth={fullWidth} />;
   };
-  const actionCell = (user: (typeof users)[number], fullName: string) => {
+  const actionCell = (user: (typeof users)[number], fullName: string, fullWidth = false) => {
     if (user.isActive) {
       return (
       <Button
         size="sm"
+        fullWidth={fullWidth}
         variant="destructive-secondary"
         disabled={deactivateUser.isPending}
         aria-label={formatMessage(ou.deactivateUserFor, { name: fullName })}
@@ -135,6 +136,7 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
     return (
       <Button
         size="sm"
+        fullWidth={fullWidth}
         variant="secondary"
         disabled={activateUser.isPending}
         aria-label={formatMessage(ou.activateUserFor, { name: fullName })}
@@ -177,8 +179,30 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
           <EmptyState title={ou.noUsersInOrgTitle} description={ou.noUsersInOrgDesc} />
         ) : (
           <>
-            {/* Below md the secondary columns fold into the user cell (layout.md › Size classes). */}
-            <div className="overflow-x-auto"><table className="w-full text-left md:min-w-[720px]" aria-busy={isLoading || undefined}>
+            {/* Below md: a stacked list, so the role picker and the row action get the full width instead of
+                being clipped at the right edge (layout.md › Size classes). */}
+            <ul className="divide-y divide-border md:hidden" aria-label={t.users.title} aria-busy={isLoading || undefined}>
+              {isLoading
+                ? Array.from({ length: 3 }).map((_, i) => (
+                    <li key={i} className="space-y-2 px-4 py-3" aria-hidden="true">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-52" />
+                      <Skeleton className="h-9 w-full" />
+                    </li>
+                  ))
+                : rows.map(({ user, fullName, roleSlug }) => (
+                    <li key={user.id} className="space-y-2 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-body font-medium text-primary">{fullName}</p>
+                        <p className="break-all text-callout text-secondary">{user.email}</p>
+                        <div className="mt-1">{statusBadge(user.isActive)}</div>
+                      </div>
+                      <div>{roleCell(user, fullName, roleSlug, true)}</div>
+                      {actionCell(user, fullName, true)}
+                    </li>
+                  ))}
+            </ul>
+            <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[720px] text-left" aria-busy={isLoading || undefined}>
               <caption className="sr-only">{t.users.title}</caption>
               <thead>
                 <tr className="border-b border-border">
@@ -201,8 +225,6 @@ export function UsersSection({ organizationId, organizationName }: { organizatio
                             <div className={`hidden size-8 shrink-0 items-center justify-center rounded-full text-caption font-semibold text-white sm:flex ${user.isActive ? getAvatarColor(fullName) : 'bg-secondary'}`} aria-hidden="true">{getInitials(fullName)}</div>
                             <div className="min-w-0">
                               <span className="block text-body font-medium text-primary">{fullName}</span>
-                              <span className="block break-all text-callout text-secondary md:hidden">{user.email}</span>
-                              <span className="mt-1 block md:hidden">{statusBadge(user.isActive)}</span>
                             </div>
                           </div>
                         </td>
