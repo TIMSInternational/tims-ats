@@ -71,7 +71,8 @@ export function InterviewTable(props: InterviewTableProps) {
     { key: 'date', label: t.interviews.colDate },
     { key: 'evaluators', label: t.interviews.colEvaluators },
     { key: 'status', label: t.interviews.colStatus },
-    { key: 'actions', label: t.interviews.colActions, align: 'right' as const },
+    // Heading visually hidden: the cell is pinned to the right edge (below) and the header row is not.
+    { key: 'actions', label: t.interviews.colActions, align: 'right' as const, srOnly: true },
   ];
 
   const candidateName = (iv: InterviewListItem) => {
@@ -102,100 +103,111 @@ export function InterviewTable(props: InterviewTableProps) {
         <InterviewTypeIcon type={iv.type} />
         {interviewTypeLabel(t, iv.type)} · {timeLabel(iv, locale, t)}
       </p>
-      {showAiUpsell && <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />}
       <InterviewRowActions {...props} iv={iv} now={now} fullWidth />
     </div>
   ));
 
+  // Said once for the whole list, not on every row: per row it crowded the actions cell and broke into
+  // one-word fragments beside "Calificar" (layout.md › Visual hierarchy).
+  const upsell = showAiUpsell && (
+    <div className="mb-3 shrink-0 rounded-lg bg-surface px-3 py-2">
+      <UpsellNotice message={t.interviews.aiScreenNotIncluded} ctaLabel={t.entitlements.contactSales} />
+    </div>
+  );
+
   return (
-    <DataTable
-      columns={columns}
-      loading={isLoading}
-      skeletonRows={8}
-      pagination={pagination}
-      label={t.interviews.title}
-      mobileList={interviews.length > 0 ? mobileList : undefined}
-      empty={
-        <EmptyState
-          icon={
-            <svg
-              className="size-8 text-muted"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-          }
-          title={t.interviews.noInterviews}
-          description={t.interviews.noInterviewsDesc}
-          action={
-            onSchedule ? { label: t.interviews.scheduleNew, onClick: onSchedule, variant: 'secondary' } : undefined
-          }
-        />
-      }
-    >
-      {interviews.map((iv) => (
-        <tr key={iv.id} className="border-b border-border transition-colors hover:bg-surface-hover">
-          <td className="px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <CandidateAvatar
-                firstName={iv.candidate.firstName}
-                lastName={iv.candidate.lastName}
-                avatar={iv.candidate.avatar}
-                size="sm"
-                decorative
-              />
-              <div className="min-w-0">
-                {candidateName(iv)}
-                <p className="text-caption text-muted">{iv.candidate.email}</p>
+    <>
+      {upsell}
+      <DataTable
+        columns={columns}
+        loading={isLoading}
+        skeletonRows={8}
+        pagination={pagination}
+        label={t.interviews.title}
+        mobileList={interviews.length > 0 ? mobileList : undefined}
+        empty={
+          <EmptyState
+            icon={
+              <svg
+                className="size-8 text-muted"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+            }
+            title={t.interviews.noInterviews}
+            description={t.interviews.noInterviewsDesc}
+            action={
+              onSchedule ? { label: t.interviews.scheduleNew, onClick: onSchedule, variant: 'secondary' } : undefined
+            }
+          />
+        }
+      >
+        {interviews.map((iv) => (
+          <tr key={iv.id} className="group border-b border-border transition-colors hover:bg-surface-hover">
+            <td className="px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <CandidateAvatar
+                  firstName={iv.candidate.firstName}
+                  lastName={iv.candidate.lastName}
+                  avatar={iv.candidate.avatar}
+                  size="sm"
+                  decorative
+                />
+                <div className="min-w-0 max-w-48">
+                  <div className="truncate">{candidateName(iv)}</div>
+                  <p className="truncate text-caption text-muted" title={iv.candidate.email}>
+                    {iv.candidate.email}
+                  </p>
+                </div>
               </div>
-            </div>
-          </td>
-          <td className="px-4 py-3">
-            <span className="text-callout text-secondary">{iv.vacancy.title}</span>
-          </td>
-          <td className="px-4 py-3">
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-surface px-2 py-0.5 text-caption font-medium text-secondary">
-              <InterviewTypeIcon type={iv.type} />
-              {interviewTypeLabel(t, iv.type)}
-            </span>
-          </td>
-          <td className="px-4 py-3 whitespace-nowrap tabular-nums">
-            <p className="text-callout text-primary">
-              {new Date(iv.scheduledAt).toLocaleDateString(locale === 'EN' ? 'en-US' : 'es-CR', {
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric',
-              })}
-            </p>
-            <p className="text-caption text-muted">
-              {new Date(iv.scheduledAt).toLocaleTimeString(locale === 'EN' ? 'en-US' : 'es-CR', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-              {' · '}
-              {iv.duration} {t.interviews.minutes}
-            </p>
-          </td>
-          <td className="px-4 py-3">
-            <EvaluatorStack evaluators={iv.evaluators} />
-          </td>
-          <td className="px-4 py-3">
-            <StatusBadge status={displayInterviewStatus(iv, now)} map={map} />
-          </td>
-          <td className="px-4 py-3 text-right">
-            <div className="flex items-center justify-end gap-2">
-              {showAiUpsell && (
-                <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />
-              )}
+            </td>
+            <td className="px-4 py-3">
+              <span className="line-clamp-2 max-w-44 text-callout text-secondary" title={iv.vacancy.title}>
+                {iv.vacancy.title}
+              </span>
+            </td>
+            <td className="px-4 py-3">
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-surface px-2 py-0.5 text-caption font-medium text-secondary">
+                <InterviewTypeIcon type={iv.type} />
+                {interviewTypeLabel(t, iv.type)}
+              </span>
+            </td>
+            <td className="px-4 py-3 whitespace-nowrap tabular-nums">
+              <p className="text-callout text-primary">
+                {new Date(iv.scheduledAt).toLocaleDateString(locale === 'EN' ? 'en-US' : 'es-CR', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </p>
+              <p className="text-caption text-muted">
+                {new Date(iv.scheduledAt).toLocaleTimeString(locale === 'EN' ? 'en-US' : 'es-CR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+                {' · '}
+                {iv.duration} {t.interviews.minutes}
+              </p>
+            </td>
+            <td className="px-4 py-3">
+              <EvaluatorStack evaluators={iv.evaluators} />
+            </td>
+            <td className="px-4 py-3">
+              <StatusBadge status={displayInterviewStatus(iv, now)} map={map} />
+            </td>
+            {/* Pinned to the right edge of the scroller, so the row's primary action ("Calificar" / "Unirse")
+              is visible at every width without scrolling sideways (buttons.md › Best practices). */}
+            <td className="sticky right-0 bg-white px-4 py-3 text-right transition-colors group-hover:bg-surface-hover">
               <InterviewRowActions {...props} iv={iv} now={now} />
-            </div>
-          </td>
-        </tr>
-      ))}
-    </DataTable>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
+    </>
   );
 }

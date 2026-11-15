@@ -34,11 +34,14 @@ export function OfferSignStatus({ tone, icon, circle, title, subtitle, pulse, or
             <OrgLogo
               logo={organization.logo}
               name={organization.name}
-              imgClassName="h-9 w-9 rounded-lg object-contain"
-              fallbackClassName="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-subheading font-semibold text-white"
+              imgClassName="h-9 w-9 shrink-0 rounded-lg object-contain"
+              fallbackClassName="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-subheading font-semibold text-white"
               decorative
             />
-            <span className="text-subheading font-semibold text-primary">{organization.name}</span>
+            {/* Left-aligned beside the logo, so a long name that wraps stays one group with it. */}
+            <span className="min-w-0 break-words text-left text-subheading font-semibold text-primary">
+              {organization.name}
+            </span>
           </div>
         )}
         <div className={`mx-auto mb-4 flex size-14 items-center justify-center rounded-full ${TONE[tone]} ${pulse ? 'animate-pulse' : ''}`}>

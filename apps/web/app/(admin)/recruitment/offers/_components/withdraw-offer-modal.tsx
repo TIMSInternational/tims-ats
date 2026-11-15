@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Modal } from '../../../../../components';
 import { Button } from '../../../../../components/button';
+import { DialogCancelButton } from '../../../../../components/dialog-cancel-button';
 import { FIELD_ERROR_CLASSES, FIELD_LABEL_CLASSES, textareaClasses } from '../../../../../components/field-styles';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
@@ -58,9 +59,8 @@ export function WithdrawOfferModal({
       dirty={reason.trim().length > 0 && !withdraw.isPending}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={withdraw.isPending}>
-            {t.common.cancel}
-          </Button>
+          {/* Routes through the Modal's dirty guard, like X and Escape: a typed reason is not lost silently. */}
+          <DialogCancelButton onCancel={onClose} disabled={withdraw.isPending} />
           {/* Irreversible: the destructive role, never the navy primary (buttons.md › Role). */}
           <Button variant="destructive" onClick={confirm} loading={withdraw.isPending}>
             {t.offers.withdrawOfferConfirm}

@@ -4024,6 +4024,7 @@
     "modelLabel": "Modelo",
     "startAiScreen": "Iniciar entrevista IA",
     "startAiScreenUnavailable": "Iniciar entrevista IA (no disponible)",
+    "aiScreenNotIncluded": "La entrevista de preselección con IA no está incluida en tu plan.",
     "aiScreenTitle": "Entrevista de voz con IA",
     "candidateLinkLabel": "Enlace para el candidato",
     "copyLink": "Copiar enlace",

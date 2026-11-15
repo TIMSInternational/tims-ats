@@ -4024,6 +4024,7 @@
     "modelLabel": "Model",
     "startAiScreen": "Start AI screen",
     "startAiScreenUnavailable": "Start AI screen (unavailable)",
+    "aiScreenNotIncluded": "The AI screening interview is not included in your plan.",
     "aiScreenTitle": "AI voice interview",
     "candidateLinkLabel": "Candidate link",
     "copyLink": "Copy link",

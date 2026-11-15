@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Modal } from '../../../../components';
 import { Button } from '../../../../components/button';
+import { DialogCancelButton } from '../../../../components/dialog-cancel-button';
 import { FIELD_LABEL_CLASSES, textareaClasses } from '../../../../components/field-styles';
 import { useI18n } from '../../../../lib/i18n';
 import { CANCEL_REASON_MAX, resolveCancelReason } from './interview-cancel';
@@ -30,9 +31,8 @@ export function CancelInterviewDialog({
       dirty={reason.trim().length > 0}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            {t.interviews.cancelDialogKeep}
-          </Button>
+          {/* Routes through the Modal's dirty guard, like X and Escape: a typed reason is not lost silently. */}
+          <DialogCancelButton onCancel={onClose}>{t.interviews.cancelDialogKeep}</DialogCancelButton>
           <Button
             variant="destructive"
             loading={isPending}

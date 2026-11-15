@@ -112,7 +112,7 @@ export function OfferTable({
           value={statusFilter}
           onChange={(e) => onStatusChange(e.target.value)}
           aria-label={t.offers.filterStatusLabel}
-          className={selectClasses('md', 'w-auto max-w-full')}
+          className={selectClasses('md', 'sm:w-auto max-w-full')}
         >
           <option value="">{t.offers.allStatuses}</option>
           {showMinePendingFilter && <option value={MINE_PENDING_FILTER}>{t.offers.filterMinePending}</option>}
