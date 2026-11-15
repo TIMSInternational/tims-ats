@@ -73,6 +73,20 @@ export function formatCurrency(value: number, locale: Locale, compact?: boolean)
   }).format(value);
 }
 
+/**
+ * A short money label for a chart axis: the narrow symbol and a compact number ("$14,5 mil" / "$14.5K").
+ * The full compact currency ("14,5 mil US$") is wider than an axis column and was clipped to "mil US$".
+ */
+export function formatCurrencyTick(value: number, locale: Locale): string {
+  const tag = intlLocale(locale);
+  const symbol =
+    new Intl.NumberFormat(tag, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol' })
+      .formatToParts(0)
+      .find((part) => part.type === 'currency')?.value ?? '';
+  const amount = new Intl.NumberFormat(tag, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  return `${symbol}${amount}`;
+}
+
 /** Change against the previous value: a signed percent, its tone, and its direction (none at 0). */
 export function trendArrow(
   current: number,
