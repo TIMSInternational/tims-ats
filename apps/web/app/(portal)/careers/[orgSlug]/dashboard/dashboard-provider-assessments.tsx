@@ -14,6 +14,7 @@ import {
   type PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
+import { assessmentProviderFrameOrigin } from '../../../../../lib/security/csp';
 import { ErrorState, Skeleton } from '../../../../../components';
 import { ProviderAssessmentFrame } from './provider-assessment-frame';
 import { frameMessages } from './provider-frame-messages';
@@ -26,9 +27,10 @@ import { ProviderAssessmentItem, portalInstrumentName, type PortalMessages } fro
 // include this site and its origin is the configured player origin; otherwise a top-level link-out. The URL carries a
 // single-use launch code: it is opened at once and never stored, logged or shown.
 const PLAYER_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN;
-// PCA is answered on the provider's own site: framed (sandboxed) when that site is the configured provider frame origin,
-// as timssuite.com frames it; otherwise a top-level link-out.
-const PROVIDER_FRAME_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN;
+// PCA is answered on the provider's own site (timshr.com): framed (sandboxed) on this page by default, as timssuite.com
+// frames it, in the same frame and bar as the other tests. The env overrides the origin or turns framing off, read
+// through the resolver the CSP frame-src uses; a page on any other origin links out top-level.
+const PROVIDER_FRAME_ORIGIN = assessmentProviderFrameOrigin(process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN);
 /** timssuite.com checks its PCA page's survey every 15 s. */
 export const PCA_POLL_MS = 15_000;
 /** After a sitting ends, re-read every 2 s for at most 60 s until its result has arrived. */

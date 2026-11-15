@@ -1,5 +1,5 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import en from '../../apps/web/lib/i18n/en.json';
@@ -221,6 +221,51 @@ describe('DashboardProviderAssessments', () => {
 
     await waitFor(() => expect(openTopLevel).toHaveBeenCalledWith('https://pca.test/sit/1'));
     expect(launchBodies).toEqual([{ notice: NOTICE, embedded: false }]);
+  });
+
+  it('frames PCA on timshr.com by default, in the same frame and bar as the other tests', async () => {
+    // happy-dom would load the framed page for real: this test must never reach TIMS's site.
+    const browser = (window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }).happyDOM
+      .settings;
+    browser.disableIframePageLoading = true;
+    onTestFinished(() => {
+      browser.disableIframePageLoading = false;
+    });
+    const launchBodies: unknown[] = [];
+    respond({
+      '/launch': (init) => {
+        launchBodies.push(JSON.parse(String(init?.body)));
+        return json({
+          delivery: 'link_out',
+          expiresAt: '2026-11-09T14:05:00Z',
+          hostedUrl: 'https://timshr.com/surveys/?SCId=7',
+          frameAncestors: [],
+        });
+      },
+      '/portal/assessment-attempts': () =>
+        json({ attempts: [attempt('ready', { instrument: 'pca', delivery: 'link_out' })] }),
+    });
+    renderSection();
+
+    await startReady();
+
+    const pcaName = portalInstrumentName(m, 'pca');
+    const frame = await screen.findByTitle(pcaName);
+    expect(frame.getAttribute('src')).toBe('https://timshr.com/surveys/?SCId=7');
+    expect(frame.getAttribute('sandbox')).toBe('allow-forms allow-scripts allow-same-origin');
+    expect(openTopLevel).not.toHaveBeenCalled();
+    // A link-out instrument never asks for an embedded launch.
+    expect(launchBodies).toEqual([{ notice: NOTICE, embedded: false }]);
+    const dialog = screen.getByRole('dialog', { name: pcaName });
+    expect(within(dialog).getByRole('link', { name: m.providerFrameNewTab })).toHaveAttribute(
+      'href',
+      'https://timshr.com/surveys/?SCId=7',
+    );
+    // Leaving asks first, as for every test; back on the list the result may still be on its way.
+    fireEvent.click(within(dialog).getByRole('button', { name: m.providerFrameLeave }));
+    fireEvent.click(screen.getByRole('button', { name: m.providerLeaveConfirm }));
+    await waitFor(() => expect(screen.queryByTitle(pcaName)).not.toBeInTheDocument());
+    expect(await screen.findByText(m.providerStatusAwaitingResult)).toBeInTheDocument();
   });
 
   it('frames the hosted player when this site is a registered ancestor, and refreshes on close', async () => {
