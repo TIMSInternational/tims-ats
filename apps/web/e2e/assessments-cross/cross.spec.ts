@@ -460,24 +460,26 @@ test('H5 candidate A signs in (OTP), consents and completes LIA, Personality and
     await consentAndOpen(page, instrument, optional, true);
     seen.push(`${instrument}: ${await sitAndReturn(page, instrument, true)}`);
   }
-  // PCA: consent in the portal, then the provider's survey (link-out, same tab). The survey is created at the
-  // provider on this launch (a billable AddSurvey in production), once per assignment.
+  // PCA: consent in the portal, then the provider's survey (framed in the portal; link-out mode: the same tab). The
+  // survey is created at the provider on this launch (a billable AddSurvey in production), once per assignment.
   await consentAndOpen(page, 'pca', 'none', true);
   const survey = await sittingSurface(page, PCA_SURVEY);
   if (st.embedded) {
-    // timssuite.com's PCA header over TIMS's own page, sandboxed (no popups).
-    await expect(
-      assessmentDialog(page).getByRole('heading', { name: 'Análisis de Competencias Personales (PCA)' }),
-    ).toBeVisible();
-    await expect(assessmentDialog(page).getByText('Completa el cuestionario a continuación')).toBeVisible();
-    await expect(assessmentDialog(page).locator('iframe')).toHaveAttribute(
-      'sandbox',
-      'allow-forms allow-scripts allow-same-origin',
+    // The same ATS bar as every test (the test's name in the test's language, and the way out) over TIMS's own page,
+    // sandboxed (no popups), with a way to open the survey in a new tab; the loading state has cleared.
+    const dialog = assessmentDialog(page);
+    await expect(dialog.getByText('Perfil conductual', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Salir', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('link', { name: 'Abrir en una pestaña nueva' })).toHaveAttribute(
+      'href',
+      new RegExp(`^${PCA_SURVEY}/survey\\?c=`),
     );
+    await expect(dialog.locator('iframe')).toHaveAttribute('sandbox', 'allow-forms allow-scripts allow-same-origin');
+    await expect(dialog.getByRole('status')).toHaveCount(0, { timeout: 60_000 });
   }
   await shot(page, 'pca-provider-survey');
-  await survey.getByRole('button', { name: 'Completar el PCA' }).click();
-  await expect(survey.getByText('PCA completado')).toBeVisible();
+  await survey.getByRole('button', { name: 'Enviar respuestas' }).click();
+  await expect(survey.getByRole('heading', { name: 'Cuestionario enviado' })).toBeVisible();
   await shot(page, 'pca-provider-completed');
   const sitting = suiteSql(
     st,
