@@ -45,7 +45,7 @@ export function EmailActionForm({
               placeholder={placeholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="min-w-0 flex-1"
+              className="min-w-0 sm:flex-1"
             />
             <Button
               type="submit"
