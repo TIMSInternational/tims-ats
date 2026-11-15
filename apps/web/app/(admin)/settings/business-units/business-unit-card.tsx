@@ -43,8 +43,12 @@ export function BusinessUnitCard({ unit, abilities, actions }: BusinessUnitCardP
   const errorMessage = useOrgErrorMessage();
   const [failure, setFailure] = useState<string | null>(null);
   const [removing, setRemoving] = useState<OrgPerson | null>(null);
-  // The failure is shown inline on the card (role=alert); no duplicate toast.
-  const report = (error: unknown) => setFailure(errorMessage(error));
+  // Project rule: every mutation toasts its failure; the card keeps its inline copy (role=alert) too.
+  const report = (error: unknown) => {
+    const message = errorMessage(error);
+    toast(message, { type: 'error' });
+    setFailure(message);
+  };
 
   const toggle = useOrgStructureMutation('updateBusinessUnit', {
     onSuccess: () => {

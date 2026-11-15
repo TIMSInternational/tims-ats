@@ -42,13 +42,16 @@ export function MemberRowActions({
   const options = memberRoleOptions(actorRoles, t.roles, currentRole);
   const close = () => setDialog(null);
 
-  // Failures show inside the still-open dialog, in translated copy (never the server's text).
+  // Failures show inside the still-open dialog and, per the project rule, as a toast too; both in translated
+  // copy (never the server's text).
+  const onError = () => toast(m.memberActionError, { type: 'error' });
   const changeRole = trpc.user.assignRole.useMutation({
     onSuccess: () => {
       toast(m.roleChanged, { type: 'success' });
       close();
       void utils.user.list.invalidate();
     },
+    onError,
   });
   const deactivate = trpc.user.deactivate.useMutation({
     onSuccess: () => {
@@ -56,6 +59,7 @@ export function MemberRowActions({
       close();
       void utils.user.list.invalidate();
     },
+    onError,
   });
 
   const openRole = () => {

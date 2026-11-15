@@ -20,6 +20,8 @@ export function AssignUserModal({ businessUnitId, excludeIds, onClose, onAssigne
       toast(t.units.assigned, { type: 'success' });
       onAssigned();
     },
+    // Project rule: every mutation toasts its failure; the dialog keeps its inline copy too.
+    onError: () => toast(t.units.errorGeneric, { type: 'error' }),
   });
 
   return (

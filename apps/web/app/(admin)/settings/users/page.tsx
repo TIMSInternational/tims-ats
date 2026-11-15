@@ -40,7 +40,11 @@ export default function TeamSettingsPage() {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <PageHeader title={m.title} description={m.subtitle} />
+      {/* A role that cannot invite gets a members-only description, not one that promises inviting. */}
+      <PageHeader
+        title={m.title}
+        description={inviteForbidden || (!isLoading && !canInvite) ? m.subtitleMembersOnly : m.subtitle}
+      />
 
       <div className="flex-1 space-y-6 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
         {inviteForbidden ? (

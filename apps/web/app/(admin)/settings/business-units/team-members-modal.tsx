@@ -36,17 +36,22 @@ export function TeamMembersModal({ team, abilities, onClose }: TeamMembersModalP
     setReturnFocusTo(userId);
   };
 
+  // Project rule: every mutation toasts its failure; the dialog keeps its inline copy too.
+  const onError = (error: unknown) => toast(errorMessage(error), { type: 'error' });
+
   const add = useOrgStructureMutation('addTeamMember', {
     onSuccess: () => {
       toast(t.units.memberAdded, { type: 'success' });
       setAdding(false);
     },
+    onError,
   });
   const remove = useOrgStructureMutation('removeTeamMember', {
     onSuccess: () => {
       setConfirmingId(null);
       toast(t.units.memberRemoved, { type: 'success' });
     },
+    onError,
   });
   const failed = add.error ?? remove.error;
   const busy = add.isPending || remove.isPending;

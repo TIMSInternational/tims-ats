@@ -43,6 +43,8 @@ export function LegacyBusinessUnitsView() {
       toast(t.units.removed, { type: 'success' });
       if (unitId) utils.organization.listUnitMembers.invalidate({ businessUnitId: unitId });
     },
+    // Project rule: every mutation toasts its failure; the confirm dialog keeps its inline copy too.
+    onError: () => toast(t.units.errorGeneric, { type: 'error' }),
   });
 
   const memberRows = members.data ?? [];

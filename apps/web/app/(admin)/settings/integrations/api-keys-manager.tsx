@@ -38,7 +38,11 @@ export function ApiKeyManager({ createOpen, onCreateOpenChange }: ApiKeyManagerP
       onCreateOpenChange(false);
       void utils.integration.listApiKeys.invalidate();
     },
-    onError: () => setCreateError(t.integrations.apiKeyCreateError),
+    // Project rule: every mutation toasts its failure; the open dialog keeps its inline copy too.
+    onError: () => {
+      setCreateError(t.integrations.apiKeyCreateError);
+      toast(t.integrations.apiKeyCreateError, { type: 'error' });
+    },
   });
 
   const revoke = trpc.integration.revokeApiKey.useMutation({
@@ -47,7 +51,10 @@ export function ApiKeyManager({ createOpen, onCreateOpenChange }: ApiKeyManagerP
       void utils.integration.listApiKeys.invalidate();
       toast(t.integrations.apiKeyRevoked, { type: 'success' });
     },
-    onError: () => setRevokeError(t.integrations.apiKeyRevokeError),
+    onError: () => {
+      setRevokeError(t.integrations.apiKeyRevokeError);
+      toast(t.integrations.apiKeyRevokeError, { type: 'error' });
+    },
   });
 
   function closeCreate() {
@@ -72,12 +79,8 @@ export function ApiKeyManager({ createOpen, onCreateOpenChange }: ApiKeyManagerP
         ) : list.isError ? (
           <ErrorState size="compact" title={t.integrations.apiKeysErr} onRetry={() => list.refetch()} />
         ) : !list.data || list.data.length === 0 ? (
-          <div className="space-y-3">
-            <p className="text-body text-secondary">{t.integrations.apiKeysEmpty}</p>
-            <Button variant="secondary" size="sm" onClick={() => onCreateOpenChange(true)}>
-              {t.integrations.newApiKey}
-            </Button>
-          </div>
+          // The page header's "Nueva clave de API" is the one way in; no second copy in the card.
+          <p className="text-body text-secondary">{t.integrations.apiKeysEmpty}</p>
         ) : (
           <table className="w-full text-callout">
             <thead>

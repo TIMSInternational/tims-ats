@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { Button, Field, Modal, Select, TextInput } from '../../../../components';
+import { Button, DialogCancelButton, Field, Modal, Select, TextInput } from '../../../../components';
 
 export type ApiKeyEnvironment = 'production' | 'staging' | 'development';
 
@@ -48,9 +48,10 @@ export function ApiKeyCreateModal({ pending, error, onSubmit, onClose }: ApiKeyC
       dirty={name.trim().length > 0}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={pending}>
+          {/* Goes through the dirty guard, like the close button and Escape. */}
+          <DialogCancelButton onCancel={onClose} disabled={pending}>
             {t.integrations.apiKeyCancel}
-          </Button>
+          </DialogCancelButton>
           <Button
             type="submit"
             form={FORM_ID}
