@@ -10,6 +10,7 @@ import { candidatePoolLabel } from '../../../../lib/candidate-labels';
 import { FilterBar } from './filter-bar';
 import { CandidateTable } from './candidate-table';
 import { CreateModal } from './create-modal';
+import { createErrorMessage } from './create-modal.helpers';
 
 const LIST_LIMIT = 50;
 
@@ -41,7 +42,8 @@ export default function CandidatesPage() {
       setShowCreate(false);
       toast(t.candidates.created, { type: 'success' });
     },
-    // Errors show inside the dialog, next to the step they concern (writing.md › Best practices).
+    // Said twice on purpose: in the dialog, next to the step it concerns, and as a toast (frontend.md).
+    onError: (error) => toast(createErrorMessage(error.data?.code, t.candidates), { type: 'error' }),
   });
 
   const openCreate = () => {

@@ -186,8 +186,9 @@ export function CreateOfferModal({
         forbidden: t.offers.errorForbiddenAction,
         generic: t.offers.errorOfferAction,
       });
-      // Shown once, inline above the buttons (no duplicate toast).
+      // Shown inline above the buttons, and as a toast (frontend.md: onError toast on every mutation).
       setError(message);
+      toast(message, { type: 'error' });
     }
   };
 

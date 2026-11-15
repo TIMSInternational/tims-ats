@@ -25,7 +25,10 @@ export function TagsCard({ tags, candidateId }: { tags: Tag[]; candidateId: stri
       utils.candidate.getById.invalidate({ id: candidateId });
       setNewTag('');
     },
-    // A rejected tag (duplicate, too long) is shown under the field it concerns, not in a toast.
+    // A rejected tag (duplicate, too long) is shown under the field it concerns, and as a toast (frontend.md).
+    onError: () => {
+      toast(t.candidates.tagAddError, { type: 'error' });
+    },
   });
 
   const removeTag = trpc.candidate.removeTag.useMutation({

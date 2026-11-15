@@ -73,17 +73,18 @@ function OffersCardBody({ candidateId }: { candidateId: string }) {
       ) : (
         <ul className="space-y-2">
           {items.map((offer) => (
-            <li
-              key={offer.id}
-              className="flex flex-col gap-2 rounded-lg bg-surface p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-            >
+            // Stacked on every width: this card sits in the narrow record column, so a side-by-side row would
+            // clip the vacancy title (typography.md: prefer a stacked layout over truncation).
+            <li key={offer.id} className="flex flex-col gap-2 rounded-lg bg-surface p-2.5">
               <div className="min-w-0">
-                <p className="truncate text-body font-medium text-primary">{offer.vacancy.title}</p>
+                <p className="line-clamp-2 break-words text-body font-medium text-primary" title={offer.vacancy.title}>
+                  {offer.vacancy.title}
+                </p>
                 <p className="text-caption text-muted">
                   {t.candidates.offersCreatedOn.replace('{date}', formatDate(offer.createdAt))}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <StatusBadge status={offer.status} map={statusMap} />
                 <Link href={offerDetailHref(offer.id)} className={`${TEXT_LINK_CLASSES} text-callout`}>
                   {t.candidates.offersOpen}

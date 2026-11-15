@@ -51,7 +51,8 @@ export function ScreenCandidateCard({ candidateId, vacancies }: { candidateId: s
       ) : (
         <>
           <AiSuggestionNotice className="mb-3" />
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {/* Stacked: in the narrow record column a side-by-side row squeezes the vacancy name. */}
+          <div className="flex flex-col items-stretch gap-2 sm:items-start">
             <label htmlFor={`screen-vacancy-${candidateId}`} className="sr-only">
               {ai.screenVacancyLabel}
             </label>
@@ -59,7 +60,7 @@ export function ScreenCandidateCard({ candidateId, vacancies }: { candidateId: s
               id={`screen-vacancy-${candidateId}`}
               value={vacancyId}
               onChange={(e) => setVacancyId(e.target.value)}
-              className="min-w-0 sm:flex-1"
+              className="w-full min-w-0"
             >
               {vacancies.map((v) => (
                 <option key={v.id} value={v.id}>
