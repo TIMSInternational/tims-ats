@@ -13,7 +13,8 @@ export const FRAME_HEADER_CLASSES =
   'tims-chrome flex h-14 shrink-0 items-center justify-between gap-3 px-4.5 text-eval-on-navy md:h-17 md:px-14';
 export const FRAME_HEADER_START_CLASSES = 'flex min-w-0 items-center gap-3.5';
 export const FRAME_HEADER_END_CLASSES = 'flex shrink-0 items-center gap-2 md:gap-4';
-/** "TIMS International": the mark always, the word from md (a phone keeps its room for the test's name). */
+/** "TIMS International" (the sandboxed provider page only: the hosted player draws its own PCA header with the brand,
+ * so the frame never repeats it). The mark always, the word from md (a phone keeps its room for the test's name). */
 export const FRAME_WORDMARK_CLASSES =
   'inline-flex shrink-0 items-center gap-2 font-semibold tracking-[0.03em] whitespace-nowrap text-eval-sm text-eval-on-navy';
 export const FRAME_WORDMARK_TEXT_CLASSES = 'hidden md:inline';
@@ -44,6 +45,9 @@ export const FRAME_NEW_TAB_LABEL_CLASSES = 'max-sm:sr-only';
 export const FRAME_LEAVE_CLASSES = `${HEADER_CONTROL} border border-eval-on-navy-border px-3.5 text-eval-on-navy hover:bg-eval-on-navy-hover`;
 /** "Volver a mis evaluaciones" after the end: the one way back, filled white like the PCA's selected header chip. */
 export const FRAME_DONE_CLASSES = `${HEADER_CONTROL} bg-white px-4 text-eval-heading hover:bg-eval-bg2`;
+/** Below sm the short label ("Volver") is shown and the full one stays the accessible name. */
+export const FRAME_DONE_FULL_CLASSES = 'max-sm:sr-only';
+export const FRAME_DONE_SHORT_CLASSES = 'sm:hidden';
 
 /** Where the test is drawn: the frame fills it, on the navy page. */
 export const FRAME_BODY_CLASSES = 'relative min-h-0 flex-1';
@@ -51,18 +55,23 @@ export const FRAME_IFRAME_CLASSES = 'absolute inset-0 size-full border-0';
 /** Until the page has loaded: the PCA sheet (full bleed on phones; inset 56px and 20px from the bottom on md) with a
  * spinner and what is opening. Never catches a click. */
 export const FRAME_LOADING_CLASSES = 'pointer-events-none absolute inset-0 flex md:px-14 md:pb-5';
+/** The hosted player: its own PCA header (56px / 68px) sits above its sheet, so the loading sheet starts at the same
+ * height and does not jump when the player has loaded. */
+export const FRAME_LOADING_PLAYER_CLASSES = `${FRAME_LOADING_CLASSES} pt-14 md:pt-17`;
 export const FRAME_LOADING_SHEET_CLASSES =
   'flex flex-1 flex-col items-center justify-center gap-4 rounded-t-eval-sheet bg-white px-6 text-center md:rounded-eval-sheet';
 export const FRAME_SPINNER_CLASSES = 'size-11 text-eval-accent';
 export const FRAME_LOADING_TEXT_CLASSES = 'm-0 text-eval-base leading-[1.55] text-eval-ink2';
 
-/** "¿Salir de la evaluación?": the PCA AlertDialog over the scrim, centred, the warn icon tile on top. */
+/** "¿Salir de la evaluación?": the PCA AlertDialog warn recipe (PCA-DESIGN §7) over the scrim, centred: warn icon
+ * tile, uppercase warn eyebrow, h2 title (1.3rem bold sans), body, actions; enters with r-sheet-in. */
 export const LEAVE_SCRIM_CLASSES = 'absolute inset-0 z-10 flex items-center justify-center bg-eval-scrim p-5.5';
 export const LEAVE_PANEL_CLASSES =
-  'w-full max-w-[520px] animate-sheet-up rounded-eval-sheet motion-reduce:animate-none bg-white px-5 pt-6 pb-4 text-eval-ink shadow-eval-pop md:p-8';
+  'w-full max-w-[520px] animate-eval-sheet-in rounded-eval-sheet motion-reduce:animate-none bg-white px-5 pt-6 pb-4 text-eval-ink shadow-eval-pop md:p-8';
 export const LEAVE_ICON_CLASSES =
   'grid size-14 place-items-center rounded-eval-card bg-eval-warn-tint text-eval-warn [&_svg]:size-7';
-export const LEAVE_TITLE_CLASSES = 'm-0 mt-4 text-eval-dialog font-bold text-eval-heading';
+export const LEAVE_EYEBROW_CLASSES = 'm-0 mt-4 text-[0.78rem] font-bold tracking-[0.05em] text-eval-warn uppercase';
+export const LEAVE_TITLE_CLASSES = 'm-0 mt-1 text-eval-dialog font-bold text-eval-heading';
 export const LEAVE_BODY_CLASSES = 'm-0 mt-2 text-eval-base leading-[1.55] text-eval-ink2';
 /** Phones: stacked full width, staying on top. md: one row, trailing. */
 export const LEAVE_ACTIONS_CLASSES = 'mt-6 flex flex-col-reverse gap-2.5 md:flex-row md:justify-end md:gap-3';

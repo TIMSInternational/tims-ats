@@ -67,6 +67,47 @@ describe('ProviderAssessmentFrame', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('while it asks, the bar and the test are inert behind a modal alertdialog; staying returns focus to Leave', () => {
+    renderFrame();
+    const header = screen.getByText('Cognitive skills', { selector: 'p' }).parentElement!.parentElement!;
+    const body = screen.getByTitle('Cognitive skills').parentElement!;
+    const leave = screen.getByRole('button', { name: m.providerFrameLeave });
+    expect(header).not.toHaveAttribute('inert');
+    expect(body).not.toHaveAttribute('inert');
+    fireEvent.click(leave);
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // The question is a heading (screen-reader navigation), under the PCA warn eyebrow.
+    expect(within(dialog).getByRole('heading', { level: 2, name: m.providerLeaveTitle })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(m.providerLeaveEyebrow);
+    expect(header).toHaveAttribute('inert');
+    expect(body).toHaveAttribute('inert');
+    // Stay: the scrim goes, nothing is inert, focus is back on the way out it came from.
+    fireEvent.click(screen.getByRole('button', { name: m.providerLeaveStay }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(header).not.toHaveAttribute('inert');
+    expect(body).not.toHaveAttribute('inert');
+    expect(screen.getByRole('button', { name: m.providerFrameLeave })).toHaveFocus();
+    // Escape asks, a second Escape stays: focus returns to Leave the same way.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: m.providerLeaveStay })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: m.providerFrameLeave })).toHaveFocus();
+  });
+
+  it('shows the brand only over the sandboxed provider page: the hosted player draws its own PCA header with it', () => {
+    renderFrame();
+    expect(screen.queryByText(m.providerFrameBrand)).not.toBeInTheDocument();
+    // The player's header sits above its sheet, so the loading sheet starts at the same height.
+    expect(screen.getByRole('status').className).toContain('md:pt-17');
+  });
+
+  it('brands the sandboxed provider page, which has no TIMS header of its own', () => {
+    renderFrame({ url: 'https://timshr.test/s/1', sandboxed: true });
+    expect(screen.getByText(m.providerFrameBrand)).toBeInTheDocument();
+    expect(screen.getByRole('status').className).not.toContain('md:pt-17');
+  });
+
   it('after the end, offers one way back that does not ask; Escape returns too', () => {
     const { onClose } = renderFrame({ finished: true });
     expect(screen.queryByRole('button', { name: m.providerFrameLeave })).not.toBeInTheDocument();

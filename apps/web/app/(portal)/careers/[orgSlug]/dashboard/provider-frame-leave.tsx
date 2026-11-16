@@ -5,6 +5,7 @@ import {
   LEAVE_ACTIONS_CLASSES,
   LEAVE_BODY_CLASSES,
   LEAVE_CONFIRM_CLASSES,
+  LEAVE_EYEBROW_CLASSES,
   LEAVE_ICON_CLASSES,
   LEAVE_PANEL_CLASSES,
   LEAVE_SCRIM_CLASSES,
@@ -12,10 +13,12 @@ import {
   LEAVE_TITLE_CLASSES,
 } from './provider-frame-styles';
 
-// "¿Salir de la evaluación?" in the PCA app's blocking AlertDialog: a white card over the navy scrim, covering the test.
+// "¿Salir de la evaluación?" in the PCA app's blocking AlertDialog (warn recipe): a white card over the navy scrim,
+// covering the test, with a warn eyebrow and the question as a heading.
 // Staying is the default (focused, and the primary); leaving is the secondary. The frame owns the open state and
 // Escape; the copy arrives in the test's language.
 export function ProviderFrameLeave({
+  eyebrow,
   title,
   body,
   confirmLabel,
@@ -24,6 +27,7 @@ export function ProviderFrameLeave({
   onConfirm,
   onStay,
 }: {
+  eyebrow: string;
   title: string;
   body: string;
   confirmLabel: string;
@@ -50,9 +54,10 @@ export function ProviderFrameLeave({
             />
           </svg>
         </span>
-        <p id="provider-leave-title" className={LEAVE_TITLE_CLASSES}>
+        <p className={LEAVE_EYEBROW_CLASSES}>{eyebrow}</p>
+        <h2 id="provider-leave-title" className={LEAVE_TITLE_CLASSES}>
           {title}
-        </p>
+        </h2>
         <p id="provider-leave-body" className={LEAVE_BODY_CLASSES}>
           {body}
         </p>

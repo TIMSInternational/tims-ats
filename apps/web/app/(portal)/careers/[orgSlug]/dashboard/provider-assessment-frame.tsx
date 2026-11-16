@@ -10,12 +10,15 @@ import {
   FRAME_BODY_CLASSES,
   FRAME_DIVIDER_CLASSES,
   FRAME_DONE_CLASSES,
+  FRAME_DONE_FULL_CLASSES,
+  FRAME_DONE_SHORT_CLASSES,
   FRAME_HEADER_CLASSES,
   FRAME_HEADER_END_CLASSES,
   FRAME_HEADER_START_CLASSES,
   FRAME_IFRAME_CLASSES,
   FRAME_LEAVE_CLASSES,
   FRAME_LOADING_CLASSES,
+  FRAME_LOADING_PLAYER_CLASSES,
   FRAME_LOADING_SHEET_CLASSES,
   FRAME_LOADING_TEXT_CLASSES,
   FRAME_NEW_TAB_CLASSES,
@@ -34,8 +37,10 @@ import {
 //    and its own origin only, no camera, microphone or pop-ups. TIMS's page sends no message, so the dashboard polls for
 //    completion (in a new tab too). Its bar adds "Abrir en una pestaña nueva", for a browser that will not show TIMS's
 //    page inside the frame.
-// The bar is the TIMS evaluation design's navy header (the PCA respondent app: "TIMS International" + mark, the test's
-// name, the way out), on the same navy page the test's own screens use, so frame and test read as one screen.
+// The bar is the TIMS evaluation design's navy header, on the same navy page the test's own screens use, so frame and
+// test read as one screen. The brand ("TIMS International" + mark) has ONE owner: the hosted player draws its own PCA
+// header with it, so over the player the bar carries only the test's name and the way out; the sandboxed provider page
+// has no TIMS header, so there the bar adds the brand.
 // Until the framed page has loaded, the evaluation's white sheet with a spinner and a short description covers the frame
 // (loading.md › Best practices: "Show something as soon as possible").
 // Leaving a test in progress always asks first (Escape included): a sitting keeps its answers, but a timed section keeps
@@ -121,7 +126,10 @@ export function ProviderAssessmentFrame({
   const leaveButton = finished ? (
     // The sitting is over and the suite's receipt is on screen: one clear way back, no question asked.
     <button type="button" ref={leaveRef} className={FRAME_DONE_CLASSES} onClick={onClose}>
-      {m.providerFrameDone}
+      <span className={FRAME_DONE_FULL_CLASSES}>{m.providerFrameDone}</span>
+      <span aria-hidden="true" className={FRAME_DONE_SHORT_CLASSES}>
+        {m.providerFrameDoneShort}
+      </span>
     </button>
   ) : (
     <button type="button" ref={leaveRef} className={FRAME_LEAVE_CLASSES} onClick={() => setConfirming(true)}>
@@ -134,8 +142,12 @@ export function ProviderAssessmentFrame({
     <div role="dialog" aria-modal="true" aria-label={title} className={FRAME_ROOT_CLASSES}>
       <div className={FRAME_HEADER_CLASSES} inert={asking || undefined}>
         <div className={FRAME_HEADER_START_CLASSES}>
-          <ProviderFrameBrand label={m.providerFrameBrand} />
-          <span aria-hidden="true" className={FRAME_DIVIDER_CLASSES} />
+          {sandboxed && (
+            <>
+              <ProviderFrameBrand label={m.providerFrameBrand} />
+              <span aria-hidden="true" className={FRAME_DIVIDER_CLASSES} />
+            </>
+          )}
           <p className={FRAME_TITLE_CLASSES}>{title}</p>
         </div>
         <div className={FRAME_HEADER_END_CLASSES}>
@@ -169,7 +181,7 @@ export function ProviderAssessmentFrame({
         />
         {loading && (
           // Never catches a click meant for the page underneath; gone at the frame's first load event.
-          <div role="status" className={FRAME_LOADING_CLASSES}>
+          <div role="status" className={sandboxed ? FRAME_LOADING_CLASSES : FRAME_LOADING_PLAYER_CLASSES}>
             <div className={FRAME_LOADING_SHEET_CLASSES}>
               <Spinner className={FRAME_SPINNER_CLASSES} />
               <p className={FRAME_LOADING_TEXT_CLASSES}>{formatMessage(m.providerFrameOpening, { name: title })}</p>
@@ -179,6 +191,7 @@ export function ProviderAssessmentFrame({
       </div>
       {asking && (
         <ProviderFrameLeave
+          eyebrow={m.providerLeaveEyebrow}
           title={m.providerLeaveTitle}
           body={m.providerLeaveBody}
           confirmLabel={m.providerLeaveConfirm}
