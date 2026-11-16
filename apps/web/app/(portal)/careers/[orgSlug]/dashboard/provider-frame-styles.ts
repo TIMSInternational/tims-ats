@@ -3,9 +3,10 @@
 // read as ONE screen. The class lists are the PCA app's own recipes (frame.tsx, primitives.tsx) on the `eval-*` tokens
 // in globals.css. They live here, never inline in ternaries, so the i18n scanner never reads them as copy.
 
-/** The full-screen dialog: the navy page every test screen sits on. */
+/** The full-screen dialog: the navy page every test screen sits on. `tims-eval` gives it the PCA focus ring (3px accent,
+ * 2px offset; white on the navy bar), see globals.css. */
 export const FRAME_ROOT_CLASSES =
-  'fixed inset-0 z-50 flex flex-col bg-eval-navy font-eval-sans text-eval-ink antialiased';
+  'tims-eval fixed inset-0 z-50 flex flex-col bg-eval-navy font-eval-sans text-eval-ink antialiased';
 
 /** The PCA header: 56px / 68px, white text on navy, no divider under it (the test's own navy page continues it).
  * `tims-chrome` turns the global focus ring white on the navy. */
@@ -32,7 +33,8 @@ export const FRAME_MARK_CELLS = [
   'bg-eval-mark-6',
 ] as const;
 export const FRAME_MARK_CELL_CLASSES = 'rounded-[1px]';
-export const FRAME_DIVIDER_CLASSES = 'h-[22px] w-px shrink-0 bg-eval-on-navy-line';
+/** Between the brand and the test's name, from md only (the PCA's header divider is md+). */
+export const FRAME_DIVIDER_CLASSES = 'hidden h-[22px] w-px shrink-0 bg-eval-on-navy-line md:block';
 /** The test's name: secondary header text. */
 export const FRAME_TITLE_CLASSES = 'm-0 min-w-0 truncate text-eval-sm text-eval-on-navy-2 md:text-eval-base';
 
@@ -60,7 +62,9 @@ export const FRAME_LOADING_CLASSES = 'pointer-events-none absolute inset-0 flex 
 export const FRAME_LOADING_PLAYER_CLASSES = `${FRAME_LOADING_CLASSES} pt-14 md:pt-17`;
 export const FRAME_LOADING_SHEET_CLASSES =
   'flex flex-1 flex-col items-center justify-center gap-4 rounded-t-eval-sheet bg-white px-6 text-center md:rounded-eval-sheet';
-export const FRAME_SPINNER_CLASSES = 'size-11 text-eval-accent';
+/** The PCA's large spinner (.r-spin-lg): a 44px ring, 4px, open on the right, 0.9s linear (3s with reduced motion). */
+export const FRAME_SPINNER_CLASSES =
+  'inline-block size-11 shrink-0 animate-eval-spin rounded-full border-4 border-r-transparent text-eval-accent';
 export const FRAME_LOADING_TEXT_CLASSES = 'm-0 text-eval-base leading-[1.55] text-eval-ink2';
 
 /** "¿Salir de la evaluación?": the PCA AlertDialog warn recipe (PCA-DESIGN §7) over the scrim, centred: warn icon
@@ -71,11 +75,14 @@ export const LEAVE_PANEL_CLASSES =
 export const LEAVE_ICON_CLASSES =
   'grid size-14 place-items-center rounded-eval-card bg-eval-warn-tint text-eval-warn [&_svg]:size-7';
 export const LEAVE_EYEBROW_CLASSES = 'm-0 mt-4 text-[0.78rem] font-bold tracking-[0.05em] text-eval-warn uppercase';
-export const LEAVE_TITLE_CLASSES = 'm-0 mt-1 text-eval-dialog font-bold text-eval-heading';
+/** The PCA's h2 sets no colour: it inherits the dialog's ink. */
+export const LEAVE_TITLE_CLASSES = 'm-0 mt-1 text-eval-dialog font-bold';
 export const LEAVE_BODY_CLASSES = 'm-0 mt-2 text-eval-base leading-[1.55] text-eval-ink2';
 /** Phones: stacked full width, staying on top. md: one row, trailing. */
 export const LEAVE_ACTIONS_CLASSES = 'mt-6 flex flex-col-reverse gap-2.5 md:flex-row md:justify-end md:gap-3';
 const DIALOG_BUTTON =
-  'inline-flex min-h-13 items-center justify-center gap-2 rounded-eval-btn px-5 text-center text-eval-md font-semibold leading-tight transition-colors motion-reduce:transition-none md:min-h-12 md:text-eval-base';
-export const LEAVE_CONFIRM_CLASSES = `${DIALOG_BUTTON} border border-eval-line bg-white text-eval-ink hover:bg-eval-bg2`;
-export const LEAVE_STAY_CLASSES = `${DIALOG_BUTTON} bg-eval-accent text-white hover:bg-eval-accent-hover`;
+  'inline-flex min-h-13 items-center justify-center gap-2 rounded-eval-btn px-5 text-center text-eval-md leading-tight transition-colors motion-reduce:transition-none md:min-h-12 md:text-eval-base';
+/** The PCA secondary button: regular weight. */
+export const LEAVE_CONFIRM_CLASSES = `${DIALOG_BUTTON} border border-eval-line bg-white font-normal text-eval-ink hover:bg-eval-bg2`;
+/** The PCA primary button: semibold. */
+export const LEAVE_STAY_CLASSES = `${DIALOG_BUTTON} bg-eval-accent font-semibold text-white hover:bg-eval-accent-hover`;

@@ -1,6 +1,7 @@
 'use client';
 
-import type { Ref } from 'react';
+import { useEffect, useRef, type Ref } from 'react';
+import { LogOut } from 'lucide-react';
 import {
   LEAVE_ACTIONS_CLASSES,
   LEAVE_BODY_CLASSES,
@@ -17,6 +18,11 @@ import {
 // covering the test, with a warn eyebrow and the question as a heading.
 // Staying is the default (focused, and the primary); leaving is the secondary. The frame owns the open state and
 // Escape; the copy arrives in the test's language.
+// Focus stays in the dialog. It is modal, but drawn inline in the dashboard rather than in the browser's top layer:
+// the bar and the test are inert, the page around the frame is not, so Tab past the last button (or Shift+Tab before
+// the first) would land on something hidden under the scrim. Tab and Shift+Tab therefore cycle between the two
+// buttons. The listener is on the document, not on the dialog, because a click on the scrim or on the dialog's text
+// leaves focus on the page body, where a key handler on the dialog would never hear the Tab.
 export function ProviderFrameLeave({
   eyebrow,
   title,
@@ -36,9 +42,30 @@ export function ProviderFrameLeave({
   onConfirm: () => void;
   onStay: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const buttons = panelRef.current ? Array.from(panelRef.current.querySelectorAll('button')) : [];
+      const first = buttons[0];
+      const last = buttons[buttons.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement;
+      const inside = active instanceof Node && panelRef.current?.contains(active) === true;
+      const wraps = event.shiftKey ? !inside || active === first : !inside || active === last;
+      if (!wraps) return;
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className={LEAVE_SCRIM_CLASSES}>
       <div
+        ref={panelRef}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="provider-leave-title"
@@ -46,13 +73,7 @@ export function ProviderFrameLeave({
         className={LEAVE_PANEL_CLASSES}
       >
         <span aria-hidden="true" className={LEAVE_ICON_CLASSES}>
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"
-            />
-          </svg>
+          <LogOut aria-hidden="true" />
         </span>
         <p className={LEAVE_EYEBROW_CLASSES}>{eyebrow}</p>
         <h2 id="provider-leave-title" className={LEAVE_TITLE_CLASSES}>

@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 import { formatMessage, useI18n } from '../../../../../lib/i18n';
 import { frameMessages } from './provider-frame-messages';
-import { Spinner } from '../../../../../components';
 import { ProviderFrameBrand } from './provider-frame-brand';
 import { ProviderFrameLeave } from './provider-frame-leave';
 import {
@@ -156,13 +156,7 @@ export function ProviderAssessmentFrame({
             // camera, microphone and full screen are granted to this frame. Below sm the label stays the accessible
             // name and the familiar "open outside" symbol carries it (buttons.md › Content, toolbars.md › Phone).
             <a href={url} target="_blank" rel="noopener noreferrer" className={FRAME_NEW_TAB_CLASSES}>
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
-                />
-              </svg>
+              <ExternalLink aria-hidden="true" />
               <span className={FRAME_NEW_TAB_LABEL_CLASSES}>{m.providerFrameNewTab}</span>
             </a>
           )}
@@ -183,7 +177,7 @@ export function ProviderAssessmentFrame({
           // Never catches a click meant for the page underneath; gone at the frame's first load event.
           <div role="status" className={sandboxed ? FRAME_LOADING_CLASSES : FRAME_LOADING_PLAYER_CLASSES}>
             <div className={FRAME_LOADING_SHEET_CLASSES}>
-              <Spinner className={FRAME_SPINNER_CLASSES} />
+              <span aria-hidden="true" className={FRAME_SPINNER_CLASSES} />
               <p className={FRAME_LOADING_TEXT_CLASSES}>{formatMessage(m.providerFrameOpening, { name: title })}</p>
             </div>
           </div>

@@ -39,7 +39,9 @@ describe('isSittingEndedMessage', () => {
   it('accepts only the player origin and the player message shape', () => {
     expect(isSittingEndedMessage(message(ended, 'https://player.test'), 'https://player.test')).toBe(true);
     expect(isSittingEndedMessage(message(ended, 'https://evil.test'), 'https://player.test')).toBe(false);
-    expect(isSittingEndedMessage(message({ type: 'sitting_ended' }, 'https://player.test'), 'https://player.test')).toBe(false);
+    expect(
+      isSittingEndedMessage(message({ type: 'sitting_ended' }, 'https://player.test'), 'https://player.test'),
+    ).toBe(false);
     expect(isSittingEndedMessage(message('sitting_ended', 'https://player.test'), 'https://player.test')).toBe(false);
     expect(isSittingEndedMessage(message(ended, 'https://player.test'), undefined)).toBe(false);
   });
@@ -93,6 +95,38 @@ describe('ProviderAssessmentFrame', () => {
     expect(screen.getByRole('button', { name: m.providerLeaveStay })).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.getByRole('button', { name: m.providerFrameLeave })).toHaveFocus();
+  });
+
+  it('keeps keyboard focus inside the leave question: Tab and Shift+Tab cycle between its two buttons', () => {
+    // The question is drawn inline in the dashboard (not in the top layer), so without this Tab would reach the page
+    // hidden under the scrim.
+    renderFrame();
+    fireEvent.click(screen.getByRole('button', { name: m.providerFrameLeave }));
+    const stay = screen.getByRole('button', { name: m.providerLeaveStay });
+    const confirm = screen.getByRole('button', { name: m.providerLeaveConfirm });
+    expect(stay).toHaveFocus();
+    // Tab from Stay (the last button) wraps to Confirm; Shift+Tab from Confirm (the first) wraps to Stay.
+    expect(fireEvent.keyDown(stay, { key: 'Tab' })).toBe(false);
+    expect(confirm).toHaveFocus();
+    expect(fireEvent.keyDown(confirm, { key: 'Tab', shiftKey: true })).toBe(false);
+    expect(stay).toHaveFocus();
+    // Between the two the browser moves focus on its own: nothing is prevented.
+    confirm.focus();
+    expect(fireEvent.keyDown(confirm, { key: 'Tab' })).toBe(true);
+    // Focus that fell to the page body (a click on the scrim) comes back in, in either direction.
+    confirm.blur();
+    expect(document.body).toHaveFocus();
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    expect(confirm).toHaveFocus();
+    confirm.blur();
+    fireEvent.keyDown(document.body, { key: 'Tab', shiftKey: true });
+    expect(stay).toHaveFocus();
+    // Once the question is answered, Tab is the browser's again.
+    fireEvent.click(stay);
+    const leave = screen.getByRole('button', { name: m.providerFrameLeave });
+    expect(leave).toHaveFocus();
+    expect(fireEvent.keyDown(leave, { key: 'Tab' })).toBe(true);
+    expect(leave).toHaveFocus();
   });
 
   it('shows the brand only over the sandboxed provider page: the hosted player draws its own PCA header with it', () => {
