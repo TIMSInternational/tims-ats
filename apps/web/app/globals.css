@@ -65,6 +65,41 @@
   --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.06);
   --shadow-popover: 0 8px 30px rgba(0, 0, 0, 0.12);
 
+  /* The TIMS evaluation design (the PCA respondent app's tokens, exact): ONLY the frame around an embedded test
+     (provider-assessment-frame.tsx), so frame and test read as one screen. Light only; system font stacks, no files. */
+  --font-eval-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --color-eval-navy: #0c1c3a; /* page + header */
+  --color-eval-on-navy: #ffffff;
+  --color-eval-on-navy-2: #dbe4f6; /* secondary header text */
+  --color-eval-on-navy-line: rgb(255 255 255 / 0.25); /* header divider */
+  --color-eval-on-navy-border: rgb(255 255 255 / 0.35); /* outlined header control */
+  --color-eval-on-navy-hover: rgb(255 255 255 / 0.1);
+  --color-eval-bg2: #f5f8fc;
+  --color-eval-heading: #0c1c3a;
+  --color-eval-ink: #13203b; /* 15.9:1 on white */
+  --color-eval-ink2: #4a5672; /* 7.4:1 on white */
+  --color-eval-line: #d7deeb;
+  --color-eval-accent: #1b63f4; /* white on it 4.9:1 */
+  --color-eval-accent-hover: #0a53dd;
+  --color-eval-warn: #8a5a00;
+  --color-eval-warn-tint: #fff6e5;
+  --color-eval-scrim: rgb(12 28 58 / 0.5);
+  --color-eval-mark-1: #a9c1f0; /* the TIMS 3×3 mark */
+  --color-eval-mark-2: #7aa0ea;
+  --color-eval-mark-3: #4f86f6;
+  --color-eval-mark-4: #6f93db;
+  --color-eval-mark-5: #ffffff;
+  --color-eval-mark-6: #f0434a;
+  --text-eval-sm: 0.8125rem; /* 13 */
+  --text-eval-base: 0.9375rem; /* 15 */
+  --text-eval-md: 1rem; /* 16 */
+  --text-eval-dialog: 1.3rem;
+  --text-eval-dialog--line-height: 1.27;
+  --radius-eval-sheet: 16px;
+  --radius-eval-card: 12px;
+  --radius-eval-btn: 8px;
+  --shadow-eval-pop: 0 8px 30px rgb(12 28 58 / 0.18);
+
   /* Overlays (§17): 200ms, transform + opacity only. */
   --animate-slide-in-right: slideInRight 200ms ease-out;
   --animate-sheet-up: sheetUp 200ms ease-out;
