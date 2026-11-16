@@ -129,17 +129,20 @@ describe('ProviderAssessmentFrame', () => {
     expect(leave).toHaveFocus();
   });
 
-  it('shows the brand only over the sandboxed provider page: the hosted player draws its own PCA header with it', () => {
+  it('is the one header over the hosted player: brand, test name and the way out, in one bar', () => {
     renderFrame();
-    expect(screen.queryByText(m.providerFrameBrand)).not.toBeInTheDocument();
-    // The player's header sits above its sheet, so the loading sheet starts at the same height.
-    expect(screen.getByRole('status').className).toContain('md:pt-17');
+    const bar = screen.getByRole('button', { name: m.providerFrameLeave }).parentElement!.parentElement!;
+    expect(within(bar).getByText(m.providerFrameBrand)).toBeInTheDocument();
+    expect(within(bar).getByText('Cognitive skills')).toBeInTheDocument();
+    expect(screen.getAllByText(m.providerFrameBrand)).toHaveLength(1);
+    // The player draws no header inside the frame: its sheet (and so the loading sheet) starts right under the bar.
+    expect(screen.getByRole('status').className).not.toMatch(/(^|\s)(md:)?pt-/);
   });
 
-  it('brands the sandboxed provider page, which has no TIMS header of its own', () => {
+  it('brands the sandboxed provider page the same way, which has no TIMS header of its own', () => {
     renderFrame({ url: 'https://timshr.test/s/1', sandboxed: true });
-    expect(screen.getByText(m.providerFrameBrand)).toBeInTheDocument();
-    expect(screen.getByRole('status').className).not.toContain('md:pt-17');
+    expect(screen.getAllByText(m.providerFrameBrand)).toHaveLength(1);
+    expect(screen.getByRole('status').className).not.toMatch(/(^|\s)(md:)?pt-/);
   });
 
   it('after the end, offers one way back that does not ask; Escape returns too', () => {

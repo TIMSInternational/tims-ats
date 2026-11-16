@@ -14,8 +14,8 @@ export const FRAME_HEADER_CLASSES =
   'tims-chrome flex h-14 shrink-0 items-center justify-between gap-3 px-4.5 text-eval-on-navy md:h-17 md:px-14';
 export const FRAME_HEADER_START_CLASSES = 'flex min-w-0 items-center gap-3.5';
 export const FRAME_HEADER_END_CLASSES = 'flex shrink-0 items-center gap-2 md:gap-4';
-/** "TIMS International" (the sandboxed provider page only: the hosted player draws its own PCA header with the brand,
- * so the frame never repeats it). The mark always, the word from md (a phone keeps its room for the test's name). */
+/** "TIMS International", over every test: the bar is the page's one header (the hosted player leaves out its own inside
+ * this frame). The mark always, the word from md (a phone keeps its room for the test's name). */
 export const FRAME_WORDMARK_CLASSES =
   'inline-flex shrink-0 items-center gap-2 font-semibold tracking-[0.03em] whitespace-nowrap text-eval-sm text-eval-on-navy';
 export const FRAME_WORDMARK_TEXT_CLASSES = 'hidden md:inline';
@@ -55,11 +55,9 @@ export const FRAME_DONE_SHORT_CLASSES = 'sm:hidden';
 export const FRAME_BODY_CLASSES = 'relative min-h-0 flex-1';
 export const FRAME_IFRAME_CLASSES = 'absolute inset-0 size-full border-0';
 /** Until the page has loaded: the PCA sheet (full bleed on phones; inset 56px and 20px from the bottom on md) with a
- * spinner and what is opening. Never catches a click. */
+ * spinner and what is opening. It starts right under the bar, where every framed test's sheet starts (the hosted player
+ * draws no header inside this frame), so nothing jumps when the test has loaded. Never catches a click. */
 export const FRAME_LOADING_CLASSES = 'pointer-events-none absolute inset-0 flex md:px-14 md:pb-5';
-/** The hosted player: its own PCA header (56px / 68px) sits above its sheet, so the loading sheet starts at the same
- * height and does not jump when the player has loaded. */
-export const FRAME_LOADING_PLAYER_CLASSES = `${FRAME_LOADING_CLASSES} pt-14 md:pt-17`;
 export const FRAME_LOADING_SHEET_CLASSES =
   'flex flex-1 flex-col items-center justify-center gap-4 rounded-t-eval-sheet bg-white px-6 text-center md:rounded-eval-sheet';
 /** The PCA's large spinner (.r-spin-lg): a 44px ring, 4px, open on the right, 0.9s linear (3s with reduced motion). */

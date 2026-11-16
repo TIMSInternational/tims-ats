@@ -18,7 +18,6 @@ import {
   FRAME_IFRAME_CLASSES,
   FRAME_LEAVE_CLASSES,
   FRAME_LOADING_CLASSES,
-  FRAME_LOADING_PLAYER_CLASSES,
   FRAME_LOADING_SHEET_CLASSES,
   FRAME_LOADING_TEXT_CLASSES,
   FRAME_NEW_TAB_CLASSES,
@@ -38,9 +37,11 @@ import {
 //    completion (in a new tab too). Its bar adds "Abrir en una pestaña nueva", for a browser that will not show TIMS's
 //    page inside the frame.
 // The bar is the TIMS evaluation design's navy header, on the same navy page the test's own screens use, so frame and
-// test read as one screen. The brand ("TIMS International" + mark) has ONE owner: the hosted player draws its own PCA
-// header with it, so over the player the bar carries only the test's name and the way out; the sandboxed provider page
-// has no TIMS header, so there the bar adds the brand.
+// test read as one screen with ONE header, as the PCA app has: the bar always carries the brand ("TIMS International" +
+// mark), the test's name and the way out. Inside this frame the hosted player draws no header of its own (tims-suite
+// HostedShell `embedded`: framed, with the `tims-ats` theme, by a registered origin): its sheet starts right under the
+// bar and its status (secure mode, time) sits at the top of the sheet. The sandboxed provider page has no TIMS header
+// either. Opened in a tab, the player keeps its own full header.
 // Until the framed page has loaded, the evaluation's white sheet with a spinner and a short description covers the frame
 // (loading.md › Best practices: "Show something as soon as possible").
 // Leaving a test in progress always asks first (Escape included): a sitting keeps its answers, but a timed section keeps
@@ -142,12 +143,8 @@ export function ProviderAssessmentFrame({
     <div role="dialog" aria-modal="true" aria-label={title} className={FRAME_ROOT_CLASSES}>
       <div className={FRAME_HEADER_CLASSES} inert={asking || undefined}>
         <div className={FRAME_HEADER_START_CLASSES}>
-          {sandboxed && (
-            <>
-              <ProviderFrameBrand label={m.providerFrameBrand} />
-              <span aria-hidden="true" className={FRAME_DIVIDER_CLASSES} />
-            </>
-          )}
+          <ProviderFrameBrand label={m.providerFrameBrand} />
+          <span aria-hidden="true" className={FRAME_DIVIDER_CLASSES} />
           <p className={FRAME_TITLE_CLASSES}>{title}</p>
         </div>
         <div className={FRAME_HEADER_END_CLASSES}>
@@ -175,7 +172,7 @@ export function ProviderAssessmentFrame({
         />
         {loading && (
           // Never catches a click meant for the page underneath; gone at the frame's first load event.
-          <div role="status" className={sandboxed ? FRAME_LOADING_CLASSES : FRAME_LOADING_PLAYER_CLASSES}>
+          <div role="status" className={FRAME_LOADING_CLASSES}>
             <div className={FRAME_LOADING_SHEET_CLASSES}>
               <span aria-hidden="true" className={FRAME_SPINNER_CLASSES} />
               <p className={FRAME_LOADING_TEXT_CLASSES}>{formatMessage(m.providerFrameOpening, { name: title })}</p>
