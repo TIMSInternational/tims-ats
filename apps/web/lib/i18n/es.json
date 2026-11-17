@@ -4863,6 +4863,7 @@
     "resendHeading": "¿No le llegó el correo?"
   },
   "portalDashboard": {
+    "eyebrow": "Portal del candidato",
     "verifyEmailTitle": "Verifique su correo electrónico",
     "verifyEmailDesc": "Para ver sus postulaciones y gestionar sus datos personales, primero confirme su correo con el enlace que le enviamos. Si no lo encuentra, vuelva a iniciar sesión para recibir uno nuevo.",
     "verifyEmailAction": "Ir a iniciar sesión",
