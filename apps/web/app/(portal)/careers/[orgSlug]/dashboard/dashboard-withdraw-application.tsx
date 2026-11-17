@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { Undo2 } from 'lucide-react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
-import { Modal } from '../../../../../components';
-import { Button } from '../../../../../components/button';
+import { EvalAlertDialog } from './eval-alert-dialog';
+import { EvalButton } from './eval-button';
+import { EvalCallout } from './eval-callout';
 
 export interface WithdrawErrorLabels {
   withdrawErrorNotActive: string;
@@ -26,6 +28,9 @@ export function withdrawErrorMessage(code: string | undefined, labels: WithdrawE
 
 // "Retirar mi postulación" (audit C-33) for ONE active application: a confirmation dialog, then the
 // application moves to the existing 'withdrawn' status and the list refreshes ("Retirada").
+// In the TIMS evaluation design: the trigger is the PCA secondary shape with danger text (a destructive action on the
+// page), the confirmation is the PCA AlertDialog in the danger tone (the frame's leave-dialog recipe) whose confirm is
+// the filled danger button; Cancel first in the DOM, the confirm last.
 export function DashboardWithdrawApplication({
   orgSlug,
   orgName,
@@ -73,47 +78,46 @@ export function DashboardWithdrawApplication({
 
   return (
     <>
-      <Button
-        variant="destructive-secondary"
-        size="sm"
+      <EvalButton
+        variant="secondary-danger"
+        size="compact"
         onClick={() => {
           setError('');
           setOpen(true);
         }}
       >
         {pd.withdrawAction}
-      </Button>
+      </EvalButton>
 
       {open && (
-        <Modal
+        <EvalAlertDialog
+          tone="danger"
+          icon={<Undo2 aria-hidden="true" />}
           title={pd.withdrawConfirmTitle}
+          body={pd.withdrawConfirmBody.replace('{vacancy}', vacancyTitle).replace('{org}', orgName)}
           onClose={close}
-          size="sm"
-          footer={
+          actions={
             <>
-              <Button variant="secondary" disabled={withdraw.isPending} onClick={close}>
+              <EvalButton variant="secondary" disabled={withdraw.isPending} onClick={close}>
                 {pd.withdrawCancel}
-              </Button>
-              <Button
-                variant="destructive"
+              </EvalButton>
+              <EvalButton
+                variant="danger"
                 loading={withdraw.isPending}
                 loadingLabel={pd.withdrawSubmitting}
                 onClick={() => withdraw.mutate({ orgSlug, applicationId })}
               >
                 {pd.withdrawConfirm}
-              </Button>
+              </EvalButton>
             </>
           }
         >
-          <p className="text-base text-secondary sm:text-body">
-            {pd.withdrawConfirmBody.replace('{vacancy}', vacancyTitle).replace('{org}', orgName)}
-          </p>
           {error && (
-            <p role="alert" className="mt-3 rounded-lg bg-danger-bg p-3 text-callout text-danger">
+            <EvalCallout tone="err" role="alert">
               {error}
-            </p>
+            </EvalCallout>
           )}
-        </Modal>
+        </EvalAlertDialog>
       )}
     </>
   );
