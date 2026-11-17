@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { ShieldCheck, Sparkles } from 'lucide-react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { Button } from '../../../../../components/button';
-import { TextArea } from '../../../../../components/text-area';
-import { DASHBOARD_CARD } from './dashboard-styles';
+import { EvalButton } from './eval-button';
+import { EvalField } from './eval-field';
+import { EVAL_TEXTAREA_CLASSES } from './eval-control-styles';
+import { EVAL_BODY_CLASSES, EVAL_CAPTION_CLASSES, EVAL_FACT_LABEL_CLASSES } from './eval-styles';
+import { DASHBOARD_CARD, DASHBOARD_HEADING, DASHBOARD_LEAD } from './dashboard-styles';
 
 type Source = 'profile' | 'applications' | 'interviews' | 'offers';
 
@@ -14,6 +17,31 @@ interface ChatMessage {
   text: string;
   sources?: Source[];
 }
+
+// The section in the TIMS evaluation design (PCA): a serif h2 with the Sparkles mark, the r-lead line that says the
+// answers are generated, suggestion chips, the PCA free-text field and a primary "Ask" at the bar height (the section's
+// main action; it is in no panel).
+const FAQ_TITLE_CLASSES = `${DASHBOARD_HEADING} flex items-center gap-2`;
+const FAQ_TITLE_ICON_CLASSES = 'size-[18px] shrink-0 text-eval-accent';
+/** Suggestions: PCA neutral chips (bg2, tile hairline) as buttons, a 44px target. */
+const FAQ_SUGGESTIONS_CLASSES = 'mb-4 flex flex-wrap gap-2';
+const FAQ_SUGGESTION_CLASSES =
+  'inline-flex min-h-11 items-center rounded-full border border-eval-tile-line bg-eval-bg2 px-3.5 py-2 text-left text-eval-sm leading-[1.35] font-semibold text-eval-ink transition-colors motion-reduce:transition-none hover:bg-eval-bg3 disabled:cursor-not-allowed disabled:text-eval-ink2 disabled:hover:bg-eval-bg2';
+/** The conversation: the question on the right in the PCA secondary shape (white, line border), the answer in a bg2
+ * soft panel on the left. */
+const FAQ_THREAD_CLASSES = 'mb-4 flex flex-col gap-3';
+const FAQ_ROW_MINE_CLASSES = 'flex flex-col items-end gap-1';
+const FAQ_ROW_ASSISTANT_CLASSES = 'flex flex-col items-start gap-1';
+const FAQ_BUBBLE_MINE_CLASSES = `max-w-[85%] rounded-eval-card border border-eval-line bg-white px-4 py-3 ${EVAL_BODY_CLASSES}`;
+const FAQ_BUBBLE_ASSISTANT_CLASSES = `w-full rounded-eval-card bg-eval-bg2 px-4 py-3 md:max-w-[85%] ${EVAL_BODY_CLASSES}`;
+const FAQ_MESSAGE_TEXT_CLASSES = 'm-0 whitespace-pre-wrap break-words';
+const FAQ_SOURCES_CLASSES = `${EVAL_CAPTION_CLASSES} mt-2`;
+const FAQ_FORM_CLASSES = 'flex flex-col gap-3';
+/** The note and "Ask": stacked on phones (the note first), one row from md. */
+const FAQ_FOOT_CLASSES = 'flex flex-col gap-3 md:flex-row md:items-center md:justify-between';
+/** The PCA's quiet line with an icon (the landing's "saves itself" line): the privacy note. */
+const FAQ_NOTE_CLASSES = 'm-0 flex items-start gap-1.5 text-eval-sm leading-[1.45] text-eval-ink2';
+const FAQ_NOTE_ICON_CLASSES = 'mt-px size-4 shrink-0';
 
 function sourceLabel(source: Source, t: ReturnType<typeof useI18n>['t']) {
   switch (source) {
@@ -70,49 +98,39 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
   return (
     <section aria-labelledby="dashboard-faq-title" className={DASHBOARD_CARD}>
       {/* The answers are generated: the title, the subtitle and every reply label say so (generative-ai.md). */}
-      <div className="mb-4">
-        <h2 id="dashboard-faq-title" className="flex items-center gap-2 text-heading font-semibold text-brand">
-          <svg className="size-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
-            <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-          </svg>
-          {t.portalDashboard.faqTitle}
-        </h2>
-        <p className="mt-1 text-base text-secondary sm:text-body">{t.portalDashboard.faqSubtitle}</p>
-      </div>
+      <h2 id="dashboard-faq-title" className={FAQ_TITLE_CLASSES}>
+        <Sparkles aria-hidden="true" focusable="false" className={FAQ_TITLE_ICON_CLASSES} />
+        {t.portalDashboard.faqTitle}
+      </h2>
+      <p className={DASHBOARD_LEAD}>{t.portalDashboard.faqSubtitle}</p>
 
       {messages.length === 0 ? (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className={FAQ_SUGGESTIONS_CLASSES}>
           {suggestions.map((suggestion) => (
             <button
               key={suggestion}
               type="button"
               onClick={() => submitQuestion(suggestion)}
               disabled={ask.isPending}
-              className="min-h-7 rounded-full border border-field-border px-3 py-1.5 text-callout font-medium text-brand hover:bg-surface disabled:opacity-50 pointer-coarse:min-h-11"
+              className={FAQ_SUGGESTION_CLASSES}
             >
               {suggestion}
             </button>
           ))}
         </div>
       ) : (
-        <div className="space-y-3 mb-4" aria-live="polite">
+        <div className={FAQ_THREAD_CLASSES} aria-live="polite">
           {messages.map((message, index) => {
             const mine = message.role === 'user';
             return (
-              <div key={`${message.role}-${index}`} className={mine ? 'text-right' : 'text-left'}>
-                <p className="mb-1 text-caption font-medium text-secondary">
+              <div key={`${message.role}-${index}`} className={mine ? FAQ_ROW_MINE_CLASSES : FAQ_ROW_ASSISTANT_CLASSES}>
+                <p className={EVAL_FACT_LABEL_CLASSES}>
                   {mine ? t.portalDashboard.faqYouLabel : t.portalDashboard.faqAssistantLabel}
                 </p>
-                <div
-                  className={
-                    mine
-                      ? 'inline-block max-w-[85%] rounded-2xl bg-brand px-4 py-2 text-left text-base text-white sm:text-body'
-                      : 'inline-block max-w-[85%] rounded-2xl bg-surface px-4 py-2 text-left text-base text-primary sm:text-body'
-                  }
-                >
-                  <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+                <div className={mine ? FAQ_BUBBLE_MINE_CLASSES : FAQ_BUBBLE_ASSISTANT_CLASSES}>
+                  <p className={FAQ_MESSAGE_TEXT_CLASSES}>{message.text}</p>
                   {message.sources && message.sources.length > 0 && (
-                    <p className={`mt-2 text-caption ${mine ? 'text-white/80' : 'text-secondary'}`}>
+                    <p className={FAQ_SOURCES_CLASSES}>
                       {t.portalDashboard.faqSources}: {message.sources.map((s) => sourceLabel(s, t)).join(', ')}
                     </p>
                   )}
@@ -123,27 +141,35 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
         </div>
       )}
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-2">
-        <TextArea
-          value={question}
-          onChange={(event) => setQuestion(event.target.value.slice(0, 800))}
-          rows={3}
-          maxLength={800}
-          placeholder={t.portalDashboard.faqPlaceholder}
-          aria-label={t.portalDashboard.faqInputLabel}
-          className="resize-none"
-        />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-callout text-secondary">{t.portalDashboard.faqPrivacy}</p>
-          <Button
+      <form onSubmit={onSubmit} className={FAQ_FORM_CLASSES}>
+        <EvalField label={t.portalDashboard.faqInputLabel} hideLabel>
+          {(control) => (
+            <textarea
+              {...control}
+              value={question}
+              onChange={(event) => setQuestion(event.target.value.slice(0, 800))}
+              rows={3}
+              maxLength={800}
+              placeholder={t.portalDashboard.faqPlaceholder}
+              className={EVAL_TEXTAREA_CLASSES}
+            />
+          )}
+        </EvalField>
+        <div className={FAQ_FOOT_CLASSES}>
+          <p className={FAQ_NOTE_CLASSES}>
+            <ShieldCheck aria-hidden="true" focusable="false" className={FAQ_NOTE_ICON_CLASSES} />
+            <span>{t.portalDashboard.faqPrivacy}</span>
+          </p>
+          <EvalButton
             type="submit"
+            width="bar"
             disabled={question.trim().length < 3}
             loading={ask.isPending}
             loadingLabel={t.portalDashboard.faqSending}
             className="shrink-0"
           >
             {t.portalDashboard.faqSend}
-          </Button>
+          </EvalButton>
         </div>
       </form>
     </section>

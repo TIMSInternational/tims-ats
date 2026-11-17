@@ -1,15 +1,56 @@
 'use client';
 
+import type { ReactNode } from 'react';
+import { ArrowRight, Check, Clock, PenLine, TriangleAlert, X } from 'lucide-react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatCandidateDate, formatCandidateOfferSalary } from '../../../../../lib/candidate-format';
-import { Button } from '../../../../../components/button';
-import { ErrorState } from '../../../../../components/error-state';
-import { StatusBadge, type StatusTone } from '../../../../../components/status-badge';
+import { EvalButton } from './eval-button';
+import { EvalChip } from './eval-chip';
+import { EvalLoadError } from './eval-load-error';
+import type { EvalChipTone } from './eval-control-styles';
+import { EVAL_HINT_CLASSES } from './eval-styles';
 import { DashboardCardSkeleton } from './dashboard-card-skeleton';
-import { DASHBOARD_CARD, DASHBOARD_ITEM, DASHBOARD_TITLE } from './dashboard-styles';
+import {
+  DASHBOARD_CARD,
+  DASHBOARD_EMPTY,
+  DASHBOARD_FACT,
+  DASHBOARD_FACT_LABEL,
+  DASHBOARD_ITEM,
+  DASHBOARD_ITEM_HEAD,
+  DASHBOARD_ITEM_META,
+  DASHBOARD_ITEM_TITLE,
+  DASHBOARD_LIST,
+  DASHBOARD_TITLE,
+} from './dashboard-styles';
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+// The panel's parts in the TIMS evaluation design (PCA). The terms are PCA FactTiles: the salary (long, monthly then
+// yearly) spans the row, the start date and the contract share the next one; values in the PCA tile's mono, heading
+// navy, allowed to wrap on a phone. Constants only: never a class list inside a ternary.
+const TITLE_BLOCK = 'min-w-0';
+const TERMS = 'm-0 mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2';
+const TERM_WIDE = `${DASHBOARD_FACT} sm:col-span-2`;
+const TERM_VALUE = 'm-0 font-eval-mono text-eval-md break-words text-eval-heading tabular-nums md:text-eval-lg';
+/** The expiry line: the date in words; within three days in the warning colour AND with the warning icon (never the
+ * colour alone), otherwise ink2 with a clock. */
+const EXPIRY_LINE =
+  'm-0 mt-3 flex items-start gap-1.5 text-eval-sm leading-[1.45] font-medium [&_svg]:mt-0.5 [&_svg]:size-3.5 [&_svg]:shrink-0';
+const EXPIRY_SOON = `${EXPIRY_LINE} text-eval-warn`;
+const EXPIRY_LATER = `${EXPIRY_LINE} text-eval-ink2`;
+const EXPIRY_SOON_ICON = <TriangleAlert aria-hidden="true" />;
+const EXPIRY_LATER_ICON = <Clock aria-hidden="true" />;
+const EXPIRED_NOTE = `${EVAL_HINT_CLASSES} mt-3`;
+const SIGN_ACTION = 'mt-4';
+
+/** The chip's icon per shown status: sent waits on the candidate to review and sign. */
+const STATUS_ICON: Record<string, ReactNode> = {
+  sent: <PenLine aria-hidden="true" />,
+  accepted: <Check aria-hidden="true" strokeWidth={2.5} />,
+  declined: <X aria-hidden="true" strokeWidth={2.5} />,
+  expired: <Clock aria-hidden="true" />,
+};
 
 /** A sent offer whose expiry has passed can no longer be signed (the API withholds its link). */
 function isExpired(offer: { status: string; expiresAt: Date | string | null }, now: number): boolean {
@@ -38,11 +79,13 @@ export function DashboardOffer({ orgSlug, timeZone = null }: { orgSlug: string; 
         return s;
     }
   };
-  const statusTone = (s: string): StatusTone => {
-    if (s === 'accepted') return 'success';
-    if (s === 'declined') return 'danger';
-    if (s === 'expired') return 'neutral';
-    return 'brand';
+  // PCA chip tones by meaning: a sent offer waits on the candidate (warn); accepted is done (ok); declined and expired
+  // ended it (danger); anything else is informational (neutral).
+  const statusTone = (s: string): EvalChipTone => {
+    if (s === 'accepted') return 'ok';
+    if (s === 'declined' || s === 'expired') return 'danger';
+    if (s === 'sent') return 'warn';
+    return 'neutral';
   };
   const pd = t.portalDashboard;
   const offers = data ?? [];
@@ -56,60 +99,73 @@ export function DashboardOffer({ orgSlug, timeZone = null }: { orgSlug: string; 
       {isLoading ? (
         <DashboardCardSkeleton label={pd.offerLoading} rows={1} />
       ) : isError ? (
-        <ErrorState size="compact" title={pd.offerError} onRetry={() => void refetch()} />
+        <EvalLoadError title={pd.offerError} onRetry={() => void refetch()} />
       ) : offers.length === 0 ? (
-        <p className="text-body text-secondary">{pd.offerEmpty}</p>
+        <p className={DASHBOARD_EMPTY}>{pd.offerEmpty}</p>
       ) : (
-        <ul className="space-y-3">
+        <ul className={DASHBOARD_LIST}>
           {offers.map((offer) => {
             const expired = isExpired(offer, now);
             const shownStatus = expired ? 'expired' : offer.status;
-            // An offer that expires within three days says so in the warning colour (and in words: the date).
+            // An offer that expires within three days says so in the warning colour and icon (and in words: the date).
             const expiresSoon =
               !expired && offer.expiresAt !== null && new Date(offer.expiresAt).getTime() - now < THREE_DAYS_MS;
             return (
               <li key={offer.id} className={DASHBOARD_ITEM}>
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                  <div className="min-w-0">
-                    <h3 className="break-words text-subheading font-semibold text-brand">{offer.vacancy.title}</h3>
-                    {offer.vacancy.company?.name && (
-                      <p className="break-words text-callout text-secondary">{offer.vacancy.company.name}</p>
-                    )}
+                <div className={DASHBOARD_ITEM_HEAD}>
+                  <div className={TITLE_BLOCK}>
+                    <h3 className={DASHBOARD_ITEM_TITLE}>{offer.vacancy.title}</h3>
+                    {offer.vacancy.company?.name && <p className={DASHBOARD_ITEM_META}>{offer.vacancy.company.name}</p>}
                   </div>
-                  <StatusBadge tone={statusTone(shownStatus)} className="self-start">
+                  <EvalChip tone={statusTone(shownStatus)} icon={STATUS_ICON[shownStatus]}>
                     {expired ? pd.offerStatusExpired : statusLabel(offer.status)}
-                  </StatusBadge>
+                  </EvalChip>
                 </div>
 
-                <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-3">
-                  <div>
-                    <dt className="text-callout text-secondary">{pd.offerSalary}</dt>
-                    <dd className="text-body font-medium text-primary tabular-nums">{formatCandidateOfferSalary(offer.salary, offer.currency, { perYear: t.offers.perYear, perMonth: t.offers.perMonth }, locale)}</dd>
+                <dl className={TERMS}>
+                  <div className={TERM_WIDE}>
+                    <dt className={DASHBOARD_FACT_LABEL}>{pd.offerSalary}</dt>
+                    <dd className={TERM_VALUE}>
+                      {formatCandidateOfferSalary(
+                        offer.salary,
+                        offer.currency,
+                        { perYear: t.offers.perYear, perMonth: t.offers.perMonth },
+                        locale,
+                      )}
+                    </dd>
                   </div>
-                  <div>
-                    <dt className="text-callout text-secondary">{pd.offerStartDate}</dt>
-                    <dd className="text-body font-medium text-primary">{formatCandidateDate(offer.startDate, locale, timeZone)}</dd>
+                  <div className={DASHBOARD_FACT}>
+                    <dt className={DASHBOARD_FACT_LABEL}>{pd.offerStartDate}</dt>
+                    <dd className={TERM_VALUE}>{formatCandidateDate(offer.startDate, locale, timeZone)}</dd>
                   </div>
-                  <div>
-                    <dt className="text-callout text-secondary">{pd.offerContract}</dt>
-                    <dd className="text-body font-medium text-primary">{offer.contractType}</dd>
+                  <div className={DASHBOARD_FACT}>
+                    <dt className={DASHBOARD_FACT_LABEL}>{pd.offerContract}</dt>
+                    <dd className={TERM_VALUE}>{offer.contractType}</dd>
                   </div>
                 </dl>
 
                 {expired ? (
-                  <p className="mt-2 text-callout text-secondary">{pd.offerExpiredNote}</p>
+                  <p className={EXPIRED_NOTE}>{pd.offerExpiredNote}</p>
                 ) : (
                   offer.expiresAt && (
-                    <p className={`mt-2 text-callout font-medium ${expiresSoon ? 'text-warning' : 'text-secondary'}`}>
-                      {pd.offerExpiresOn} {formatCandidateDate(offer.expiresAt, locale, timeZone)}
+                    <p className={expiresSoon ? EXPIRY_SOON : EXPIRY_LATER}>
+                      {expiresSoon ? EXPIRY_SOON_ICON : EXPIRY_LATER_ICON}
+                      <span>
+                        {pd.offerExpiresOn} {formatCandidateDate(offer.expiresAt, locale, timeZone)}
+                      </span>
                     </p>
                   )
                 )}
 
                 {offer.status === 'sent' && offer.signingToken && (
-                  <Button href={`/offers/sign/${offer.signingToken}`} className="mt-3">
+                  <EvalButton
+                    href={`/offers/sign/${offer.signingToken}`}
+                    width="bar"
+                    className={SIGN_ACTION}
+                    trailingIcon={<ArrowRight aria-hidden="true" />}
+                  >
                     {pd.offerReviewSign}
-                  </Button>
+                  </EvalButton>
                 )}
               </li>
             );

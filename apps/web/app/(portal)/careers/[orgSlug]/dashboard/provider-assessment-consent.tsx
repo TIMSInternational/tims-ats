@@ -7,8 +7,17 @@ import {
   type ConsentDecision,
   type ConsentTemplate,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
-import { Button, ErrorState, Skeleton } from '../../../../../components';
+import { EvalButton } from './eval-button';
+import { EvalLoadError } from './eval-load-error';
 import { ProviderConsentGuide, type ConsentGuideItem } from './provider-consent-guide';
+import {
+  CONSENT_ERROR_CANCEL_CLASSES,
+  CONSENT_GUIDE_CLASSES,
+  CONSENT_SKELETON_BAR_CLASSES,
+  CONSENT_SKELETON_EYEBROW_CLASSES,
+  CONSENT_SKELETON_ROW_CLASSES,
+  CONSENT_SKELETON_TITLE_CLASSES,
+} from './provider-consent-styles';
 import { ProviderConsentText } from './provider-consent-text';
 import { noticeGuideItem } from './provider-notice-guide-item';
 
@@ -66,26 +75,25 @@ export function ProviderAssessmentConsent({
     true,
   );
 
+  // Loading and failing sit where the guide will: under the test's head, past the same PCA divider.
   if (isLoading)
     return (
-      <div aria-busy="true" className="mt-3 space-y-2">
+      <div aria-busy="true" className={CONSENT_GUIDE_CLASSES}>
         <span className="sr-only">{m.providerConsentLoading}</span>
-        <Skeleton className="h-4 w-1/3" />
-        <Skeleton className="h-24 w-full rounded-xl" />
+        <div aria-hidden="true" className={CONSENT_SKELETON_EYEBROW_CLASSES} />
+        <div aria-hidden="true" className={CONSENT_SKELETON_BAR_CLASSES} />
+        <div aria-hidden="true" className={CONSENT_SKELETON_TITLE_CLASSES} />
+        <div aria-hidden="true" className={CONSENT_SKELETON_ROW_CLASSES} />
       </div>
     );
   if (isError || !data || data.templates.length === 0) {
     // A network blip must not be a dead end: retry the read, or step back out.
     return (
-      <div className="mt-3 space-y-2">
-        <ErrorState
-          size="compact"
-          title={m.providerConsentError}
-          onRetry={isError ? () => void refetch() : undefined}
-        />
-        <Button variant="tertiary" size="sm" onClick={onCancel}>
+      <div className={CONSENT_GUIDE_CLASSES}>
+        <EvalLoadError title={m.providerConsentError} onRetry={isError ? () => void refetch() : undefined} />
+        <EvalButton variant="ghost" className={CONSENT_ERROR_CANCEL_CLASSES} onClick={onCancel}>
           {m.providerCancel}
-        </Button>
+        </EvalButton>
       </div>
     );
   }

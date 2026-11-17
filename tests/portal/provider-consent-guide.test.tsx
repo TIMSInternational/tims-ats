@@ -202,7 +202,7 @@ describe('candidate consent guide', () => {
     expect(onStep).not.toContain('assessment first point');
   });
 
-  it('opens each complete approved text verbatim in a full-screen sheet, and closes it back to the step', () => {
+  it('opens each complete approved text verbatim in the full-text sheet, and closes it back to the step', () => {
     renderConsent();
 
     // The notice: every section of the versioned ATS notice, filled in, with its version.
@@ -216,8 +216,8 @@ describe('candidate consent guide', () => {
       expect(within(noticeText).getByRole('heading', { name: heading })).toBeInTheDocument();
     expect(noticeText).toHaveTextContent('English');
     expect(noticeText).toHaveTextContent(n.versionLabel.replace('{version}', '2026-11-09-ats-notice-v1'));
-    // Full screen on phones, closable, and reading only: no checkbox in the sheet.
-    expect(sheet.querySelector('.h-dvh')).not.toBeNull();
+    // The PCA bottom sheet (on phones up to 85% of the screen, scrolling), closable, and reading only: no checkbox in it.
+    expect(sheet).toHaveClass('max-h-[85dvh]');
     expect(within(sheet).queryByRole('checkbox')).not.toBeInTheDocument();
     const closeButtons = within(sheet).getAllByRole('button', { name: en.common.close });
     fireEvent.click(closeButtons[closeButtons.length - 1]!);

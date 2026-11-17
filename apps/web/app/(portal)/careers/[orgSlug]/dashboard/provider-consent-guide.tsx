@@ -1,11 +1,19 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { ArrowRight } from 'lucide-react';
 import { useI18n } from '../../../../../lib/i18n';
-import { BUTTON_GROUP_CLASSES, Button, Stepper } from '../../../../../components';
-import { ConsentStep } from '../../../../../components/consent-step';
+import { EvalButton } from './eval-button';
+import { EVAL_ACTIONS_CLASSES } from './eval-control-styles';
+import { EvalStepHead } from './eval-step-head';
 import { ProviderConsentReview } from './provider-consent-review';
 import { ProviderConsentSheet } from './provider-consent-sheet';
+import { ProviderConsentStep } from './provider-consent-step';
+import {
+  CONSENT_GUIDE_CLASSES,
+  CONSENT_STEP_FOCUS_CLASSES,
+  CONSENT_WAITING_HINT_CLASSES,
+} from './provider-consent-styles';
 
 /** One thing to read and tick: the ATS notice, a required provider consent, or an optional one. */
 export interface ConsentGuideItem {
@@ -28,12 +36,14 @@ export interface ConsentGuideItem {
   fullText: ReactNode;
 }
 
-// The step-by-step consent guide of the candidate portal (round 3 owner direction): one screen per step, a "Paso n de N"
-// indicator, Back / Continue. Each step is the text's title, one neutral line, "Leer el texto completo" (a full-screen
-// sheet with the complete text) and an UNCHECKED checkbox. A required step's Continue waits for its box; an optional
-// step never blocks. With `review`, a last step lists what was read and accepted before the finish button; the finish
-// button also re-checks every required box, so the required gating is the same as before the guide. Cancel leads on the
-// first step and Back on the others, never both (sheets.md › Best practices: "Avoid showing all three buttons").
+// The step-by-step consent guide of the candidate portal (round 3 owner direction), in the TIMS evaluation design
+// (round 5): one screen per step under the PCA SheetHead (the eyebrow "Paso n de N · label" over the progress bar, with
+// the Steps navigation kept for assistive tech), Back / Continue. Each step is the text's title, one neutral line, "Leer
+// el texto completo" (the PCA bottom sheet with the complete text) and an UNCHECKED checkbox. A required step's Continue
+// waits for its box; an optional step never blocks. With `review`, a last step lists what was read and accepted before
+// the finish button; the finish button also re-checks every required box, so the required gating is the same as before
+// the guide. Cancel leads on the first step and Back on the others, never both (sheets.md › Best practices: "Avoid
+// showing all three buttons").
 export function ProviderConsentGuide({
   items,
   review = false,
@@ -77,11 +87,11 @@ export function ProviderConsentGuide({
   };
 
   return (
-    <div className="mt-4 space-y-4 border-t border-border pt-4" role="group" aria-label={m.providerConsentTitle}>
-      {total > 1 && <Stepper steps={steps} current={index} variant="compact" />}
-      <div ref={stepRef} tabIndex={-1} className="rounded-lg">
+    <div className={CONSENT_GUIDE_CLASSES} role="group" aria-label={m.providerConsentTitle}>
+      {total > 1 && <EvalStepHead steps={steps} current={index} />}
+      <div ref={stepRef} tabIndex={-1} className={CONSENT_STEP_FOCUS_CLASSES}>
         {item ? (
-          <ConsentStep
+          <ProviderConsentStep
             key={item.key}
             title={item.title}
             line={item.line}
@@ -99,40 +109,41 @@ export function ProviderConsentGuide({
         )}
       </div>
       {waiting && (
-        <p id={hintId} className="text-callout text-secondary sm:text-right">
+        <p id={hintId} className={CONSENT_WAITING_HINT_CLASSES}>
           {m.providerGuideCheckToContinue}
         </p>
       )}
-      <div className={BUTTON_GROUP_CLASSES}>
+      <div className={EVAL_ACTIONS_CLASSES}>
         {index === 0 ? (
-          <Button variant="secondary" size="lg" onClick={onCancel} disabled={busy}>
+          <EvalButton variant="secondary" width="bar" onClick={onCancel} disabled={busy}>
             {m.providerCancel}
-          </Button>
+          </EvalButton>
         ) : (
-          <Button variant="secondary" size="lg" onClick={() => go(index - 1)} disabled={busy}>
+          <EvalButton variant="secondary" width="bar" onClick={() => go(index - 1)} disabled={busy}>
             {t.common.back}
-          </Button>
+          </EvalButton>
         )}
         {isLast ? (
-          <Button
-            size="lg"
+          <EvalButton
+            width="bar"
             disabled={!allRequired}
             loading={busy}
             loadingLabel={m.providerOpening}
             aria-describedby={waiting ? hintId : undefined}
+            trailingIcon={<ArrowRight aria-hidden="true" />}
             onClick={() => onFinish(checked)}
           >
             {finishLabel}
-          </Button>
+          </EvalButton>
         ) : (
-          <Button
-            size="lg"
+          <EvalButton
+            width="bar"
             disabled={waiting}
             aria-describedby={waiting ? hintId : undefined}
             onClick={() => go(index + 1)}
           >
             {m.providerGuideContinue}
-          </Button>
+          </EvalButton>
         )}
       </div>
       {reading && (

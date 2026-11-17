@@ -1,12 +1,20 @@
 'use client';
 
+import type { ReactNode } from 'react';
+import { CalendarClock, Check, CircleAlert, Clock, Hourglass, Play } from 'lucide-react';
 import type { useI18n } from '../../../../../lib/i18n';
 import type {
   ConsentDecision,
   PortalProviderAttempt,
   PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
-import { Button, StatusBadge, type StatusTone } from '../../../../../components';
+import { DASHBOARD_ITEM, DASHBOARD_ITEM_HEAD, DASHBOARD_ITEM_TITLE } from './dashboard-styles';
+import { EvalButton } from './eval-button';
+import { EvalCallout } from './eval-callout';
+import { EvalChip } from './eval-chip';
+import { EvalCodeTile } from './eval-code-tile';
+import type { EvalChipTone } from './eval-control-styles';
+import { EVAL_CAPTION_CLASSES, EVAL_HINT_CLASSES, EVAL_LEAD_CLASSES } from './eval-styles';
 import { ProviderAssessmentConsent } from './provider-assessment-consent';
 import { ProviderAssessmentNoticeStep } from './provider-assessment-notice-step';
 
@@ -69,17 +77,51 @@ const INSTRUMENT_MARK: Record<string, string> = {
   pca: 'PCA',
 };
 
-/** One tone per meaning: done is green, waiting on the candidate is brand, under way or in review is amber. */
-const STATUS_TONE: Record<PortalStatus, StatusTone> = {
-  consent_needed: 'brand',
-  ready: 'brand',
-  in_progress: 'warning',
-  completed: 'success',
-  expired: 'neutral',
-  needs_review: 'warning',
+/** One tone per meaning (PCA Chip): waiting on the candidate is warn, done is ok, expired is danger, in the team's
+ * hands is neutral. Always a word with its icon, never a colour alone. */
+const STATUS_TONE: Record<PortalStatus, EvalChipTone> = {
+  consent_needed: 'warn',
+  ready: 'warn',
+  in_progress: 'warn',
+  completed: 'ok',
+  expired: 'danger',
+  needs_review: 'neutral',
 };
+const STATUS_ICON: Record<PortalStatus, ReactNode> = {
+  consent_needed: <CircleAlert aria-hidden="true" />,
+  ready: <Play aria-hidden="true" />,
+  in_progress: <Hourglass aria-hidden="true" />,
+  completed: <Check aria-hidden="true" strokeWidth={2.5} />,
+  expired: <Clock aria-hidden="true" />,
+  needs_review: <Hourglass aria-hidden="true" />,
+};
+/** The candidate closed the provider's page (PCA): the result may be on its way, in nobody's hands but the provider's. */
+const AWAITING_ICON = <Hourglass aria-hidden="true" />;
 
 const FINISHED = new Set<PortalStatus>(['completed', 'expired', 'needs_review']);
+
+// The panel in the TIMS evaluation design: a PCA bordered panel; a finished test is a quieter, tighter one (less
+// padding, no description, its hint under the name). The code tile is the same 40px tile in every status.
+type Shape = 'open' | 'finished';
+const ITEM_CLASSES: Record<Shape, string> = {
+  open: DASHBOARD_ITEM,
+  finished:
+    'rounded-eval-card border border-eval-line bg-white px-4 py-3 text-eval-ink shadow-eval-card md:px-5 md:py-3.5',
+};
+/** The code tile beside the name, chip, and lines. */
+const HEAD_CLASSES = 'flex items-start gap-3';
+const TEXT_CLASSES = 'min-w-0 flex-1';
+/** The instrument's description (13px ink2). */
+const DESCRIPTION_CLASSES = `${EVAL_HINT_CLASSES} mt-1`;
+/** "Available until …" with a small calendar icon, as the PCA landing writes its "saves itself" line. */
+const DEADLINE_CLASSES = `${EVAL_CAPTION_CLASSES} mt-1.5 flex items-center gap-1.5 [&_svg]:size-3.5 [&_svg]:shrink-0`;
+/** What to do now: r-lead under the head of a test still to take; a hint under the name of a finished one. */
+const STATUS_HINT_CLASSES: Record<Shape, string> = {
+  open: `${EVAL_LEAD_CLASSES} mt-3`,
+  finished: `${EVAL_HINT_CLASSES} mt-1`,
+};
+const ACTION_CLASSES = 'mt-4';
+const FAILURE_CLASSES = 'mt-3';
 
 export function ProviderAssessmentItem({
   attempt,
@@ -121,42 +163,55 @@ export function ProviderAssessmentItem({
   // it was submitted, and offer to open it again without urging a second sitting.
   const awaiting = justClosed && attempt.status === 'ready';
   const variant = primary && !awaiting ? 'primary' : 'secondary';
-  const action = (label: string, onClick: () => void, disabled = false) => (
-    <Button variant={variant} size="lg" className="mt-3 w-full sm:w-auto" disabled={disabled} onClick={onClick}>
+  const shape: Shape = finished ? 'finished' : 'open';
+  const action = (label: string, onClick: () => void, loading = false, loadingLabel?: string) => (
+    <EvalButton
+      variant={variant}
+      width="bar"
+      className={ACTION_CLASSES}
+      loading={loading}
+      loadingLabel={loadingLabel}
+      onClick={onClick}
+    >
       {label}
-    </Button>
+    </EvalButton>
+  );
+  const hint = (
+    <p className={STATUS_HINT_CLASSES[shape]}>{awaiting ? t.providerHintPcaPending : t[STATUS_HINT[attempt.status]]}</p>
   );
   return (
-    <li className={`rounded-xl border border-border ${finished ? 'px-4 py-3' : 'p-4'}`} data-status={attempt.status}>
-      <div className="flex items-start gap-3">
-        <span
-          aria-hidden="true"
-          className={`flex shrink-0 items-center justify-center rounded-xl bg-brand-tint font-semibold text-brand ${
-            finished ? 'size-8 text-caption' : 'size-10 text-callout'
-          }`}
-        >
-          {INSTRUMENT_MARK[attempt.instrument] ?? '·'}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-subheading font-semibold text-brand">{name}</p>
-          {!finished && (
-            <p className="mt-0.5 text-callout text-secondary">
-              {t[INSTRUMENT_DESCRIPTION[attempt.instrument] ?? 'providerDescriptionOther']}
-            </p>
-          )}
-          {deadline && notStarted && (
-            <p className="mt-1 text-caption text-secondary">
-              {t.providerAvailableUntil} {deadline}
-            </p>
-          )}
+    <li className={ITEM_CLASSES[shape]} data-status={attempt.status}>
+      <div className={HEAD_CLASSES}>
+        <EvalCodeTile code={INSTRUMENT_MARK[attempt.instrument] ?? '·'} />
+        <div className={TEXT_CLASSES}>
+          <div className={DASHBOARD_ITEM_HEAD}>
+            <div className={TEXT_CLASSES}>
+              <p className={DASHBOARD_ITEM_TITLE}>{name}</p>
+              {!finished && (
+                <p className={DESCRIPTION_CLASSES}>
+                  {t[INSTRUMENT_DESCRIPTION[attempt.instrument] ?? 'providerDescriptionOther']}
+                </p>
+              )}
+              {deadline && notStarted && (
+                <p className={DEADLINE_CLASSES}>
+                  <CalendarClock aria-hidden="true" />
+                  <span>
+                    {t.providerAvailableUntil} {deadline}
+                  </span>
+                </p>
+              )}
+            </div>
+            <EvalChip
+              tone={awaiting ? 'neutral' : STATUS_TONE[attempt.status]}
+              icon={awaiting ? AWAITING_ICON : STATUS_ICON[attempt.status]}
+            >
+              {awaiting ? t.providerStatusAwaitingResult : t[STATUS_LABEL[attempt.status]]}
+            </EvalChip>
+          </div>
+          {finished && hint}
         </div>
-        <StatusBadge tone={awaiting ? 'neutral' : STATUS_TONE[attempt.status]} className="shrink-0">
-          {awaiting ? t.providerStatusAwaitingResult : t[STATUS_LABEL[attempt.status]]}
-        </StatusBadge>
       </div>
-      <p className={`text-callout text-secondary ${finished ? 'mt-1 pl-11' : 'mt-2'}`}>
-        {awaiting ? t.providerHintPcaPending : t[STATUS_HINT[attempt.status]]}
-      </p>
+      {!finished && hint}
 
       {attempt.status === 'consent_needed' &&
         (consentOpen ? (
@@ -183,12 +238,12 @@ export function ProviderAssessmentItem({
           action(awaiting ? t.providerOpenAgain : t.providerStart, onOpenConsent)
         ))}
 
-      {launchable && action(busy ? t.providerOpening : t.providerContinue, () => onStart(NO_DECISION), busy)}
+      {launchable && action(t.providerContinue, () => onStart(NO_DECISION), busy, t.providerOpening)}
 
       {failureKey && (
-        <p role="alert" className="mt-2 text-callout text-danger">
+        <EvalCallout tone="err" role="alert" className={FAILURE_CLASSES}>
           {t[failureKey]}
-        </p>
+        </EvalCallout>
       )}
     </li>
   );

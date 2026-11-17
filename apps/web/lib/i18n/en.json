@@ -4863,6 +4863,7 @@
     "resendHeading": "Didn't get the email?"
   },
   "portalDashboard": {
+    "eyebrow": "Candidate portal",
     "verifyEmailTitle": "Verify your email address",
     "verifyEmailDesc": "To see your applications and manage your personal data, first confirm your email with the link we sent you. If you cannot find it, sign in again to receive a new one.",
     "verifyEmailAction": "Go to sign in",

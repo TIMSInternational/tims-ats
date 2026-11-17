@@ -2,11 +2,14 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { ArrowRight, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useI18n } from '../../../../../lib/i18n';
-import { Modal } from '../../../../../components';
-import { Button } from '../../../../../components/button';
-import { TEXT_LINK_CLASSES } from '../../../../../components/button-styles';
-import { DASHBOARD_CARD, DASHBOARD_TITLE } from './dashboard-styles';
+import { EvalAlertDialog } from './eval-alert-dialog';
+import { EvalButton } from './eval-button';
+import { EvalCallout } from './eval-callout';
+import { EVAL_CALLOUT_TITLE_CLASSES } from './eval-control-styles';
+import { EVAL_LEAD_CLASSES, EVAL_LINK_CLASSES, EVAL_STANDALONE_LINK_CLASSES } from './eval-styles';
+import { DASHBOARD_CARD, DASHBOARD_HEADING } from './dashboard-styles';
 import { formatDate } from '../../../../../lib/format-utils';
 import {
   classifyConsentError,
@@ -15,6 +18,17 @@ import {
 } from '../../../../../lib/platform-api/candidate-consent';
 
 type Phase = 'idle' | 'confirming' | 'submitting' | 'done';
+
+// The section in the TIMS evaluation design (PCA): r-lead text, the revoke action in the secondary shape with danger
+// text at the bar height (the section's main action, in no panel), its confirmation as the PCA alert dialog (filled
+// danger confirm), the done state as an ok callout, and the privacy notice as an accent link. The blocks are spaced by
+// the column's gap (no conditional margins).
+const PRIVACY_BODY_CLASSES = 'mt-2 flex flex-col gap-4';
+/** Full width on phones (the PCA bar), its own width from md (the column stretches its children). */
+const PRIVACY_REVOKE_CLASSES = 'md:self-start';
+const PRIVACY_DONE_LINE_CLASSES = 'm-0 mt-1';
+/** The requests line and the notice link read as one block. */
+const PRIVACY_REQUESTS_CLASSES = 'flex flex-col gap-1';
 
 // The candidate's privacy panel. Always shown (audit C-33): how to ask the organization for a copy, a correction or
 // the deletion of their data — its candidate contact mailbox when it has one — and the privacy notice.
@@ -65,71 +79,83 @@ export function DashboardPrivacy({
 
   return (
     <section aria-labelledby="portal-privacy-title" className={DASHBOARD_CARD}>
-      <h2 id="portal-privacy-title" className={DASHBOARD_TITLE}>
+      <h2 id="portal-privacy-title" className={DASHBOARD_HEADING}>
         {pd.privacyTitle}
       </h2>
-      {!consentEnabled ? null : phase === 'done' || withdrawnAt ? (
-        <div role="status">
-          <p className="text-body font-semibold text-primary">{m.doneTitle}</p>
-          {withdrawnAt && phase !== 'done' && (
-            <p className="mt-1 text-base text-secondary sm:text-body">{m.withdrawnOn.replace('{date}', formatDate(withdrawnAt))}</p>
-          )}
-          <p className="mt-1 text-base text-secondary sm:text-body">{m.doneBody}</p>
-        </div>
-      ) : (
-        <>
-          <p className="text-base text-secondary sm:text-body">{m.desc.replace('{org}', orgName)}</p>
-          <Button variant="destructive-secondary" onClick={() => setPhase('confirming')} className="mt-4">
-            {m.revokeButton}
-          </Button>
-        </>
-      )}
-
-      <p className={`text-base text-secondary sm:text-body${consentEnabled ? ' mt-4' : ''}`}>
-        {contactEmail ? (
-          <>
-            {requestsBefore}
-            <a href={`mailto:${contactEmail}`} className="font-medium text-brand underline [overflow-wrap:anywhere]">
-              {contactEmail}
-            </a>
-            {requestsAfter}
-          </>
+      <div className={PRIVACY_BODY_CLASSES}>
+        {!consentEnabled ? null : phase === 'done' || withdrawnAt ? (
+          <EvalCallout tone="ok" role="status" icon={<ShieldCheck aria-hidden="true" />}>
+            <p className={EVAL_CALLOUT_TITLE_CLASSES}>{m.doneTitle}</p>
+            {withdrawnAt && phase !== 'done' && (
+              <p className={PRIVACY_DONE_LINE_CLASSES}>{m.withdrawnOn.replace('{date}', formatDate(withdrawnAt))}</p>
+            )}
+            <p className={PRIVACY_DONE_LINE_CLASSES}>{m.doneBody}</p>
+          </EvalCallout>
         ) : (
-          pd.privacyRequestsNoContact.replace('{org}', orgName)
+          <>
+            <p className={EVAL_LEAD_CLASSES}>{m.desc.replace('{org}', orgName)}</p>
+            <EvalButton
+              variant="secondary-danger"
+              width="bar"
+              icon={<ShieldOff aria-hidden="true" />}
+              onClick={() => setPhase('confirming')}
+              className={PRIVACY_REVOKE_CLASSES}
+            >
+              {m.revokeButton}
+            </EvalButton>
+          </>
         )}
-      </p>
-      <Link href={`/careers/${orgSlug}/privacy`} className={`${TEXT_LINK_CLASSES} mt-2 min-h-7 text-callout`}>
-        {pd.privacyNoticeLink}
-      </Link>
+
+        <div className={PRIVACY_REQUESTS_CLASSES}>
+          <p className={EVAL_LEAD_CLASSES}>
+            {contactEmail ? (
+              <>
+                {requestsBefore}
+                <a href={`mailto:${contactEmail}`} className={EVAL_LINK_CLASSES}>
+                  {contactEmail}
+                </a>
+                {requestsAfter}
+              </>
+            ) : (
+              pd.privacyRequestsNoContact.replace('{org}', orgName)
+            )}
+          </p>
+          <Link href={`/careers/${orgSlug}/privacy`} className={EVAL_STANDALONE_LINK_CLASSES}>
+            {pd.privacyNoticeLink}
+            <ArrowRight aria-hidden="true" />
+          </Link>
+        </div>
+      </div>
 
       {consentEnabled && (phase === 'confirming' || phase === 'submitting') && (
-        <Modal
+        <EvalAlertDialog
+          tone="danger"
+          icon={<ShieldOff aria-hidden="true" />}
           title={m.confirmTitle}
-          size="sm"
+          body={m.confirmBody.replace('{org}', orgName)}
           onClose={() => phase !== 'submitting' && setPhase('idle')}
-          footer={
+          actions={
             <>
-              <Button variant="secondary" disabled={phase === 'submitting'} onClick={() => setPhase('idle')}>
+              <EvalButton variant="secondary" disabled={phase === 'submitting'} onClick={() => setPhase('idle')}>
                 {m.cancel}
-              </Button>
-              <Button
-                variant="destructive"
+              </EvalButton>
+              <EvalButton
+                variant="danger"
                 loading={phase === 'submitting'}
                 loadingLabel={m.submitting}
                 onClick={() => void revoke()}
               >
                 {m.confirmButton}
-              </Button>
+              </EvalButton>
             </>
           }
         >
-          <p className="text-base text-secondary sm:text-body">{m.confirmBody.replace('{org}', orgName)}</p>
           {error && (
-            <p role="alert" className="mt-3 rounded-lg bg-danger-bg p-3 text-callout text-danger">
+            <EvalCallout tone="err" role="alert">
               {error}
-            </p>
+            </EvalCallout>
           )}
-        </Modal>
+        </EvalAlertDialog>
       )}
     </section>
   );
