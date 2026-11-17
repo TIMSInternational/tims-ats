@@ -16,7 +16,8 @@ import {
  * fill + white Check) inside a radio-card-shaped row (50px, radius 12; checked = 2px accent border + accent tint). The
  * whole row is the <label>, so the label text is the checkbox's accessible name; the native input stays (role
  * checkbox, Space toggles), invisible over a 44px hit area, and the row draws its keyboard ring. Unchecked by default:
- * the caller owns `checked`.
+ * the caller owns `checked`. No invalid state: a consent step never shows one (Continue waits for the tick, with a
+ * hint), so the row has no danger look to switch on.
  */
 export function EvalCheckboxRow({
   checked,
@@ -24,7 +25,6 @@ export function EvalCheckboxRow({
   children,
   describedBy,
   disabled,
-  invalid,
   id,
   lang,
   className = '',
@@ -36,7 +36,6 @@ export function EvalCheckboxRow({
   /** Extra description ids (the step's title, "Tick the box to continue"). */
   describedBy?: string;
   disabled?: boolean;
-  invalid?: boolean;
   id?: string;
   lang?: string;
   className?: string;
@@ -50,7 +49,6 @@ export function EvalCheckboxRow({
           checked={checked}
           disabled={disabled}
           aria-describedby={describedBy || undefined}
-          aria-invalid={invalid || undefined}
           onChange={(event) => onChange(event.target.checked)}
           className={EVAL_CHECK_INPUT_CLASSES}
         />

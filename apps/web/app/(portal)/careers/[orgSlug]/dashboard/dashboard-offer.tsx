@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { ArrowRight, Check, Clock, PenLine, X } from 'lucide-react';
+import { ArrowRight, Check, Clock, PenLine, TriangleAlert, X } from 'lucide-react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatCandidateDate, formatCandidateOfferSalary } from '../../../../../lib/candidate-format';
@@ -33,11 +33,14 @@ const TITLE_BLOCK = 'min-w-0';
 const TERMS = 'm-0 mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2';
 const TERM_WIDE = `${DASHBOARD_FACT} sm:col-span-2`;
 const TERM_VALUE = 'm-0 font-eval-mono text-eval-md break-words text-eval-heading tabular-nums md:text-eval-lg';
-/** The expiry line: the date in words, in the warning colour when it is within three days. */
+/** The expiry line: the date in words; within three days in the warning colour AND with the warning icon (never the
+ * colour alone), otherwise ink2 with a clock. */
 const EXPIRY_LINE =
   'm-0 mt-3 flex items-start gap-1.5 text-eval-sm leading-[1.45] font-medium [&_svg]:mt-0.5 [&_svg]:size-3.5 [&_svg]:shrink-0';
 const EXPIRY_SOON = `${EXPIRY_LINE} text-eval-warn`;
 const EXPIRY_LATER = `${EXPIRY_LINE} text-eval-ink2`;
+const EXPIRY_SOON_ICON = <TriangleAlert aria-hidden="true" />;
+const EXPIRY_LATER_ICON = <Clock aria-hidden="true" />;
 const EXPIRED_NOTE = `${EVAL_HINT_CLASSES} mt-3`;
 const SIGN_ACTION = 'mt-4';
 
@@ -104,7 +107,7 @@ export function DashboardOffer({ orgSlug, timeZone = null }: { orgSlug: string; 
           {offers.map((offer) => {
             const expired = isExpired(offer, now);
             const shownStatus = expired ? 'expired' : offer.status;
-            // An offer that expires within three days says so in the warning colour (and in words: the date).
+            // An offer that expires within three days says so in the warning colour and icon (and in words: the date).
             const expiresSoon =
               !expired && offer.expiresAt !== null && new Date(offer.expiresAt).getTime() - now < THREE_DAYS_MS;
             return (
@@ -146,7 +149,7 @@ export function DashboardOffer({ orgSlug, timeZone = null }: { orgSlug: string; 
                 ) : (
                   offer.expiresAt && (
                     <p className={expiresSoon ? EXPIRY_SOON : EXPIRY_LATER}>
-                      <Clock aria-hidden="true" />
+                      {expiresSoon ? EXPIRY_SOON_ICON : EXPIRY_LATER_ICON}
                       <span>
                         {pd.offerExpiresOn} {formatCandidateDate(offer.expiresAt, locale, timeZone)}
                       </span>

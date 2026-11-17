@@ -20,8 +20,9 @@ import {
 type Phase = 'idle' | 'confirming' | 'submitting' | 'done';
 
 // The section in the TIMS evaluation design (PCA): r-lead text, the revoke action in the secondary shape with danger
-// text, its confirmation as the PCA alert dialog (filled danger confirm), the done state as an ok callout, and the
-// privacy notice as an accent link. The blocks are spaced by the column's gap (no conditional margins).
+// text at the bar height (the section's main action, in no panel), its confirmation as the PCA alert dialog (filled
+// danger confirm), the done state as an ok callout, and the privacy notice as an accent link. The blocks are spaced by
+// the column's gap (no conditional margins).
 const PRIVACY_BODY_CLASSES = 'mt-2 flex flex-col gap-4';
 /** Full width on phones (the PCA bar), its own width from md (the column stretches its children). */
 const PRIVACY_REVOKE_CLASSES = 'md:self-start';
@@ -95,7 +96,6 @@ export function DashboardPrivacy({
             <p className={EVAL_LEAD_CLASSES}>{m.desc.replace('{org}', orgName)}</p>
             <EvalButton
               variant="secondary-danger"
-              size="compact"
               width="bar"
               icon={<ShieldOff aria-hidden="true" />}
               onClick={() => setPhase('confirming')}

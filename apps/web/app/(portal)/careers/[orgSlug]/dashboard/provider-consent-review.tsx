@@ -9,7 +9,6 @@ import {
   EVAL_STEP_MARKER_CLASSES,
   EVAL_STEP_MARKER_STATES,
   EVAL_STEP_ROW_CLASSES,
-  type EvalStepMarkerState,
 } from './eval-control-styles';
 import { EVAL_TITLE_3_CLASSES } from './eval-styles';
 import type { ConsentGuideItem } from './provider-consent-guide';
@@ -23,8 +22,10 @@ import {
   CONSENT_REVIEW_OPTIONAL_TITLE_CLASSES,
 } from './provider-consent-styles';
 
+/** A review row is done (the box was ticked) or todo (left unticked); the StepList's "now" marker is not used here. */
+type ReviewMark = 'done' | 'todo';
 /** The marker's icon and the chip's, per choice: a check for a ticked box, a dash for one left unticked. */
-const MARK: Record<EvalStepMarkerState, ReactNode> = {
+const MARK: Record<ReviewMark, ReactNode> = {
   done: <Check aria-hidden="true" strokeWidth={2.5} />,
   todo: <Minus aria-hidden="true" strokeWidth={2.5} />,
 };
@@ -49,7 +50,7 @@ export function ProviderConsentReview({
   const required = items.filter((item) => !item.optional);
   const optional = items.filter((item) => item.optional);
   const row = (item: ConsentGuideItem) => {
-    const state: EvalStepMarkerState = checked[item.key] === true ? 'done' : 'todo';
+    const state: ReviewMark = checked[item.key] === true ? 'done' : 'todo';
     return (
       <li key={item.key} className={EVAL_STEP_ROW_CLASSES}>
         <span aria-hidden="true" className={`${EVAL_STEP_MARKER_CLASSES} ${EVAL_STEP_MARKER_STATES[state]}`}>

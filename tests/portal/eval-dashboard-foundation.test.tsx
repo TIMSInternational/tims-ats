@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // Round 5 (owner 2026-11-16): the candidate dashboard in the TIMS evaluation design. The section rewrites lean on these
 // dashboard-local PCA primitives keeping the contracts the shared components had (the e2e and the unit tests find the
@@ -105,6 +105,74 @@ describe('the dashboard PCA primitives keep the old contracts', () => {
     const button = screen.getByRole('button', { name: 'Saving…' });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(button.getAttribute('aria-busy')).toBe('true');
+  });
+});
+
+// The focus contract the consent guide and the confirm dialogs rely on (lib/use-dialog-a11y): the sheet starts on the
+// text, Tab stays inside it, and closing it returns to "Read the full text"; a confirm dialog starts on Cancel, the safe
+// action.
+function SheetWithOpener() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Read the full text
+      </button>
+      {open && (
+        <EvalSheet title="Notice" closeLabel={en.common.close} onClose={() => setOpen(false)}>
+          <div tabIndex={0} data-autofocus data-testid="consent-full-text">
+            Full text
+          </div>
+        </EvalSheet>
+      )}
+    </>
+  );
+}
+
+describe('the dashboard PCA dialogs keep the focus contract', () => {
+  it('the sheet focuses the text first, keeps Tab inside, and gives focus back to its opener', async () => {
+    render(<SheetWithOpener />);
+    const opener = screen.getByRole('button', { name: 'Read the full text' });
+    opener.focus();
+    fireEvent.click(opener);
+    await waitFor(() => expect(screen.getByTestId('consent-full-text')).toHaveFocus());
+
+    const sheet = screen.getByRole('dialog', { name: 'Notice' });
+    const closes = within(sheet).getAllByRole('button', { name: en.common.close });
+    const first = closes[0]!;
+    const last = closes[closes.length - 1]!;
+    last.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(last).toHaveFocus();
+
+    fireEvent.click(last);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(opener).toHaveFocus();
+  });
+
+  it('the confirm dialog starts on Cancel and keeps Tab inside', async () => {
+    render(
+      <EvalAlertDialog
+        tone="danger"
+        icon={null}
+        title="Withdraw your application?"
+        body="This cannot be undone."
+        onClose={vi.fn()}
+        actions={
+          <>
+            <EvalButton variant="secondary">Cancel</EvalButton>
+            <EvalButton variant="danger">Withdraw</EvalButton>
+          </>
+        }
+      />,
+    );
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    await waitFor(() => expect(cancel).toHaveFocus());
+    screen.getByRole('button', { name: 'Withdraw' }).focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
   });
 });
 

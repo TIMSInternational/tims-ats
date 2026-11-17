@@ -19,7 +19,8 @@ interface ChatMessage {
 }
 
 // The section in the TIMS evaluation design (PCA): a serif h2 with the Sparkles mark, the r-lead line that says the
-// answers are generated, suggestion chips, the PCA free-text field and a primary "Ask".
+// answers are generated, suggestion chips, the PCA free-text field and a primary "Ask" at the bar height (the section's
+// main action; it is in no panel).
 const FAQ_TITLE_CLASSES = `${DASHBOARD_HEADING} flex items-center gap-2`;
 const FAQ_TITLE_ICON_CLASSES = 'size-[18px] shrink-0 text-eval-accent';
 /** Suggestions: PCA neutral chips (bg2, tile hairline) as buttons, a 44px target. */
@@ -161,7 +162,6 @@ export function DashboardFaqChat({ orgSlug }: { orgSlug: string }) {
           </p>
           <EvalButton
             type="submit"
-            size="compact"
             width="bar"
             disabled={question.trim().length < 3}
             loading={ask.isPending}

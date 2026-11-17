@@ -38,7 +38,8 @@ export interface CandidateProfileView {
   location: string | null;
 }
 
-// The section in the TIMS evaluation design (PCA): the details as FactTiles, the edit form as PCA fields.
+// The section in the TIMS evaluation design (PCA): the details as FactTiles, the edit form as PCA fields. "Edit my
+// details" is the section's main action (in no panel): the bar height, like Save and Cancel.
 /** A blank detail ("Not provided"): the tile's value in ink2, so it reads as missing, not as data. */
 const PROFILE_VALUE_EMPTY_CLASSES = 'm-0 text-eval-base text-eval-ink2';
 const PROFILE_SAVED_CLASSES = 'mt-4';
@@ -238,7 +239,6 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
           )}
           <EvalButton
             variant="secondary"
-            size="compact"
             width="bar"
             icon={<Pencil aria-hidden="true" />}
             onClick={startEditing}

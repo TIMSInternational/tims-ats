@@ -10,14 +10,15 @@ import { EVAL_STEP_MARKER_CLASSES, EVAL_STEP_MARKER_STATES } from './eval-contro
 import { EVAL_CAPTION_CLASSES, EVAL_EYEBROW_CLASSES, EVAL_HINT_CLASSES, EVAL_SKELETON_CLASSES } from './eval-styles';
 
 // The stage history in the TIMS evaluation design: a block under a hairline inside the application's panel, an
-// uppercase eyebrow, then a PCA StepList (rows 48px, divider between them, a 28px marker). The newest phase is the
-// current one (accent marker, semibold); the earlier ones are behind it (soft marker with a check). Constants only.
+// uppercase eyebrow, then a PCA StepList (rows 48px, divider between them, a 28px marker) with the StepList's own
+// markers: the newest phase is the current one ("now": no fill, accent CircleDot; label semibold), the earlier ones are
+// done (ok fill, white Check — the same done marker as the consent review on this page). Constants only.
 const BLOCK = 'mt-4 border-t border-eval-divider pt-4';
 const TITLE = `${EVAL_EYEBROW_CLASSES} mb-1`;
 const LIST = 'm-0 list-none p-0';
 const ROW = 'flex min-h-12 items-center gap-3 border-b border-eval-divider py-2.5 last:border-b-0';
-const MARKER_NOW = `${EVAL_STEP_MARKER_CLASSES} bg-eval-accent-tint text-eval-accent`;
-const MARKER_PAST = `${EVAL_STEP_MARKER_CLASSES} ${EVAL_STEP_MARKER_STATES.todo}`;
+const MARKER_NOW = `${EVAL_STEP_MARKER_CLASSES} ${EVAL_STEP_MARKER_STATES.now}`;
+const MARKER_PAST = `${EVAL_STEP_MARKER_CLASSES} ${EVAL_STEP_MARKER_STATES.done}`;
 const ROW_TEXT = 'flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3';
 const LABEL_NOW = 'min-w-0 text-eval-base font-semibold break-words text-eval-ink';
 const LABEL_PAST = 'min-w-0 text-eval-base break-words text-eval-ink';

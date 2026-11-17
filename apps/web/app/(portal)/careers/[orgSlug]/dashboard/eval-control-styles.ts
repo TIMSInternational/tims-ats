@@ -11,17 +11,20 @@ export type EvalButtonSize = 'bar' | 'compact';
 /** fit = its content; full = the row; bar = full width on phones (where the PCA bar would be), its content from md. */
 export type EvalButtonWidth = 'fit' | 'full' | 'bar';
 
-/** RButton base: semibold, 16px phone / 15px md, radius 8, 18px icons. The disabled look is the PCA soft-disabled one
- * (bg3, ink2, no border) on the native `disabled` attribute; busy buttons are disabled too (EvalButton). */
+/** RButton base: 16px phone / 15px md, radius 8, 18px icons. The disabled look is the PCA soft-disabled one (bg3, ink2,
+ * no border) on the native `disabled` attribute; busy buttons are disabled too (EvalButton).
+ * NO font weight here: the classes are joined as plain strings (the PCA's cn() runs tailwind-merge, this does not), and
+ * Tailwind emits .font-semibold after .font-normal, so a semibold base would beat the secondary's font-normal. Each
+ * variant sets its own weight: semibold for primary, ghost and danger; regular (400) for the two secondary shapes. */
 const BUTTON_BASE =
-  'inline-flex items-center justify-center gap-2 px-5 rounded-eval-btn font-semibold text-eval-md md:text-eval-base leading-tight text-center select-none transition-colors motion-reduce:transition-none [&_svg]:size-[18px] [&_svg]:shrink-0 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-eval-bg3 disabled:text-eval-ink2 disabled:hover:bg-eval-bg3';
+  'inline-flex items-center justify-center gap-2 px-5 rounded-eval-btn text-eval-md md:text-eval-base leading-tight text-center select-none transition-colors motion-reduce:transition-none [&_svg]:size-[18px] [&_svg]:shrink-0 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-eval-bg3 disabled:text-eval-ink2 disabled:hover:bg-eval-bg3';
 
 export const EVAL_BUTTON_VARIANTS: Record<EvalButtonVariant, string> = {
-  primary: 'bg-eval-accent text-eval-on-accent hover:bg-eval-accent-hover',
+  primary: 'bg-eval-accent font-semibold text-eval-on-accent hover:bg-eval-accent-hover',
   secondary: 'border border-eval-line bg-white font-normal text-eval-ink hover:bg-eval-bg2',
-  ghost: 'bg-transparent text-eval-accent hover:bg-eval-bg2',
+  ghost: 'bg-transparent font-semibold text-eval-accent hover:bg-eval-bg2',
   /** Only the CONFIRM button inside a destructive dialog. */
-  danger: 'bg-eval-danger text-eval-on-accent',
+  danger: 'bg-eval-danger font-semibold text-eval-on-accent',
   /** [compose] A destructive action on the page itself ("Withdraw my application"): the secondary shape, danger text. */
   'secondary-danger': 'border border-eval-line bg-white font-normal text-eval-danger hover:bg-eval-danger-tint',
 };
@@ -58,10 +61,11 @@ export function evalButtonClasses({
     .join(' ');
 }
 
-/** A row of actions: phones stacked full width (primary on top when it is last in the DOM), md one trailing row. */
-export const EVAL_ACTIONS_CLASSES = 'flex flex-col-reverse gap-2.5 md:flex-row md:items-center md:justify-end md:gap-3';
+/** A row of actions: phones stacked full width (primary on top when it is last in the DOM), 6px apart as the PCA's
+ * stacked ActionBar (frame.tsx `stack`: gap-1.5); md one trailing row, 12px apart (--r-bar-gap). */
+export const EVAL_ACTIONS_CLASSES = 'flex flex-col-reverse gap-1.5 md:flex-row md:items-center md:justify-end md:gap-3';
 /** A row of actions that starts at the left on md (an action under a panel's text). */
-export const EVAL_ACTIONS_START_CLASSES = 'flex flex-col-reverse gap-2.5 md:flex-row md:items-center md:gap-3';
+export const EVAL_ACTIONS_START_CLASSES = 'flex flex-col-reverse gap-1.5 md:flex-row md:items-center md:gap-3';
 
 // ─── Chip (status word + icon) ───────────────────────────────────────────────────────────────────
 
@@ -106,12 +110,15 @@ export const EVAL_FIELD_OPTIONAL_CLASSES = 'font-normal text-eval-ink2';
 export const EVAL_FIELD_HELP_CLASSES = 'm-0 text-[0.78rem] text-eval-ink2';
 export const EVAL_FIELD_ERROR_CLASSES = 'm-0 flex items-start gap-1.5 text-[0.82rem] font-medium text-eval-danger';
 export const EVAL_FIELD_ERROR_ICON_CLASSES = 'mt-0.5 size-4 shrink-0';
-/** The PCA text input box, on the <input> itself (the global `tims-eval` ring is the PCA's focus-within outline):
- * 50px, radius 12, field border, 16px text (no iOS zoom). Invalid = 2px danger border, from aria-invalid. */
-export const EVAL_INPUT_CLASSES =
-  'min-h-[50px] w-full min-w-0 rounded-xl border border-eval-field bg-white px-3.5 py-3 text-[1rem] text-eval-ink placeholder:text-eval-ph aria-[invalid=true]:border-2 aria-[invalid=true]:border-eval-danger disabled:cursor-not-allowed disabled:border-transparent disabled:bg-eval-bg2 disabled:text-eval-ink2';
-/** The same box on a <textarea>: grows, line-height 1.5. */
-export const EVAL_TEXTAREA_CLASSES = `${EVAL_INPUT_CLASSES} min-h-24 resize-y leading-[1.5]`;
+/** The PCA text input box without its height: radius 12, field border, 16px text (no iOS zoom). Invalid = 2px danger
+ * border, from aria-invalid. The global `tims-eval` ring is the PCA's focus-within outline. Each recipe below adds its
+ * own min-height (never two on one element: joined strings, no tailwind-merge, the later CSS rule would win). */
+const FIELD_BOX =
+  'w-full min-w-0 rounded-xl border border-eval-field bg-white px-3.5 py-3 text-[1rem] text-eval-ink placeholder:text-eval-ph aria-[invalid=true]:border-2 aria-[invalid=true]:border-eval-danger disabled:cursor-not-allowed disabled:border-transparent disabled:bg-eval-bg2 disabled:text-eval-ink2';
+/** On an <input>: 50px tall. */
+export const EVAL_INPUT_CLASSES = `${FIELD_BOX} min-h-[50px]`;
+/** On a <textarea>: at least 96px (resize-y cannot shrink it below that), line-height 1.5. */
+export const EVAL_TEXTAREA_CLASSES = `${FIELD_BOX} min-h-24 resize-y leading-[1.5]`;
 /** A character counter or a note beside a field. */
 export const EVAL_FIELD_COUNTER_CLASSES = 'm-0 text-[0.78rem] text-eval-ink2';
 
@@ -135,7 +142,14 @@ export const EVAL_CHECK_LABEL_CLASSES = 'min-w-0 flex-1';
 /** ProgressBar: 5px (6px md) track in the divider colour, accent fill. */
 export const EVAL_PROGRESS_TRACK_CLASSES = 'h-[5px] w-full overflow-hidden rounded-full bg-eval-divider md:h-1.5';
 export const EVAL_PROGRESS_FILL_CLASSES = 'h-full rounded-full bg-eval-accent';
-/** Fill widths in 5% steps, so the bar needs no inline style. */
+/** Exact fills for the short guides (up to 4 steps): index = steps done, so step 1 of 3 is exactly a third. */
+export const EVAL_PROGRESS_STEP_WIDTHS: Readonly<Record<number, readonly string[]>> = {
+  1: ['w-0', 'w-full'],
+  2: ['w-0', 'w-1/2', 'w-full'],
+  3: ['w-0', 'w-1/3', 'w-2/3', 'w-full'],
+  4: ['w-0', 'w-1/4', 'w-1/2', 'w-3/4', 'w-full'],
+};
+/** Otherwise, fill widths in 5% steps, so the bar needs no inline style. */
 export const EVAL_PROGRESS_WIDTHS = [
   'w-0',
   'w-[5%]',
@@ -166,23 +180,21 @@ export const EVAL_STEP_HEAD_CLASSES = 'flex flex-col gap-2 md:gap-2.5';
 export const EVAL_STEP_LIST_CLASSES = 'm-0 list-none rounded-eval-card border border-eval-line px-4 py-0.5';
 export const EVAL_STEP_ROW_CLASSES =
   'flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 border-b border-eval-divider py-2.5 text-eval-base text-eval-ink last:border-b-0';
-export type EvalStepMarkerState = 'done' | 'todo';
+export type EvalStepMarkerState = 'done' | 'now' | 'todo';
 export const EVAL_STEP_MARKER_CLASSES =
   'grid size-7 shrink-0 place-items-center rounded-eval-btn text-eval-sm [&_svg]:size-4';
+/** PCA StepList markers: done = ok fill + white Check; now = no fill, accent icon; todo = bg3. */
 export const EVAL_STEP_MARKER_STATES: Record<EvalStepMarkerState, string> = {
   done: 'bg-eval-ok text-white',
+  now: 'bg-transparent text-eval-accent',
   todo: 'bg-eval-bg3 text-eval-ink2',
 };
 export const EVAL_STEP_LABEL_CLASSES = 'min-w-0 flex-1';
 
-export type EvalCodeTileSize = 'md' | 'sm';
-/** [compose] The instrument's code ("LIA", "EN"): a soft tile, mono, ink2. */
+/** [compose] The instrument's code ("LIA", "EN"): a soft 40px tile, 12px mono semibold, ink2 (the brief's recipe, the
+ * same for every status: 10px text is a size the PCA keeps for fact-tile labels). */
 export const EVAL_CODE_TILE_CLASSES =
-  'grid shrink-0 place-items-center rounded-eval-btn bg-eval-bg3 font-eval-mono font-semibold text-eval-ink2';
-export const EVAL_CODE_TILE_SIZES: Record<EvalCodeTileSize, string> = {
-  md: 'size-10 text-eval-xs',
-  sm: 'size-8 text-eval-2xs',
-};
+  'grid size-10 shrink-0 place-items-center rounded-eval-btn bg-eval-bg3 font-eval-mono text-eval-xs font-semibold text-eval-ink2';
 
 // ─── Bottom sheet (the full text of a consent) ──────────────────────────────────────────────────
 

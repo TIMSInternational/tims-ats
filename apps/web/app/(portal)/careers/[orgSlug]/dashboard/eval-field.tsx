@@ -29,8 +29,9 @@ function definedProps(control: EvalFieldControlProps): Partial<EvalFieldControlP
 }
 
 /**
- * The PCA Field: label (0.88rem semibold) above the control, then the error (danger, TriangleAlert, role="alert") and
- * the help line, wired with aria-describedby / aria-invalid / required — the shared Field's contract, in the PCA look.
+ * The PCA Field: label (0.88rem semibold) above the control, then the help line and the error (danger, TriangleAlert,
+ * role="alert"), wired with aria-describedby (help first, then error) / aria-invalid / required — the shared Field's
+ * contract and order (components/field.tsx), in the PCA look.
  * The control is a native <input className={EVAL_INPUT_CLASSES}> or <textarea className={EVAL_TEXTAREA_CLASSES}>
  * (an element is cloned with the ids; a function receives them to spread, e.g. next to react-hook-form's register).
  */
@@ -64,7 +65,7 @@ export function EvalField({
   const errorId = error ? `${controlId}-error` : undefined;
   const control: EvalFieldControlProps = {
     id: controlId,
-    'aria-describedby': [errorId, helpId].filter(Boolean).join(' ') || undefined,
+    'aria-describedby': [helpId, errorId].filter(Boolean).join(' ') || undefined,
     'aria-invalid': error ? true : undefined,
     required: required || undefined,
   };
@@ -81,15 +82,15 @@ export function EvalField({
         {optional && <span className={EVAL_FIELD_OPTIONAL_CLASSES}> ({t.common.optional})</span>}
       </label>
       {typeof children === 'function' ? children(control) : cloneElement(children, definedProps(control))}
+      {help && (
+        <p id={helpId} className={EVAL_FIELD_HELP_CLASSES}>
+          {help}
+        </p>
+      )}
       {error && (
         <p id={errorId} role="alert" className={EVAL_FIELD_ERROR_CLASSES}>
           <TriangleAlert aria-hidden="true" className={EVAL_FIELD_ERROR_ICON_CLASSES} />
           <span>{error}</span>
-        </p>
-      )}
-      {help && (
-        <p id={helpId} className={EVAL_FIELD_HELP_CLASSES}>
-          {help}
         </p>
       )}
     </div>

@@ -100,8 +100,8 @@ const AWAITING_ICON = <Hourglass aria-hidden="true" />;
 
 const FINISHED = new Set<PortalStatus>(['completed', 'expired', 'needs_review']);
 
-// The panel in the TIMS evaluation design: a PCA bordered panel; a finished test is a quieter, tighter one (a smaller
-// code tile, no description, its hint under the name).
+// The panel in the TIMS evaluation design: a PCA bordered panel; a finished test is a quieter, tighter one (less
+// padding, no description, its hint under the name). The code tile is the same 40px tile in every status.
 type Shape = 'open' | 'finished';
 const ITEM_CLASSES: Record<Shape, string> = {
   open: DASHBOARD_ITEM,
@@ -182,7 +182,7 @@ export function ProviderAssessmentItem({
   return (
     <li className={ITEM_CLASSES[shape]} data-status={attempt.status}>
       <div className={HEAD_CLASSES}>
-        <EvalCodeTile code={INSTRUMENT_MARK[attempt.instrument] ?? '·'} size={finished ? 'sm' : 'md'} />
+        <EvalCodeTile code={INSTRUMENT_MARK[attempt.instrument] ?? '·'} />
         <div className={TEXT_CLASSES}>
           <div className={DASHBOARD_ITEM_HEAD}>
             <div className={TEXT_CLASSES}>

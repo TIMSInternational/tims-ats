@@ -6,16 +6,18 @@
 // ─── Page ─────────────────────────────────────────────────────────────────────────────────────────
 
 /** The navy page. The DOCUMENT scrolls (not the PCA's fixed inner scroller): the dashboard is long. `tims-eval` gives
- * the PCA focus ring (3px accent, white on the header); `tims-eval-page` turns the body navy for overscroll. */
+ * the PCA focus ring (3px accent, white on the header); `tims-eval-page` turns the body navy for overscroll.
+ * min-h-screen (100vh), not min-h-dvh: the (portal) layout's white wrapper it covers is min-h-screen, and 100vh is the
+ * LARGE viewport (≥ 100dvh), so with the iOS toolbars showing a 100dvh root would leave a white band under the sheet. */
 export const EVAL_PAGE_CLASSES =
-  'tims-eval tims-eval-page flex min-h-dvh flex-col bg-eval-navy font-eval-sans text-eval-ink antialiased';
+  'tims-eval tims-eval-page flex min-h-screen flex-col bg-eval-navy font-eval-sans text-eval-ink antialiased';
 
 /** The org logo in the header: the uploaded image, at the PCA's size. */
 export const EVAL_ORG_LOGO_IMG_CLASSES =
   'block max-h-[30px] w-auto max-w-[140px] object-contain md:max-h-[34px] md:max-w-[180px]';
-/** No logo: the PCA's dashed chip with the organization's name. */
+/** No logo: the PCA's dashed chip with the organization's name (PCA brand.tsx ClientLogo: 180px wide at most, 240 md). */
 export const EVAL_ORG_CHIP_CLASSES =
-  'inline-flex h-[30px] max-w-[60vw] min-w-0 items-center overflow-hidden rounded-eval-chip border border-dashed border-eval-on-navy-dash px-2.5 text-eval-xs tracking-[0.04em] text-eval-on-navy-2 uppercase md:h-[34px] md:max-w-[320px] md:px-3.5 md:text-eval-sm';
+  'inline-flex h-[30px] max-w-[180px] min-w-0 items-center overflow-hidden rounded-eval-chip border border-dashed border-eval-on-navy-dash px-2.5 text-eval-xs tracking-[0.04em] text-eval-on-navy-2 uppercase md:h-[34px] md:max-w-[240px] md:px-3.5 md:text-eval-sm';
 /** The chip's name: one line, an ellipsis when it is long. */
 export const EVAL_ORG_CHIP_TEXT_CLASSES = 'min-w-0 truncate';
 /** The link around the org mark, back to the job board: a 44px target, the white ring of the header. */

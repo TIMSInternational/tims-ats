@@ -376,7 +376,9 @@ async function consentAndOpen(
   // stepper's last step). Each step's box starts unticked; only the required ones block Continue.
   const guide = item.getByRole('group', { name: 'Consent' });
   const stepper = guide.getByRole('navigation', { name: 'Steps' }).getByRole('listitem');
-  await expect(stepper.first()).toBeVisible();
+  // The step list is screen-reader only (the eye sees the eyebrow and the progress bar): wait for it to be in the DOM,
+  // not for it to be visible (a 1px clipped box only counts as visible by accident).
+  await expect(stepper.first()).toBeAttached();
   const total = await stepper.count();
   let optionalSteps = 0;
   for (let index = 0; index < total - 1; index += 1) {
