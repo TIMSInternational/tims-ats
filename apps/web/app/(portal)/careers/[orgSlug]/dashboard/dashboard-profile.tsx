@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Lock, Pencil } from 'lucide-react';
 import {
   CANDIDATE_PROFILE_LOCATION_MAX,
   CANDIDATE_PROFILE_NAME_MAX,
@@ -14,11 +15,19 @@ import {
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
-import { Button } from '../../../../../components/button';
-import { Field } from '../../../../../components/field';
-import { TextInput } from '../../../../../components/text-input';
-import { BUTTON_GROUP_CLASSES } from '../../../../../components/button-styles';
-import { DASHBOARD_CARD, DASHBOARD_TITLE } from './dashboard-styles';
+import { EvalButton } from './eval-button';
+import { EvalCallout } from './eval-callout';
+import { EvalField } from './eval-field';
+import { EVAL_ACTIONS_START_CLASSES, EVAL_INPUT_CLASSES } from './eval-control-styles';
+import {
+  DASHBOARD_CARD,
+  DASHBOARD_FACT,
+  DASHBOARD_FACT_LABEL,
+  DASHBOARD_FACT_VALUE,
+  DASHBOARD_FACTS,
+  DASHBOARD_HEADING,
+  DASHBOARD_LEAD,
+} from './dashboard-styles';
 
 export interface CandidateProfileView {
   firstName: string;
@@ -28,6 +37,20 @@ export interface CandidateProfileView {
   phone: string | null;
   location: string | null;
 }
+
+// The section in the TIMS evaluation design (PCA): the details as FactTiles, the edit form as PCA fields.
+/** A blank detail ("Not provided"): the tile's value in ink2, so it reads as missing, not as data. */
+const PROFILE_VALUE_EMPTY_CLASSES = 'm-0 text-eval-base text-eval-ink2';
+const PROFILE_SAVED_CLASSES = 'mt-4';
+const PROFILE_EDIT_BUTTON_CLASSES = 'mt-4';
+const PROFILE_FORM_CLASSES = 'flex flex-col gap-4';
+const PROFILE_NAME_GRID_CLASSES = 'grid grid-cols-1 gap-4 sm:grid-cols-2';
+/** The read-only email: one tile, then the hint with a lock. */
+const PROFILE_EMAIL_CLASSES = 'flex flex-col gap-1.5';
+const PROFILE_EMAIL_TILE_CLASSES = 'm-0';
+const PROFILE_EMAIL_HINT_CLASSES = 'm-0 flex items-start gap-1.5 text-eval-sm leading-[1.45] text-eval-ink2';
+const PROFILE_EMAIL_HINT_ICON_CLASSES = 'mt-0.5 size-3.5 shrink-0';
+const PROFILE_ACTIONS_CLASSES = `${EVAL_ACTIONS_START_CLASSES} mt-2`;
 
 // "Mis datos" (audit C-33): the signed-in candidate sees and corrects their own name, phone and location.
 // The values come server-rendered from the dashboard page; the email is never editable (it is the login).
@@ -64,7 +87,11 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
   });
 
   // onTouched: a field says what is wrong as soon as the candidate leaves it, not only on save.
-  const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: toValues(profile), mode: 'onTouched' });
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: toValues(profile),
+    mode: 'onTouched',
+  });
   const { errors } = form.formState;
 
   const update = trpc.candidatePortal.updateMyProfile.useMutation({
@@ -97,36 +124,70 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
 
   return (
     <section aria-labelledby="portal-profile-title" className={DASHBOARD_CARD}>
-      <h2 id="portal-profile-title" className={`${DASHBOARD_TITLE} mb-1`}>
+      <h2 id="portal-profile-title" className={DASHBOARD_HEADING}>
         {pd.profileTitle}
       </h2>
-      <p className="mb-4 text-base text-secondary sm:text-body">{pd.profileDesc}</p>
+      <p className={DASHBOARD_LEAD}>{pd.profileDesc}</p>
 
       {editing ? (
         <form
           noValidate
           onSubmit={form.handleSubmit((values) => update.mutate({ orgSlug, ...values }))}
-          className="space-y-4"
+          className={PROFILE_FORM_CLASSES}
         >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label={pd.profileFirstName} required id="portal-profile-first-name" error={errors.firstName?.message}>
-              {(c) => <TextInput {...c} autoComplete="given-name" maxLength={CANDIDATE_PROFILE_NAME_MAX} {...form.register('firstName')} />}
-            </Field>
-            <Field label={pd.profileLastName} required id="portal-profile-last-name" error={errors.lastName?.message}>
-              {(c) => <TextInput {...c} autoComplete="family-name" maxLength={CANDIDATE_PROFILE_NAME_MAX} {...form.register('lastName')} />}
-            </Field>
+          <div className={PROFILE_NAME_GRID_CLASSES}>
+            <EvalField
+              label={pd.profileFirstName}
+              required
+              id="portal-profile-first-name"
+              error={errors.firstName?.message}
+            >
+              {(c) => (
+                <input
+                  {...c}
+                  className={EVAL_INPUT_CLASSES}
+                  autoComplete="given-name"
+                  maxLength={CANDIDATE_PROFILE_NAME_MAX}
+                  {...form.register('firstName')}
+                />
+              )}
+            </EvalField>
+            <EvalField
+              label={pd.profileLastName}
+              required
+              id="portal-profile-last-name"
+              error={errors.lastName?.message}
+            >
+              {(c) => (
+                <input
+                  {...c}
+                  className={EVAL_INPUT_CLASSES}
+                  autoComplete="family-name"
+                  maxLength={CANDIDATE_PROFILE_NAME_MAX}
+                  {...form.register('lastName')}
+                />
+              )}
+            </EvalField>
           </div>
 
-          <div>
-            <p className="mb-1.5 text-body font-medium text-primary">{pd.profileEmail}</p>
-            <p className="text-base text-primary sm:text-body">{current.email}</p>
-            <p className="mt-0.5 text-callout text-secondary">{pd.profileEmailHint}</p>
+          <div className={PROFILE_EMAIL_CLASSES}>
+            <dl className={PROFILE_EMAIL_TILE_CLASSES}>
+              <div className={DASHBOARD_FACT}>
+                <dt className={DASHBOARD_FACT_LABEL}>{pd.profileEmail}</dt>
+                <dd className={DASHBOARD_FACT_VALUE}>{current.email}</dd>
+              </div>
+            </dl>
+            <p className={PROFILE_EMAIL_HINT_CLASSES}>
+              <Lock aria-hidden="true" className={PROFILE_EMAIL_HINT_ICON_CLASSES} />
+              <span>{pd.profileEmailHint}</span>
+            </p>
           </div>
 
-          <Field label={pd.profilePhone} id="portal-profile-phone" error={errors.phone?.message}>
+          <EvalField label={pd.profilePhone} id="portal-profile-phone" error={errors.phone?.message}>
             {(c) => (
-              <TextInput
+              <input
                 {...c}
+                className={EVAL_INPUT_CLASSES}
                 type="tel"
                 autoComplete="tel"
                 maxLength={CANDIDATE_PROFILE_PHONE_MAX}
@@ -134,47 +195,57 @@ export function DashboardProfile({ orgSlug, profile }: { orgSlug: string; profil
                 {...form.register('phone')}
               />
             )}
-          </Field>
+          </EvalField>
 
-          <Field label={pd.profileLocation} id="portal-profile-location">
+          <EvalField label={pd.profileLocation} id="portal-profile-location">
             {(c) => (
-              <TextInput
+              <input
                 {...c}
+                className={EVAL_INPUT_CLASSES}
                 autoComplete="address-level2"
                 maxLength={CANDIDATE_PROFILE_LOCATION_MAX}
                 placeholder={t.portal.cityCountryPlaceholder}
                 {...form.register('location')}
               />
             )}
-          </Field>
+          </EvalField>
 
-          <div className={BUTTON_GROUP_CLASSES}>
-            <Button variant="secondary" disabled={update.isPending} onClick={() => setEditing(false)}>
+          <div className={PROFILE_ACTIONS_CLASSES}>
+            <EvalButton variant="secondary" disabled={update.isPending} onClick={() => setEditing(false)}>
               {pd.profileCancel}
-            </Button>
-            <Button type="submit" loading={update.isPending} loadingLabel={pd.profileSaving}>
+            </EvalButton>
+            <EvalButton type="submit" loading={update.isPending} loadingLabel={pd.profileSaving}>
               {pd.profileSave}
-            </Button>
+            </EvalButton>
           </div>
         </form>
       ) : (
         <>
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+          <dl className={DASHBOARD_FACTS}>
             {rows.map((row) => (
-              <div key={row.label} className="min-w-0">
-                <dt className="text-callout text-secondary">{row.label}</dt>
-                <dd className="break-words text-base text-primary sm:text-body">{row.value || pd.profileNotSet}</dd>
+              <div key={row.label} className={DASHBOARD_FACT}>
+                <dt className={DASHBOARD_FACT_LABEL}>{row.label}</dt>
+                <dd className={row.value ? DASHBOARD_FACT_VALUE : PROFILE_VALUE_EMPTY_CLASSES}>
+                  {row.value || pd.profileNotSet}
+                </dd>
               </div>
             ))}
           </dl>
           {saved && (
-            <p role="status" className="mt-3 text-callout text-success">
+            <EvalCallout tone="ok" role="status" className={PROFILE_SAVED_CLASSES}>
               {pd.profileSaved}
-            </p>
+            </EvalCallout>
           )}
-          <Button variant="secondary" onClick={startEditing} className="mt-4">
+          <EvalButton
+            variant="secondary"
+            size="compact"
+            width="bar"
+            icon={<Pencil aria-hidden="true" />}
+            onClick={startEditing}
+            className={PROFILE_EDIT_BUTTON_CLASSES}
+          >
             {pd.profileEdit}
-          </Button>
+          </EvalButton>
         </>
       )}
     </section>
