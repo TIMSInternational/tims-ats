@@ -15,7 +15,9 @@ import {
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
 import { assessmentProviderFrameOrigin } from '../../../../../lib/security/csp';
-import { ErrorState, Skeleton } from '../../../../../components';
+import { DASHBOARD_CARD, DASHBOARD_EMPTY, DASHBOARD_ITEM, DASHBOARD_LIST, DASHBOARD_TITLE } from './dashboard-styles';
+import { EvalLoadError } from './eval-load-error';
+import { EVAL_SKELETON_CLASSES } from './eval-styles';
 import { ProviderAssessmentFrame } from './provider-assessment-frame';
 import { frameMessages } from './provider-frame-messages';
 import { ProviderAssessmentItem, portalInstrumentName, type PortalMessages } from './provider-assessment-item';
@@ -40,6 +42,17 @@ const SETTLE_MAX_MS = 60_000;
 const INSTRUMENT_ORDER: Record<string, number> = { lia: 0, english: 1, personality: 2, pca: 3, itcia: 4, mi: 5 };
 const ACTIONABLE = new Set<PortalStatus>(['consent_needed', 'ready', 'in_progress']);
 const FINISHED_STATUSES = new Set<PortalStatus>(['completed', 'needs_review', 'expired']);
+
+// The loading placeholder in the TIMS evaluation design: soft PCA blocks in the shape of a test's panel (the code tile,
+// the name and the description, the status chip).
+const SKELETON_PANEL_CLASSES = `${DASHBOARD_ITEM} flex items-start gap-3`;
+const SKELETON_TILE_CLASSES = `${EVAL_SKELETON_CLASSES} size-10 shrink-0`;
+const SKELETON_TEXT_CLASSES = 'flex-1 space-y-2 pt-0.5';
+const SKELETON_TITLE_CLASSES = `${EVAL_SKELETON_CLASSES} h-[18px] w-1/3`;
+const SKELETON_LINE_CLASSES = `${EVAL_SKELETON_CLASSES} h-3 w-2/3`;
+const SKELETON_CHIP_CLASSES = 'h-7 w-24 shrink-0 animate-pulse rounded-full bg-eval-bg3 motion-reduce:animate-none';
+/** The list-refresh error over a list that is still shown. */
+const INLINE_ERROR_CLASSES = 'mb-3';
 
 /** The message for a failed launch, from the route's stable code (or its status). */
 export function launchErrorKey(error: unknown): keyof PortalMessages {
@@ -157,12 +170,10 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     return () => window.clearTimeout(timer);
   }, [settling, settlingStatus]);
 
+  // A block under the PCA divider with its serif title (no card of its own: the sheet is the one white surface).
   const section = (body: React.ReactNode) => (
-    <section
-      aria-labelledby="provider-assessments-heading"
-      className="rounded-2xl border border-border bg-white p-4 sm:p-5"
-    >
-      <h2 id="provider-assessments-heading" className="mb-3 text-subheading font-semibold text-brand">
+    <section aria-labelledby="provider-assessments-heading" className={DASHBOARD_CARD}>
+      <h2 id="provider-assessments-heading" className={DASHBOARD_TITLE}>
         {t.portalDashboard.providerAssessments}
       </h2>
       {body}
@@ -189,21 +200,21 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     return section(
       <>
         {isLoading ? (
-          <div aria-busy="true" className="space-y-3">
+          <div aria-busy="true" className={DASHBOARD_LIST}>
             <span className="sr-only">{t.portalDashboard.providerLoading}</span>
             {[0, 1].map((row) => (
-              <div key={row} className="flex items-start gap-3 rounded-xl border border-border p-4">
-                <Skeleton className="size-10 rounded-xl" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-1/3" />
-                  <Skeleton className="h-3 w-2/3" />
+              <div key={row} aria-hidden="true" className={SKELETON_PANEL_CLASSES}>
+                <div className={SKELETON_TILE_CLASSES} />
+                <div className={SKELETON_TEXT_CLASSES}>
+                  <div className={SKELETON_TITLE_CLASSES} />
+                  <div className={SKELETON_LINE_CLASSES} />
                 </div>
-                <Skeleton className="h-5 w-20 rounded-full" />
+                <div className={SKELETON_CHIP_CLASSES} />
               </div>
             ))}
           </div>
         ) : isError ? (
-          <ErrorState size="compact" title={t.portalDashboard.providerError} onRetry={retry} />
+          <EvalLoadError title={t.portalDashboard.providerError} onRetry={retry} />
         ) : null}
         {frameNode}
       </>,
@@ -226,14 +237,12 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   return section(
     <>
       {isError && (
-        <div className="mb-3">
-          <ErrorState size="inline" title={t.portalDashboard.providerError} onRetry={retry} />
-        </div>
+        <EvalLoadError className={INLINE_ERROR_CLASSES} title={t.portalDashboard.providerError} onRetry={retry} />
       )}
       {attempts.length === 0 ? (
-        <p className="text-body text-secondary">{t.portalDashboard.providerEmpty}</p>
+        <p className={DASHBOARD_EMPTY}>{t.portalDashboard.providerEmpty}</p>
       ) : (
-        <ul className="space-y-3">
+        <ul className={DASHBOARD_LIST}>
           {attempts.map((attempt) => (
             <ProviderAssessmentItem
               key={attempt.attemptId}
