@@ -102,8 +102,9 @@ export function DashboardApplications({
         return { label: pd.statusRejected, tone: 'danger' };
       case 'hired':
         return { label: pd.statusHired, tone: 'ok' };
+      // Withdrawing is the candidate's own choice: neutral, not the red of a rejection.
       case 'withdrawn':
-        return { label: pd.statusWithdrawn, tone: 'danger' };
+        return { label: pd.statusWithdrawn, tone: 'neutral' };
       default:
         return { label: s, tone: 'neutral' };
     }
