@@ -330,15 +330,22 @@ confirmed exactly as in step 4.
 
 ### 4.3 Uptime canaries (`synthetics.tf`, opt-in)
 
-Three CloudWatch Synthetics canaries, every 5 minutes, from outside the service: a public careers
-page, `/health` and `/ready`. Each fires its alarm after two failed runs in a row **or when the canary
-stops reporting** (missing data is breaching), so a hard outage is no longer silent once they run.
+Three CloudWatch Synthetics canaries, every 5 minutes, from outside, one per production surface. Each
+fires its alarm after two failed runs in a row **or when the canary stops reporting** (missing data is
+breaching), so a hard outage is no longer silent once they run.
 
-| Alarm                             | Canary target       | Fires when                           |
-| --------------------------------- | ------------------- | ------------------------------------ |
-| `tims-platform-api-uptime-web`    | careers page (2xx)  | 2 consecutive failed or missing runs |
-| `tims-platform-api-uptime-health` | API `/health` (2xx) | 2 consecutive failed or missing runs |
-| `tims-platform-api-uptime-ready`  | API `/ready` (2xx)  | 2 consecutive failed or missing runs |
+| Alarm                            | Canary target                            | Fires when                           |
+| -------------------------------- | ---------------------------------------- | ------------------------------------ |
+| `tims-platform-api-uptime-web`   | web app page without sign-in, `/login`   | 2 consecutive failed or missing runs |
+| `tims-platform-api-uptime-suite` | suite public site (canonical `www` host) | 2 consecutive failed or missing runs |
+| `tims-platform-api-uptime-ready` | API `/ready` (2xx)                       | 2 consecutive failed or missing runs |
+
+When `uptime-ready` fires, check `/health` by hand: `/health` 200 with `/ready` 503 means the API is up but
+a dependency (database or rate-limit store) is not; both failing means the service itself is down.
+
+Extra recipients (more inboxes, or SMS numbers) are the module's `alarm_extra_recipients` variable,
+subscribed to the same topic, so they receive every alarm in this section. Emails must click the AWS
+confirmation link; SMS numbers only receive messages once the account's SNS SMS sandbox allows them.
 
 They publish to the same SNS topic as §4.1 (set `synthetics_alarm_topic_arn` to it while that topic is
 script-managed). The URLs are Terraform variables with no committed value. These alarms are **not**

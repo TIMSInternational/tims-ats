@@ -1,9 +1,13 @@
 # --- External uptime checks: CloudWatch Synthetics heartbeat canaries ---------------------------------
-# Three canaries probe production from outside the service, every 5 minutes, with no new vendor:
-#   web    -> var.synthetics_web_url               (a public careers page on the web app)
-#   health -> var.synthetics_api_base_url + /health (C# liveness: process up, no dependency checks)
-#   ready  -> var.synthetics_api_base_url + /ready  (C# readiness: DB reachable; 503 when it is not)
+# Three canaries probe the three production surfaces from outside, every 5 minutes, with no new vendor:
+#   web   -> var.synthetics_web_url                 (web app page that renders without sign-in)
+#   suite -> var.synthetics_suite_url               (the suite's public site)
+#   ready -> var.synthetics_api_base_url + /ready   (C# readiness: DB + rate-limit store; 503 when not)
 # Each canary has one alarm on its SuccessPercent metric, routed to the platform alarms SNS topic.
+#
+# There is deliberately no /health (liveness) canary: /health runs no checks, so any outage that fails it
+# also fails /ready, and App Runner already probes /health every 10 seconds to replace a dead instance.
+# A second canary on the same host would double the page for one outage and add a canary's run cost.
 #
 # OPT-IN (`enable_synthetics`, default false), like alarms.tf. The URLs are variables with an empty
 # default so a disabled module needs no values; preconditions below refuse an apply that enables the
@@ -29,17 +33,17 @@ locals {
     web = {
       name        = "${var.synthetics_name_prefix}-web"
       url         = var.synthetics_web_url
-      description = "Public web careers page did not return 2xx"
+      description = "Web app public page (no sign-in) did not return 2xx"
     }
-    health = {
-      name        = "${var.synthetics_name_prefix}-health"
-      url         = "${trimsuffix(var.synthetics_api_base_url, "/")}/health"
-      description = "C# API /health (liveness) did not return 2xx"
+    suite = {
+      name        = "${var.synthetics_name_prefix}-suite"
+      url         = var.synthetics_suite_url
+      description = "Suite public site did not return 2xx"
     }
     ready = {
       name        = "${var.synthetics_name_prefix}-ready"
       url         = "${trimsuffix(var.synthetics_api_base_url, "/")}/ready"
-      description = "C# API /ready (DB readiness) did not return 2xx"
+      description = "C# API /ready (readiness) did not return 2xx"
     }
   }
 
@@ -174,6 +178,11 @@ resource "aws_s3_bucket_policy" "synthetics_artifacts" {
 # allows: write to this bucket's prefix only, logs only to the canaries' own Lambda log groups, metrics
 # only into the CloudWatchSynthetics namespace. s3:ListAllMyBuckets cannot be scoped below "*" (it is an
 # account-level list) and is required by the runtime. No X-Ray (active tracing is off).
+#
+# logs:CreateLogGroup is deliberately NOT granted: Terraform creates each canary's log group (with a
+# retention period) right after the canary, below. If the role could create it, the canary's first run
+# would race Terraform to it, leave a group that never expires, and fail the apply with
+# ResourceAlreadyExistsException. Without the permission, at worst the first run's log lines are dropped.
 data "aws_iam_policy_document" "synthetics_assume" {
   count = local.synthetics_enabled ? 1 : 0
 
@@ -215,7 +224,7 @@ data "aws_iam_policy_document" "synthetics_canary" {
 
   statement {
     sid     = "WriteOwnLogs"
-    actions = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+    actions = ["logs:CreateLogStream", "logs:PutLogEvents"]
     resources = [
       "arn:${data.aws_partition.synthetics[0].partition}:logs:${var.aws_region}:${data.aws_caller_identity.synthetics[0].account_id}:log-group:/aws/lambda/cwsyn-${var.synthetics_name_prefix}-*",
       "arn:${data.aws_partition.synthetics[0].partition}:logs:${var.aws_region}:${data.aws_caller_identity.synthetics[0].account_id}:log-group:/aws/lambda/cwsyn-${var.synthetics_name_prefix}-*:log-stream:*",
@@ -301,6 +310,18 @@ resource "aws_synthetics_canary" "uptime" {
   ]
 }
 
+# --- Canary log groups, with a retention period -------------------------------------------------------
+# Each canary runs as a Lambda function named cwsyn-<canary name>-<canary id>; its logs go to
+# /aws/lambda/<that name>. The Synthetics API has no log-retention setting, and a log group the function
+# creates itself never expires, so Terraform owns the group (see the role above). The function name is
+# read from the canary's engine ARN; regex() fails the apply loudly if that ARN ever lacks it.
+resource "aws_cloudwatch_log_group" "synthetics" {
+  for_each = local.synthetics_enabled ? local.synthetics_canaries : {}
+
+  name              = "/aws/lambda/${regex("function:([^:]+)", aws_synthetics_canary.uptime[each.key].engine_arn)[0]}"
+  retention_in_days = var.log_retention_days
+}
+
 # --- One alarm per canary -> the platform alarms SNS topic ---------------------------------------------
 # Fires when SuccessPercent is below 100 in 2 consecutive 5-minute periods (two failed runs in a row),
 # which avoids paging on one transient network blip. Missing data is BREACHING: a canary that stops
@@ -328,7 +349,13 @@ resource "aws_cloudwatch_metric_alarm" "synthetics" {
   # this, the targeted apply created alarms that publish to a topic nobody subscribes to, and no
   # confirmation email was ever sent (tier-1 review). With synthetics_alarm_topic_arn set, the
   # subscription has count 0 and the existing topic's subscribers must be checked by hand (README).
-  depends_on = [aws_sns_topic_subscription.alarm_email]
+  # The extra recipients (alarms.tf) and the canary log groups are listed for the same reason: nothing
+  # else references them, so a targeted apply would otherwise skip them.
+  depends_on = [
+    aws_sns_topic_subscription.alarm_email,
+    aws_sns_topic_subscription.alarm_extra,
+    aws_cloudwatch_log_group.synthetics,
+  ]
 
   lifecycle {
     precondition {

@@ -5,11 +5,13 @@ import Module, { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
 // External uptime checks (launch readiness): CloudWatch Synthetics canaries in
-// services/Tims.Platform/deploy/terraform/synthetics.tf probe the public careers page and the C# /health
-// and /ready endpoints every 5 minutes, alarming to the platform alarms SNS topic. The module is never
-// planned in CI (no credentials), so these tests pin the properties a reviewer would otherwise have to
-// re-derive by reading HCL: opt-in, the three targets, the schedule, a pinned runtime, the bucket
-// hardening, the role's scoping, the alarm routing, and that no hostname is committed.
+// services/Tims.Platform/deploy/terraform/synthetics.tf probe the three production surfaces (a web app
+// page that renders without sign-in, the suite's public site, and the C# API's /ready) every 5 minutes,
+// alarming to the platform alarms SNS topic, with extra alert recipients (alarms.tf) on that same topic.
+// The module is never planned in CI (no credentials), so these tests pin the properties a reviewer would
+// otherwise have to re-derive by reading HCL: opt-in, the three targets, the schedule, a pinned runtime,
+// the bucket hardening, the role's scoping, the log retention, the alarm routing, the recipients, and that
+// no hostname is committed.
 
 const ROOT = resolve(__dirname, '../..');
 const TF_DIR = join(ROOT, 'services/Tims.Platform/deploy/terraform');
@@ -53,12 +55,17 @@ describe('synthetics.tf — uptime canaries', () => {
     }
   });
 
-  it('declares exactly the three targets: careers page, /health and /ready', () => {
+  it('declares exactly the three production surfaces: web app, suite site and API /ready', () => {
     const canaries = block(SYN, 'synthetics_canaries = {');
-    expect([...canaries.matchAll(/^\s{4}([a-z]+) = \{/gm)].map((m) => m[1]).sort()).toEqual(['health', 'ready', 'web']);
-    expect(canaries).toMatch(/url\s*=\s*var\.synthetics_web_url/);
-    expect(canaries).toContain('trimsuffix(var.synthetics_api_base_url, "/")}/health"');
+    expect([...canaries.matchAll(/^\s{4}([a-z]+) = \{/gm)].map((m) => m[1]).sort()).toEqual(['ready', 'suite', 'web']);
+    expect(canaries).toMatch(/url\s*=\s*var\.synthetics_web_url$/m);
+    expect(canaries).toMatch(/url\s*=\s*var\.synthetics_suite_url$/m);
     expect(canaries).toContain('trimsuffix(var.synthetics_api_base_url, "/")}/ready"');
+    // /health runs no checks, so it fails only when /ready does too; one outage must page once.
+    expect(canaries).not.toContain('/health');
+    // /ready is the readiness path the C# API maps (dependency checks; 503 when one is unreachable).
+    const program = readFileSync(join(ROOT, 'services/Tims.Platform/src/Tims.Api/Program.cs'), 'utf8');
+    expect(program).toMatch(/MapHealthChecks\("\/ready"/);
   });
 
   it('runs every 5 minutes on an exactly pinned runtime that supports the @aws/* module names', () => {
@@ -107,7 +114,6 @@ describe('synthetics.tf — uptime canaries', () => {
     expect(actions.sort()).toEqual(
       [
         'cloudwatch:PutMetricData',
-        'logs:CreateLogGroup',
         'logs:CreateLogStream',
         'logs:PutLogEvents',
         's3:GetBucketLocation',
@@ -171,7 +177,7 @@ describe('synthetics.tf — uptime canaries', () => {
       queue.push(...refs(bodies.get(addr)!));
     }
     const managed = [...bodies.keys()].filter((a) => !a.startsWith('data.'));
-    expect(managed.length).toBe(10);
+    expect(managed.length).toBe(11);
     expect(managed.filter((a) => !closure.has(a))).toEqual([]);
   });
 
@@ -189,7 +195,9 @@ describe('synthetics.tf — uptime canaries', () => {
     const locals = block(SYN, 'locals {');
     const refs = (body: string) =>
       [...bodies.keys()].filter((addr) =>
-        new RegExp(`(^|[^a-z0-9_.])${addr.replace(/\./g, '\\.')}\\b`).test(body.includes('local.') ? body + locals : body),
+        new RegExp(`(^|[^a-z0-9_.])${addr.replace(/\./g, '\\.')}\\b`).test(
+          body.includes('local.') ? body + locals : body,
+        ),
       );
     const closure = new Set<string>();
     const queue = ['aws_cloudwatch_metric_alarm.synthetics'];
@@ -201,6 +209,8 @@ describe('synthetics.tf — uptime canaries', () => {
     }
     expect(closure.has('aws_sns_topic.alarms')).toBe(true);
     expect(closure.has('aws_sns_topic_subscription.alarm_email')).toBe(true);
+    expect(closure.has('aws_sns_topic_subscription.alarm_extra')).toBe(true);
+    expect(closure.has('aws_cloudwatch_log_group.synthetics')).toBe(true);
   });
 
   it('refuses the topic override together with enable_alarms, so the override path never creates a subscription', () => {
@@ -210,6 +220,7 @@ describe('synthetics.tf — uptime canaries', () => {
 
   it('commits no hostname: the URL variables default to empty and the apply refuses empty/non-https', () => {
     expect(variableDefault('synthetics_web_url')).toBe('""');
+    expect(variableDefault('synthetics_suite_url')).toBe('""');
     expect(variableDefault('synthetics_api_base_url')).toBe('""');
     expect(variableDefault('synthetics_alarm_topic_arn')).toBe('""');
     expect(block(SYN, 'resource "aws_synthetics_canary" "uptime" {')).toContain(
@@ -217,11 +228,86 @@ describe('synthetics.tf — uptime canaries', () => {
     );
     for (const src of [SYN, readFileSync(SCRIPT_PATH, 'utf8')]) {
       expect(src).not.toMatch(/https?:\/\/[a-z0-9-]+\.[a-z0-9.-]+/i);
-      expect(src).not.toMatch(/awsapprunner\.com|vercel\.app|\b\d{12}\b/);
+      expect(src).not.toMatch(/awsapprunner\.com|vercel\.app|timssuite|\b\d{12}\b/);
     }
     expect(GITIGNORE).toMatch(/^\*\.tfvars$/m);
     expect(GITIGNORE).toMatch(/^\*\.tfstate$/m);
     expect(GITIGNORE).toMatch(/^\.build\/$/m);
+  });
+});
+
+describe('synthetics.tf — canary log retention', () => {
+  it('Terraform owns each canary log group, named from the engine ARN, with var.log_retention_days (default 90)', () => {
+    const lg = block(SYN, 'resource "aws_cloudwatch_log_group" "synthetics" {');
+    expect(lg).toMatch(/for_each = local\.synthetics_enabled \? local\.synthetics_canaries : \{\}/);
+    // The canary's Lambda is cwsyn-<name>-<id>; regex() fails the apply rather than guessing a name.
+    expect(lg).toContain(
+      'name              = "/aws/lambda/${regex("function:([^:]+)", aws_synthetics_canary.uptime[each.key].engine_arn)[0]}"',
+    );
+    expect(lg).toContain('retention_in_days = var.log_retention_days');
+    expect(variableDefault('log_retention_days')).toBe('90');
+    const allowed = block(VARS, 'variable "log_retention_days" {').match(/contains\(\[([\d, ]+)\]/)![1];
+    expect(allowed.split(',').map((n) => Number(n.trim()))).toContain(90);
+    expect(allowed).not.toMatch(/\b0\b/); // 0 would mean "never expire"
+  });
+
+  it('the canary role cannot create its own log group, so the first run cannot race Terraform to it', () => {
+    // A group the function creates never expires and makes the Terraform create fail as already existing.
+    expect(block(SYN, 'data "aws_iam_policy_document" "synthetics_canary" {')).not.toContain('logs:CreateLogGroup');
+  });
+});
+
+describe('alarms.tf — extra alert recipients', () => {
+  const recipientsVar = () => block(VARS, 'variable "alarm_extra_recipients" {');
+  /** The validation regexes, unescaped from their HCL string literals. */
+  function recipientPatterns(): RegExp[] {
+    const literals = [...recipientsVar().matchAll(/regex\("((?:[^"\\]|\\.)*)", r\)/g)].map((m) => m[1]);
+    expect(literals).toHaveLength(2);
+    return literals.map((l) => new RegExp(l.replace(/\\\\/g, '\\')));
+  }
+  const accepted = (r: string) => recipientPatterns().some((re) => re.test(r));
+
+  it('is a list of strings that defaults to empty', () => {
+    expect(recipientsVar()).toMatch(/type\s*=\s*list\(string\)/);
+    expect(variableDefault('alarm_extra_recipients')).toBe('[]');
+    expect(recipientsVar()).toMatch(
+      /length\(distinct\(var\.alarm_extra_recipients\)\) == length\(var\.alarm_extra_recipients\)/,
+    );
+  });
+
+  it('accepts email addresses and E.164 numbers, and nothing else', () => {
+    for (const ok of ['oncall@example.test', 'a.b+tag@sub.example.test', '+15555550100', '+50612345678'])
+      expect(accepted(ok), ok).toBe(true);
+    for (const bad of [
+      '',
+      'oncall',
+      'oncall@example',
+      '15555550100',
+      '+0123456789',
+      '+506 1234 5678',
+      '+1234',
+      'a b@example.test',
+    ])
+      expect(accepted(bad), bad).toBe(false);
+  });
+
+  it('subscribes each recipient to the topic the alarms use, as sms for "+" numbers and email otherwise', () => {
+    expect(ALARMS_TF).toMatch(
+      /for r in var\.alarm_extra_recipients : r => \(startswith\(r, "\+"\) \? "sms" : "email"\)/,
+    );
+    const sub = block(ALARMS_TF, 'resource "aws_sns_topic_subscription" "alarm_extra" {');
+    // Plan-time-known condition (variables only): the module topic, or the externally managed one.
+    expect(sub).toMatch(
+      /for_each = \(var\.enable_alarms \|\| var\.synthetics_alarm_topic_arn != ""\) \? local\.alarm_extra_recipients : \{\}/,
+    );
+    expect(sub).toContain('topic_arn = local.synthetics_alarm_topic_arn');
+    expect(sub).toContain('protocol  = each.value');
+    expect(sub).toContain('endpoint  = each.key');
+    expect(sub).toMatch(/condition\s*=\s*!\(var\.synthetics_alarm_topic_arn != "" && var\.enable_alarms\)/);
+    // SNS returns the existing subscription for a repeated endpoint: two resources would own one.
+    expect(sub).toMatch(
+      /condition\s*=\s*!\(var\.enable_alarms && contains\(var\.alarm_extra_recipients, var\.alarm_email\)\)/,
+    );
   });
 });
 
