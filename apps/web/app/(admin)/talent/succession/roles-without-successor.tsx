@@ -1,7 +1,8 @@
 'use client';
 
-import { Skeleton } from '../../../../components';
-import { EmptyState } from '../../../../components/empty-state';
+import type { ReactNode } from 'react';
+import { Button, EmptyState, ErrorState, Skeleton, StatusBadge, type StatusTone } from '../../../../components';
+import { useI18n, pluralize, formatMessage } from '../../../../lib/i18n';
 
 interface RoleWithoutSuccessor {
   id: string;
@@ -14,128 +15,128 @@ interface RolesWithoutSuccessorProps {
   data: RoleWithoutSuccessor[] | undefined;
   loading: boolean;
   isError: boolean;
-  t: {
-    rolesNoSuccessor: string;
-    rolesUncovered: string;
-    colRole: string;
-    colCurrentRole: string;
-    colCriticality: string;
-    colAction: string;
-    assign: string;
-    critical: string;
-    high: string;
-    medium: string;
-    low: string;
-    rolesNoSuccessorEmpty: string;
-    rolesNoSuccessorEmptyDesc: string;
-    loadError: string;
-  };
+  /** Undefined while the critical-roles read is pending or failed. 0 = no critical roles exist yet. */
+  totalCriticalRoles: number | undefined;
+  /** Opens AddSuccessorModal with this role chosen. */
+  onAssign: (roleId: string) => void;
 }
 
-const CRIT_STYLES: Record<string, { bg: string; text: string }> = {
-  critical: { bg: 'bg-[#DD0C15]', text: 'text-[#DD0C15]' },
-  high: { bg: 'bg-orange-500', text: 'text-orange-600' },
-  medium: { bg: 'bg-amber-500', text: 'text-amber-600' },
-  low: { bg: 'bg-gray-400', text: 'text-gray-500' },
+const CRIT_TONE: Record<string, StatusTone> = {
+  critical: 'danger',
+  high: 'warning',
+  medium: 'info',
+  low: 'neutral',
 };
 
-function getCritLabel(crit: string, t: RolesWithoutSuccessorProps['t']): string {
-  if (crit === 'critical') return t.critical;
-  if (crit === 'high') return t.high;
-  if (crit === 'medium') return t.medium;
-  if (crit === 'low') return t.low;
-  return t.medium;
-}
+export function RolesWithoutSuccessor({
+  data,
+  loading,
+  isError,
+  totalCriticalRoles,
+  onAssign,
+}: RolesWithoutSuccessorProps) {
+  const { t, locale } = useI18n();
+  const critLabel = (crit: string): string => {
+    if (crit === 'critical') return t.succession.critical;
+    if (crit === 'high') return t.succession.high;
+    if (crit === 'low') return t.succession.low;
+    return t.succession.medium;
+  };
+  const items = data ?? [];
 
-export function RolesWithoutSuccessor({ data, loading, isError, t }: RolesWithoutSuccessorProps) {
+  let body: ReactNode;
   if (loading) {
-    return (
-      <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-        <Skeleton className="h-4 w-64 mb-3" />
+    body = (
+      <div aria-busy="true" className="space-y-2">
+        <span className="sr-only">{t.common.loadingContent}</span>
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-8 w-full mb-2" />
+          <Skeleton key={i} className="h-9 w-full" />
         ))}
       </div>
     );
-  }
-
-  if (isError) {
-    return (
-      <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-        <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.rolesNoSuccessor}</h3>
-        <p className="text-[12px] text-[#DD0C15]">{t.loadError}</p>
+  } else if (isError) {
+    body = <ErrorState size="compact" title={t.succession.loadError} />;
+  } else if (items.length === 0) {
+    // "All covered" is only true when critical roles exist; with none, say so instead.
+    body =
+      totalCriticalRoles === 0 ? (
+        <EmptyState size="compact" title={t.succession.noRolesYet} description={t.succession.noRolesDesc} />
+      ) : (
+        <EmptyState
+          size="compact"
+          icon={
+            <svg
+              className="size-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          }
+          title={t.succession.rolesNoSuccessorEmpty}
+          description={t.succession.rolesNoSuccessorEmptyDesc}
+        />
+      );
+  } else {
+    body = (
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full text-left text-body">
+          <thead>
+            <tr className="bg-surface text-callout text-secondary">
+              <th scope="col" className="px-3 py-2 font-semibold">
+                {t.succession.colRole}
+              </th>
+              <th scope="col" className="px-3 py-2 font-semibold">
+                {t.succession.colCurrentRole}
+              </th>
+              <th scope="col" className="px-3 py-2 font-semibold">
+                {t.succession.colCriticality}
+              </th>
+              <th scope="col" className="px-3 py-2 font-semibold">
+                <span className="sr-only">{t.succession.colAction}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="text-primary">
+            {items.map((role) => (
+              <tr key={role.id} className="border-t border-border">
+                <td className="px-3 py-2 font-medium">{role.title}</td>
+                <td className="px-3 py-2 text-secondary">{role.currentHolder?.jobTitle ?? ''}</td>
+                <td className="px-3 py-2">
+                  <StatusBadge tone={CRIT_TONE[role.criticality] ?? 'info'}>{critLabel(role.criticality)}</StatusBadge>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onAssign(role.id)}
+                    aria-label={formatMessage(t.succession.assignSuccessorFor, { role: role.title })}
+                  >
+                    {t.succession.assign}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     );
   }
 
-  const items = data && data.length > 0
-    ? data.map((r) => ({
-        role: r.title,
-        currentRole: r.currentHolder?.jobTitle ?? '',
-        criticality: r.criticality,
-      }))
-    : [];
-
   return (
-    <div className="w-full md:w-[58%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
-          </svg>
-          <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.rolesNoSuccessor}</h3>
-        </div>
-        {items.length > 0 && (
-          <span className="text-[10px] bg-red-50 text-[#DD0C15] px-2 py-0.5 rounded-full font-medium">
-            {items.length} {t.rolesUncovered}
-          </span>
+    <section aria-labelledby="roles-no-successor" className="rounded-xl border border-border bg-white p-4 shadow-card">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="roles-no-successor" className="text-heading font-semibold text-brand">
+          {t.succession.rolesNoSuccessor}
+        </h2>
+        {!loading && !isError && items.length > 0 && (
+          <StatusBadge tone="danger">{pluralize(items.length, t.succession.rolesUncoveredCount, locale)}</StatusBadge>
         )}
       </div>
-      {items.length === 0 ? (
-        <EmptyState
-          icon={
-            <svg className="w-8 h-8 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-          }
-          message={t.rolesNoSuccessorEmpty}
-          description={t.rolesNoSuccessorEmptyDesc}
-        />
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-[#EDEDED]">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-[#FAFAFA] text-[10px] text-[#585858] font-medium">
-                <th className="px-3 py-2">{t.colRole}</th>
-                <th className="px-3 py-2">{t.colCurrentRole}</th>
-                <th className="px-3 py-2">{t.colCriticality}</th>
-                <th className="px-3 py-2">{t.colAction}</th>
-              </tr>
-            </thead>
-            <tbody className="text-[11px] text-[#333]">
-              {items.map((item, i) => {
-                const style = CRIT_STYLES[item.criticality] ?? CRIT_STYLES.medium;
-                return (
-                  <tr key={item.role} className={`border-t border-[#F0F0F0] ${i % 2 === 1 ? 'bg-[#FAFAFA]' : ''}`}>
-                    <td className="px-3 py-2 font-medium">{item.role}</td>
-                    <td className="px-3 py-2 text-[#585858]">{item.currentRole}</td>
-                    <td className="px-3 py-2">
-                      <span className={`text-[9px] ${style.bg} text-white px-2 py-0.5 rounded-full font-medium`}>
-                        {getCritLabel(item.criticality, t)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <button className="text-[9px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium">
-                        {t.assign}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+      {body}
+    </section>
   );
 }

@@ -455,7 +455,7 @@ describe('WRITE_SURFACES ninebox', () => {
     expect(e.readbackNoMutation(nr, 'b').params).toEqual([WRITE_NINEBOX.voteB, 'S']);
     expect(e.readbackNoMutation(nr, 'a', 'hr_admin').params).toEqual([WRITE_NINEBOX.voteA, 'H']);
     // MED-1: hr_admin's deny must carry the NotMember message (membership-403, not gate-403).
-    expect(e.denyBodyIncludes).toEqual({ hr_admin: 'miembro del comite' });
+    expect(e.denyBodyIncludes).toEqual({ hr_admin: 'miembro del comit' });
     // MED-2: the org-A-session + org-B-evaluated-user quirk probe.
     const probe = e.extraProbes!.find((p) => p.label === 'cross-org-evaluated')!;
     expect(probe.build(nr).body).toEqual({ evaluatedUserId: 'bH', quadrant: 'core_player' });

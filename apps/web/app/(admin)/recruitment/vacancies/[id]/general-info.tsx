@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { formatDate } from '../../../../../lib/format-utils';
 import type { VacancyDetail } from '../../../../../lib/trpc-types';
@@ -10,24 +11,11 @@ import {
   parsePortalSalary,
 } from '../../../../(portal)/careers/[orgSlug]/_lib/vacancy-display';
 import { positionCountLabel } from '../create-modal.helpers';
+import { VACANCY_PRIORITY_DOT } from '../vacancy-status';
 
 interface GeneralInfoProps {
   vacancy: VacancyDetail;
 }
-
-const PRIORITY_COLORS: Record<string, string> = {
-  low: 'text-gray-500',
-  medium: 'text-blue-600',
-  high: 'text-amber-600',
-  urgent: 'text-[#DD0C15]',
-};
-
-const PRIORITY_DOTS: Record<string, string> = {
-  low: 'bg-gray-400',
-  medium: 'bg-blue-500',
-  high: 'bg-amber-500',
-  urgent: 'bg-[#DD0C15]',
-};
 
 export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
   const { t, locale } = useI18n();
@@ -47,12 +35,14 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
     urgent: t.vacancies.priorityUrgent,
   };
 
-  const fields = [
-    { label: t.vacancies.titleLabel, value: v.title },
+  // The title is the page's h1, which truncates to one line; on a phone the full name is repeated here so the
+  // part that tells similar vacancies apart is never lost (typography.md › Keep text truncation to a minimum).
+  const fields: { label: string; value?: string; render?: ReactNode; className?: string }[] = [
+    { label: t.vacancies.titleLabel, value: v.title, className: 'sm:hidden' },
     { label: t.vacancies.company, value: v.company?.name ?? '—' },
     { label: t.vacancies.department, value: v.unit?.name ?? '—' },
     { label: t.vacancies.location, value: locationText || '—' },
-    { label: t.vacancies.contractType, value: enumLabel(v.contractType, t.portal.contractTypes) ?? '—' },
+    { label: t.vacancies.contractTypeLabel, value: enumLabel(v.contractType, t.portal.contractTypes) ?? '—' },
     { label: t.vacancies.salaryBand, value: salaryText },
     {
       label: t.vacancies.hiringManager,
@@ -61,40 +51,48 @@ export function GeneralInfo({ vacancy: v }: GeneralInfoProps) {
     {
       label: t.vacancies.priority,
       render: (
-        <div className="flex items-center gap-1.5">
-          <span className={`w-2 h-2 rounded-full ${PRIORITY_DOTS[v.priority] ?? 'bg-gray-400'}`} />
-          <span className={`text-[13px] font-medium ${PRIORITY_COLORS[v.priority] ?? 'text-gray-500'}`}>
-            {priorityLabels[v.priority] ?? v.priority}
-          </span>
-        </div>
+        <span className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className={`size-2 rounded-full ${VACANCY_PRIORITY_DOT[v.priority] ?? 'bg-muted'}`}
+          />
+          {priorityLabels[v.priority] ?? v.priority}
+        </span>
       ),
     },
-    { label: t.vacancies.openDate, value: formatDate(v.createdAt) },
+    { label: t.vacancies.openDateLabel, value: formatDate(v.createdAt) },
     { label: t.vacancies.positions, value: positionCountLabel(v.positions, t.vacancies) },
   ];
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.vacancies.generalInfo}</h3>
-      <div className="grid grid-cols-3 gap-x-6 gap-y-3">
-        {fields.map((f, i) => (
-          <div key={i}>
-            <p className="text-[11px] text-[#8B8B8B] mb-0.5">{f.label}</p>
-            {'render' in f && f.render ? f.render : <p className="text-[13px] text-[#333]">{f.value}</p>}
+    <section
+      aria-labelledby="vacancy-general-title"
+      className="rounded-xl border border-border bg-white p-5 shadow-card"
+    >
+      <h2 id="vacancy-general-title" className="mb-4 text-heading font-semibold text-brand">
+        {t.vacancies.generalInfo}
+      </h2>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+        {fields.map((f) => (
+          <div key={f.label} className={`min-w-0 ${f.className ?? ''}`}>
+            <dt className="text-callout text-secondary">{f.label}</dt>
+            <dd className="mt-0.5 break-words text-body text-primary">
+              {f.render ?? f.value}
+            </dd>
           </div>
         ))}
-      </div>
+      </dl>
 
       {v.description && (
-        <div className="mt-4 pt-4 border-t border-[#F6F6F6]">
-          <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.description}</p>
+        <div className="mt-5 border-t border-border pt-4">
+          <h3 className="mb-2 text-subheading font-semibold text-primary">{t.vacancies.description}</h3>
           {/* Safe Markdown subset rendered as React elements: no HTML string is ever produced. */}
           <MarkdownText
             source={v.description}
-            className="bg-[#F6F6F6] rounded-lg p-3 text-[12px] text-[#585858] leading-relaxed space-y-2"
+            className="max-w-prose space-y-2 text-body leading-relaxed text-primary"
           />
         </div>
       )}
-    </div>
+    </section>
   );
 }

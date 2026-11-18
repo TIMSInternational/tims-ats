@@ -1,27 +1,48 @@
 'use client';
 
+import { useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDashboardUpsellOpportunities } from '../../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../../lib/i18n';
-import { formatCurrency, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
+import { formatCurrency, PLAN_BG_CLASSES, PLAN_CHIP_FALLBACK, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
+import { StatusBadge, type StatusTone } from '../../../../components/status-badge';
 
-const CONFIDENCE_CONFIG = {
-  high: { bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
-  medium: { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' },
-  low: { bg: 'bg-gray-50 border-gray-200', text: 'text-gray-600', badge: 'bg-gray-100 text-gray-600' },
-} as const;
+const CARD = 'flex flex-col rounded-xl border border-border bg-white p-5 shadow-card';
+
+const CONFIDENCE_TONE: Record<string, StatusTone> = {
+  high: 'success',
+  medium: 'warning',
+  low: 'neutral',
+};
+
+function PlanChip({ plan }: { plan: string }) {
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-caption font-medium ${PLAN_BG_CLASSES[plan] ?? PLAN_CHIP_FALLBACK}`}>
+      {PLAN_LABELS[plan] ?? plan}
+    </span>
+  );
+}
 
 export function UpsellPanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const d = t.dashboard;
   const router = useRouter();
+  const titleId = useId();
   const { data, isLoading, isError, refetch } = useDashboardUpsellOpportunities();
+
+  const confidenceLabel: Record<string, string> = {
+    high: d.highConfidence,
+    medium: d.mediumConfidence,
+    low: d.lowConfidence,
+  };
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <Skeleton className="h-4 w-40 mb-2" />
-        <Skeleton className="h-3 w-56 mb-4" />
+      <div className={CARD} aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
+        <Skeleton className="mb-2 h-4 w-40" />
+        <Skeleton className="mb-4 h-3 w-56" />
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-14 w-full rounded-lg" />
@@ -33,116 +54,102 @@ export function UpsellPanel() {
 
   if (isError) {
     return (
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <ErrorState onRetry={() => refetch()} />
+      <div className={CARD}>
+        <ErrorState size="compact" onRetry={() => refetch()} />
       </div>
     );
   }
 
   if (!data || data.opportunities.length === 0) {
     return (
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <h3 className="text-sm font-semibold text-[#1F114C] mb-1">
-          {t.dashboard.upsellTitle ?? 'Upsell Opportunities'}
-        </h3>
-        <div className="py-6 text-center">
-          <svg
-            className="w-8 h-8 text-[#EDEDED] mx-auto mb-2"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            viewBox="0 0 24 24"
-          >
-            <path d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-          </svg>
-          <p className="text-sm text-[#8B8B8B]">{t.dashboard.noUpsells ?? 'No upsell opportunities right now'}</p>
-        </div>
-      </div>
+      <section aria-labelledby={titleId} className={CARD}>
+        <h2 id={titleId} className="mb-1 text-heading font-semibold text-brand">
+          {d.upsellTitle}
+        </h2>
+        <p className="py-6 text-center text-body text-secondary">{d.noUpsells}</p>
+      </section>
     );
   }
 
   return (
-    <div className="rounded-xl border border-[#EDEDED] bg-white p-5 flex flex-col">
-      <div className="flex items-center justify-between mb-1">
+    <section aria-labelledby={titleId} className={CARD}>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-[#1F114C]">{t.dashboard.upsellTitle ?? 'Upsell Opportunities'}</h3>
-          <p className="text-xs text-[#8B8B8B]">{t.dashboard.upsellSubtitle ?? 'Organizations ready to upgrade'}</p>
+          <h2 id={titleId} className="text-heading font-semibold text-brand">
+            {d.upsellTitle}
+          </h2>
+          <p className="text-callout text-secondary">{d.upsellSubtitle}</p>
         </div>
         <div className="text-right">
-          <p className="text-lg font-bold text-emerald-600">+{formatCurrency(data.totalPotentialMrr)}</p>
-          <p className="text-[10px] text-[#8B8B8B]">{t.dashboard.potentialMrr ?? 'potential MRR'}</p>
+          <p className="text-title font-bold tabular-nums text-success">
+            +{formatCurrency(data.totalPotentialMrr, locale)}
+          </p>
+          <p className="text-caption text-secondary">{d.potentialMrr}</p>
         </div>
       </div>
 
       {/* Confidence summary */}
-      <div className="flex gap-2 mb-4">
+      <div className="mb-4 flex flex-wrap gap-2">
         {data.highConfidence > 0 && (
-          <span className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="text-xs font-medium text-emerald-700">{data.highConfidence}</span>
-            <span className="text-[10px] text-emerald-600">{t.dashboard.highConfidence ?? 'high'}</span>
-          </span>
+          <StatusBadge tone="success">
+            {data.highConfidence} {d.highConfidence}
+          </StatusBadge>
         )}
         {data.mediumConfidence > 0 && (
-          <span className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="text-xs font-medium text-amber-700">{data.mediumConfidence}</span>
-            <span className="text-[10px] text-amber-600">{t.dashboard.mediumConfidence ?? 'medium'}</span>
-          </span>
+          <StatusBadge tone="warning">
+            {data.mediumConfidence} {d.mediumConfidence}
+          </StatusBadge>
         )}
       </div>
 
       {/* Opportunities list */}
-      <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
-        {data.opportunities.slice(0, 8).map((opp) => {
-          const conf = CONFIDENCE_CONFIG[opp.confidence];
-          const planClass = PLAN_BG_CLASSES[opp.currentPlan] ?? 'bg-gray-100 text-gray-700';
-          const targetPlanClass = PLAN_BG_CLASSES[opp.targetPlan] ?? 'bg-gray-100 text-gray-700';
-
-          return (
+      <ul className="max-h-[280px] space-y-1.5 overflow-y-auto">
+        {data.opportunities.slice(0, 8).map((opp) => (
+          <li key={opp.orgId}>
             <button
-              key={opp.orgId}
+              type="button"
               onClick={() => router.push(`/platform/organizations/${opp.orgId}`)}
-              className="w-full text-left rounded-lg border border-transparent px-4 py-3 transition-all hover:shadow-sm hover:border-[#EDEDED] bg-[#FAFAFA]"
+              className="w-full rounded-lg border border-transparent bg-surface-hover px-4 py-3 text-left transition-colors hover:border-border"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[13px] font-medium text-[#333] truncate">{opp.orgName}</span>
-                    <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${planClass}`}>
-                      {PLAN_LABELS[opp.currentPlan] ?? opp.currentPlan}
-                    </span>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="truncate text-body font-medium text-primary">{opp.orgName}</span>
+                    <PlanChip plan={opp.currentPlan} />
                     <svg
-                      className="w-3 h-3 text-[#8B8B8B] shrink-0"
+                      className="size-3 shrink-0 text-muted"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2"
                       viewBox="0 0 24 24"
+                      aria-hidden="true"
                     >
                       <path d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
-                    <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${targetPlanClass}`}>
-                      {PLAN_LABELS[opp.targetPlan] ?? opp.targetPlan}
-                    </span>
+                    <PlanChip plan={opp.targetPlan} />
                   </div>
-                  <p className="text-[11px] text-[#585858] truncate">{opp.reason}</p>
+                  <p className="truncate text-callout text-secondary">{opp.reason}</p>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex shrink-0 flex-wrap items-center gap-3">
                   <div className="text-center">
-                    <p className="text-[12px] font-medium text-[#333]">
+                    <p className="text-callout font-medium tabular-nums text-primary">
                       {opp.signals.activeUsers}/{opp.signals.totalUsers}
                     </p>
-                    <p className="text-[9px] text-[#8B8B8B]">{t.dashboard.users ?? 'users'}</p>
+                    <p className="text-caption text-secondary">{d.users}</p>
                   </div>
-                  <span className="text-sm font-bold text-emerald-600">+{formatCurrency(opp.mrrIncrease)}</span>
-                  <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${conf.badge}`}>{opp.confidence}</span>
+                  <span className="text-subheading font-bold tabular-nums text-success">
+                    +{formatCurrency(opp.mrrIncrease, locale)}
+                  </span>
+                  <StatusBadge tone={CONFIDENCE_TONE[opp.confidence] ?? 'neutral'}>
+                    {confidenceLabel[opp.confidence] ?? opp.confidence}
+                  </StatusBadge>
                 </div>
               </div>
             </button>
-          );
-        })}
-      </div>
-    </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

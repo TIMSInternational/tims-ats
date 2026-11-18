@@ -1,8 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
-import { Modal, UserPicker } from '../../../../components';
-import { alertCls, secondaryBtn } from './units-styles';
+import { Button, Modal, UserPicker } from '../../../../components';
 
 interface PersonPickerModalProps {
   title: string;
@@ -26,8 +25,16 @@ export function PersonPickerModal({
 }: PersonPickerModalProps) {
   const { t } = useI18n();
   return (
-    <Modal title={title} onClose={onClose}>
-      <p className="text-[12px] text-[#8B8B8B] mb-3">{description}</p>
+    <Modal
+      title={title}
+      description={description}
+      onClose={onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          {t.units.cancel}
+        </Button>
+      }
+    >
       <UserPicker
         purpose="org_structure_member"
         excludeIds={excludeIds}
@@ -36,17 +43,13 @@ export function PersonPickerModal({
         searchPlaceholder={t.units.searchUser}
         loadingLabel={t.units.loadingUsers}
         emptyLabel={t.units.noUsers}
+        ariaLabel={title}
       />
       {errorMessage && (
-        <p role="alert" className={`${alertCls} mt-3`}>
+        <p role="alert" className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">
           {errorMessage}
         </p>
       )}
-      <div className="flex justify-end gap-2 mt-5">
-        <button type="button" onClick={onClose} className={secondaryBtn}>
-          {t.units.cancel}
-        </button>
-      </div>
     </Modal>
   );
 }

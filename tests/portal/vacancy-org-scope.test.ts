@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const VACANCY_ID = '11111111-1111-1111-1111-111111111111';
+const VACANCY_ID = '11111111-1111-4111-8111-111111111111';
 
 const findFirst = vi.fn();
 const count = vi.fn();
@@ -29,7 +29,7 @@ describe('portal.getVacancy organization scope', () => {
   });
 
   it('queries a published vacancy only within the careers URL organization', async () => {
-    findFirst.mockResolvedValue({ id: VACANCY_ID, organizationId: 'tims-org' });
+    findFirst.mockResolvedValue({ id: VACANCY_ID, organizationId: 'tims-org', organization: { name: 'TIMS' } });
     count.mockResolvedValue(3);
 
     const caller = await makeCaller();
@@ -56,5 +56,76 @@ describe('portal.getVacancy organization scope', () => {
 
     expect(vacancy).toBeNull();
     expect(count).not.toHaveBeenCalled();
+    // The closed-vacancy fallback is scoped to the same URL organization.
+    expect(findFirst).toHaveBeenLastCalledWith({
+      where: {
+        id: VACANCY_ID,
+        status: { in: ['closed', 'frozen'] },
+        deletedAt: null,
+        organization: { is: { slug: 'another-company' } },
+      },
+      select: { id: true },
+    });
+  });
+
+  it('reports a closed (or frozen) vacancy of this organization as closed — and nothing else about it', async () => {
+    findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: VACANCY_ID });
+
+    const caller = await makeCaller();
+    const vacancy = await caller.portal.getVacancy({ id: VACANCY_ID, orgSlug: 'tims-international' });
+
+    expect(vacancy).toEqual({ closed: true });
+    expect(count).not.toHaveBeenCalled();
+  });
+
+  it('returns only the public careers-page fields — never settings or other internal columns', async () => {
+    // Even if the row (or a future select) carries internal data, the response is built field by field.
+    findFirst.mockResolvedValue({
+      id: VACANCY_ID,
+      organizationId: 'tims-org',
+      title: 'Analista',
+      description: 'Descripcion',
+      location: 'Bogota',
+      remotePolicy: 'hybrid',
+      contractType: 'full_time',
+      salary: { min: 1, max: 2, currency: 'COP', period: 'monthly' },
+      positions: 2,
+      priority: 'urgent',
+      createdAt: new Date('2026-10-01T00:00:00Z'),
+      settings: { requireApproval: true, internalNote: 'do-not-leak' },
+      hiringManagerId: 'hm-1',
+      company: { id: 'company-1', name: 'Acme' },
+      unit: { name: 'Data' },
+      organization: { name: 'TIMS', logo: 'logo.png' },
+      jobProfile: { competencies: ['SQL'], requirements: ['Excel'], salaryBand: 'secret' },
+    });
+    count.mockResolvedValue(4);
+
+    const caller = await makeCaller();
+    const vacancy = await caller.portal.getVacancy({ id: VACANCY_ID, orgSlug: 'tims-international' });
+
+    expect(vacancy).toEqual({
+      id: VACANCY_ID,
+      organizationId: 'tims-org',
+      title: 'Analista',
+      description: 'Descripcion',
+      location: 'Bogota',
+      remotePolicy: 'hybrid',
+      contractType: 'full_time',
+      salary: { min: 1, max: 2, currency: 'COP', period: 'monthly' },
+      positions: 2,
+      priority: 'urgent',
+      createdAt: new Date('2026-10-01T00:00:00Z'),
+      company: { name: 'Acme' },
+      unit: { name: 'Data' },
+      organization: { name: 'TIMS', logo: 'logo.png' },
+      // Names only (publicCompetencyNames): a legacy string row becomes { name }.
+      jobProfile: { competencies: [{ name: 'SQL' }], requirements: ['Excel'] },
+      applicantCount: 4,
+    });
+    expect(JSON.stringify(vacancy)).not.toContain('do-not-leak');
+    // The query itself no longer asks for settings.
+    const select = (findFirst.mock.calls[0]?.[0] as { select: Record<string, unknown> }).select;
+    expect(select).not.toHaveProperty('settings');
   });
 });

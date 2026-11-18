@@ -1,29 +1,22 @@
 'use client';
 
+import { useId, useState } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
-import { useNineBoxMyCalibrations } from '../../../lib/platform-api/ninebox';
 import { useI18n } from '../../../lib/i18n';
-import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton, StatusBadge } from '../../../components';
+import { KpiCard, KpiCardSkeleton, EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
+import { CommitteeCalibrationsPanel } from './committee-calibrations-panel';
+import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
+import { interviewRoomHref } from './manager-todos';
+import { DashboardPage } from './dashboard-page';
 
 function fullName(p: { firstName: string; lastName: string }): string {
   return `${p.firstName} ${p.lastName}`.trim();
 }
 
-const CARD_ICON = <span className="w-2.5 h-2.5 rounded-full inline-block bg-blue-400" />;
-const CARD_BG = 'bg-blue-50';
-
-const EMPTY_ICON = (
-  <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />
-);
-
-const STATUS_CLS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-600',
-  scheduled: 'bg-blue-50 text-blue-700',
-  in_progress: 'bg-amber-50 text-amber-700',
-  finalized: 'bg-green-50 text-green-700',
-};
+const ROW =
+  '-mx-3 flex flex-wrap items-center justify-between gap-x-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface';
 
 function SkeletonRows() {
   return (
@@ -38,137 +31,108 @@ function SkeletonRows() {
   );
 }
 
-export function CommitteeTasksDashboard() {
-  const { t } = useI18n();
+interface CommitteeTasksDashboardProps {
+  /** Pilot launch scope: interview panels / scorecards only (no 9-box calibrations). */
+  isPilot?: boolean;
+}
+
+export function CommitteeTasksDashboard({ isPilot = false }: CommitteeTasksDashboardProps) {
+  const { t, locale } = useI18n();
   const ct = t.committeeTasks;
 
   // committee is evaluator-scoped: the one buildable task source is the
   // scope-aware pending-scorecards list (the member's own assignments).
   const scorecards = trpc.interview.getPendingScorecards.useQuery();
-
-  // "Mis Calibraciones" — the member's OWN calibration sessions (created or a
-  // committee member of). Member-scoped on the backend; never org-wide.
-  const calibrations = useNineBoxMyCalibrations();
+  // Interviews still to come are listed apart from the scorecards owed (B-29). Evaluator scope: the
+  // member's own panels. `from` is fixed per visit so the query key stays stable.
+  const [mountedAt] = useState(() => new Date());
+  const upcoming = trpc.interview.list.useQuery({ from: mountedAt, openOnly: true, sort: 'asc', pageSize: 5 });
+  const upcomingItems = upcoming.data?.items ?? [];
 
   const scorecardsCount = scorecards.data?.length ?? 0;
-
-  const statusLabel = (status: string): string => {
-    switch (status) {
-      case 'draft':
-        return ct.statusDraft;
-      case 'scheduled':
-        return ct.statusScheduled;
-      case 'in_progress':
-        return ct.statusInProgress;
-      case 'finalized':
-        return ct.statusFinalized;
-      default:
-        return status;
-    }
-  };
-
-  const formatDate = (value: string | Date | null): string => {
-    if (!value) return ct.noDate;
-    return new Date(value).toLocaleDateString();
-  };
+  const panelsId = useId();
+  const upcomingId = useId();
 
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-lg font-bold text-[#1F114C]">{ct.title}</h1>
-          <span className="text-[13px] text-[#585858]">{ct.subtitle}</span>
-        </div>
+    <DashboardPage title={ct.title} description={ct.subtitle}>
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        {scorecards.isError ? (
+          <div className="col-span-full">
+            <LoadError message={ct.loadError} onRetry={() => scorecards.refetch()} />
+          </div>
+        ) : scorecards.isLoading ? (
+          <KpiCardSkeleton />
+        ) : (
+          <KpiCard
+            label={ct.pendingScorecards}
+            value={scorecardsCount}
+            tone="warning"
+            highlight={scorecardsCount > 0}
+          />
+        )}
+      </div>
 
-        {/* KPI row */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
-          {scorecards.isError ? (
-            <div className="col-span-full">
-              <LoadError message={ct.loadError} />
-            </div>
-          ) : scorecards.isLoading ? (
-            <KpiCardSkeleton />
-          ) : (
-            <KpiCard
-              label={ct.pendingScorecards}
-              value={scorecardsCount}
-              icon={CARD_ICON}
-              iconBg={CARD_BG}
-              highlight={scorecardsCount > 0}
-            />
-          )}
-        </div>
-
-        {/* Panels */}
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-          <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{ct.panelsTitle}</h2>
-          {scorecards.isError ? (
-            <LoadError message={ct.loadError} />
-          ) : scorecards.isLoading ? (
-            <SkeletonRows />
-          ) : !scorecards.data || scorecards.data.length === 0 ? (
-            <EmptyState icon={EMPTY_ICON} message={ct.noScorecards} />
-          ) : (
-            <div className="space-y-1">
-              {scorecards.data.map((row) => (
-                <Link
-                  key={row.id}
-                  href="/recruitment/interviews"
-                  className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
-                >
-                  <span className="text-sm text-[#333] font-medium truncate">
+      {/* Panels */}
+      <section aria-labelledby={panelsId} className="rounded-xl bg-white p-5 shadow-card">
+        <h2 id={panelsId} className="mb-4 text-heading font-semibold text-brand">
+          {ct.panelsTitle}
+        </h2>
+        {scorecards.isError ? (
+          <LoadError message={ct.loadError} onRetry={() => scorecards.refetch()} />
+        ) : scorecards.isLoading ? (
+          <SkeletonRows />
+        ) : !scorecards.data || scorecards.data.length === 0 ? (
+          <EmptyState size="compact" message={ct.noScorecards} />
+        ) : (
+          <ul className="space-y-1">
+            {scorecards.data.map((row) => (
+              <li key={row.id}>
+                <a href={interviewRoomHref(row.interviewId)} className={ROW}>
+                  <span className="min-w-0 truncate text-body font-medium text-primary">
                     {fullName(row.interview.candidate)}
                   </span>
-                  <span className="text-[13px] text-[#8B8B8B] truncate ml-3">
-                    {row.interview.vacancy.title}
+                  <span className="min-w-0 truncate text-callout text-muted">
+                    {[row.interview.vacancy.title, formatInterviewWhen(row.interview.scheduledAt, locale)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Upcoming panels — not scorecards yet */}
+      <section aria-labelledby={upcomingId} className="mt-6 rounded-xl bg-white p-5 shadow-card">
+        <h2 id={upcomingId} className="mb-4 text-heading font-semibold text-brand">
+          {ct.upcomingTitle}
+        </h2>
+        {upcoming.isError ? (
+          <LoadError message={ct.loadError} onRetry={() => upcoming.refetch()} />
+        ) : upcoming.isLoading ? (
+          <SkeletonRows />
+        ) : upcomingItems.length === 0 ? (
+          <EmptyState size="compact" message={ct.noUpcoming} />
+        ) : (
+          <ul className="space-y-1">
+            {upcomingItems.map((iv) => (
+              <li key={iv.id}>
+                <Link href="/recruitment/interviews" className={ROW}>
+                  <span className="min-w-0 truncate text-body font-medium text-primary">{fullName(iv.candidate)}</span>
+                  <span className="min-w-0 truncate text-callout text-muted">
+                    {[iv.vacancy.title, formatInterviewWhen(iv.scheduledAt, locale)].filter(Boolean).join(' · ')}
                   </span>
                 </Link>
-              ))}
-            </div>
-          )}
-        </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        {/* Mis Calibraciones */}
-        <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mt-6">
-          <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{ct.calibrationsTitle}</h2>
-          {calibrations.isError ? (
-            <LoadError message={ct.loadError} />
-          ) : calibrations.isLoading ? (
-            <SkeletonRows />
-          ) : !calibrations.data || calibrations.data.length === 0 ? (
-            <EmptyState icon={EMPTY_ICON} message={ct.noCalibrations} />
-          ) : (
-            <div className="space-y-1">
-              {calibrations.data.map((session) => (
-                <div
-                  key={session.id}
-                  className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <StatusBadge
-                      status={session.status}
-                      map={{
-                        [session.status.toLowerCase()]: {
-                          cls: STATUS_CLS[session.status] ?? 'bg-gray-100 text-gray-600',
-                          label: statusLabel(session.status),
-                        },
-                      }}
-                    />
-                    <span className="text-sm text-[#333] font-medium truncate">
-                      {session.period}
-                    </span>
-                  </div>
-                  <span className="text-[13px] text-[#8B8B8B] truncate ml-3 shrink-0">
-                    {formatDate(session.scheduledAt)} · {session._count.members} {ct.membersCount} ·{' '}
-                    {session._count.votes} {ct.votesCount}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      {/* Mis Calibraciones (talent / 9-box): not mounted under the pilot launch scope */}
+      {!isPilot && <CommitteeCalibrationsPanel />}
+    </DashboardPage>
   );
 }

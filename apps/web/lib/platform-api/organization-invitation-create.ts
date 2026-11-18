@@ -2,6 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
+import { orgLocaleProfileSchema } from '@tims/shared';
 import { trpc } from '../trpc';
 import { useI18n } from '../i18n';
 import { isPlatformApiEnabled, platformPost } from './client';
@@ -11,6 +12,7 @@ const inputSchema = z.object({
   organizationName: z.string().min(2).max(100).regex(/^[^\u0000-\u001f\u007f-\u009f]*$/),
   organizationSlug: z.string().min(2).max(63).regex(/^[a-z0-9-]+$/),
   organizationPlan: z.enum(['trial', 'starter', 'professional', 'enterprise']).default('trial'),
+  localeProfile: orgLocaleProfileSchema.optional(),
 }).strict();
 const responseSchema = z.object({
   id: z.string().uuid(),
@@ -20,7 +22,7 @@ const responseSchema = z.object({
 const viaCSharp = process.env.NEXT_PUBLIC_ORG_INVITATION_CREATE_VIA_CSHARP === 'true';
 
 export function useOrganizationInvitationCreate(options: {
-  onSuccess?: (delivery: z.infer<typeof responseSchema>['delivery'] | 'legacy') => void;
+  onSuccess?: (delivery: z.infer<typeof responseSchema>['delivery']) => void;
   onError?: (error: Error) => void;
 } = {}) {
   const { t } = useI18n();
@@ -30,8 +32,9 @@ export function useOrganizationInvitationCreate(options: {
     mutationFn: async (input: z.input<typeof inputSchema>) => {
       const parsed = inputSchema.parse(input);
       if (!viaCSharp) {
-        await legacy.mutateAsync(parsed);
-        return 'legacy' as const;
+        // The tRPC writer reports the same delivery outcomes as C#; only `accepted` means the email went out.
+        const created = await legacy.mutateAsync(parsed);
+        return responseSchema.shape.delivery.parse(created.delivery);
       }
       if (!isPlatformApiEnabled()) throw new Error(t.invitations.creationUnavailable);
       const result = responseSchema.parse(await platformPost('/platform/invitations/organizations', parsed));

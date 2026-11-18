@@ -1,56 +1,214 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
+/* Design tokens (Apple HIG pass, foundation-spec.md §1). Every value below is measured against WCAG AA,
+   the bar accessibility.md › Vision uses: text 4.5:1, large text / icons / field borders 3:1. */
 @theme {
-  /* Brand */
-  --color-brand: #1F114C;
+  /* Fonts: Inter for UI text, Poppins for display text (branding.md › Best practices). */
+  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-display: var(--font-poppins), 'Poppins', var(--font-inter), system-ui, sans-serif;
+
+  /* Brand. Navy is the one primary colour; red means attention only (destructive, critical, badges). */
+  --color-brand: #1f114c;
   --color-brand-hover: #2a1866;
-  --color-brand-red: #DD0C15;
+  --color-brand-tint: #f3f1f7;
+  --color-brand-red: #dd0c15;
+  --color-brand-red-hover: #c40a12;
 
   /* Text */
   --color-primary: #333333;
   --color-secondary: #585858;
-  --color-muted: #8B8B8B;
+  /* #6B6B6B: the lightest allowed text, 5.33:1 on white and 4.93:1 on the #F6F6F6 surface */
+  --color-muted: #6b6b6b;
 
-  /* Surface & Border */
-  --color-surface: #F6F6F6;
-  --color-surface-hover: #FAFAFA;
-  --color-border: #EDEDED;
-  --color-border-subtle: #F6F6F6;
-}
+  /* Surface & border */
+  --color-surface: #f6f6f6;
+  --color-surface-hover: #fafafa;
+  --color-border: #ededed; /* dividers only: 1.17:1, decoration */
+  --color-border-subtle: #f6f6f6;
+  --color-field-border: #8b8b8b; /* input outlines: 3.41:1 on white */
+  --color-focus: #1f114c;
 
-:root {
-  --color-navy: #1F114C;
-  --color-red: #DD0C15;
-  --color-bg: #F6F6F6;
-  --color-border: #EDEDED;
-  --color-text: #333333;
-  --color-text-secondary: #585858;
-  --color-text-muted: #8B8B8B;
+  /* Status: each text colour passes 4.5:1 on its own -bg */
+  --color-success: #15803d;
+  --color-success-bg: #f0fdf4;
+  --color-warning: #b45309;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
+  --color-info: #1d4ed8;
+  --color-info-bg: #eff6ff;
+
+  /* Charts: a navy sequential ramp, kept apart from the status hues */
+  --color-chart-1: #1f114c;
+  --color-chart-2: #3d2c7a;
+  --color-chart-3: #6450a8;
+  --color-chart-4: #9a8bcc;
+  --color-chart-5: #cfc7e8;
+  --color-chart-grid: #ededed;
+
+  /* Type scale by role (§2). Minimum on-screen size is 11px (caption). */
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.25rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-heading: 1rem;
+  --text-heading--line-height: 1.5rem;
+  --text-subheading: 0.875rem;
+  --text-subheading--line-height: 1.25rem;
+  --text-body: 0.8125rem;
+  --text-body--line-height: 1.25rem;
+  --text-callout: 0.75rem;
+  --text-callout--line-height: 1rem;
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 1rem;
+
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-popover: 0 8px 30px rgba(0, 0, 0, 0.12);
+
+  /* The TIMS evaluation design (the PCA respondent app's tokens, exact, PCA-DESIGN §2–4): ONLY the candidate dashboard
+     (every file directly in (portal)/careers/[orgSlug]/dashboard/) and the frame around an embedded test, so the
+     candidate goes from the dashboard to the test inside one look. tests/portal/eval-tokens-scope.test.ts keeps every
+     other page off them. Light only; system font stacks, no font files. */
+  --font-eval-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-eval-serif: Georgia, 'Times New Roman', serif; /* every serif title */
+  --font-eval-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; /* instrument codes, fact values */
+  --color-eval-navy: #0c1c3a; /* page + header */
+  --color-eval-on-navy: #ffffff;
+  --color-eval-on-navy-2: #dbe4f6; /* secondary header text */
+  --color-eval-on-navy-line: rgb(255 255 255 / 0.25); /* header divider */
+  --color-eval-on-navy-border: rgb(255 255 255 / 0.35); /* outlined header control */
+  --color-eval-on-navy-dash: rgb(255 255 255 / 0.45); /* dashed org chip when there is no logo */
+  --color-eval-on-navy-hover: rgb(255 255 255 / 0.1);
+  --color-eval-bg2: #f5f8fc; /* soft panels, fact tiles */
+  --color-eval-bg3: #eff2fb; /* icon / code tiles, disabled, skeletons */
+  --color-eval-tile-line: #e3e9f3;
+  --color-eval-heading: #0c1c3a;
+  --color-eval-ink: #13203b; /* 15.9:1 on white */
+  --color-eval-ink2: #4a5672; /* 7.4:1 on white */
+  --color-eval-body: #3d4966;
+  --color-eval-muted: #8a93a8; /* decoration only, never text */
+  --color-eval-line: #d7deeb; /* panel borders */
+  --color-eval-divider: #e9eef6; /* section dividers, progress track */
+  --color-eval-field: #7d879c; /* input, checkbox borders: 3.6:1 on white */
+  --color-eval-ph: #6b7489; /* placeholder */
+  --color-eval-accent: #1b63f4; /* white on it 4.9:1 */
+  --color-eval-accent-hover: #0a53dd;
+  --color-eval-on-accent: #ffffff;
+  --color-eval-accent-tint: #f3f7ff;
+  --color-eval-ring: rgb(27 99 244 / 0.28);
+  --color-eval-danger: #b3261e;
+  --color-eval-danger-tint: #fceeee;
+  --color-eval-ok: #1e6b3a;
+  --color-eval-ok-tint: #e9f5ee;
+  --color-eval-warn: #8a5a00;
+  --color-eval-warn-tint: #fff6e5;
+  --color-eval-scrim: rgb(12 28 58 / 0.5);
+  --color-eval-mark-1: #a9c1f0; /* the TIMS 3×3 mark */
+  --color-eval-mark-2: #7aa0ea;
+  --color-eval-mark-3: #4f86f6;
+  --color-eval-mark-4: #6f93db;
+  --color-eval-mark-5: #ffffff;
+  --color-eval-mark-6: #f0434a;
+  --text-eval-2xs: 0.625rem; /* 10: fact-tile labels */
+  --text-eval-eyebrow: 0.6875rem; /* 11: the uppercase eyebrow */
+  --text-eval-xs: 0.75rem; /* 12 */
+  --text-eval-sm: 0.8125rem; /* 13 */
+  --text-eval-base: 0.9375rem; /* 15 */
+  --text-eval-md: 1rem; /* 16 */
+  --text-eval-lg: 1.0625rem; /* 17: title3 */
+  --text-eval-option: 1rem; /* 16 phone → text-eval-lg (17) from md */
+  --text-eval-option--line-height: 1.4;
+  --text-eval-title: 1.625rem; /* 26: the serif h1 on phones… */
+  --text-eval-title--line-height: 1.22;
+  --text-eval-title-lg: 2.125rem; /* …34 from md */
+  --text-eval-title-lg--line-height: 1.22;
+  --text-eval-title-2: 1.5rem; /* 24: the serif section title */
+  --text-eval-title-2--line-height: 1.25;
+  --text-eval-dialog: 1.3rem;
+  --text-eval-dialog--line-height: 1.27;
+  --radius-eval-sheet: 16px;
+  --radius-eval-card: 12px;
+  --radius-eval-btn: 8px;
+  --radius-eval-chip: 6px;
+  --radius-eval-num: 8px;
+  --shadow-eval-card: 0 1px 2px rgb(12 28 58 / 0.04);
+  --shadow-eval-pop: 0 8px 30px rgb(12 28 58 / 0.18);
+
+  /* Overlays (§17): 200ms, transform + opacity only. */
+  --animate-slide-in-right: slideInRight 200ms ease-out;
+  --animate-sheet-up: sheetUp 200ms ease-out;
+  --animate-fade-in: fadeIn 150ms ease-out;
+  /* The TIMS evaluation design's sheet entry (PCA r-sheet-in): its dialogs and sheets (dashboard and frame). */
+  --animate-eval-sheet-in: evalSheetIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* The TIMS evaluation design's spinner (PCA r-spin / r-spin-lg): busy buttons and the frame's loading sheet. */
+  --animate-eval-spin: evalSpin 0.9s linear infinite;
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  @keyframes sheetUp {
+    from {
+      transform: translateY(16px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  @keyframes evalSheetIn {
+    from {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  @keyframes evalSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 /* ── Shell chrome tokens (sidebar + top bar) — FormMaps shell replication, dark-blue variant ── */
 :root {
   --chrome-bg: #052642;
-  --chrome-text-primary: #ffffff;
-  --chrome-text-secondary: rgba(255, 255, 255, 0.78);
-  --chrome-text-tertiary: rgba(255, 255, 255, 0.55);
-  --chrome-text-light: rgba(255, 255, 255, 0.4);
+  --chrome-text-primary: #ffffff; /* 15.41:1 */
+  --chrome-text-secondary: rgba(255, 255, 255, 0.78); /* 9.79:1 */
+  --chrome-text-tertiary: rgba(255, 255, 255, 0.55); /* 5.54:1, the lightest chrome text */
+  --chrome-text-light: rgba(255, 255, 255, 0.4); /* 3.61:1: icons and chevrons only, never text */
   --chrome-hover: rgba(255, 255, 255, 0.08);
   --chrome-border-light: rgba(255, 255, 255, 0.14);
-  --chrome-accent-active: #2e9098;
+  --chrome-accent-active: #277d84; /* white on it 4.82:1; 3.20:1 against the chrome */
   --chrome-logo-bg: #ffffff;
   --chrome-logo-text: #052642;
 
-  /* Content-panel tokens — FormMaps colorsLight, verbatim. The white main panel and any
-     chrome-adjacent popover (e.g. the profile menu) use these, never --chrome-*. */
+  /* Content-panel tokens — FormMaps colorsLight. The white main panel and any chrome-adjacent popover
+     (e.g. the profile menu) use these, never --chrome-*. */
   --content-bg-panel: #ffffff;
   --content-bg-hover: rgba(0, 0, 0, 0.04);
   --content-border-default: #e0e0e0;
   --content-border-light: #eee;
-  --content-font-primary: #141414;
   --content-font-secondary: #474747;
-  --content-font-tertiary: #818181;
-  --content-font-light: #999;
+  --content-font-tertiary: #818181; /* icons only, 3.90:1 — never text */
 
   --r-sm: 4px;
   --r-md: 6px;
@@ -61,12 +219,26 @@
   --nav-item-h: 28px;
 }
 
+@layer base {
+  /* Tailwind 4 resets buttons to cursor: default; every enabled button is clickable. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+}
+
 .tims-sidebar {
-  font-family: var(--font-poppins), 'Poppins', var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-family: var(--font-display);
 }
 
 body {
-  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* The candidate dashboard (dashboard-shell.tsx, `tims-eval-page`) is the PCA app's navy page, and the DOCUMENT scrolls
+   there: overscroll and rubber-banding show navy, never the white of the page under it (PCA: html:has(.r-root) body). */
+html:has(.tims-eval-page) body {
+  background: var(--color-eval-navy);
 }
 
 /* Hide scrollbar utility */
@@ -76,4 +248,59 @@ body {
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Focus ring (§15). Unlayered, so it beats the utilities layer: a stray `focus:outline-none` can no longer
+   hide keyboard focus. Navy on white is 16.9:1; white on the chrome is 15.41:1. The outline follows each
+   element's own border radius. */
+:where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex='-1']), [role='tab']):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+/* On the dark chrome the ring is white. Sidebar rows sit in an overflow-hidden column, so their ring is
+   drawn inside the row. */
+.tims-chrome :focus-visible {
+  outline-color: #ffffff;
+}
+.tims-sidebar :focus-visible {
+  outline-color: #ffffff;
+  outline-offset: -2px;
+}
+/* White popovers that open from the chrome (profile menu, notifications, language, search results) mark
+   themselves `tims-surface` and get the navy ring back, drawn inside so overflow-hidden panels keep it. */
+.tims-surface :focus-visible {
+  outline-color: var(--color-focus);
+  outline-offset: -2px;
+}
+/* The candidate dashboard and the assessment frame (`tims-eval`) wear the TIMS evaluation design's ring, as the PCA
+   app draws it: 3px accent, 2px offset, white on the navy bar. Not on the iframe element itself: the framed test draws
+   its own ring on whatever it focuses. */
+.tims-eval :focus-visible:not(iframe) {
+  outline: 3px solid var(--color-eval-accent);
+  outline-offset: 2px;
+}
+.tims-eval .tims-chrome :focus-visible {
+  outline-color: #ffffff;
+}
+
+/* Reduced motion (§17, accessibility.md › Cognitive). Spinners keep moving: progress-indicators.md asks
+   for progress that never looks stalled. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
+  /* The PCA spinner slows to 3s with reduced motion and never stops. */
+  .animate-eval-spin {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

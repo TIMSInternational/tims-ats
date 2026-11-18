@@ -1,6 +1,8 @@
 'use client';
 
-import { useI18n } from '../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../lib/i18n';
+import { formatNumber } from '../../../lib/format-utils';
+import { ProgressBar } from '../../../components';
 import type { Eval360ReportBucket } from '../../../lib/trpc-types';
 
 interface ReportBucketCardProps {
@@ -14,35 +16,38 @@ interface ReportBucketCardProps {
  * omission server-side, not filtered here). `comments` is only ever
  * populated for self/manager (never peer/direct_report). */
 export function ReportBucketCard({ bucket }: ReportBucketCardProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   return (
-    <div className="border border-[#EDEDED] rounded-lg p-4">
-      <div className="flex items-center justify-between mb-3 gap-3">
-        <p className="text-[12px] font-semibold text-[#1F114C]">{t.my360.relationshipLabels[bucket.relationship]}</p>
-        <span className="text-[11px] text-[#8B8B8B] shrink-0">
-          {t.my360.raterCountLabel.replace('{n}', String(bucket.raterCount))}
+    <div className="rounded-lg border border-border p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h4 className="text-body font-semibold text-primary">{t.my360.relationshipLabels[bucket.relationship]}</h4>
+        <span className="shrink-0 text-callout text-secondary">
+          {formatMessage(t.my360.raterCountLabel, { n: bucket.raterCount })}
         </span>
       </div>
 
-      <div className="space-y-2">
-        {bucket.competencies.map((c) => (
-          <div key={c.competencyKey} className="flex items-center gap-3">
-            <span className="w-32 shrink-0 text-[11px] text-[#585858]">
-              {t.my360.competencyLabels[c.competencyKey]}
-            </span>
-            <div className="flex-1 h-2 bg-[#F6F6F6] rounded-full overflow-hidden">
-              <div className="h-full bg-[#1F114C] rounded-full" style={{ width: `${(c.average / 5) * 100}%` }} />
-            </div>
-            <span className="w-8 shrink-0 text-right text-[11px] text-[#333] font-medium">{c.average.toFixed(1)}</span>
-          </div>
-        ))}
-      </div>
+      <ul className="space-y-2">
+        {bucket.competencies.map((c) => {
+          const label = t.my360.competencyLabels[c.competencyKey];
+          const average = formatNumber(c.average, locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+          const valueText = formatMessage(t.my360.averageOfFive, { n: average });
+          return (
+            <li key={c.competencyKey} className="flex items-center gap-3">
+              <span className="w-28 shrink-0 text-callout text-secondary sm:w-32">{label}</span>
+              <ProgressBar value={c.average} max={5} kind="meter" label={label} valueText={valueText} hideLabel className="flex-1" />
+              <span className="w-14 shrink-0 text-right text-callout font-medium tabular-nums text-primary" aria-hidden="true">
+                {valueText}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
 
       {bucket.comments && bucket.comments.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-[#F6F6F6] space-y-1.5">
+        <div className="mt-3 space-y-1.5 border-t border-border pt-3">
           {bucket.comments.map((comment, i) => (
-            <p key={i} className="text-[12px] text-[#585858] italic">
+            <p key={i} className="text-body italic text-secondary">
               &ldquo;{comment}&rdquo;
             </p>
           ))}

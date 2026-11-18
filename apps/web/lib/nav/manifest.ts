@@ -21,7 +21,7 @@ export type NavItem = {
   readonly sub?: readonly NavSubItem[];
 };
 /** Deploy-time flags a nav item can depend on (resolved by lib/nav/feature-flags.ts `isNavFeatureOn`). */
-export type NavFeatureFlag = 'tenantInvitations' | 'candidateConsent';
+export type NavFeatureFlag = 'tenantInvitations' | 'candidateConsent' | 'providerAssessments';
 export type NavSection = { readonly labelKey: string | null; readonly items: readonly NavItem[] };
 export type Shell = 'admin' | 'participant' | 'platform';
 export type RoleManifest = {
@@ -46,13 +46,14 @@ const PRECEDENCE: NavRole[] = ['super_admin', 'hr_admin', 'hrbp', 'recruiter', '
 // hr_admin, hrbp, recruiter, and leader in one place. Committee (participant
 // shell, no COMMAND_CENTER) gets its own entry in COMMITTEE_TASKS below.
 // Employee already has it in EMPLOYEE_HOME.
+// The landing ("Inicio") item. Every manifest starts with it — admin shells via COMMAND_CENTER,
+// participant shells via PARTICIPANT_HOME — so the home page is never reachable only through the logo.
+const HOME_ITEM: NavItem = { href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null };
 const COMMAND_CENTER: NavSection = {
   labelKey: null,
-  items: [
-    { href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null },
-    { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
-  ],
+  items: [HOME_ITEM, { href: '/my-360', labelKey: 'sidebar.my360', icon: 'review360', module: null }],
 };
+const PARTICIPANT_HOME: NavSection = { labelKey: null, items: [HOME_ITEM] };
 const RECRUITMENT: NavSection = {
   labelKey: 'sidebar.recruitment',
   items: [
@@ -60,8 +61,8 @@ const RECRUITMENT: NavSection = {
     { href: '/recruitment/pipeline', labelKey: 'sidebar.pipeline', icon: 'kanban', module: 'pipeline' },
     { href: '/recruitment/candidates', labelKey: 'sidebar.candidates', icon: 'user', module: 'candidate' },
     { href: '/recruitment/interviews', labelKey: 'sidebar.interviews', icon: 'video', module: 'interview' },
-    { href: '/recruitment/assessments', labelKey: 'sidebar.assessments', icon: 'clipboard', module: 'assessment' },
-    { href: '/recruitment/offers', labelKey: 'sidebar.offers', icon: 'clipboard', module: 'offer' },
+    { href: '/recruitment/assessments', labelKey: 'sidebar.assessments', icon: 'assessment', module: 'assessment' },
+    { href: '/recruitment/offers', labelKey: 'sidebar.offers', icon: 'offer', module: 'offer' },
     { href: '/recruitment/talent-pools', labelKey: 'sidebar.talentPool', icon: 'users', module: 'candidate' },
     { href: '/recruitment/analytics', labelKey: 'sidebar.analytics', icon: 'chart', module: 'vacancy' },
   ],
@@ -80,7 +81,7 @@ const TALENT: NavSection = {
     { href: '/talent/nine-box', labelKey: 'sidebar.nineBox', icon: 'ninebox', module: 'ninebox' },
     { href: '/talent/succession', labelKey: 'sidebar.succession', icon: 'succession', module: 'succession' },
     { href: '/talent/team-intelligence', labelKey: 'sidebar.teamIntel', icon: 'team', module: 'team_intel' },
-    { href: '/talent/360', labelKey: 'sidebar.evaluations360', icon: 'clipboard', module: 'evaluation360' },
+    { href: '/talent/360', labelKey: 'sidebar.evaluations360', icon: 'review360', module: 'evaluation360' },
   ],
 };
 const CULTURE: NavSection = {
@@ -109,22 +110,43 @@ const TEAM_SETTINGS_ITEM: NavItem = {
 const DATA_REQUESTS_ITEM: NavItem = {
   href: '/settings/data-requests',
   labelKey: 'dataSubjectRequests.navLabel',
-  icon: 'clipboard',
+  icon: 'shield',
   module: 'candidate',
   action: 'update',
   featureFlag: 'candidateConsent',
 };
+// /settings/organization ("Datos de la organización", D-11): read-only country, currency, time zone, language,
+// careers page and candidate contact mailbox. organization:read — super_admin and hr_admin.
+const ORGANIZATION_PROFILE_ITEM: NavItem = {
+  href: '/settings/organization',
+  labelKey: 'sidebar.organizationProfile',
+  icon: 'building',
+  module: 'organization',
+};
+// /settings/assessment-security (proctoring parity with timssuite.com, 2026-11-11): the org's lockdown, alert control
+// and identity check for TIMS tests. The C# write needs assessment:update at org scope, and the surface exists only
+// with the provider connector's flag.
+const ASSESSMENT_SECURITY_ITEM: NavItem = {
+  href: '/settings/assessment-security',
+  labelKey: 'sidebar.assessmentSecurity',
+  icon: 'lock',
+  module: 'assessment',
+  action: 'update',
+  featureFlag: 'providerAssessments',
+};
 const SETTINGS: NavSection = {
-  labelKey: null,
+  labelKey: 'sidebar.settings',
   items: [
+    ORGANIZATION_PROFILE_ITEM,
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
     DATA_REQUESTS_ITEM,
     { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
-    { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
+    { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'sliders', module: 'fit_engine' },
+    ASSESSMENT_SECURITY_ITEM,
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
-    { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'settings', module: 'integration' },
-    { href: '/settings/audit-log', labelKey: 'sidebar.auditLog', icon: 'clipboard', module: 'audit' },
+    { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'puzzle', module: 'integration' },
+    { href: '/settings/audit-log', labelKey: 'sidebar.auditLog', icon: 'list', module: 'audit' },
   ],
 };
 
@@ -136,7 +158,7 @@ const LEADER_MY_HIRING: NavSection = {
     { href: '/recruitment/pipeline', labelKey: 'sidebar.pipeline', icon: 'kanban', module: 'pipeline' },
     { href: '/recruitment/candidates', labelKey: 'sidebar.finalistCandidates', icon: 'user', module: 'candidate' },
     { href: '/recruitment/interviews', labelKey: 'sidebar.interviews', icon: 'video', module: 'interview' },
-    { href: '/recruitment/offers', labelKey: 'sidebar.offersToApprove', icon: 'clipboard', module: 'offer' },
+    { href: '/recruitment/offers', labelKey: 'sidebar.offersToApprove', icon: 'offer', module: 'offer' },
   ],
 };
 const LEADER_MY_TEAM: NavSection = {
@@ -155,11 +177,13 @@ const LEADER_COCKPIT: NavSection[] = [COMMAND_CENTER, LEADER_MY_HIRING, LEADER_M
 // hr_admin = org-wide HR steward, people-first IA + a reduced admin section (business units only;
 // no billing/integrations — org-config is read-only per the access spec). can() still prunes.
 const HR_ADMIN_SETTINGS: NavSection = {
-  labelKey: null,
+  labelKey: 'sidebar.settings',
   items: [
+    ORGANIZATION_PROFILE_ITEM,
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
     DATA_REQUESTS_ITEM,
+    ASSESSMENT_SECURITY_ITEM,
   ],
 };
 const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS];
@@ -187,12 +211,13 @@ const participantManifest = (sections: NavSection[]): RoleManifest => ({
 // surfaced as a panel ON the committee landing (useNineBoxMyCalibrations, member-scoped) rather than a
 // nav route — there is no committee-reachable /talent/calibrations page, so no nav item is added here.
 const COMMITTEE_TASKS: NavSection[] = [
+  PARTICIPANT_HOME,
   {
     labelKey: 'sidebar.myTasks',
     items: [
       { href: '/recruitment/interviews', labelKey: 'sidebar.myPanels', icon: 'video', module: 'interview' },
       // Fix wave (FIX C): always-allowed self-service, see COMMAND_CENTER docstring.
-      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
+      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'review360', module: null },
     ],
   },
 ];
@@ -203,15 +228,22 @@ const COMMITTEE_TASKS: NavSection[] = [
 // their backend ships.
 // Fix wave (FIX C): /my-360's module is null (always-allowed) — self-service is
 // identity-authorized via protectedProcedure, not RBAC-gated, so it needs no grant.
+const MY_ONBOARDING_ITEM: NavItem = {
+  href: '/my-onboarding',
+  labelKey: 'sidebar.myOnboarding',
+  icon: 'rocket',
+  module: 'onboarding',
+};
 const EMPLOYEE_HOME: NavSection[] = [
+  PARTICIPANT_HOME,
   {
     labelKey: 'sidebar.myHome',
     items: [
       { href: '/people/performance', labelKey: 'sidebar.myPerformance', icon: 'target', module: 'performance' },
       { href: '/learning', labelKey: 'sidebar.myLearning', icon: 'book', module: 'learning' },
       // Personal view (F12) — /people/onboarding is the HR dashboard (HR actions, org KPIs).
-      { href: '/my-onboarding', labelKey: 'sidebar.myOnboarding', icon: 'rocket', module: 'onboarding' },
-      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
+      MY_ONBOARDING_ITEM,
+      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'review360', module: null },
     ],
   },
 ];
@@ -228,17 +260,36 @@ export const MANIFESTS: Record<NavRole, RoleManifest> = {
 
 // A linked staff account may temporarily have no assigned role (or only a
 // legacy/non-staff slug). Never show admin-shaped navigation in that state.
-const FALLBACK_MANIFEST: RoleManifest = participantManifest([
-  {
-    labelKey: null,
-    items: [{ href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null }],
-  },
-]);
+const FALLBACK_MANIFEST: RoleManifest = participantManifest([PARTICIPANT_HOME]);
+
+// A staff user who is ALSO a new hire (holds `employee` next to a higher role — e.g. a recruiter hired
+// into the org) keeps the primary role's nav but must still reach their own onboarding. Built once per
+// primary role so manifestFor stays referentially stable for a given role set.
+// The link only helps when the resolved onboarding:read scope still contains the caller's own plan
+// (access resolution takes the WIDEST granted scope): organization (super_admin, hr_admin), team (leader —
+// teamMemberIds always includes self) and no grant at all (recruiter, committee — the employee's own
+// scope applies). hrbp is left out: its `unit` scope resolves through unitMemberIds, which does NOT
+// include the caller, so an HRBP outside their own units would get "no plan" for a plan they have.
+const OWN_ONBOARDING_SECTION: NavSection = { labelKey: 'sidebar.myHome', items: [MY_ONBOARDING_ITEM] };
+const withOwnOnboarding = (m: RoleManifest): RoleManifest => ({
+  ...m,
+  sections: [...m.sections, OWN_ONBOARDING_SECTION],
+});
+const WITH_OWN_ONBOARDING: Record<NavRole, RoleManifest> = {
+  super_admin: withOwnOnboarding(MANIFESTS.super_admin),
+  hr_admin: withOwnOnboarding(MANIFESTS.hr_admin),
+  hrbp: MANIFESTS.hrbp, // unit scope may exclude the caller's own plan — see above
+  recruiter: withOwnOnboarding(MANIFESTS.recruiter),
+  leader: withOwnOnboarding(MANIFESTS.leader),
+  committee: withOwnOnboarding(MANIFESTS.committee),
+  employee: MANIFESTS.employee, // already has its own onboarding item
+};
 
 /** The manifest for the user's primary (highest-precedence) role. */
 export function manifestFor(roles: readonly string[]): RoleManifest {
   const primary = PRECEDENCE.find((r) => roles.includes(r));
-  return primary ? MANIFESTS[primary] : FALLBACK_MANIFEST;
+  if (!primary) return FALLBACK_MANIFEST;
+  return roles.includes('employee') ? WITH_OWN_ONBOARDING[primary] : MANIFESTS[primary];
 }
 
 /** Which sidebar chrome to render. Platform owner always wins; participant manifests get the

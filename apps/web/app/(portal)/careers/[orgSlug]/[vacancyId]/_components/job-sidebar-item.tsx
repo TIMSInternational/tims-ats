@@ -17,42 +17,46 @@ interface JobSidebarItemProps {
     createdAt: Date | string;
     company: { name: string } | null;
   };
+  /** The organization that owns the board: shown when the vacancy has no client company. */
+  orgName: string;
 }
 
-export function JobSidebarItem({ orgSlug, isActive, item }: JobSidebarItemProps) {
+export function JobSidebarItem({ orgSlug, isActive, item, orgName }: JobSidebarItemProps) {
   const { t, locale } = useI18n();
   const p = t.portal;
+  const employerName = item.company?.name || orgName || p.companyFallback;
   const salary = parsePortalSalary(item.salary);
   const contract = enumLabel(item.contractType, p.contractTypes);
 
   return (
     <Link
       href={`/careers/${orgSlug}/${item.id}`}
-      className={`block border-b border-[#EDEDED] px-4 py-3 transition-colors ${isActive ? 'border-l-2 border-l-[#DD0C15] bg-white' : 'border-l-2 border-l-transparent hover:bg-white'}`}
+      aria-current={isActive ? 'page' : undefined}
+      className={`block min-h-12 border-b border-border border-l-2 px-4 py-3 transition-colors ${isActive ? 'border-l-brand bg-white' : 'border-l-transparent hover:bg-white'}`}
     >
       <div className="flex gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1F114C] text-[10px] font-bold text-white">
-          {(item.company?.name ?? p.companyFallback).charAt(0).toUpperCase()}
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand text-caption font-bold text-white" aria-hidden="true">
+          {employerName.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <p className={`truncate text-[13px] font-semibold ${isActive ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>
+          <p className={`truncate text-body ${isActive ? 'font-semibold text-brand' : 'font-medium text-primary'}`}>
             {item.title}
           </p>
-          <p className="truncate text-[11px] text-[#8B8B8B]">{item.company?.name}</p>
+          <p className="truncate text-caption text-secondary">{employerName}</p>
           {item.location && (
-            <p className="text-[11px] text-[#8B8B8B]">
+            <p className="text-caption text-secondary">
               {item.location}
               {item.remotePolicy === 'remote' ? ` (${p.remotePolicies.remote})` : ''}
             </p>
           )}
           {salary && (
-            <p className="mt-0.5 text-[11px] font-medium text-[#333]">{formatPortalSalary(salary, locale, p)}</p>
+            <p className="mt-0.5 text-caption font-medium text-primary tabular-nums">{formatPortalSalary(salary, locale, p)}</p>
           )}
           <div className="mt-1 flex items-center gap-2">
             {contract && (
-              <span className="rounded bg-[#F6F6F6] px-1.5 py-0.5 text-[10px] text-[#585858]">{contract}</span>
+              <span className="rounded bg-surface px-1.5 py-0.5 text-caption text-secondary">{contract}</span>
             )}
-            <span className="ml-auto text-[10px] text-[#8B8B8B]">{formatTimeAgo(item.createdAt, p)}</span>
+            <span className="ml-auto text-caption text-muted">{formatTimeAgo(item.createdAt, p)}</span>
           </div>
         </div>
       </div>

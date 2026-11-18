@@ -1,42 +1,36 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage, pluralize } from '../../../../lib/i18n/format';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
-import { getInitials, getAvatarColor, formatRelativeTime } from '../../../../lib/format-utils';
-
-function planBadge(plan: string) {
-  const styles: Record<string, string> = {
-    enterprise: 'bg-emerald-100 text-emerald-700',
-    professional: 'bg-violet-100 text-violet-700',
-    starter: 'bg-blue-100 text-blue-700',
-    trial: 'bg-amber-100 text-amber-700',
-  };
-  const cls = styles[plan?.toLowerCase()] || 'bg-gray-100 text-gray-700';
-  return (
-    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${cls}`}>
-      {plan?.charAt(0).toUpperCase() + plan?.slice(1)}
-    </span>
-  );
-}
+import {
+  getInitials,
+  getAvatarColor,
+  formatCurrency,
+  formatRelativeTimeLocale,
+} from '../../../../lib/format-utils';
+import { CHOICE_INPUT_CLASSES, CHOICE_ROW_CLASSES, EmptyState, Skeleton, SortableHeader, StatusBadge } from '../../../../components';
+import type { StatusTone } from '../../../../components';
+import { planLabel } from './plan-label';
+import { OrgActionsDropdown } from './org-actions-dropdown';
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-[#F6F6F6] animate-pulse">
-      <td className="px-3 py-3.5"><div className="w-4 h-4 bg-gray-200 rounded" /></td>
-      <td className="px-5 py-3.5"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-lg bg-gray-200" /><div className="h-4 w-32 bg-gray-200 rounded" /></div></td>
-      <td className="px-4 py-3.5"><div className="h-5 w-16 bg-gray-100 rounded-full" /></td>
-      <td className="px-4 py-3.5"><div className="h-3 w-14 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-3.5"><div className="h-3 w-6 bg-gray-100 rounded mx-auto" /></td>
-      <td className="px-4 py-3.5 text-center"><div className="h-4 w-6 bg-gray-100 rounded mx-auto" /></td>
-      <td className="px-4 py-3.5 text-center"><div className="h-4 w-8 bg-gray-100 rounded mx-auto" /></td>
-      <td className="px-4 py-3.5"><div className="h-3 w-20 bg-gray-100 rounded" /></td>
-      <td className="px-4 py-3.5"><div className="h-5 w-6 bg-gray-100 rounded mx-auto" /></td>
+    <tr className="border-b border-border" aria-hidden="true">
+      <td className="px-3 py-3.5"><Skeleton className="size-4" /></td>
+      <td className="px-4 py-3.5"><div className="flex items-center gap-3"><Skeleton className="size-8 rounded-lg" /><Skeleton className="h-4 w-32" /></div></td>
+      <td className="px-4 py-3.5"><Skeleton className="h-5 w-16 rounded-full" /></td>
+      <td className="px-4 py-3.5"><Skeleton className="ml-auto h-3 w-14" /></td>
+      <td className="px-4 py-3.5"><Skeleton className="h-5 w-20 rounded-full" /></td>
+      <td className="px-4 py-3.5"><Skeleton className="mx-auto h-3 w-6" /></td>
+      <td className="px-4 py-3.5"><Skeleton className="mx-auto h-4 w-8" /></td>
+      <td className="px-4 py-3.5"><Skeleton className="h-3 w-20" /></td>
+      <td className="px-4 py-3.5"><Skeleton className="mx-auto h-5 w-6" /></td>
     </tr>
   );
 }
-import { OrgActionsDropdown } from './org-actions-dropdown';
-
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
 
 type SortField = 'name' | 'plan' | 'createdAt' | 'users' | null;
@@ -51,6 +45,9 @@ interface OrgTableProps {
   sortDir: SortDir;
   onSort: (field: SortField) => void;
   onEdit: (org: OrganizationListItem) => void;
+  hasFilters: boolean;
+  onClearFilters: () => void;
+  onCreate: () => void;
 }
 
 type HealthLevel = 'critical' | 'at-risk' | 'healthy';
@@ -86,108 +83,125 @@ function computeHealth(org: OrganizationListItem): HealthLevel {
   return 'healthy';
 }
 
-function HealthDot({ level, t }: { level: HealthLevel; t: Record<string, string> }) {
-  const config = {
-    critical: { color: 'bg-[#DD0C15]', label: t.critical },
-    'at-risk': { color: 'bg-amber-400', label: t.atRisk },
-    healthy: { color: 'bg-green-400', label: t.healthy },
-  };
-  const c = config[level];
-  return (
-    <div className="flex items-center gap-1.5" title={c.label}>
-      <div className={`w-2 h-2 rounded-full ${c.color}`} />
-    </div>
-  );
-}
+const HEALTH_TONE: Record<HealthLevel, StatusTone> = { critical: 'danger', 'at-risk': 'warning', healthy: 'success' };
 
-function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
-  if (!active) return <span className="text-[#CDCDCD] ml-0.5">&#8597;</span>;
-  return <span className="text-[#1F114C] ml-0.5">{dir === 'asc' ? '\u2191' : '\u2193'}</span>;
-}
-
-function SortableHeader({
-  label, field, sortBy, sortDir, onSort, className,
-}: {
-  label: string;
-  field: SortField;
-  sortBy: SortField;
-  sortDir: SortDir;
-  onSort: (f: SortField) => void;
-  className?: string;
-}) {
-  return (
-    <th
-      onClick={() => onSort(field)}
-      className={`text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3 cursor-pointer select-none hover:text-[#585858] transition ${className || 'text-left'}`}
-    >
-      {label}
-      <SortArrow active={sortBy === field} dir={sortDir} />
-    </th>
-  );
-}
+const TH = 'px-4 py-2.5 text-callout font-semibold text-secondary';
 
 export function OrgTable({
   organizations, isLoading, selectedIds, onSelectIds,
-  sortBy, sortDir, onSort, onEdit,
+  sortBy, sortDir, onSort, onEdit, hasFilters, onClearFilters, onCreate,
 }: OrgTableProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const o = t.organizations;
+  const healthLabel: Record<HealthLevel, string> = { critical: o.critical, 'at-risk': o.atRisk, healthy: o.healthy };
+  const dir = (field: SortField) => (sortBy === field ? sortDir : null);
   const router = useRouter();
 
   const allSelected = organizations.length > 0 && organizations.every((o) => selectedIds.includes(o.id));
   const someSelected = organizations.some((o) => selectedIds.includes(o.id)) && !allSelected;
 
-  const toggleAll = () => {
-    if (allSelected) {
-      onSelectIds([]);
-    } else {
-      onSelectIds(organizations.map((o) => o.id));
-    }
-  };
+  const toggleAll = () => onSelectIds(allSelected ? [] : organizations.map((o) => o.id));
+  const toggleOne = (id: string) =>
+    onSelectIds(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
 
-  const toggleOne = (id: string) => {
-    if (selectedIds.includes(id)) {
-      onSelectIds(selectedIds.filter((x) => x !== id));
-    } else {
-      onSelectIds([...selectedIds, id]);
-    }
-  };
+  if (!isLoading && organizations.length === 0) {
+    return hasFilters ? (
+      <EmptyState
+        title={o.noOrgsMatch}
+        description={o.noOrgsMatchDesc}
+        secondaryAction={{ label: t.common.clearFilters, onClick: onClearFilters }}
+      />
+    ) : (
+      <EmptyState title={o.noOrgs} description={o.noOrgsDesc} action={{ label: o.createOrg, onClick: onCreate }} />
+    );
+  }
 
   return (
-    <div className="overflow-x-auto"><table className="w-full min-w-[560px]">
-      <thead className="sticky top-0 bg-white z-10">
-        <tr className="border-b border-[#EDEDED]">
-          <th className="px-3 py-3 w-10">
+    <>
+      {/* Phones: a stacked list (foundation-spec.md §7) with its own selection so the bulk bar stays reachable; the table from md. */}
+      {!isLoading && (
+        <label className={`${CHOICE_ROW_CLASSES} border-b border-border px-4 py-2 md:hidden`}>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => { if (el) el.indeterminate = someSelected; }}
+            onChange={toggleAll}
+            className={CHOICE_INPUT_CLASSES}
+          />
+          <span className="text-callout text-secondary">{o.selectAll}</span>
+        </label>
+      )}
+      <ul className="divide-y divide-border md:hidden" aria-busy={isLoading || undefined}>
+        {isLoading
+          ? Array.from({ length: 5 }).map((_, i) => (
+              <li key={i} className="flex items-center gap-3 px-4 py-3" aria-hidden="true">
+                <Skeleton className="size-8 rounded-lg" />
+                <Skeleton className="h-4 w-40" />
+              </li>
+            ))
+          : organizations.map((org) => {
+              const plan = org.plan || org.subscription?.plan || 'trial';
+              const health = computeHealth(org);
+              const pendingCount = ((org as Record<string, unknown>).invoices as unknown[] | undefined)?.length ?? 0;
+              return (
+                <li key={org.id} className={`flex items-center gap-3 px-4 py-3 ${selectedIds.includes(org.id) ? 'bg-brand-tint' : ''}`}>
+                  <label className="-ml-2 flex shrink-0 items-center justify-center p-1 pointer-coarse:size-11">
+                    <input
+                      type="checkbox"
+                      aria-label={formatMessage(o.selectOrg, { name: org.name })}
+                      checked={selectedIds.includes(org.id)}
+                      onChange={() => toggleOne(org.id)}
+                      className={CHOICE_INPUT_CLASSES}
+                    />
+                  </label>
+                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-caption font-semibold text-white ${getAvatarColor(org.name)}`} aria-hidden="true">
+                    {getInitials(org.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/platform/organizations/${org.id}`} className="line-clamp-2 break-words text-body font-medium text-primary hover:text-brand">
+                      {org.name}
+                    </Link>
+                    <p className="truncate font-mono text-caption text-muted">{org.slug}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <StatusBadge tone="brand" icon="none">{planLabel(plan, t)}</StatusBadge>
+                      <StatusBadge tone={HEALTH_TONE[health]}>{healthLabel[health]}</StatusBadge>
+                      {pendingCount > 0 && (
+                        <StatusBadge tone="warning" icon="none">{pluralize(pendingCount, { one: o.pendingInvoicesCountOne, other: o.pendingInvoicesCount }, locale)}</StatusBadge>
+                      )}
+                    </div>
+                  </div>
+                  <OrgActionsDropdown org={org} onEdit={onEdit} />
+                </li>
+              );
+            })}
+      </ul>
+      <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[720px]" aria-busy={isLoading || undefined}>
+      <caption className="sr-only">{o.title}</caption>
+      <thead className="sticky top-0 z-10 bg-white">
+        <tr className="border-b border-border">
+          <th scope="col" className="w-10 px-3 py-2.5">
             <input
               type="checkbox"
+              aria-label={o.selectAll}
               checked={allSelected}
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleAll}
-              className="w-4 h-4 rounded border-[#CDCDCD] text-[#1F114C] focus:ring-[#1F114C] cursor-pointer"
+              className={CHOICE_INPUT_CLASSES}
             />
           </th>
-          <SortableHeader label={t.common.name} field="name" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="text-left px-5" />
-          <SortableHeader label="Plan" field="plan" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-          <th className="text-right text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">MRR</th>
-          <th className="text-center text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">{t.organizations.health}</th>
-          <SortableHeader label={t.users.title} field="users" sortBy={sortBy} sortDir={sortDir} onSort={onSort} className="text-center" />
-          <th className="text-center text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3">{t.organizations.invoices}</th>
-          <SortableHeader label={t.organizations.lastActive} field="createdAt" sortBy={sortBy} sortDir={sortDir} onSort={onSort} />
-          <th className="text-center text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3 w-12">{t.common.actions}</th>
+          <SortableHeader label={t.common.name} direction={dir('name')} onSort={() => onSort('name')} />
+          <SortableHeader label={o.plan} direction={dir('plan')} onSort={() => onSort('plan')} />
+          <th scope="col" className={`${TH} text-right`}>{o.mrr}</th>
+          <th scope="col" className={`${TH} text-left`}>{o.health}</th>
+          <SortableHeader label={t.users.title} direction={dir('users')} onSort={() => onSort('users')} align="center" />
+          <th scope="col" className={`${TH} text-left`}>{o.invoices}</th>
+          <SortableHeader label={o.lastActive} direction={dir('createdAt')} onSort={() => onSort('createdAt')} />
+          <th scope="col" className={`${TH} w-12 text-center`}><span className="sr-only">{t.common.actions}</span></th>
         </tr>
       </thead>
       <tbody>
         {isLoading ? (
           <><SkeletonRow /><SkeletonRow /><SkeletonRow /><SkeletonRow /><SkeletonRow /></>
-        ) : organizations.length === 0 ? (
-          <tr>
-            <td colSpan={9} className="px-5 py-16 text-center">
-              <svg className="w-12 h-12 text-[#EDEDED] mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                <path d="M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4" />
-              </svg>
-              <p className="text-sm text-[#8B8B8B]">{t.organizations.noOrgs}</p>
-              <p className="text-xs text-[#8B8B8B] mt-1">{t.organizations.noOrgsDesc}</p>
-            </td>
-          </tr>
         ) : (
           organizations.map((org) => {
             const isSuspended = !org.isActive;
@@ -205,58 +219,63 @@ export function OrgTable({
               <tr
                 key={org.id}
                 onClick={() => router.push(`/platform/organizations/${org.id}`)}
-                className={`border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition cursor-pointer ${
-                  isSuspended ? 'bg-red-50/30' : ''
-                } ${isSelected ? 'bg-[#1F114C]/5' : ''}`}
+                className={`cursor-pointer border-b border-border transition-colors hover:bg-surface-hover ${
+                  isSelected ? 'bg-brand-tint' : isSuspended ? 'bg-danger-bg/40' : ''
+                }`}
               >
                 <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
+                    aria-label={formatMessage(o.selectOrg, { name: org.name })}
                     checked={isSelected}
                     onChange={() => toggleOne(org.id)}
-                    className="w-4 h-4 rounded border-[#CDCDCD] text-[#1F114C] focus:ring-[#1F114C] cursor-pointer"
+                    className={CHOICE_INPUT_CLASSES}
                   />
                 </td>
-                <td className="px-5 py-3">
+                <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg ${getAvatarColor(org.name)} flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0`}>
+                    <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-caption font-semibold text-white ${getAvatarColor(org.name)}`} aria-hidden="true">
                       {getInitials(org.name)}
                     </div>
-                    <div>
-                      <span className="text-sm text-[#333] font-medium">{org.name}</span>
-                      <p className="text-[10px] text-[#8B8B8B] font-mono">{org.slug}</p>
+                    <div className="min-w-0">
+                      <Link
+                        href={`/platform/organizations/${org.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-body font-medium text-primary hover:text-brand hover:underline"
+                      >
+                        {org.name}
+                      </Link>
+                      <p className="font-mono text-caption text-muted">{org.slug}</p>
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3">{planBadge(plan)}</td>
+                <td className="px-4 py-3"><StatusBadge tone="brand" icon="none">{planLabel(plan, t)}</StatusBadge></td>
                 <td className="px-4 py-3 text-right">
-                  <span className={`text-sm font-semibold ${mrr > 0 ? 'text-[#333]' : 'text-[#8B8B8B]'}`}>
-                    ${mrr.toLocaleString()}
+                  <span className={`text-body font-semibold tabular-nums ${mrr > 0 ? 'text-primary' : 'text-muted'}`}>
+                    {formatCurrency(mrr, 'USD', 0)}
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex justify-center">
-                    <HealthDot level={health} t={t.organizations} />
-                  </div>
+                  <StatusBadge tone={HEALTH_TONE[health]}>{healthLabel[health]}</StatusBadge>
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <span className="text-sm text-[#333] font-medium">{org._count?.users ?? 0}</span>
+                  <span className="text-body font-medium tabular-nums text-primary">{org._count?.users ?? 0}</span>
                 </td>
-                <td className="px-4 py-3 text-center">
-                  <div className="flex items-center justify-center gap-1">
-                    <span className="text-sm text-[#333] font-medium">{invoiceTotal}</span>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-body font-medium tabular-nums text-primary">{invoiceTotal}</span>
                     {pendingCount > 0 && (
-                      <span className="text-[9px] font-bold bg-[#DD0C15] text-white rounded-full px-1.5 py-0.5 leading-none">
-                        {pendingCount}
-                      </span>
+                      <StatusBadge tone="warning" icon="none">
+                        {pluralize(pendingCount, { one: o.pendingInvoicesCountOne, other: o.pendingInvoicesCount }, locale)}
+                      </StatusBadge>
                     )}
                   </div>
                 </td>
                 <td className="px-4 py-3">
                   {lastLogin ? (
-                    <span className="text-xs text-[#585858]">{formatRelativeTime(lastLogin)}</span>
+                    <span className="text-callout text-secondary">{formatRelativeTimeLocale(lastLogin, locale)}</span>
                   ) : (
-                    <span className="text-xs text-[#CDCDCD]">{t.organizations.never}</span>
+                    <span className="text-callout text-muted">{o.never}</span>
                   )}
                 </td>
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -270,5 +289,6 @@ export function OrgTable({
         )}
       </tbody>
     </table></div>
+    </>
   );
 }

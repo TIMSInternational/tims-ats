@@ -30,7 +30,7 @@ export const offerValidationsRouter = router({
       z.object({
         id: z.string().uuid(),
         status: z.enum(['pending', 'passed', 'failed', 'waived']),
-        result: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
+        result: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 100000, 'Payload demasiado grande').optional(),
         notes: z.string().max(5000).optional(),
       })
     )
@@ -44,7 +44,7 @@ export const offerValidationsRouter = router({
       });
 
       if (!validation) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Validacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Validación no encontrada' });
       }
 
       await assertScoped('offer', validation.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);
@@ -100,7 +100,7 @@ export const offerValidationsRouter = router({
       });
 
       if (!check) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Verificacion legal no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Verificación legal no encontrada' });
       }
 
       await assertScoped('offer', check.offerId, ctx.access, ctx.user.id, ctx.user.organizationId);

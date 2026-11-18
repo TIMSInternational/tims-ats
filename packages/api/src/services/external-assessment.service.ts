@@ -113,7 +113,7 @@ export const externalAssessmentService = {
       authorizationHeader,
     );
     if (status === 404) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Resultado de evaluacion no encontrado' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Resultado de evaluación no encontrado' });
     }
     if (status !== 200) throw mapProxyError(status);
     return mapRawResultV1(body as RawExternalAssessmentResultV1);

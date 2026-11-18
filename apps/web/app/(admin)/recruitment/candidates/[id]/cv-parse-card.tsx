@@ -4,61 +4,75 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
+import { Button, Field, TextArea } from '../../../../../components';
+import { CARD, CARD_TITLE } from './card-styles';
 
+/** Extracts structured data from pasted CV text (AI). Lives on Documentos, beside the candidate's files. */
 export function CvParseCard({ candidateId }: { candidateId: string }) {
   const { t } = useI18n();
+  const ai = t.candidateAi;
   const [text, setText] = useState('');
   const parse = trpc.candidate.parseCV.useMutation({
-    onError: () => toast(t.candidateAi.parseError, { type: 'error' }),
+    onError: () => toast(ai.parseError, { type: 'error' }),
   });
   const data = parse.data;
 
+  const rows: { label: string; value: string | null }[] = data?.parsed
+    ? [
+        { label: ai.fldName, value: data.name },
+        { label: ai.fldEmail, value: data.email },
+        { label: ai.fldPhone, value: data.phone },
+        { label: ai.fldSkills, value: data.skills.length ? data.skills.join(', ') : null },
+        ...(data.summary ? [{ label: ai.fldSummary, value: data.summary }] : []),
+      ]
+    : [];
+
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.candidateAi.parseTitle}</h3>
+    <section className={CARD}>
+      <h2 className={CARD_TITLE}>{ai.parseTitle}</h2>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={t.candidateAi.parsePlaceholder}
-        rows={4}
-        maxLength={20000}
-        className="w-full border border-[#EDEDED] rounded-lg p-2.5 text-[12px] outline-none focus:border-[#1F114C] resize-none"
-      />
+      <Field label={ai.parseLabel} help={ai.parseHint} id={`cv-text-${candidateId}`}>
+        <TextArea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={ai.parsePlaceholder}
+          rows={4}
+          maxLength={20000}
+          className="resize-y"
+        />
+      </Field>
 
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-[10px] text-[#8B8B8B]">{t.candidateAi.parseHint}</span>
-        <button
+      <div className="mt-3 flex justify-end">
+        <Button
+          variant="secondary"
           onClick={() => parse.mutate({ text, candidateId })}
-          disabled={!text.trim() || parse.isPending}
-          className="bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium disabled:opacity-50"
+          disabled={!text.trim()}
+          loading={parse.isPending}
+          loadingLabel={ai.parsing}
+          className="w-full sm:w-auto"
         >
-          {parse.isPending ? t.candidateAi.parsing : t.candidateAi.parseButton}
-        </button>
+          {ai.parseButton}
+        </Button>
       </div>
 
       {data?.parsed && (
-        <div className="mt-3 pt-3 border-t border-[#EDEDED] space-y-1.5 text-[12px]">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[#8B8B8B]">{t.candidateAi.confidence}</span>
-            <span className="text-[10px] font-semibold text-[#1F114C]">{Math.round(data.confidence * 100)}%</span>
-          </div>
-          <Field label={t.candidateAi.fldName} value={data.name} fallback={t.candidateAi.noData} />
-          <Field label={t.candidateAi.fldEmail} value={data.email} fallback={t.candidateAi.noData} />
-          <Field label={t.candidateAi.fldPhone} value={data.phone} fallback={t.candidateAi.noData} />
-          <Field label={t.candidateAi.fldSkills} value={data.skills.length ? data.skills.join(', ') : null} fallback={t.candidateAi.noData} />
-          {data.summary && <Field label={t.candidateAi.fldSummary} value={data.summary} fallback={t.candidateAi.noData} />}
+        <div className="mt-3 border-t border-border pt-3">
+          <dl className="space-y-1.5 text-body">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-secondary">{ai.confidence}</dt>
+              <dd className="font-semibold tabular-nums text-brand">{Math.round(data.confidence * 100)}%</dd>
+            </div>
+            {rows.map((row) => (
+              <div key={row.label} className="flex items-start justify-between gap-3">
+                <dt className="shrink-0 text-secondary">{row.label}</dt>
+                <dd className={`min-w-0 break-words text-right ${row.value ? 'text-primary' : 'text-muted'}`}>
+                  {row.value ?? ai.noData}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       )}
-    </div>
-  );
-}
-
-function Field({ label, value, fallback }: { label: string; value: string | null; fallback: string }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="text-[#8B8B8B] shrink-0">{label}</span>
-      <span className={`text-right ${value ? 'text-[#333]' : 'text-[#bbb]'}`}>{value ?? fallback}</span>
-    </div>
+    </section>
   );
 }

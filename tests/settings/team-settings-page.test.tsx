@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   enabled: true,
@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   hasNextInvitations: false,
   fetchNextInvitations: vi.fn(),
   memberListInputs: [] as unknown[],
+  roles: [{ slug: 'employee', name: 'Empleado' }] as { slug: string; name: string }[],
 }));
 
 vi.mock('../../apps/web/lib/i18n', async () => {
@@ -33,14 +34,19 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     user: {
       list: {
-        useInfiniteQuery: (input: unknown) => (mocks.memberListInputs.push(input), {
-          isLoading: false,
-          isError: false,
-          hasNextPage: false,
-          data: {
-            pages: [{ users: [{ id: 'u1', firstName: 'Ana', lastName: 'Ruiz', email: 'ana@x.test', jobTitle: null }] }],
-          },
-        }),
+        useInfiniteQuery: (input: unknown) => (
+          mocks.memberListInputs.push(input),
+          {
+            isLoading: false,
+            isError: false,
+            hasNextPage: false,
+            data: {
+              pages: [
+                { users: [{ id: 'u1', firstName: 'Ana', lastName: 'Ruiz', email: 'ana@x.test', jobTitle: null }] },
+              ],
+            },
+          }
+        ),
       },
     },
   },
@@ -53,7 +59,7 @@ vi.mock('../../apps/web/lib/platform-api/tenant-invitations', async (importOrigi
     useTenantInvitationRoles: () => ({
       isLoading: false,
       isError: false,
-      data: [{ slug: 'employee', name: 'Empleado' }],
+      data: mocks.roles,
     }),
     useTenantInvitations: (_enabled: boolean, status: string) => {
       mocks.invitationsFilter.push(status);
@@ -103,6 +109,8 @@ beforeEach(() => {
   mocks.invitationRole = 'employee';
   mocks.invitationsFilter = [];
   mocks.hasNextInvitations = false;
+  mocks.roles = [{ slug: 'employee', name: 'Empleado' }];
+  delete process.env.NEXT_PUBLIC_LAUNCH_SCOPE;
   for (const fn of [mocks.create, mocks.revoke, mocks.resend, mocks.toast, mocks.fetchNextInvitations]) fn.mockReset();
 });
 
@@ -113,7 +121,8 @@ describe('/settings/users (Equipo)', () => {
     expect(screen.getByText(m.unavailableTitle)).toBeTruthy();
     expect(screen.queryByRole('button', { name: m.inviteSubmit })).toBeNull();
     expect(screen.queryByText(m.pendingTitle)).toBeNull();
-    expect(screen.getByText('ana@x.test')).toBeTruthy(); // members list still renders
+    // members list still renders (scoped to the table: the phone list repeats each row, hidden by CSS)
+    expect(within(screen.getByRole('table', { name: m.membersTitle })).getByText('ana@x.test')).toBeTruthy();
   });
 
   it('asks user.list for ACTIVE members only (hides deactivated / soft-deleted users)', () => {
@@ -170,7 +179,9 @@ describe('/settings/users (Equipo)', () => {
     render(<TeamSettingsPage />);
     const button = screen.getByRole('button', { name: m.resend }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toBe(m.resendNotGrantable);
+    // The reason is on screen and announced with the button, not only in a hover tooltip.
+    expect(button).toHaveAccessibleDescription(m.resendNotGrantable);
+    expect(screen.getAllByText(m.resendNotGrantable).length).toBeGreaterThan(0);
     fireEvent.click(button);
     expect(mocks.resend).not.toHaveBeenCalled();
     // Revoke only removes a pending grant, so it stays available.
@@ -199,5 +210,66 @@ describe('/settings/users (Equipo)', () => {
     mocks.invitationRole = null;
     render(<TeamSettingsPage />);
     expect((screen.getByRole('button', { name: m.resend }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  // D-02 / D-09 / E-17: the picker showed the seeded DB names ("Lider", "Miembro de Comite", "HR Business
+  // Partner") in DB-name order, and offered hrbp although the pilot decision (D-HRBP) drops it. Líder is
+  // offered in the pilot since the owner decision of 2026-11-06.
+  const DB_ROLES = [
+    { slug: 'hr_admin', name: 'Administrador RRHH' },
+    { slug: 'employee', name: 'Colaborador' },
+    { slug: 'hrbp', name: 'HR Business Partner' },
+    { slug: 'leader', name: 'Lider' },
+    { slug: 'committee', name: 'Miembro de Comite' },
+    { slug: 'recruiter', name: 'Reclutador' },
+    { slug: 'super_admin', name: 'Super Administrador' },
+  ];
+  const optionLabels = () =>
+    Array.from((screen.getByLabelText(m.roleLabel) as HTMLSelectElement).options).map((option) => option.textContent);
+
+  it('pilot: offers only the pilot roles, with the shared labels, most privileged first', () => {
+    process.env.NEXT_PUBLIC_LAUNCH_SCOPE = 'pilot';
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(optionLabels()).toEqual([
+      m.rolePlaceholder,
+      'Super Administrador',
+      'Administrador de RR. HH.',
+      'Reclutador',
+      'Líder',
+      'Comité de entrevista',
+      'Colaborador',
+    ]);
+  });
+
+  it('full scope: still offers hrbp and leader, labelled from the shared map', () => {
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(optionLabels()).toEqual([
+      m.rolePlaceholder,
+      'Super Administrador',
+      'Administrador de RR. HH.',
+      'Socio de negocio de RR. HH. (HRBP)',
+      'Reclutador',
+      'Líder',
+      'Comité de entrevista',
+      'Colaborador',
+    ]);
+  });
+
+  it('explains the selected role in one line', () => {
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(screen.queryByText(m.roleDescriptions.committee)).toBeNull();
+    fireEvent.change(screen.getByLabelText(m.roleLabel), { target: { value: 'committee' } });
+    expect(screen.getByText(m.roleDescriptions.committee)).toBeTruthy();
+  });
+
+  it('shows pending invitations by role label, not the slug', () => {
+    mocks.invitationRole = 'super_admin';
+    mocks.roles = DB_ROLES;
+    render(<TeamSettingsPage />);
+    expect(screen.getByRole('cell', { name: 'Super Administrador' })).toBeTruthy();
+    expect(screen.queryByRole('cell', { name: 'super_admin' })).toBeNull();
   });
 });

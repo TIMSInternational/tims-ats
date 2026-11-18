@@ -23,8 +23,14 @@ public sealed class DataSubjectRequestNotifierTests
         var (_, subject, html) = sender.Sent[0];
         Assert.Contains("supresión de datos", subject, StringComparison.Ordinal);
         Assert.Contains("un candidato", html, StringComparison.Ordinal);
-        Assert.Contains("15 días hábiles", html, StringComparison.Ordinal);
-        Assert.Contains("Ley 1581 de 2012 (art. 15)", html, StringComparison.Ordinal);
+        // Country-neutral: no specific law is cited and no legal deadline is promised (the date is an estimate).
+        Assert.Contains("legislación de protección de datos aplicable", html, StringComparison.Ordinal);
+        Assert.Contains("Fecha límite estimada", html, StringComparison.Ordinal);
+        Assert.Contains("no es un plazo legal", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ley ", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("debe responderse", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("días hábiles", subject, StringComparison.Ordinal);
+        Assert.DoesNotContain("días hábiles", CandidateConsentConstants.NotificationMessage, StringComparison.Ordinal);
         Assert.Contains("22/10/2026", html, StringComparison.Ordinal);
         Assert.Contains("https://app.tims.test/settings/data-requests", html, StringComparison.Ordinal);
         Assert.Contains("&lt;Ana&gt;", html, StringComparison.Ordinal); // interpolations are HTML-encoded

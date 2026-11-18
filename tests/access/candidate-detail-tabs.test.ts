@@ -31,6 +31,10 @@ describe('candidate detail tabs', () => {
   });
 
   it('uses non-submit tab buttons so tab changes are local UI state only', () => {
-    expect(page()).toContain('type="button"');
+    // The tab row is the shared Tabs component (role="tablist", arrow keys); its tabs are type="button".
+    expect(page()).toContain('<Tabs');
+    const tabs = readFileSync(join(ROOT, 'apps/web/components/tabs.tsx'), 'utf8');
+    expect(tabs).toContain('type="button"');
+    expect(tabs).toContain('role="tab"');
   });
 });

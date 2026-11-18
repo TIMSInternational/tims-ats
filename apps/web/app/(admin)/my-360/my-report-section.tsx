@@ -24,18 +24,24 @@ export function MyReportSection() {
 
   return (
     <section>
-      <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.my360.reportsTitle}</h2>
+      <h2 className="mb-3 text-heading font-semibold text-primary">{t.my360.reportsTitle}</h2>
 
-      <p className="text-[11px] text-[#8B8B8B] mb-4">{t.my360.anonymityNote}</p>
+      <p className="mb-4 flex max-w-prose items-start gap-2 text-callout text-secondary">
+        <svg className="mt-0.5 size-4 shrink-0 text-info" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+        </svg>
+        <span>{t.my360.anonymityNote}</span>
+      </p>
 
       {cycles.isLoading ? (
         <Skeleton className="h-24 w-full rounded-xl" />
       ) : cycles.isError ? (
-        <ErrorState onRetry={() => cycles.refetch()} />
+        <ErrorState error={cycles.error} onRetry={() => cycles.refetch()} />
       ) : (cycles.data ?? []).length === 0 ? (
         <EmptyState
+          className="rounded-xl border border-border bg-white"
           icon={
-            <svg className="w-8 h-8 text-[#B8B8B8]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+            <svg className="size-8" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           }

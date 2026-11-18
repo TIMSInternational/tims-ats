@@ -27,9 +27,11 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     offer: {
       create: { useMutation: () => ({ mutateAsync, isPending: false }) },
+      update: { useMutation: () => ({ mutateAsync, isPending: false }) },
       submitForApproval: { useMutation: () => ({ mutateAsync, isPending: false }) },
       approve: { useMutation: () => ({ mutateAsync, isPending: false }) },
       reject: { useMutation: () => ({ mutateAsync, isPending: false }) },
+      withdrawApproval: { useMutation: () => ({ mutateAsync, isPending: false }) },
       getBySigningToken: { useQuery: () => signingOffer() },
       acceptByToken: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
       declineByToken: { useMutation: () => ({ mutate: vi.fn(), isPending: false, error: null }) },
@@ -67,6 +69,8 @@ import OfferSignPage from '../../apps/web/app/offers/sign/[token]/page';
 import { DashboardOffer } from '../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/dashboard-offer';
 
 const labels = { perYear: 'año', perMonth: 'mes' };
+// es-CR (the tenant locale) groups digits with a non-breaking space; so does the code-to-digits gap.
+const money = (text: string) => text.replace(/ /g, '\u00a0');
 
 describe('offer salary semantics', () => {
   it('converts a monthly amount to the stored annual base salary', () => {
@@ -83,15 +87,24 @@ describe('offer salary semantics', () => {
   });
 
   it('formats with the ISO currency code and period, never a bare "$"', () => {
-    expect(formatMoneyCode(96_000_000, 'COP')).toBe('COP 96.000.000');
-    expect(formatMoneyCode(96_000_000, ' cop ')).toBe('COP 96.000.000');
+    expect(formatMoneyCode(96_000_000, 'COP')).toBe(money('COP 96 000 000'));
+    expect(formatMoneyCode(96_000_000, ' cop ')).toBe(money('COP 96 000 000'));
     // A non-ISO legacy value is shown verbatim, never replaced by USD.
-    expect(formatMoneyCode(96_000_000, 'COP$')).toBe('COP$ 96.000.000');
+    expect(formatMoneyCode(96_000_000, 'COP$')).toBe(`COP$ ${money('96 000 000')}`);
     expect(formatMoneyCode(96_000_000, 'COP$')).not.toContain('USD');
-    expect(formatMoneyCode(1_500, '')).toBe('1.500');
+    expect(formatMoneyCode(1_500, '')).toBe(money('1 500'));
     const text = formatAnnualOfferSalary(96_000_000, 'COP', labels);
-    expect(text).toBe('COP 96.000.000 / año (COP 8.000.000 / mes)');
+    expect(text).toBe(`${money('COP 96 000 000')} / año (${money('COP 8 000 000')} / mes)`);
     expect(text).not.toContain('$');
+  });
+
+  it('uses the tenant locale (es-CR), never es-CO dots, and shows colones without céntimos', () => {
+    expect(formatMoneyCode(850_000, 'CRC')).toBe(money('CRC 850 000'));
+    expect(formatMoneyCode(1_000_000 / 12, 'CRC')).toBe(money('CRC 83 333'));
+    expect(formatMoneyCode(96_000_000, 'COP')).not.toContain('96.000.000');
+    expect(formatAnnualOfferSalary(10_200_000, 'CRC', labels)).toBe(
+      `${money('CRC 10 200 000')} / año (${money('CRC 850 000')} / mes)`,
+    );
   });
 });
 
@@ -114,7 +127,7 @@ describe('offer letter preview amount', () => {
       }),
     );
     const html = container.textContent ?? '';
-    expect(html).toContain('COP 96.000.000 / año (COP 8.000.000 / mes)');
+    expect(html).toContain(`${money('COP 96 000 000')} / año (${money('COP 8 000 000')} / mes)`);
     expect(html).not.toContain('$');
   });
 });
@@ -173,25 +186,26 @@ describe('create offer form', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
     expect(amount.value).toBe('');
-    expect(amount.placeholder).toBe('8000000');
+    expect(amount.placeholder).toBe(money('8 000 000'));
     const selects = container.querySelectorAll('select');
     expect((selects[1] as HTMLSelectElement).value).toBe('monthly');
 
     fireEvent.change(amount, { target: { value: '8000000' } });
-    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain('COP 96.000.000');
+    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain(money('COP 96 000 000'));
+    // The start date may not be in the past (B-33): use one a month ahead.
     fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
-      target: { value: '2026-10-01' },
+      target: { value: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) },
     });
-    fireEvent.change(container.querySelector('input[type="text"]') as HTMLInputElement, {
-      target: { value: 'Indefinido' },
-    });
+    // B-15: contract type is a select over the vacancy vocabulary; the offer stores the label.
+    fireEvent.change(screen.getByLabelText(/Tipo de contrato|Contract type/), { target: { value: 'indefinido' } });
     const buttons = screen.getAllByRole('button');
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
     expect(mutateAsync.mock.calls[0]?.[0]).toMatchObject({ salary: 96_000_000, currency: 'COP' });
+    expect(mutateAsync.mock.calls[0]?.[0].contractType).toMatch(/^(Plazo indefinido|Permanent)$/);
   });
 
   const twoVacancies = [
@@ -211,7 +225,7 @@ describe('create offer form', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications: twoVacancies, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
     fireEvent.change(amount, { target: { value: '8000000' } });
     expect(amount.value).toBe('8000000');
 
@@ -221,20 +235,20 @@ describe('create offer form', () => {
     expect((selects[2] as HTMLSelectElement).value).toBe('USD');
     expect(amount.value).toBe('');
     expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
-    expect(amount.placeholder).toBe('120000');
+    expect(amount.placeholder).toBe(money('120 000'));
   });
 
   it('keeps the vacancy reference in the vacancy currency and drops the placeholder when currencies differ', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
-    expect(screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent).toContain('COP 8.000.000');
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    expect(screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent).toContain(money('COP 8 000 000'));
 
     const selects = container.querySelectorAll('select');
     fireEvent.change(selects[2] as HTMLSelectElement, { target: { value: 'USD' } });
     const reference = screen.getByText(/Referencia de la vacante|Vacancy reference/).textContent ?? '';
-    expect(reference).toContain('COP 8.000.000');
+    expect(reference).toContain(money('COP 8 000 000'));
     expect(reference).not.toContain('USD');
     expect(amount.placeholder).toBe('');
   });
@@ -255,7 +269,7 @@ describe('offer KPI average salary', () => {
       }),
     );
     const text = container.textContent ?? '';
-    expect(text).toMatch(/USD\s120\.000 \/ (año|year)/);
+    expect(text).toMatch(/USD\s120\s000 \/ (año|year)/);
     expect(text).not.toContain('$');
     // The average covers every offer the viewer can see (offer.list is scope-filtered), and the label says so.
     expect(text).toMatch(/visibles para ti|you can see/);
@@ -296,11 +310,12 @@ describe('offer approval actions surface errors', () => {
   });
 });
 
-// Annual 96M COP must read as annual with its monthly equivalent — never as a bare "$" or a monthly figure.
-const ANNUAL_COP = /COP 96\.000\.000 \/ (año|year) \(COP 8\.000\.000 \/ (mes|month)\)/;
+// Candidate-facing: Costa Rican pay is read monthly, so the monthly figure leads and the stored annual
+// base follows; es-CR digit grouping; ISO code for non-colón currencies — never a bare "$".
+const MONTHLY_FIRST_COP = /COP\s8\s000\s000 \/ (mes|month) \(COP\s96\s000\s000 \/ (año|year)\)/;
 
 describe('candidate-facing salary rendering', () => {
-  it('public signing page shows the annual amount with the monthly equivalent', () => {
+  it('public signing page leads with the monthly amount, then the annual base', () => {
     signingOffer.mockReturnValue({
       isLoading: false,
       error: null,
@@ -318,11 +333,54 @@ describe('candidate-facing salary rendering', () => {
     });
     const { container } = render(createElement(OfferSignPage));
     const text = container.textContent ?? '';
-    expect(text).toMatch(ANNUAL_COP);
+    expect(text).toMatch(MONTHLY_FIRST_COP);
     expect(text).not.toContain('$');
+    expect(text).not.toContain('96.000.000');
   });
 
-  it('candidate portal offer card shows the annual amount with the monthly equivalent', () => {
+  it('public signing page shows colones with the ₡ symbol', () => {
+    signingOffer.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        status: 'sent',
+        salary: 10_200_000,
+        currency: 'CRC',
+        contractType: 'Plazo indefinido',
+        startDate: '2026-11-09T18:00:00Z',
+        benefits: null,
+        candidate: { firstName: 'Ana', lastName: 'Gomez' },
+        vacancy: { title: 'Analista' },
+        organization: { name: 'Example Co', logo: null },
+      },
+    });
+    const { container } = render(createElement(OfferSignPage));
+    expect(container.textContent).toMatch(/₡850\s000 \/ (mes|month) \(₡10\s200\s000 \/ (año|year)\)/);
+    expect(container.textContent).not.toContain('CRC');
+  });
+
+  it('public signing page shows the start date in the organization zone (Codex review)', () => {
+    // Chosen as 9 Nov by a recruiter in UTC+13 (stored at their local noon = 8 Nov 23:00 UTC).
+    signingOffer.mockReturnValue({
+      isLoading: false,
+      error: null,
+      data: {
+        status: 'sent',
+        salary: 10_200_000,
+        currency: 'CRC',
+        contractType: 'Plazo indefinido',
+        startDate: '2026-11-08T23:00:00Z',
+        benefits: null,
+        candidate: { firstName: 'Ana', lastName: 'Gomez' },
+        vacancy: { title: 'Analista' },
+        organization: { name: 'Example Co', logo: null, timeZone: 'Pacific/Auckland' },
+      },
+    });
+    const { container } = render(createElement(OfferSignPage));
+    expect(container.textContent).toContain('9 de noviembre de 2026');
+  });
+
+  it('candidate portal offer card leads with the monthly amount, then the annual base', () => {
     portalOffers.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -342,8 +400,34 @@ describe('candidate-facing salary rendering', () => {
     });
     const { container } = render(createElement(DashboardOffer, { orgSlug: 'acme' }));
     const text = container.textContent ?? '';
-    expect(text).toMatch(ANNUAL_COP);
+    expect(text).toMatch(MONTHLY_FIRST_COP);
     expect(text).not.toContain('$');
+  });
+
+  it("candidate portal offer card dates use the organization's own zone only, like the signing page", () => {
+    // Codex review of #424, round 2 (P2): a vacancy-company fallback here moved the start day away from the
+    // signing page's. 03:00 UTC on 1 December is still 30 November in Guatemala (GMT-6).
+    const offer = (company: { name: string; timezone?: string } | null) => ({
+      id: 'o1',
+      status: 'sent',
+      salary: 96_000_000,
+      currency: 'GTQ',
+      startDate: '2026-12-01T03:00:00Z',
+      contractType: 'indefinido',
+      expiresAt: null,
+      signingToken: null,
+      vacancy: { title: 'Analista', company },
+    });
+    const startText = (company: { name: string; timezone?: string } | null, timeZone: string | null = null) => {
+      portalOffers.mockReturnValue({ isLoading: false, isError: false, data: [offer(company)] });
+      const view = render(createElement(DashboardOffer, { orgSlug: 'acme', timeZone }));
+      const text = view.container.textContent ?? '';
+      view.unmount();
+      return text;
+    };
+    expect(startText({ name: 'GT Co', timezone: 'America/Guatemala' })).toContain('1 de diciembre de 2026');
+    expect(startText(null)).toContain('1 de diciembre de 2026');
+    expect(startText({ name: 'GT Co' }, 'America/Guatemala')).toContain('30 de noviembre de 2026');
   });
 
   it('offer table labels the stored amount as annual with the ISO code', () => {
@@ -370,7 +454,7 @@ describe('candidate-facing salary rendering', () => {
       }),
     );
     const text = container.textContent ?? '';
-    expect(text).toMatch(/COP 96\.000\.000 \/ (año|year)/);
+    expect(text).toMatch(/COP\s96\s000\s000 \/ (año|year)/);
     expect(text).not.toContain('$');
   });
 });
@@ -391,7 +475,7 @@ describe('create offer form — vacancy switching and bounds', () => {
     { id: 'app-bare', vacancy: { id: 'vac-bare', title: 'Sin salario', status: 'published', salary: null } },
   ] as unknown as Parameters<typeof CreateOfferModal>[0]['applications'];
 
-  it('resets period and currency to monthly/COP when the new vacancy has no salary data', () => {
+  it('resets period and currency to monthly/tenant default (CRC) when the new vacancy has no salary data', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications: withBareVacancy, onClose: vi.fn() }),
     );
@@ -400,18 +484,81 @@ describe('create offer form — vacancy switching and bounds', () => {
     expect((selects[2] as HTMLSelectElement).value).toBe('USD');
     fireEvent.change(selects[0] as HTMLSelectElement, { target: { value: 'app-bare' } });
     expect((selects[1] as HTMLSelectElement).value).toBe('monthly');
-    expect((selects[2] as HTMLSelectElement).value).toBe('COP');
+    expect((selects[2] as HTMLSelectElement).value).toBe('CRC');
   });
 
   it('does not accept an amount above the API cap', () => {
     const { container } = render(
       createElement(CreateOfferModal, { candidateId: 'cand-1', applications: withBareVacancy, onClose: vi.fn() }),
     );
-    const amount = container.querySelector('input[type="number"]') as HTMLInputElement;
-    expect(amount.max).toBe('1000000000000');
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    // A text input: nothing (wheel, arrow keys) can step the amount, and the cap is enforced by the parser.
+    expect(amount.type).toBe('text');
+    expect(amount.inputMode).toBe('decimal');
     fireEvent.change(amount, { target: { value: '1000000000001' } });
     expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
     fireEvent.change(amount, { target: { value: '120000' } });
-    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain('USD 120.000');
+    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain(money('USD 120 000'));
+  });
+});
+
+// Pilot call audit 2026-11-05: a demo offer of CRC 1 000 000 / month was stored as 12 000 000.12 a year (an
+// arrow-key step on <input type="number" step="0.01"> made it 1 000 000.01).
+describe('create offer form — the shared money input', () => {
+  beforeEach(() => mutateAsync.mockReset());
+  const crcMonthly = [
+    {
+      id: 'app-crc',
+      vacancy: { id: 'vac-crc', title: 'Analista', status: 'published', salary: { min: 900_000, max: 1_100_000, currency: 'CRC', period: 'monthly' } },
+    },
+  ] as unknown as Parameters<typeof CreateOfferModal>[0]['applications'];
+  const fillRest = (container: HTMLElement) => {
+    fireEvent.change(container.querySelector('input[type="date"]') as HTMLInputElement, {
+      target: { value: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10) },
+    });
+    fireEvent.change(screen.getByLabelText(/Tipo de contrato|Contract type/), { target: { value: 'indefinido' } });
+  };
+
+  it('accepts digit grouping, shows the amount grouped on blur and stores exactly 12 times the month', async () => {
+    mutateAsync.mockResolvedValue({ id: 'offer-1' });
+    const { container } = render(createElement(CreateOfferModal, { candidateId: 'cand-1', applications: crcMonthly, onClose: vi.fn() }));
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    fireEvent.focus(amount);
+    fireEvent.change(amount, { target: { value: '1.000.000' } });
+    fireEvent.blur(amount);
+    expect(amount.value).toBe(money('1 000 000'));
+    expect(screen.getByTestId('offer-salary-equivalents').textContent).toContain(money('CRC 12 000 000'));
+    fillRest(container);
+    const buttons = screen.getAllByRole('button');
+    fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    expect(mutateAsync.mock.calls[0]?.[0]).toMatchObject({ salary: 12_000_000, currency: 'CRC' });
+  });
+
+  it('refuses decimals in colones with a Spanish error, and nothing can be created', () => {
+    const { container } = render(createElement(CreateOfferModal, { candidateId: 'cand-1', applications: crcMonthly, onClose: vi.fn() }));
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '1000000,01' } });
+    expect(screen.getByRole('alert').textContent).toBe('CRC se usa sin decimales: escribe un número entero.');
+    expect(amount.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.queryByTestId('offer-salary-equivalents')).toBeNull();
+    fillRest(container);
+    const buttons = screen.getAllByRole('button');
+    expect((buttons[buttons.length - 1] as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('"Editar borrador" of an offer stored as 12 000 000.12 flags the decimals instead of rounding them away', () => {
+    const { container } = render(
+      createElement(CreateOfferModal, {
+        candidateId: 'cand-1',
+        applications: crcMonthly,
+        onClose: vi.fn(),
+        mode: 'edit',
+        source: { id: 'offer-1', salary: 12_000_000.12, currency: 'CRC', startDate: null, contractType: null },
+      }),
+    );
+    const amount = container.querySelector('#offer-salary-amount') as HTMLInputElement;
+    expect(amount.value).toBe(money('12 000 000,12'));
+    expect(screen.getByRole('alert').textContent).toContain('CRC se usa sin decimales');
   });
 });

@@ -93,7 +93,8 @@ public sealed class OrgProvisioningWriterTests(PlatformOrganizationsCreateFixtur
         // The company is named from the PARAMETER, not derived from the organization — the seam #75 needs,
         // since it passes input.organizationName rather than the org's own name.
         Assert.Equal("Invitación SAS", company.Name);
-        Assert.Equal("CO", company.Country);
+        Assert.Equal(OrgProvisioningWriter.DefaultCountry, company.Country);
+        Assert.Equal("CR", company.Country);
 
         var businessUnit = Assert.Single(await fixture.ReadBusinessUnitsAsync(org));
         Assert.Equal(ids.BusinessUnitId, businessUnit.Id);

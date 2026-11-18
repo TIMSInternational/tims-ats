@@ -67,9 +67,9 @@ describe('F7 — session reads do not consume the credential (auth) tier', () =>
     }
   });
 
-  it('session reads are still bounded by the query tier (100 / min)', async () => {
+  it('session reads are still bounded by the query tier', async () => {
     const mod = await loadLimiter();
-    for (let i = 0; i < 100; i++) await call(mod, 'user-flood', 'auth.getSessionInfo', 'query');
+    for (let i = 0; i < mod.LIMITS.query.requests; i++) await call(mod, 'user-flood', 'auth.getSessionInfo', 'query');
     await expect(call(mod, 'user-flood', 'auth.getSessionInfo', 'query')).rejects.toMatchObject({
       code: 'TOO_MANY_REQUESTS',
     });

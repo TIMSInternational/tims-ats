@@ -14,12 +14,12 @@ public sealed class CandidateInterviewJoinEndpointTests
     private const string Route = "/interviews/candidate-join";
     private const string Token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde";
 
-    private sealed class Repository : ICandidateInterviewJoinRepository
+    private sealed class Repository(bool consentWithdrawn) : ICandidateInterviewJoinRepository
     {
         public Task<CandidateJoinInterview?> FindByTokenHashAsync(string tokenHash, CancellationToken ct) =>
             Task.FromResult<CandidateJoinInterview?>(tokenHash == CandidateInterviewJoin.HashToken(Token)
                 ? new(Guid.NewGuid(), Guid.NewGuid(), "video", "scheduled", DateTime.UtcNow.AddDays(2), 60, null,
-                    null, null, "Ana", "Pérez")
+                    null, null, "Ana", "Pérez", ConsentWithdrawn: consentWithdrawn)
                 : null);
         public Task<string?> ClaimMeetingUrlAsync(Guid interviewId, Guid organizationId, string roomUrl,
             CancellationToken ct) => Task.FromResult<string?>(roomUrl);
@@ -28,7 +28,7 @@ public sealed class CandidateInterviewJoinEndpointTests
             Task.FromResult(false);
     }
 
-    private static WebApplicationFactory<Program> Factory(bool enabled) =>
+    private static WebApplicationFactory<Program> Factory(bool enabled, bool consentWithdrawn = false) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Platform:DatabaseConnectionString", "Host=localhost;Port=5432;Database=x;Username=x");
@@ -36,7 +36,7 @@ public sealed class CandidateInterviewJoinEndpointTests
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<ICandidateInterviewJoinRepository>();
-                services.AddSingleton<ICandidateInterviewJoinRepository, Repository>();
+                services.AddSingleton<ICandidateInterviewJoinRepository>(new Repository(consentWithdrawn));
             });
         });
 
@@ -56,6 +56,19 @@ public sealed class CandidateInterviewJoinEndpointTests
         Assert.Contains("\"outcome\":\"invalid\"", await unknown.Content.ReadAsStringAsync());
         var malformed = await client.PostAsJsonAsync(Route, new { token = "not-a-token" });
         Assert.Contains("\"outcome\":\"invalid\"", await malformed.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Withdrawn_consent_is_a_generic_cancelled_public_outcome()
+    {
+        await using var factory = Factory(enabled: true, consentWithdrawn: true);
+        using var client = factory.CreateClient();
+        var response = await client.PostAsJsonAsync(Route, new { token = Token });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"outcome\":\"cancelled\"", body);
+        Assert.Contains("\"joinUrl\":null", body);
+        Assert.DoesNotContain("consent", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

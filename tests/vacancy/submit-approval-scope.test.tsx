@@ -7,7 +7,7 @@ process.env.NEXT_PUBLIC_TIMS_PLATFORM_API_URL = 'https://csharp.test';
 process.env.NEXT_PUBLIC_TENANT_PEOPLE_DIRECTORY_VIA_CSHARP = 'true';
 
 const VACANCY = '77777777-7777-4777-8777-777777777777';
-const SERVER_400 = 'Uno o mas aprobadores no tienen esta vacante dentro de su alcance';
+const SERVER_400 = 'Uno o más aprobadores no tienen esta vacante dentro de su alcance';
 const submitMutation = vi.hoisted(() => ({
   mutate: vi.fn(),
   reset: vi.fn(),
@@ -25,6 +25,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       submitForApproval: { useMutation: () => submitMutation },
       approve: { useMutation: idleMutation },
       reject: { useMutation: idleMutation },
+      withdrawApproval: { useMutation: idleMutation },
     },
   },
 }));
@@ -47,8 +48,10 @@ beforeEach(() => {
 });
 
 async function openSubmitModal() {
-  const { ApprovalChain } = await import('../../apps/web/app/(admin)/recruitment/vacancies/[id]/approval-chain');
-  render(<ApprovalChain vacancyId={VACANCY} vacancyStatus="draft" approvals={[]} />, { wrapper });
+  // The one way to submit is the header's primary "Enviar para aprobación" (the approval card no longer repeats it).
+  const { SubmitForApprovalCta } =
+    await import('../../apps/web/app/(admin)/recruitment/vacancies/[id]/submit-for-approval-cta');
+  render(<SubmitForApprovalCta vacancyId={VACANCY} vacancyStatus="draft" />, { wrapper });
   fireEvent.click(screen.getByRole('button', { name: 'Enviar para aprobación' }));
 }
 

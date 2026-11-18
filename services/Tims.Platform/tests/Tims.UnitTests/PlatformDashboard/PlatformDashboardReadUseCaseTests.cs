@@ -210,7 +210,7 @@ public sealed class PlatformDashboardReadUseCaseTests
         var activity = PlatformDashboardReadUseCase.BuildRecentActivity(orgs, users);
 
         Assert.Equal(10, activity.Count); // 12 merged, capped at 10
-        Assert.Equal("Nueva organizacion: Org5", activity[0].Title); // newest org (o5 @ +5min)
+        Assert.Equal("Nueva organización: Org5", activity[0].Title); // newest org (o5 @ +5min)
         Assert.Equal("org_created", activity[0].Type);
         Assert.Equal("trial", activity[0].Meta);
     }

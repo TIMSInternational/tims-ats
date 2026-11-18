@@ -1,26 +1,29 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useId, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useDashboardRevenueByCustomer, useDashboardCustomerHealth } from '../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../lib/i18n';
-import { formatCurrency, timeAgo, PLAN_BG_CLASSES, PLAN_LABELS, HEALTH_CONFIG, Skeleton } from './dashboard-utils';
+import { formatRelativeTimeLocale } from '../../../lib/format-utils';
+import {
+  formatCurrency,
+  PLAN_BG_CLASSES,
+  PLAN_CHIP_FALLBACK,
+  PLAN_LABELS,
+  HEALTH_CONFIG,
+  Skeleton,
+} from './dashboard-utils';
 import { ErrorState } from '../../../components';
+import { SortableHeader } from '../../../components/sortable-header';
+import { StatusBadge } from '../../../components/status-badge';
 
 type SortKey = 'orgName' | 'plan' | 'mrr' | 'userCount' | 'lastActiveAt';
 type SortDir = 'asc' | 'desc';
 
-const COLUMNS: { key: SortKey; label: string; className: string }[] = [
-  { key: 'orgName', label: 'Organization', className: 'w-[28%]' },
-  { key: 'plan', label: 'Plan', className: 'w-[14%]' },
-  { key: 'mrr', label: 'MRR', className: 'w-[14%]' },
-  { key: 'userCount', label: 'Users', className: 'w-[10%]' },
-  { key: 'lastActiveAt', label: 'Last Active', className: 'w-[16%]' },
-];
-
 export function CustomerTable() {
-  const { t } = useI18n();
-  const router = useRouter();
+  const { t, locale } = useI18n();
+  const d = t.dashboard;
+  const titleId = useId();
   const { data, isLoading, isError, refetch } = useDashboardRevenueByCustomer();
   const { data: healthData, isError: healthError, refetch: refetchHealth } = useDashboardCustomerHealth();
   const [sortKey, setSortKey] = useState<SortKey>('mrr');
@@ -71,101 +74,139 @@ export function CustomerTable() {
     }
   }
 
-  function sortIndicator(key: SortKey) {
-    if (sortKey !== key) return '';
-    return sortDir === 'asc' ? ' \u2191' : ' \u2193';
-  }
+  const columns: { key: SortKey; label: string; align: 'left' | 'right'; className: string }[] = [
+    { key: 'orgName', label: d.orgName, align: 'left', className: 'w-[30%]' },
+    { key: 'plan', label: d.plan, align: 'left', className: 'w-[14%]' },
+    { key: 'mrr', label: d.mrr, align: 'right', className: 'w-[14%]' },
+    { key: 'userCount', label: d.colUsers, align: 'right', className: 'w-[12%]' },
+    { key: 'lastActiveAt', label: d.colLastActive, align: 'left', className: 'w-[16%]' },
+  ];
+  const orgHref = (orgId: string) => `/platform/organizations/${orgId}`;
+  const lastActive = (date: Date | string | null) => formatRelativeTimeLocale(date, locale, d.never);
+  const healthOf = (orgId: string) => HEALTH_CONFIG[healthMap.get(orgId) ?? 'healthy'] ?? HEALTH_CONFIG.healthy;
 
   return (
-    <div className="rounded-xl border border-border bg-white overflow-hidden">
-      <div className="px-5 py-4 border-b border-border">
-        <h3 className="text-sm font-semibold text-primary">Customers</h3>
-        <p className="text-xs text-muted">{t.dashboard.clickRowToView}</p>
+    <section aria-labelledby={titleId} className="overflow-hidden rounded-xl border border-border bg-white shadow-card">
+      <div className="border-b border-border px-5 py-4">
+        <h2 id={titleId} className="text-heading font-semibold text-brand">
+          {d.customersTitle}
+        </h2>
+        <p className="text-callout text-secondary">{d.customersHint}</p>
       </div>
 
       {isLoading ? (
-        <div className="p-5 space-y-3">
+        <div className="space-y-3 p-5" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
           {[...Array(5)].map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
           ))}
         </div>
       ) : isError || healthError ? (
         <ErrorState
+          size="compact"
           onRetry={() => {
             refetch();
             refetchHealth();
           }}
         />
+      ) : sorted.length === 0 ? (
+        <p className="px-5 py-10 text-center text-body text-secondary">{d.noCustomers}</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-border bg-surface/50">
-                {COLUMNS.map((col) => (
-                  <th
-                    key={col.key}
-                    className={`px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide cursor-pointer hover:text-primary select-none ${col.className}`}
-                    onClick={() => handleSort(col.key)}
-                  >
-                    {col.label}
-                    {sortIndicator(col.key)}
-                  </th>
-                ))}
-                <th className="px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide w-[10%]">Health</th>
-                <th className="px-5 py-2.5 text-xs font-medium text-muted uppercase tracking-wide w-[8%]">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((org) => {
-                const health = healthMap.get(org.orgId) ?? 'healthy';
-                const hCfg = HEALTH_CONFIG[health];
-                const planClass = PLAN_BG_CLASSES[org.plan] ?? 'bg-gray-100 text-gray-700';
-
-                return (
-                  <tr
-                    key={org.orgId}
-                    onClick={() => router.push(`/platform/organizations/${org.orgId}`)}
-                    className="border-b border-border last:border-b-0 hover:bg-surface/50 cursor-pointer transition-colors"
-                  >
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-7 w-7 rounded-full bg-brand/10 flex items-center justify-center text-xs font-bold text-brand shrink-0">
-                          {org.orgName.charAt(0).toUpperCase()}
-                        </div>
-                        <span className="text-sm font-medium text-primary truncate">{org.orgName}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-block text-[11px] font-medium px-2 py-0.5 rounded ${planClass}`}>
+        <>
+          {/* Phones: a stacked list, one link per organisation. */}
+          <ul className="divide-y divide-border md:hidden">
+            {sorted.map((org) => {
+              const hCfg = healthOf(org.orgId);
+              return (
+                <li key={org.orgId}>
+                  <Link href={orgHref(org.orgId)} className="block px-5 py-3 transition-colors hover:bg-surface-hover">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate text-body font-medium text-primary">{org.orgName}</span>
+                      <span className="shrink-0 text-body font-medium tabular-nums text-primary">
+                        {formatCurrency(org.mrr, locale)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`rounded px-2 py-0.5 text-caption font-medium ${PLAN_BG_CLASSES[org.plan] ?? PLAN_CHIP_FALLBACK}`}
+                      >
                         {PLAN_LABELS[org.plan] ?? org.plan}
                       </span>
-                    </td>
-                    <td className="px-5 py-3 text-sm font-medium text-primary">{formatCurrency(org.mrr)}</td>
-                    <td className="px-5 py-3 text-sm text-secondary">{org.userCount}</td>
-                    <td className="px-5 py-3 text-xs text-muted">{timeAgo(org.lastActiveAt)}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`h-2 w-2 rounded-full ${hCfg.dot}`} />
-                        <span className="text-xs text-secondary capitalize">{hCfg.label}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="text-xs font-medium text-brand hover:underline">View</span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {sorted.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-muted">
-                    No customers found
-                  </td>
+                      <StatusBadge tone={hCfg.tone}>{d[hCfg.labelKey]}</StatusBadge>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-left">
+              <caption className="sr-only">{d.customersTitle}</caption>
+              <thead>
+                <tr className="border-b border-border bg-surface-hover">
+                  {columns.map((col) => (
+                    <SortableHeader
+                      key={col.key}
+                      label={col.label}
+                      align={col.align}
+                      direction={sortKey === col.key ? sortDir : null}
+                      onSort={() => handleSort(col.key)}
+                      className={`px-5 ${col.className}`}
+                    />
+                  ))}
+                  <th scope="col" className="w-[14%] px-5 py-2.5 text-callout font-semibold text-secondary">
+                    {d.healthScore}
+                  </th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {sorted.map((org) => {
+                  const hCfg = healthOf(org.orgId);
+                  return (
+                    <tr
+                      key={org.orgId}
+                      className="border-b border-border transition-colors last:border-b-0 hover:bg-surface-hover"
+                    >
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-tint text-callout font-bold text-brand"
+                            aria-hidden="true"
+                          >
+                            {org.orgName.charAt(0).toUpperCase()}
+                          </div>
+                          <Link
+                            href={orgHref(org.orgId)}
+                            className="truncate text-body font-medium text-primary hover:text-brand hover:underline"
+                          >
+                            {org.orgName}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className={`inline-block rounded px-2 py-0.5 text-caption font-medium ${PLAN_BG_CLASSES[org.plan] ?? PLAN_CHIP_FALLBACK}`}
+                        >
+                          {PLAN_LABELS[org.plan] ?? org.plan}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-right text-body font-medium tabular-nums text-primary">
+                        {formatCurrency(org.mrr, locale)}
+                      </td>
+                      <td className="px-5 py-3 text-right text-body tabular-nums text-secondary">{org.userCount}</td>
+                      <td className="px-5 py-3 text-callout text-secondary">{lastActive(org.lastActiveAt)}</td>
+                      <td className="px-5 py-3">
+                        <StatusBadge tone={hCfg.tone}>{d[hCfg.labelKey]}</StatusBadge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
-    </div>
+    </section>
   );
 }

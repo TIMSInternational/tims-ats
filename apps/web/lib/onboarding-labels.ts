@@ -33,3 +33,6 @@ export function onboardingStatusLabel(messages: OnboardingLabelMessages, status:
 
 /** The task owner slug the new hire themself is responsible for (see onboarding-defaults.ts). */
 export const NEW_HIRE_TASK_OWNER = 'employee';
+
+/** The task owner slug the plan's buddy is responsible for (see onboarding-defaults.ts). */
+export const BUDDY_TASK_OWNER = 'buddy';

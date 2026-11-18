@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { EVAL360_COMPETENCIES } from '@tims/shared';
 import { useI18n } from '../../../lib/i18n';
+import { Button, Field, StatusBadge, TextArea } from '../../../components';
 import { toast } from '../../../lib/toast';
 import type { Eval360RaterTask } from '../../../lib/trpc-types';
 import { useEvaluation360SubmitRatings } from '../../../lib/platform-api/evaluation360';
@@ -23,6 +24,8 @@ interface RaterTaskCardProps {
 export function RaterTaskCard({ task }: RaterTaskCardProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
+  const scaleHintId = useId();
+  const groupName = useId();
 
   const [ratings, setRatings] = useState<Record<CompetencyKey, number>>(
     () => Object.fromEntries(EVAL360_COMPETENCIES.map((c) => [c, DEFAULT_RATING])) as Record<CompetencyKey, number>,
@@ -50,65 +53,70 @@ export function RaterTaskCard({ task }: RaterTaskCardProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <div className="flex items-center justify-between mb-1 gap-3">
-        <p className="text-[13px] font-semibold text-[#1F114C]">
+    <article className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-subheading font-semibold text-primary">
           {task.subject.firstName} {task.subject.lastName}
-        </p>
-        <span className="text-[11px] px-2 py-1 rounded-full bg-[#F6F6F6] text-[#585858] font-medium shrink-0">
+        </h3>
+        <StatusBadge tone="neutral" icon="none" className="shrink-0">
           {t.my360.relationshipLabels[task.relationship]}
-        </span>
+        </StatusBadge>
       </div>
-      <p className="text-[11px] text-[#8B8B8B] mb-4">{task.cycleName}</p>
+      <p className="text-callout text-secondary">{task.cycleName}</p>
+      <p id={scaleHintId} className="mb-4 mt-1 text-callout text-secondary">
+        {t.my360.scaleHint}
+      </p>
 
       <div className="space-y-3">
         {EVAL360_COMPETENCIES.map((competencyKey) => (
-          <div key={competencyKey} className="flex items-center justify-between gap-3">
-            <label className="text-[12px] text-[#333]">{t.my360.competencyLabels[competencyKey]}</label>
-            <div className="flex gap-1" role="radiogroup" aria-label={t.my360.competencyLabels[competencyKey]}>
+          // A real radio group: a fieldset named by its legend, five native radios (arrow keys work).
+          <fieldset
+            key={competencyKey}
+            aria-describedby={scaleHintId}
+            disabled={submit.isPending}
+            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
+          >
+            <legend className="float-left text-body text-primary">{t.my360.competencyLabels[competencyKey]}</legend>
+            <div className="flex gap-1.5">
               {RATING_SCALE.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setRatings((r) => ({ ...r, [competencyKey]: n }))}
-                  disabled={submit.isPending}
-                  aria-pressed={ratings[competencyKey] === n}
-                  className={`w-7 h-7 rounded-full text-[11px] font-medium transition disabled:opacity-50 ${
-                    ratings[competencyKey] === n
-                      ? 'bg-[#1F114C] text-white'
-                      : 'bg-[#F6F6F6] text-[#585858] hover:bg-[#EDEDED]'
-                  }`}
-                >
-                  {n}
-                </button>
+                <label key={n} className="relative cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`${groupName}-${competencyKey}`}
+                    value={n}
+                    checked={ratings[competencyKey] === n}
+                    onChange={() => setRatings((r) => ({ ...r, [competencyKey]: n }))}
+                    className="peer sr-only"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="flex size-9 items-center justify-center rounded-full bg-surface text-callout font-medium text-secondary transition-colors duration-150 hover:bg-border peer-checked:bg-brand peer-checked:text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand peer-disabled:opacity-50 pointer-coarse:size-11"
+                  >
+                    {n}
+                  </span>
+                  <span className="sr-only">{n}</span>
+                </label>
               ))}
             </div>
-          </div>
+          </fieldset>
         ))}
       </div>
 
-      <div className="mt-4">
-        <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.my360.commentLabel}</label>
-        <textarea
+      <Field label={t.my360.commentLabel} className="mt-4">
+        <TextArea
           value={comment}
           onChange={(e) => setComment(e.target.value.slice(0, 5000))}
           placeholder={t.my360.commentPlaceholder}
           disabled={submit.isPending}
           rows={3}
-          className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
         />
-      </div>
+      </Field>
 
-      <div className="flex justify-end mt-4">
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={submit.isPending}
-          className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50"
-        >
-          {submit.isPending ? t.common.saving : t.my360.submitButton}
-        </button>
+      <div className="mt-4 flex justify-end">
+        <Button onClick={onSubmit} loading={submit.isPending} loadingLabel={t.common.saving} disabled={submit.isPending}>
+          {t.my360.submitButton}
+        </Button>
       </div>
-    </div>
+    </article>
   );
 }

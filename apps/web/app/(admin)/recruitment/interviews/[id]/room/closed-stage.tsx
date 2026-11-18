@@ -14,11 +14,11 @@ interface ClosedStageProps {
  */
 export function ClosedStage({ candidateName, subtitle, message }: ClosedStageProps) {
   return (
-    <div role="status" className="flex-1 flex items-center justify-center bg-[#0a0a0a] p-6">
+    <div role="status" className="flex flex-1 items-center justify-center bg-surface p-6">
       <div className="max-w-sm text-center">
-        <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
-        <p className="text-white/50 text-[13px] mb-4">{subtitle}</p>
-        <p className="text-white/80 text-[13px]">{message}</p>
+        <p className="mb-1 text-heading font-semibold text-primary">{candidateName}</p>
+        <p className="mb-4 text-callout text-secondary">{subtitle}</p>
+        <p className="text-body text-primary">{message}</p>
       </div>
     </div>
   );

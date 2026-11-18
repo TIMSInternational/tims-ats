@@ -104,7 +104,7 @@ public static class OrgStructureGate
         OrgStructureErrorCodes.BusinessUnitInactive => "La unidad de negocio esta inactiva",
         OrgStructureErrorCodes.TeamInactive => "El equipo esta inactivo",
         OrgStructureErrorCodes.UserInactive => "El usuario esta inactivo",
-        "organization_required" => "Selecciona o impersona una organizacion",
+        "organization_required" => "Selecciona o impersona una organización",
         _ => "Datos invalidos",
     };
 

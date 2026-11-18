@@ -4,7 +4,7 @@ import { clientIpFrom } from '../lib/client-ip';
 import { candidatePortalService } from '../services/candidate-portal.service';
 import { candidateAssessmentService } from '../services/candidate-assessment.service';
 import { candidateAssessmentLifecycleService } from '../services/candidate-assessment-lifecycle.service';
-import { submitAssessmentAnswersSchema } from '@tims/shared';
+import { candidatePortalProfileSchema, submitAssessmentAnswersSchema } from '@tims/shared';
 
 // Authenticated candidate portal (Wave 1 Slice 2). The candidate is identified by
 // their Supabase session email (ctx.supabaseAuth.email) — the org comes from the
@@ -14,7 +14,7 @@ const orgSlug = z
   .string()
   .min(1)
   .max(100)
-  .regex(/^[a-z0-9-]+$/, 'Slug invalido');
+  .regex(/^[a-z0-9-]+$/, 'Slug inválido');
 const faqQuestion = z.string().trim().min(3).max(800);
 
 export const candidatePortalRouter = router({
@@ -34,6 +34,23 @@ export const candidatePortalRouter = router({
   myInterviews: candidateProcedure
     .input(z.object({ orgSlug }))
     .query(({ ctx, input }) => candidatePortalService.getMyInterviews(ctx.supabaseAuth.email, input.orgSlug)),
+
+  // "Retirar mi postulación" — the candidate withdraws one of their own applications. Identity is
+  // ctx.supabaseAuth.email; the service re-checks ownership (candidate + org) before writing.
+  withdrawMyApplication: candidateProcedure
+    .input(z.object({ orgSlug, applicationId: z.string().uuid() }))
+    .mutation(({ ctx, input }) =>
+      candidatePortalService.withdrawMyApplication(ctx.supabaseAuth.email, input.orgSlug, input.applicationId),
+    ),
+
+  // "Mis datos" — the candidate corrects their own name, phone and location (never the email, which
+  // is the session identity). The current values are rendered server-side by the dashboard page.
+  updateMyProfile: candidateProcedure
+    .input(candidatePortalProfileSchema.extend({ orgSlug }))
+    .mutation(({ ctx, input }) => {
+      const { orgSlug: slug, ...profile } = input;
+      return candidatePortalService.updateMyProfile(ctx.supabaseAuth.email, slug, profile);
+    }),
 
   // The stage timeline for one of the candidate's own applications.
   applicationStatus: candidateProcedure

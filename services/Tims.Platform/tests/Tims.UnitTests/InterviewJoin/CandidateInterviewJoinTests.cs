@@ -18,6 +18,8 @@ public sealed class CandidateInterviewJoinTests
     private sealed class Repository : ICandidateInterviewJoinRepository
     {
         public CandidateJoinInterview? Interview { get; set; } = CandidateInterviewJoinTests.Interview();
+        public CandidateJoinInterview? RefreshedInterview { get; set; }
+        public int Lookups { get; private set; }
         public string? LookedUpHash { get; private set; }
         public string? StoredUrl { get; set; }
         public bool AuditSucceeds { get; set; } = true;
@@ -25,7 +27,11 @@ public sealed class CandidateInterviewJoinTests
         public List<(Guid Id, Guid Org, string Url)> Claims { get; } = [];
 
         public Task<CandidateJoinInterview?> FindByTokenHashAsync(string tokenHash, CancellationToken ct)
-        { LookedUpHash = tokenHash; return Task.FromResult(Interview); }
+        {
+            LookedUpHash = tokenHash;
+            Lookups++;
+            return Task.FromResult(Lookups > 1 ? RefreshedInterview ?? Interview : Interview);
+        }
 
         public Task<string?> ClaimMeetingUrlAsync(Guid interviewId, Guid organizationId, string roomUrl,
             CancellationToken ct)
@@ -126,6 +132,30 @@ public sealed class CandidateInterviewJoinTests
         Assert.Null(video.Minted);
         var (byTimestamp, _, _) = await Join(Start, Interview(cancelledAt: Start.AddDays(-1)));
         Assert.Equal(CandidateJoinOutcomes.Cancelled, byTimestamp.Outcome);
+    }
+
+    [Fact]
+    public async Task Withdrawn_consent_revokes_the_link_without_minting_a_guest_token()
+    {
+        var withdrawn = Interview() with { ConsentWithdrawn = true };
+        var (result, repository, video) = await Join(Start, withdrawn);
+        Assert.Equal(CandidateJoinOutcomes.Cancelled, result.Outcome);
+        Assert.Null(result.JoinUrl);
+        Assert.Empty(video.Ensured);
+        Assert.Null(video.Minted);
+        Assert.Equal(CandidateJoinOutcomes.Cancelled, Assert.Single(repository.Audits).Outcome);
+    }
+
+    [Fact]
+    public async Task Withdrawal_during_room_provisioning_never_returns_the_guest_url()
+    {
+        var (result, repository, video) = await Join(Start, setup: (repo, _) =>
+            repo.RefreshedInterview = Interview() with { ConsentWithdrawn = true });
+        Assert.Equal(2, repository.Lookups);
+        Assert.Equal(CandidateJoinOutcomes.Cancelled, result.Outcome);
+        Assert.Null(result.JoinUrl);
+        Assert.Equal(CandidateJoinOutcomes.Cancelled, Assert.Single(repository.Audits).Outcome);
+        Assert.NotNull(video.Minted);
     }
 
     [Theory]

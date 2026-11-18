@@ -1,8 +1,10 @@
 'use client';
 
 import type { OnboardingPlan } from './onboarding-table';
-import { useI18n } from '../../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
+import { StatusBadge } from '../../../../components';
 import { onboardingOwnerLabel } from '../../../../lib/onboarding-labels';
+import { formatDueDate, isTaskOverdue, sortByDueDate } from '../../../../lib/onboarding-schedule';
 
 // Task `responsible` is a slug for the default checklist (hr | it | manager |
 // buddy | employee — onboarding-defaults.ts) or free text HR typed by hand.
@@ -17,6 +19,7 @@ const OWNER_COLORS: Record<string, { bar: string; dot: string }> = {
   employee: { bar: 'bg-amber-500', dot: 'bg-amber-500' },
 };
 const FALLBACK_COLORS = { bar: 'bg-gray-500', dot: 'bg-gray-500' };
+const CARD = 'w-full rounded-xl border border-border bg-white p-4 shadow-card md:flex-1 md:p-5';
 
 function useOwnerLabel(): (responsible: string) => string {
   const { t } = useI18n();
@@ -27,7 +30,8 @@ function useOwnerLabel(): (responsible: string) => string {
 function DocIcon({ urgent }: { urgent: boolean }) {
   return (
     <svg
-      className={`w-4 h-4 ${urgent ? 'text-[#DD0C15]' : 'text-amber-500'}`}
+      className={`size-4 shrink-0 ${urgent ? 'text-danger' : 'text-secondary'}`}
+      aria-hidden="true"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
@@ -52,6 +56,8 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
   }
 
   const roles = Object.entries(byRole).sort((a, b) => b[1].total - a[1].total);
+  // Red only when an owner really has overdue work, never because a plan is simply young.
+  const overdueByRole = new Set(allTasks.filter((task) => isTaskOverdue(task)).map((task) => task.responsible));
   const lowestRole =
     roles.length > 0
       ? roles.reduce((min, r) =>
@@ -60,8 +66,8 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
       : null;
 
   return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.onboarding.tasksByResponsible}</h3>
+    <section className={CARD}>
+      <h2 className="mb-3 text-subheading font-semibold text-primary">{t.onboarding.tasksByResponsible}</h2>
       <div className="space-y-3">
         {roles.map(([role, { total, done }]) => {
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -69,81 +75,91 @@ export function TasksByResponsible({ plans }: { plans: OnboardingPlan[] }) {
           return (
             <div key={role}>
               <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[12px] text-[#333] font-medium flex items-center gap-1.5">
-                  <span className={`w-2.5 h-2.5 rounded-full ${colors.dot}`} />
+                <span className="flex items-center gap-1.5 text-body font-medium text-primary">
+                  <span className={`size-2.5 rounded-full ${colors.dot}`} aria-hidden="true" />
                   {ownerLabel(role)}
                 </span>
-                <span className={`text-[11px] font-medium ${pct < 50 ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>
-                  {t.onboarding.tasksDoneOfTotal.replace('{done}', String(done)).replace('{total}', String(total))}
+                <span className={`text-callout font-medium tabular-nums ${overdueByRole.has(role) ? 'text-danger' : 'text-secondary'}`}>
+                  {formatMessage(t.onboarding.tasksDoneOfTotal, { done, total })}
                 </span>
               </div>
-              <div className="w-full bg-[#F6F6F6] rounded-full h-2.5">
+              <div className="h-2.5 w-full rounded-full bg-surface" aria-hidden="true">
                 <div className={`h-2.5 ${colors.bar} rounded-full`} style={{ width: `${pct}%` }} />
               </div>
             </div>
           );
         })}
-        {roles.length === 0 && <p className="text-[11px] text-[#8B8B8B]">{t.onboarding.noTasksRegistered}</p>}
+        {roles.length === 0 && <p className="text-callout text-secondary">{t.onboarding.noTasksRegistered}</p>}
       </div>
       {lowestRole && lowestRole[1].total > 0 && (
-        <p className="text-[10px] text-[#DD0C15] mt-3 pt-3 border-t border-[#F0F0F0] font-medium">
-          {t.onboarding.lowestProgressAlert
-            .replace('{owner}', ownerLabel(lowestRole[0]))
-            .replace('{pct}', String(Math.round((lowestRole[1].done / lowestRole[1].total) * 100)))}
+        <p
+          className={`mt-3 border-t border-border pt-3 text-callout ${
+            overdueByRole.has(lowestRole[0]) ? 'font-medium text-danger' : 'text-secondary'
+          }`}
+        >
+          {formatMessage(t.onboarding.lowestProgressAlert, {
+            owner: ownerLabel(lowestRole[0]),
+            pct: Math.round((lowestRole[1].done / lowestRole[1].total) * 100),
+          })}
         </p>
       )}
-    </div>
+    </section>
   );
 }
 
+// B-23: the most urgent first — earliest due date across every hire — and "urgent" means the due day
+// has passed (riskScore is never computed, so it cannot drive urgency).
 export function PendingTasks({ plans }: { plans: OnboardingPlan[] }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const ownerLabel = useOwnerLabel();
-  const incompleteTasks = plans
-    .flatMap((p) =>
+  const incompleteTasks = sortByDueDate(
+    plans.flatMap((p) =>
       p.tasks
-        .filter((t) => !t.completed)
-        .map((t) => ({
-          id: t.id,
-          name: t.title,
-          responsible: t.responsible,
+        .filter((task) => !task.completed)
+        .map((task) => ({
+          id: task.id,
+          name: task.title,
+          responsible: task.responsible,
           person: `${p.user.firstName} ${p.user.lastName}`,
-          urgent: (p.riskScore ?? 0) > 0.3,
+          dueDate: task.dueDate ?? null,
+          urgent: isTaskOverdue(task),
         })),
-    )
-    .slice(0, 5);
+    ),
+  ).slice(0, 5);
 
   const totalPending = plans.reduce((s, p) => s + p.tasks.filter((t) => !t.completed).length, 0);
 
   return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.onboarding.pendingTasks}</h3>
-        <span className="bg-amber-500 text-white text-[10px] font-bold w-6 h-6 rounded-full flex items-center justify-center">
+    <section className={CARD}>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-subheading font-semibold text-primary">{t.onboarding.pendingTasks}</h2>
+        <span className="min-w-6 rounded-full bg-surface px-2 py-0.5 text-center text-callout font-semibold tabular-nums text-secondary">
           {totalPending}
         </span>
       </div>
-      <div className="space-y-2">
-        {incompleteTasks.length === 0 && <p className="text-[11px] text-[#8B8B8B]">{t.onboarding.noPendingTasks}</p>}
+      <ul className="space-y-2">
+        {incompleteTasks.length === 0 && <li className="text-callout text-secondary">{t.onboarding.noPendingTasks}</li>}
         {incompleteTasks.map((task) => (
-          <div key={task.id} className="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2.5">
-            <div className="flex items-center gap-2">
+          <li key={task.id} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
               <DocIcon urgent={task.urgent} />
-              <div>
-                <p className="text-[11px] text-[#333] font-medium">{task.name}</p>
-                <p className="text-[10px] text-[#8B8B8B]">
+              <div className="min-w-0">
+                <p className="text-body font-medium text-primary">{task.name}</p>
+                <p className="text-callout text-secondary">
                   {task.person} — {ownerLabel(task.responsible)}
+                  {task.dueDate && ` · ${formatMessage(t.onboarding.taskDueOn, { date: formatDueDate(task.dueDate, locale) })}`}
                 </p>
               </div>
             </div>
-          </div>
+            {task.urgent && <StatusBadge tone="danger">{t.onboarding.taskOverdue}</StatusBadge>}
+          </li>
         ))}
         {totalPending > 5 && (
-          <p className="text-[10px] text-[#585858]">
-            {t.onboarding.morePendingTasks.replace('{count}', String(totalPending - 5))}
-          </p>
+          <li className="text-callout text-secondary">
+            {formatMessage(t.onboarding.morePendingTasks, { count: totalPending - 5 })}
+          </li>
         )}
-      </div>
-    </div>
+      </ul>
+    </section>
   );
 }

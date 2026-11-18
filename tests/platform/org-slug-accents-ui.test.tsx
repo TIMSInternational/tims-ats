@@ -8,6 +8,8 @@ vi.mock('../../apps/web/lib/trpc', () => ({
     platform: {
       createOrganization: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       createOrgInvitation: { useMutation: () => ({ mutateAsync: vi.fn() }) },
+      // The org modal reads existing organizations for its similar-name warning (D-15).
+      listOrganizationsMinimal: { useQuery: () => ({ data: [] }) },
     },
   },
 }));

@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
-import { toast } from '../../../../lib/toast';
-import { ErrorState } from '../../../../components';
+import { intlLocale } from '../../../../lib/format-utils';
+import { Button, EmptyState, ErrorState, Skeleton, StatusBadge } from '../../../../components';
+import type { StatusTone } from '../../../../components';
 import { LogCoachingModal } from './log-coaching-modal';
 import { CreateCommitmentModal } from './create-commitment-modal';
 
@@ -33,30 +34,20 @@ export interface CommitmentItem {
   creator: { id: string; firstName: string; lastName: string } | null;
 }
 
-const PRIORITY_BADGE: Record<string, { cls: string; labelKey: 'urgent' | 'pending' | 'scheduled' }> = {
-  urgent: { cls: 'bg-red-50 text-red-600', labelKey: 'urgent' },
-  pending: { cls: 'bg-amber-50 text-amber-600', labelKey: 'pending' },
-  scheduled: { cls: 'bg-green-50 text-green-600', labelKey: 'scheduled' },
+const PRIORITY_BADGE: Record<string, { tone: StatusTone; labelKey: 'urgent' | 'pending' | 'scheduled' }> = {
+  urgent: { tone: 'danger', labelKey: 'urgent' },
+  pending: { tone: 'warning', labelKey: 'pending' },
+  scheduled: { tone: 'info', labelKey: 'scheduled' },
 };
 
-const STATUS_BADGE: Record<string, { cls: string; labelKey: 'commitmentExpired' | 'commitmentInProgress' | 'commitmentCompleted' }> = {
-  expired: { cls: 'bg-red-50 text-red-600', labelKey: 'commitmentExpired' },
-  pending: { cls: 'bg-red-50 text-red-600', labelKey: 'commitmentExpired' },
-  in_progress: { cls: 'bg-amber-50 text-amber-600', labelKey: 'commitmentInProgress' },
-  completed: { cls: 'bg-green-50 text-green-600', labelKey: 'commitmentCompleted' },
+type CommitmentLabel = 'commitmentExpired' | 'commitmentInProgress' | 'commitmentCompleted' | 'commitmentPending';
+// Only a commitment past its due date reads "Vencido"; one not yet due is neutral "Pendiente".
+const STATUS_BADGE: Record<string, { tone: StatusTone; labelKey: CommitmentLabel }> = {
+  expired: { tone: 'danger', labelKey: 'commitmentExpired' },
+  pending: { tone: 'neutral', labelKey: 'commitmentPending' },
+  in_progress: { tone: 'warning', labelKey: 'commitmentInProgress' },
+  completed: { tone: 'success', labelKey: 'commitmentCompleted' },
 };
-
-function formatDate(d: string | Date): string {
-  const date = new Date(d);
-  return date.toLocaleDateString('es-CO', {
-    weekday: 'short', day: '2-digit', month: 'short',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
-
-function formatShortDate(d: string | Date): string {
-  return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 function getCommitmentStatus(status: string, dueDate: string | Date): string {
   if (status === 'completed') return 'completed';
@@ -72,17 +63,20 @@ function getPriority(status: string): string {
   return 'scheduled';
 }
 
+const CARD = 'min-w-0 rounded-xl border border-border bg-white shadow-card';
+const CARD_HEADER = 'flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 md:px-5';
+
 function SkeletonRows({ count }: { count: number }) {
   return (
-    <div className="divide-y divide-[#EDEDED]">
+    <div className="divide-y divide-border" aria-hidden="true">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="px-5 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gray-200 animate-pulse shrink-0" />
+        <div key={i} className="flex items-center gap-3 px-4 py-3 md:px-5">
+          <Skeleton className="size-9 shrink-0 rounded-lg" />
           <div className="flex-1 space-y-2">
-            <div className="h-3 w-32 bg-gray-200 rounded animate-pulse" />
-            <div className="h-2.5 w-48 bg-gray-200 rounded animate-pulse" />
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="h-2.5 w-48" />
           </div>
-          <div className="h-5 w-16 bg-gray-200 rounded-full animate-pulse" />
+          <Skeleton className="h-5 w-16 rounded-full" />
         </div>
       ))}
     </div>
@@ -94,117 +88,131 @@ interface CoachingPanelProps {
   commitments: CommitmentItem[];
   isLoading: boolean;
   isError?: boolean;
+  error?: unknown;
   onRetry?: () => void;
+  /** Display only: hide "Registrar sesión" / "Nuevo compromiso" from roles that cannot create. */
+  canCreate?: boolean;
 }
 
-export function CoachingPanel({ sessions, commitments, isLoading, isError, onRetry }: CoachingPanelProps) {
-  const { t } = useI18n();
+export function CoachingPanel({
+  sessions,
+  commitments,
+  isLoading,
+  isError,
+  error,
+  onRetry,
+  canCreate = true,
+}: CoachingPanelProps) {
+  const { t, locale } = useI18n();
   const [showCoach, setShowCoach] = useState(false);
   const [showCommit, setShowCommit] = useState(false);
+  const tag = intlLocale(locale);
+  const formatSessionDate = (d: string | Date) =>
+    new Date(d).toLocaleDateString(tag, {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  const formatShortDate = (d: string | Date) =>
+    new Date(d).toLocaleDateString(tag, { day: '2-digit', month: 'short', year: 'numeric' });
+  const nameOf = (u: { firstName: string; lastName: string } | null) =>
+    u ? `${u.firstName} ${u.lastName}` : t.performance.unknownPerson;
 
   return (
-    <div className="grid grid-cols-[1fr_480px] gap-4">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
       {/* Coaching Sessions */}
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
-          <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.coachingTitle}</h3>
-          <button
-            type="button"
-            onClick={() => setShowCoach(true)}
-            className="text-[10px] bg-[#DD0C15] text-white rounded-md px-2.5 py-1 font-medium hover:bg-red-700 transition"
-          >
-            {t.performance.logCoachingAction}
-          </button>
+      <section className={CARD} aria-labelledby="coaching-heading">
+        <div className={CARD_HEADER}>
+          <h2 id="coaching-heading" className="text-subheading font-semibold text-primary">
+            {t.performance.coachingTitle}
+          </h2>
+          {canCreate && (
+            <Button variant="secondary" size="sm" onClick={() => setShowCoach(true)}>
+              {t.performance.logCoachingAction}
+            </Button>
+          )}
         </div>
         {isLoading ? (
           <SkeletonRows count={4} />
         ) : isError ? (
-          <ErrorState onRetry={onRetry} />
+          <ErrorState size="compact" error={error} onRetry={onRetry} />
         ) : sessions.length === 0 ? (
-          <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
-            {t.performance.noSessionsScheduled}
-          </div>
+          <EmptyState size="compact" title={t.performance.noSessionsScheduled} />
         ) : (
-          <div className="divide-y divide-[#EDEDED]">
+          <ul className="divide-y divide-border">
             {sessions.map((s) => {
-              const priority = getPriority(s.status);
-              const badge = PRIORITY_BADGE[priority];
-              const coachName = s.leader ? `${s.leader.firstName} ${s.leader.lastName}` : 'N/A';
-              const coacheeName = s.employee ? `${s.employee.firstName} ${s.employee.lastName}` : 'N/A';
+              const badge = PRIORITY_BADGE[getPriority(s.status)];
               return (
-                <div key={s.id} className="px-5 py-3 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                <li key={s.id} className="flex items-center gap-3 px-4 py-3 md:px-5">
+                  <div
+                    className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-tint"
+                    aria-hidden="true"
+                  >
                     <CalendarIcon />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-medium text-[#333]">{formatDate(s.scheduledAt)}</div>
-                    <div className="text-[11px] text-[#585858]">
-                      {coachName} &rarr; {coacheeName}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-body font-medium text-primary">{formatSessionDate(s.scheduledAt)}</div>
+                    <div className="text-callout text-secondary">
+                      {nameOf(s.leader)} &rarr; {nameOf(s.employee)}
                     </div>
-                    <div className="text-[10px] text-[#8B8B8B]">{s.topic}</div>
+                    <div className="text-callout text-muted">{s.topic}</div>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${badge.cls}`}>
+                  <StatusBadge tone={badge.tone} className="shrink-0">
                     {t.performance[badge.labelKey]}
-                  </span>
-                </div>
+                  </StatusBadge>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
-      </div>
+      </section>
 
       {/* Commitments */}
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
-          <h3 className="text-[13px] font-semibold text-[#333]">{t.performance.commitmentsTitle}</h3>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowCommit(true)}
-              className="text-[10px] bg-[#DD0C15] text-white rounded-md px-2.5 py-1 font-medium hover:bg-red-700 transition"
-            >
+      <section className={CARD} aria-labelledby="commitments-heading">
+        <div className={CARD_HEADER}>
+          <h2 id="commitments-heading" className="text-subheading font-semibold text-primary">
+            {t.performance.commitmentsTitle}
+          </h2>
+          {canCreate && (
+            <Button variant="secondary" size="sm" onClick={() => setShowCommit(true)}>
               {t.performance.newCommitment}
-            </button>
-            <button onClick={() => toast(t.performance.viewAllComingSoon, { type: 'info' })} className="text-[10px] text-[#DD0C15] font-medium hover:underline">
-              {t.performance.viewAll}
-            </button>
-          </div>
+            </Button>
+          )}
         </div>
         {isLoading ? (
           <SkeletonRows count={4} />
         ) : isError ? (
-          <ErrorState onRetry={onRetry} />
+          <ErrorState size="compact" error={error} onRetry={onRetry} />
         ) : commitments.length === 0 ? (
-          <div className="px-5 py-8 text-center text-[12px] text-[#8B8B8B]">
-            {t.performance.noCommitmentsRegistered}
-          </div>
+          <EmptyState size="compact" title={t.performance.noCommitmentsRegistered} />
         ) : (
-          <div className="divide-y divide-[#EDEDED]">
+          <ul className="divide-y divide-border">
             {commitments.map((c) => {
               const resolvedStatus = getCommitmentStatus(c.status, c.dueDate);
               const badge = STATUS_BADGE[resolvedStatus] ?? STATUS_BADGE['in_progress'];
               const dateLabel = resolvedStatus === 'completed' ? t.performance.completed : t.performance.deadline;
-              const employeeName = c.employee ? `${c.employee.firstName} ${c.employee.lastName}` : 'N/A';
-              const leaderName = c.creator ? `${c.creator.firstName} ${c.creator.lastName}` : 'N/A';
               return (
-                <div key={c.id} className="px-5 py-2.5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-medium text-[#333]">
-                      {employeeName} &mdash; {c.description}
+                <li key={c.id} className="px-4 py-3 md:px-5">
+                  <div className="mb-1 flex items-start justify-between gap-2">
+                    <span className="text-body font-medium text-primary">
+                      {nameOf(c.employee)} &mdash; {c.description}
                     </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
+                    <StatusBadge tone={badge.tone} className="shrink-0">
                       {t.performance[badge.labelKey]}
-                    </span>
+                    </StatusBadge>
                   </div>
-                  <div className="text-[10px] text-[#8B8B8B]">
-                    {dateLabel}: {formatShortDate(c.dueDate)} &middot; {t.performance.leader}: {leaderName}
+                  <div className="text-callout text-secondary">
+                    {dateLabel}: <span className="tabular-nums">{formatShortDate(c.dueDate)}</span> &middot;{' '}
+                    {t.performance.leader}: {nameOf(c.creator)}
                   </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
-      </div>
+      </section>
       {showCoach && <LogCoachingModal onClose={() => setShowCoach(false)} />}
       {showCommit && <CreateCommitmentModal onClose={() => setShowCommit(false)} />}
     </div>
@@ -213,7 +221,14 @@ export function CoachingPanel({ sessions, commitments, isLoading, isError, onRet
 
 function CalendarIcon() {
   return (
-    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+    <svg
+      className="size-4 text-brand"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
       <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25" />
       <path d="M3 10.5h18" />
     </svg>

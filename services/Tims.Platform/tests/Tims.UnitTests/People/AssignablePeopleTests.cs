@@ -37,7 +37,8 @@ public sealed class AssignablePeopleTests
     [Fact]
     public void Rules_GateTheCallerOnThePickerActionAndApproversOnTheApprovePermission()
     {
-        Assert.Equal(new AssignablePurposeRule("interview", "create", null, null),
+        // An evaluator must be able to ACT: open the room (interview:read) and submit the scorecard (interview:create).
+        Assert.Equal(new AssignablePurposeRule("interview", "create", "interview", "create", EligibilityAlsoAction: "read"),
             AssignablePurposes.RuleFor(AssignablePurpose.InterviewEvaluator));
         // vacancy.submitForApproval is gated on vacancy:update (packages/api/src/routers/vacancy/approvals.ts).
         Assert.Equal(new AssignablePurposeRule("vacancy", "update", "vacancy", "approve"),
@@ -117,7 +118,19 @@ public sealed class AssignablePeopleTests
         Assert.Equal(expected, AssignablePurposes.IsAnyStaffMember(type, roles));
 
     [Fact]
-    public void RecruitmentPurposes_KeepListingEveryActiveMember_NewOnesListStaffOnly()
+    public void OnlyTheInterviewEvaluatorRule_NeedsASecondAction()
+    {
+        foreach (var purpose in Enum.GetValues<AssignablePurpose>())
+        {
+            var rule = AssignablePurposes.RuleFor(purpose);
+            Assert.Equal(purpose == AssignablePurpose.InterviewEvaluator ? "read" : null, rule.EligibilityAlsoAction);
+            // A second action only ever narrows a permission-filtered list.
+            if (rule.EligibilityAlsoAction is not null) Assert.NotNull(rule.EligibilityModule);
+        }
+    }
+
+    [Fact]
+    public void RecruitmentPurposes_PredateStaffOnly_NewOnesListStaffOnly()
     {
         foreach (var purpose in Enum.GetValues<AssignablePurpose>())
         {
@@ -129,11 +142,13 @@ public sealed class AssignablePeopleTests
     }
 
     [Theory]
+    // The evaluator list is permission-filtered (people who can act on an interview), not the whole directory:
+    // a leader or committee member scheduling on their team's vacancy picks from it.
     [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Organization, true)]
     [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Company, true)]
-    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Unit, false)]
-    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Team, false)]
-    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Own, false)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Unit, true)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Team, true)]
+    [InlineData(AssignablePurpose.InterviewEvaluator, AccessScope.Own, true)]
     [InlineData(AssignablePurpose.VacancyApprover, AccessScope.Unit, true)]
     [InlineData(AssignablePurpose.VacancyApprover, AccessScope.Own, true)]
     [InlineData(AssignablePurpose.OfferApprover, AccessScope.Team, true)]

@@ -135,9 +135,28 @@ describe('scopeWhereFor — people entities (user-anchored)', () => {
     });
   });
 
-  it('onboardingPlan adds the buddy arm', async () => {
+  it('onboardingPlan @team adds the buddy arm and the hiring-leader arm (B-09)', async () => {
+    // The leader also sees the plans of people hired into a vacancy it can see, through the hire
+    // snapshot (hire_predictions) — the same deleted-vacancy-guarded vacancy fragment offers use.
     expect(await scopeWhereFor('onboardingPlan', ctx('team'), ME)).toEqual({
-      OR: [{ userId: { in: ['me', 'u2'] } }, { buddyId: ME }],
+      OR: [
+        { userId: { in: ['me', 'u2'] } },
+        { buddyId: ME },
+        {
+          user: {
+            hirePredictions: {
+              some: { vacancy: { AND: [{ OR: [{ teamId: { in: ['t1', 't2'] } }, { assignedTo: ME }] }, { deletedAt: null }] } },
+            },
+          },
+        },
+      ],
+    });
+  });
+
+  it('onboardingPlan @own and @unit keep only the subject and buddy arms', async () => {
+    expect(await scopeWhereFor('onboardingPlan', ctx('own'), ME)).toEqual({ OR: [{ userId: ME }, { buddyId: ME }] });
+    expect(await scopeWhereFor('onboardingPlan', ctx('unit'), ME)).toEqual({
+      OR: [{ userId: { in: ['u1', 'u2'] } }, { buddyId: ME }],
     });
   });
 

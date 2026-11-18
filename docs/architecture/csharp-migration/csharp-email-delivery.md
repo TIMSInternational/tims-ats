@@ -36,7 +36,7 @@ Read-only infrastructure observations on 2026-09-14:
 - Its instance role is `tims-platform-api-instance-role`; attached policies are empty and its only inline policy grants Secrets Manager reads. It has no SES send grant.
 - The service has no `Email__*` configuration values inspected above.
 - No SES identities were listed in this account's `us-west-2`. Verified domains exist in `us-east-1`, including `timsint.com`, `timssuite.com` and `nexadev.ai`.
-- TS source defaults to region `us-east-1` and `noreply@nexadev.ai`; source defaults do not establish the current deployed sender override.
+- TS source defaults to region `us-east-1` and `noreply@timssuite.com` (`PLATFORM_EMAIL_FROM` overrides it); source defaults do not establish the current deployed sender override.
 
 Before activation: verify the actual sender and SES account/sandbox status; grant only `ses:SendEmail` on its verified identity with an exact `ses:FromAddress` condition to the consuming workload role; add explicit nonsecret runtime configuration while preserving the full existing App Runner environment/secret maps. Do not give the ECR access role mail permissions. This slice makes no IAM or runtime mutation and sends no real message.
 

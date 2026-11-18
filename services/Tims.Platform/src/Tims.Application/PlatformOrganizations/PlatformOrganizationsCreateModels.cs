@@ -1,23 +1,27 @@
 namespace Tims.Application.PlatformOrganizations;
 
 /// <summary>
-/// Validated input for <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>),
+/// Validated input for <c>createOrganization</c> (<c>routers/platform/organizations.ts:151-248</c>),
 /// Phase-5 slice 21 / issue #76.
 ///
 /// <para>Four fields are REQUIRED in Zod (<c>:106-109</c>) and therefore non-nullable here.
 /// <see cref="BillingEmail"/> is the only <c>.optional()</c> member (<c>:110</c>), so <c>null</c> means
 /// ABSENT — <c>.optional()</c> rejects an explicit JSON <c>null</c>, exactly as in slice 20.</para>
 ///
-/// <para>There is NO <c>settings</c>, <c>domain</c>, <c>logo</c> or <c>isActive</c> member: the TS
-/// <c>organization.create</c> writes only <c>name</c>, <c>slug</c>, <c>plan</c> and <c>billingEmail</c>
-/// (<c>:115-120</c>) and leaves everything else to the Prisma/DB defaults.</para>
+/// <para>There is NO <c>domain</c>, <c>logo</c> or <c>isActive</c> member: the TS
+/// <c>organization.create</c> writes only <c>name</c>, <c>slug</c>, <c>plan</c>, <c>billingEmail</c> and — when
+/// a <see cref="LocaleProfile"/> is sent — <c>settings</c>, leaving everything else to the Prisma/DB defaults.</para>
+///
+/// <para><see cref="LocaleProfile"/> is <c>.optional()</c> too ("Nueva organización" always sends it): null =
+/// the pre-profile behaviour, empty settings and a CR company on the column defaults.</para>
 /// </summary>
 public sealed record PlatformOrganizationCreateInput(
     string Name,
     string Slug,
     string Plan,
     string AdminEmail,
-    string? BillingEmail);
+    string? BillingEmail,
+    OrgLocaleProfile? LocaleProfile = null);
 
 /// <summary>
 /// What <c>CreateAsync</c> did.

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
 using Tims.Application.Audit;
+using Tims.Application.CandidateConsent;
 using Tims.Application.InterviewJoin;
 
 namespace Tims.Infrastructure.InterviewJoin;
@@ -33,6 +34,9 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
     /// organization's suspension (<c>is_active</c>/<c>deleted_at</c>, the same predicate the API-key lockout uses)
     /// and the application's closure. An interview whose <c>application_id</c> no longer resolves inside its own
     /// organization is treated as CLOSED, never as "no application" — fail closed.</para>
+    /// <para>#346 — a withdrawn recruitment consent on this candidate, or another row in the same organization
+    /// with the same nonblank normalized email, also revokes the link. This mirrors the candidate consent guard
+    /// used by the TypeScript recruitment flows; consent in another organization cannot revoke this link.</para>
     /// </remarks>
     public async Task<CandidateJoinInterview?> FindByTokenHashAsync(string tokenHash, CancellationToken ct)
     {
@@ -42,7 +46,19 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
               i.candidate_join_token_expires_at,i.meeting_url,c.first_name,c.last_name,
               (i.application_id IS NOT NULL AND (a.id IS NULL OR a.status IN ('rejected','withdrawn')
                 OR a.rejected_at IS NOT NULL)) AS application_closed,
-              (o.id IS NULL OR NOT o.is_active OR o.deleted_at IS NOT NULL) AS organization_inactive
+              (o.id IS NULL OR NOT o.is_active OR o.deleted_at IS NOT NULL) AS organization_inactive,
+              EXISTS (
+                SELECT 1
+                FROM data_consents dc
+                JOIN candidates consent_subject ON consent_subject.id=dc.subject_user_id
+                  AND consent_subject.organization_id=i.organization_id
+                WHERE dc.organization_id=i.organization_id
+                  AND dc.consent_type=@consentType
+                  AND dc.withdrawn_at IS NOT NULL
+                  AND (consent_subject.id=i.candidate_id
+                    OR (btrim(c.email)<>''
+                      AND lower(btrim(consent_subject.email))=lower(btrim(c.email))))
+              ) AS consent_withdrawn
             FROM interviews i
             JOIN candidates c ON c.id=i.candidate_id AND c.organization_id=i.organization_id
               AND c.deleted_at IS NULL
@@ -51,6 +67,10 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
             WHERE i.candidate_join_token_hash=@hash
             """, connection);
         command.Parameters.Add(new NpgsqlParameter("hash", NpgsqlDbType.Varchar) { Value = tokenHash });
+        command.Parameters.Add(new NpgsqlParameter("consentType", NpgsqlDbType.Text)
+        {
+            Value = CandidateConsentConstants.ConsentType,
+        });
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct)) return null;
         return new(reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(3),
@@ -61,7 +81,8 @@ public sealed class CandidateInterviewJoinRepository(CandidateInterviewJoinDataS
             reader.IsDBNull(9) ? null : reader.GetString(9),
             reader.IsDBNull(10) ? null : reader.GetString(10),
             ApplicationClosed: reader.GetBoolean(11),
-            OrganizationInactive: reader.GetBoolean(12));
+            OrganizationInactive: reader.GetBoolean(12),
+            ConsentWithdrawn: reader.GetBoolean(13));
     }
 
     /// <remarks>

@@ -2,19 +2,23 @@
 
 import { useState, useCallback } from 'react';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage, pluralize } from '../../../../lib/i18n/format';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
+import { Button, Modal, PageHeader, inputClasses } from '../../../../components';
 import { TalentPoolFilters } from './talent-pool-filters';
-import { TalentPoolAiBar } from './talent-pool-ai-bar';
 import { TalentPoolResultsHeader } from './talent-pool-results-header';
 import { TalentPoolTable } from './talent-pool-table';
 import { CreateModal } from '../candidates/create-modal';
+import { createErrorMessage } from '../candidates/create-modal.helpers';
 
 export interface TalentPoolFilterState {
   search: string;
   poolTypes: string[];
   fitMin: number;
   skills: string[];
+  // Kept in the state shape, but not shown: the list query does not support them yet, and a filter that
+  // changes nothing must not be offered (searching.md › Best practices).
   locations: string[];
   experienceLevels: string[];
   sort: string;
@@ -31,10 +35,12 @@ const DEFAULT_FILTERS: TalentPoolFilterState = {
 };
 
 export default function TalentPoolsPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const tp = t.talentPool;
   const [filters, setFilters] = useState<TalentPoolFilterState>(DEFAULT_FILTERS);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
 
   const updateFilter = useCallback(<K extends keyof TalentPoolFilterState>(key: K, value: TalentPoolFilterState[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -58,15 +64,22 @@ export default function TalentPoolsPage() {
   const utils = trpc.useUtils();
   const createMutation = trpc.candidate.create.useMutation({
     onSuccess: () => {
-      toast(t.talentPool.candidateAdded);
+      toast(tp.candidateAdded);
       utils.candidate.list.invalidate();
       setShowCreateModal(false);
     },
-    onError: () => toast(t.talentPool.candidateCreateError, { type: 'error' }),
+    // Said twice on purpose: in the dialog, next to the step it concerns, and as a toast (frontend.md).
+    onError: (error) => toast(createErrorMessage(error.data?.code, t.candidates), { type: 'error' }),
   });
+  const openCreate = () => {
+    createMutation.reset();
+    setShowCreateModal(true);
+  };
 
   const candidates = query.data?.items ?? [];
   const nextCursor = query.data?.nextCursor;
+  const activeFilterCount = filters.poolTypes.length + (filters.fitMin > 0 ? 1 : 0) + filters.skills.length;
+  const hasFilters = activeFilterCount > 0 || filters.search !== '';
 
   const exportMutation = trpc.candidate.pool.export.useMutation();
   const handleExport = async () => {
@@ -83,64 +96,87 @@ export default function TalentPoolsPage() {
       a.click();
       URL.revokeObjectURL(url);
       if (result.truncated) {
-        toast(t.talentPool.exportTruncated.replace('{count}', String(result.count)), { type: 'info' });
+        toast(tp.exportTruncated.replace('{count}', String(result.count)), { type: 'info' });
       } else {
-        toast(`${t.talentPool.export}: ${result.count}`, { type: 'success' });
+        toast(pluralize(result.count, { one: tp.exportDoneOne, other: tp.exportDoneOther }, locale), {
+          type: 'success',
+        });
       }
     } catch {
-      toast(t.common.error, { type: 'error' });
+      toast(t.common.exportError, { type: 'error' });
     }
   };
-  const handleRecontact = () => toast(t.talentPool.recontactStarted);
+
+  const filterButtonLabel =
+    activeFilterCount > 0 ? formatMessage(tp.filtersCount, { n: activeFilterCount }) : tp.filters;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Top Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
-        <span className="text-sm font-medium text-[#1F114C]">{t.talentPool.title}</span>
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <button
-            onClick={handleExport}
-            disabled={exportMutation.isPending}
-            className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] disabled:opacity-50"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            {t.talentPool.export}
-          </button>
-          <button
-            onClick={handleRecontact}
-            className="flex items-center gap-1.5 bg-[#1F114C] text-white px-4 h-8 rounded-lg text-[12px] font-medium"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-            </svg>
-            {t.talentPool.recontactCampaign}
-          </button>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            {t.talentPool.addToPool}
-          </button>
-        </div>
-      </div>
+    <div className="flex flex-col md:h-full md:overflow-hidden">
+      <PageHeader
+        title={tp.title}
+        description={tp.description}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={handleExport}
+              loading={exportMutation.isPending}
+              loadingLabel={t.common.exporting}
+            >
+              {tp.exportCsv}
+            </Button>
+            <Button onClick={openCreate}>{tp.addToPool}</Button>
+          </>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex flex-1 overflow-y-auto md:overflow-hidden">
-        <TalentPoolFilters filters={filters} onFilterChange={updateFilter} onClear={clearFilters} />
-        <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex min-h-0 flex-1 md:overflow-hidden">
+        <TalentPoolFilters
+          filters={filters}
+          onFilterChange={updateFilter}
+          onClear={clearFilters}
+          className="hidden w-64 shrink-0 overflow-y-auto border-r border-border p-4 md:block"
+        />
+        <div className="min-w-0 flex-1 px-4 py-5 md:overflow-y-auto md:px-6 md:py-6">
+          <div className="mb-4 flex items-center gap-2">
+            <div className="relative min-w-0 flex-1 md:max-w-md">
+              <label htmlFor="pool-search" className="sr-only">
+                {tp.searchLabel}
+              </label>
+              <svg
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+              <input
+                id="pool-search"
+                type="search"
+                value={filters.search}
+                onChange={(e) => updateFilter('search', e.target.value)}
+                placeholder={tp.searchCandidate}
+                className={inputClasses('md', 'pl-9')}
+              />
+            </div>
+            <Button variant="secondary" className="md:hidden" onClick={() => setShowFilterSheet(true)}>
+              {filterButtonLabel}
+            </Button>
+          </div>
+
           <TalentPoolResultsHeader totalCount={candidates.length} filters={filters} onFilterChange={updateFilter} />
-          <TalentPoolAiBar />
           <TalentPoolTable
             candidates={candidates}
             isLoading={query.isLoading}
             isError={query.isError}
+            error={query.error}
             onRetry={() => query.refetch()}
+            hasFilters={hasFilters}
+            onClearFilters={clearFilters}
             nextCursor={nextCursor}
             onNextPage={() => setCursor(nextCursor)}
             onPrevPage={() => setCursor(undefined)}
@@ -149,11 +185,22 @@ export default function TalentPoolsPage() {
         </div>
       </div>
 
+      {showFilterSheet && (
+        <Modal
+          title={tp.filters}
+          onClose={() => setShowFilterSheet(false)}
+          footer={<Button onClick={() => setShowFilterSheet(false)}>{tp.showResults}</Button>}
+        >
+          <TalentPoolFilters filters={filters} onFilterChange={updateFilter} onClear={clearFilters} hideTitle />
+        </Modal>
+      )}
+
       {showCreateModal && (
         <CreateModal
           onConfirm={(data) => createMutation.mutate(data)}
           onClose={() => setShowCreateModal(false)}
           isPending={createMutation.isPending}
+          errorCode={createMutation.error ? (createMutation.error.data?.code ?? 'UNKNOWN') : undefined}
         />
       )}
     </div>

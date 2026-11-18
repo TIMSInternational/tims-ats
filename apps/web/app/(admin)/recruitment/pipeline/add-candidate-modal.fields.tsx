@@ -1,14 +1,14 @@
 'use client';
 
-import {
-  SOURCES,
-  POOL_TYPES,
-  EXPERIENCE_LEVELS,
-  inputCls,
-  labelCls,
-  textareaCls,
-} from './add-candidate-modal.helpers';
+import { SOURCES, EXPERIENCE_LEVELS } from './add-candidate-modal.helpers';
 import { useI18n } from '../../../../lib/i18n';
+import { Field, Select, TextArea, TextInput } from '../../../../components';
+import { AddCandidateSummary } from './add-candidate-summary';
+import {
+  CANDIDATE_STAFF_POOL_TYPES,
+  candidatePoolOptionLabel,
+  candidateSourceLabel,
+} from '../../../../lib/candidate-labels';
 
 interface Step1FieldsProps {
   firstName: string;
@@ -38,30 +38,59 @@ export function Step1Fields({
   const { t } = useI18n();
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.formFirstName}</label>
-          <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="Maria" autoFocus />
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.formLastName}</label>
-          <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={120} className={inputCls} placeholder={t.candidates.formLastNamePlaceholder} />
-        </div>
+      <p className="text-callout text-secondary">{t.pipeline.requiredNote}</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t.candidates.formFirstName} required>
+          <TextInput
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            maxLength={120}
+            autoComplete="off"
+            placeholder={t.pipeline.addCandidateFirstNamePlaceholder}
+            autoFocus
+          />
+        </Field>
+        <Field label={t.candidates.formLastName} required>
+          <TextInput
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            maxLength={120}
+            autoComplete="off"
+            placeholder={t.candidates.formLastNamePlaceholder}
+          />
+        </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.email} *</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} className={inputCls} placeholder="maria.lopez@gmail.com" />
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.phone}</label>
-          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30} className={inputCls} placeholder="+57 310 123 4567" />
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t.candidates.email} required>
+          <TextInput
+            type="email"
+            inputMode="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            maxLength={254}
+            autoComplete="off"
+            placeholder="maria.lopez@gmail.com"
+          />
+        </Field>
+        <Field label={t.candidates.phone}>
+          <TextInput
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            maxLength={30}
+            autoComplete="off"
+            placeholder={t.candidates.formPhonePlaceholder}
+          />
+        </Field>
       </div>
-      <div>
-        <label className={labelCls}>{t.candidates.location}</label>
-        <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formLocationPlaceholder} />
-      </div>
+      <Field label={t.candidates.location}>
+        <TextInput
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          maxLength={200}
+          placeholder={t.candidates.formLocationPlaceholder}
+        />
+      </Field>
     </div>
   );
 }
@@ -98,37 +127,63 @@ export function Step2Fields({
   const { t } = useI18n();
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.formCurrentTitleLabel}</label>
-          <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formCurrentTitlePlaceholder} />
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.formCurrentCompanyLabel}</label>
-          <input type="text" value={currentCompany} onChange={(e) => setCurrentCompany(e.target.value)} maxLength={200} className={inputCls} placeholder="MercadoLibre" />
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t.candidates.formCurrentTitleLabel}>
+          <TextInput
+            value={currentTitle}
+            onChange={(e) => setCurrentTitle(e.target.value)}
+            maxLength={200}
+            placeholder={t.candidates.formCurrentTitlePlaceholder}
+            autoFocus
+          />
+        </Field>
+        <Field label={t.candidates.formCurrentCompanyLabel}>
+          <TextInput
+            value={currentCompany}
+            onChange={(e) => setCurrentCompany(e.target.value)}
+            maxLength={200}
+            placeholder="MercadoLibre"
+          />
+        </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.formYearsExpLabel}</label>
-          <select value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)} className={`${inputCls} bg-white`}>
-            {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.linkedinUrl}</label>
-          <input type="url" value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} maxLength={2048} className={inputCls} placeholder="https://linkedin.com/in/maria-lopez" />
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={t.candidates.formYearsExpLabel}>
+          <Select value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)}>
+            {EXPERIENCE_LEVELS.map((l) => (
+              <option key={l.value} value={l.value}>
+                {t.pipeline.experienceLevels[l.labelKey]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t.candidates.linkedinUrl}>
+          <TextInput
+            type="url"
+            inputMode="url"
+            value={linkedinUrl}
+            onChange={(e) => setLinkedinUrl(e.target.value)}
+            maxLength={2048}
+            placeholder="https://linkedin.com/in/maria-lopez"
+          />
+        </Field>
       </div>
-      <div>
-        <label className={labelCls}>{t.candidates.formKeySkillsLabel}</label>
-        <input type="text" value={skills} onChange={(e) => setSkills(e.target.value)} maxLength={500} className={inputCls} placeholder={t.candidates.formKeySkillsPlaceholder} />
-        <p className="text-[10px] text-[#8B8B8B] mt-1">{t.candidates.formSkillsHint}</p>
-      </div>
-      <div>
-        <label className={labelCls}>{t.candidates.formRecruiterNotesLabel}</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} className={textareaCls} placeholder={t.candidates.formRecruiterNotesPlaceholder} />
-      </div>
+      <Field label={t.candidates.formKeySkillsLabel} help={t.candidates.formSkillsHint}>
+        <TextInput
+          value={skills}
+          onChange={(e) => setSkills(e.target.value)}
+          maxLength={500}
+          placeholder={t.candidates.formKeySkillsPlaceholder}
+        />
+      </Field>
+      <Field label={t.candidates.formRecruiterNotesLabel}>
+        <TextArea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          maxLength={1000}
+          rows={3}
+          placeholder={t.candidates.formRecruiterNotesPlaceholder}
+        />
+      </Field>
     </div>
   );
 }
@@ -167,93 +222,75 @@ export function Step3Fields({
   const { t } = useI18n();
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formHowCandidateArrived}</p>
-        <div className="grid grid-cols-2 gap-2">
+      {/* Native radios styled as tiles: the chosen source is exposed to screen readers, not only by colour
+          (entering-data.md). */}
+      <fieldset>
+        <legend className="mb-3 text-body font-semibold text-brand">{t.candidates.formHowCandidateArrived}</legend>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {SOURCES.map((s) => (
-            <button
-              key={s.value}
-              type="button"
-              onClick={() => setSource(s.value)}
-              className={`text-left px-3 py-2.5 rounded-lg border text-[12px] transition ${
-                source === s.value
-                  ? 'border-[#1F114C] bg-[#F0EEF5] text-[#1F114C] font-medium'
-                  : 'border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
-              }`}
+            <label
+              key={s}
+              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-field-border px-3 py-2 text-body text-secondary transition-colors hover:bg-surface has-[:checked]:border-brand has-[:checked]:bg-brand-tint has-[:checked]:font-medium has-[:checked]:text-brand"
             >
-              {s.label}
-            </button>
+              <input
+                type="radio"
+                name="candidateSource"
+                value={s}
+                checked={source === s}
+                onChange={() => setSource(s)}
+                className="size-4 shrink-0 accent-brand"
+              />
+              {candidateSourceLabel(s, t.candidates)}
+            </label>
           ))}
         </div>
-      </div>
+      </fieldset>
 
       {source === 'referral' && (
-        <div>
-          <label className={labelCls}>{t.candidates.formReferrerNameLabel}</label>
-          <input type="text" value={referrerName} onChange={(e) => setReferrerName(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formReferrerNamePlaceholder} />
-        </div>
+        <Field label={t.candidates.formReferrerNameLabel}>
+          <TextInput
+            value={referrerName}
+            onChange={(e) => setReferrerName(e.target.value)}
+            maxLength={200}
+            placeholder={t.candidates.formReferrerNamePlaceholder}
+          />
+        </Field>
       )}
 
-      <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formCandidateTypeLabel}</p>
+      <fieldset>
+        <legend className="mb-3 text-body font-semibold text-brand">{t.candidates.formCandidateTypeLabel}</legend>
         <div className="space-y-2">
-          {POOL_TYPES.map((p) => (
+          {CANDIDATE_STAFF_POOL_TYPES.map((p) => (
             <label
-              key={p.value}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ${
-                poolType === p.value
-                  ? 'border-[#1F114C] bg-[#F0EEF5]'
-                  : 'border-[#EDEDED] hover:bg-[#F6F6F6]'
-              }`}
+              key={p}
+              className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-field-border px-3 py-2 transition-colors hover:bg-surface has-[:checked]:border-brand has-[:checked]:bg-brand-tint"
             >
               <input
                 type="radio"
                 name="poolType"
-                value={p.value}
-                checked={poolType === p.value}
+                value={p}
+                checked={poolType === p}
                 onChange={(e) => setPoolType(e.target.value)}
-                className="w-4 h-4 text-[#1F114C] focus:ring-[#1F114C]/20"
+                className="size-4 shrink-0 accent-brand"
               />
-              <span className={`text-[12px] ${poolType === p.value ? 'text-[#1F114C] font-medium' : 'text-[#585858]'}`}>{p.label}</span>
+              <span className={`text-body ${poolType === p ? 'font-medium text-brand' : 'text-secondary'}`}>
+                {candidatePoolOptionLabel(p, t.candidates)}
+              </span>
             </label>
           ))}
         </div>
-      </div>
+      </fieldset>
 
-      {/* Summary */}
-      <div className="border-t border-[#EDEDED] pt-4">
-        <p className="text-[13px] font-medium text-[#1F114C] mb-2">Resumen</p>
-        <div className="bg-[#F6F6F6] rounded-lg p-3 space-y-1.5">
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Candidato:</span>
-            <span className="text-[12px] text-[#333] font-medium">{firstName} {lastName}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Email:</span>
-            <span className="text-[12px] text-[#333]">{email}</span>
-          </div>
-          {currentTitle && (
-            <div className="flex justify-between">
-              <span className="text-[12px] text-[#585858]">Cargo:</span>
-              <span className="text-[12px] text-[#333]">{currentTitle}{currentCompany ? ` en ${currentCompany}` : ''}</span>
-            </div>
-          )}
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Fuente:</span>
-            <span className="text-[12px] text-[#333]">{SOURCES.find((s) => s.value === source)?.label}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Vacante:</span>
-            <span className="text-[12px] text-[#333]">{vacancyTitle}</span>
-          </div>
-          {skills.trim() && (
-            <div className="flex justify-between">
-              <span className="text-[12px] text-[#585858]">Skills:</span>
-              <span className="text-[12px] text-[#333]">{skills.split(',').slice(0, 4).map((s) => s.trim()).join(', ')}{skills.split(',').length > 4 ? '...' : ''}</span>
-            </div>
-          )}
-        </div>
-      </div>
+      <AddCandidateSummary
+        firstName={firstName}
+        lastName={lastName}
+        email={email}
+        currentTitle={currentTitle}
+        currentCompany={currentCompany}
+        source={source}
+        skills={skills}
+        vacancyTitle={vacancyTitle}
+      />
     </div>
   );
 }

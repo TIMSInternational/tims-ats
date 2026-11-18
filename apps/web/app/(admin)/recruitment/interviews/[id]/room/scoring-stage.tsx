@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../../lib/i18n';
+import { Button } from '../../../../../../components/button';
 
 interface ScoringStageProps {
   candidateName: string;
@@ -30,34 +31,33 @@ export function ScoringStage({
 }: ScoringStageProps) {
   const { t } = useI18n();
 
+  // The white work panel (not the dark video stage): there is no call to frame. Below md it is a compact
+  // header row so the scorecard, the actual task, starts above the fold (layout.md › Visual hierarchy).
   return (
-    <div className="flex-1 flex items-center justify-center bg-[#0a0a0a] p-6">
-      <div className="max-w-sm text-center">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#1F114C] to-[#5C4B99] flex items-center justify-center mx-auto mb-5">
-          <span className="text-white text-2xl font-bold">{candidateInitials}</span>
+    <div className="flex flex-1 items-start bg-surface p-4 md:items-center md:justify-center md:p-6">
+      <div className="flex w-full items-start gap-3 md:max-w-sm md:flex-col md:items-center md:text-center">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand md:mb-3 md:size-16" aria-hidden="true">
+          <span className="text-subheading font-semibold text-white md:text-xl">{candidateInitials}</span>
         </div>
-        <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
-        <p className="text-white/50 text-[13px] mb-2">{subtitle}</p>
-        {location && (
-          <p className="text-white/50 text-[12px] mb-2 break-words">
-            {/* Function replacer: a `$&`-style pattern in user-entered text must stay literal. */}
-            {t.interviewRoom.locationValue.replace('{location}', () => location)}
+        <div className="min-w-0 flex-1">
+          <p className="text-heading font-semibold text-primary">{candidateName}</p>
+          <p className="text-callout text-secondary">{subtitle}</p>
+          {location && (
+            <p className="mt-1 break-words text-callout text-secondary">
+              {/* Function replacer: a `$&`-style pattern in user-entered text must stay literal. */}
+              {t.interviewRoom.locationValue.replace('{location}', () => location)}
+            </p>
+          )}
+          <p className="mt-3 text-callout text-primary">
+            {onJoinVideo ? t.interviewRoom.scoringWithoutVideoNotice : t.interviewRoom.scoringInPersonNotice}
           </p>
-        )}
-        <p className="text-white/70 text-[12px] mt-4">
-          {onJoinVideo ? t.interviewRoom.scoringWithoutVideoNotice : t.interviewRoom.scoringInPersonNotice}
-        </p>
-        {onJoinVideo && (
-          <button
-            type="button"
-            onClick={onJoinVideo}
-            disabled={isJoining}
-            className="mt-5 text-white/80 border border-white/20 px-5 py-2 rounded-lg text-[13px] font-medium hover:bg-white/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isJoining ? t.interviews.roomConnecting : t.interviewRoom.joinVideoCall}
-          </button>
-        )}
-        {joinErrorMessage && <p className="text-red-400 text-[12px] mt-3">{joinErrorMessage}</p>}
+          {onJoinVideo && (
+            <Button variant="secondary" className="mt-4" onClick={onJoinVideo} loading={isJoining} loadingLabel={t.interviews.roomConnecting}>
+              {t.interviewRoom.joinVideoCall}
+            </Button>
+          )}
+          {joinErrorMessage && <p role="alert" className="mt-3 text-callout text-danger">{joinErrorMessage}</p>}
+        </div>
       </div>
     </div>
   );

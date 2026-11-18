@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -7,6 +8,7 @@ using Tims.Api.Configuration;
 using Tims.Api.Http;
 using Tims.Application.Audit;
 using Tims.Application.Identity;
+using Tims.Api.PlatformOrganizations;
 using Tims.Application.PlatformInvitations;
 
 namespace Tims.Api.PlatformInvitations;
@@ -33,7 +35,7 @@ public static class OrganizationInvitationCreateEndpoints
             // A committed creation is a success even if delivery is unconfirmed. The UI must show the
             // delivery result and refresh; no automatic retry or second creation is safe here.
             return Results.Ok(result);
-        }).RequireAuthorization().Accepts<OrganizationInvitationInput>("application/json")
+        }).RequireAuthorization().Accepts<OrganizationInvitationBody>("application/json")
             .Produces<OrganizationInvitationResponse>().Produces(400).Produces(401).Produces(403).Produces(409)
             .WithName("CreateOrganizationInvitation").WithTags("PlatformInvitations");
     }
@@ -61,9 +63,33 @@ public static class OrganizationInvitationCreateEndpoints
                 !String(root, "organizationSlug", out var slug)) return null;
             var plan = "trial";
             if (root.TryGetProperty("organizationPlan", out _) && !String(root, "organizationPlan", out plan)) return null;
-            return new(email, name, slug, plan);
+            if (!OrgLocaleProfileJson.TryRead(root, out var profile)) return null;
+            return new(email, name, slug, plan, profile);
         }
         catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// The published request shape (OpenAPI only — <see cref="ReadInput"/> parses the body). Non-nullable
+    /// init-only properties, so an explicit <c>null</c> (a 400) is not advertised as accepted.
+    /// </summary>
+    public sealed class OrganizationInvitationBody
+    {
+        [Required]
+        public string Email { get; init; } = string.Empty;
+
+        [Required]
+        public string OrganizationName { get; init; } = string.Empty;
+
+        [Required]
+        public string OrganizationSlug { get; init; } = string.Empty;
+
+        /// <summary>One of trial, starter, professional, enterprise. Absent = trial.</summary>
+        [System.ComponentModel.DefaultValue("trial")]
+        public string OrganizationPlan { get; init; } = "trial";
+
+        /// <summary>Optional country / time zone / currency / number locale (all four when present).</summary>
+        public OrgLocaleProfileBody LocaleProfile { get; init; } = new();
     }
 
     private static bool String(JsonElement root, string name, out string value)

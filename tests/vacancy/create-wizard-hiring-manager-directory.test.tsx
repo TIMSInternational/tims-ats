@@ -54,7 +54,7 @@ describe('vacancy create wizard — hiring manager picker (C# people directory)'
         <CreateModal onConfirm={onConfirm} onClose={() => {}} isPending={false} />
       </QueryClientProvider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar hiring manager' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir responsable…' }));
     fireEvent.click(await screen.findByRole('button', { name: /Eli Empleado/ }));
 
     const urls = fetchMock.mock.calls.map(([url]) => String(url));

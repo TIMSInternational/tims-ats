@@ -9,6 +9,7 @@ import {
   createBusinessUnitSchema,
   createTeamSchema,
 } from '@tims/shared';
+import { projectOrganizationProfile } from '../services/organization-profile';
 
 // Setup-checklist widget (first-login "what to do first" prompt, Sprint 1.2
 // Task 2). The 5 derived booleans are always read live — NOT cached.
@@ -33,7 +34,7 @@ interface SetupChecklistItems {
 }
 
 async function loadSetupChecklistItems(organizationId: string): Promise<SetupChecklistItems> {
-  const [org, companyCount, userCount, vacancyCount, publishedVacancyCount] = await Promise.all([
+  const [org, companyCount, teamInvitationCount, vacancyCount, publishedVacancyCount] = await Promise.all([
     db.organization.findUnique({ where: { id: organizationId }, select: { logo: true } }),
     // Live check, NOT hardcoded true: provisionOrgDefaults (Sprint 1.2 Task 1)
     // guarantees a Company for every org created from this sprint onward, but
@@ -42,14 +43,24 @@ async function loadSetupChecklistItems(organizationId: string): Promise<SetupChe
     // "ready" for those orgs. This count is one more entry in the existing
     // parallel query, on an organizationId-indexed table.
     db.company.count({ where: { organizationId } }),
-    db.user.count({ where: { organizationId } }),
+    // "Invita a tu equipo" means an admin of THIS organization sent a user invitation (tenant self-serve
+    // /settings/users writes the same table). A second admin invited by the platform owner accepting is
+    // not the org inviting its team, so a plain user count ticked this off too early (D-18).
+    db.platformInvitation.count({
+      where: {
+        organizationId,
+        type: 'user',
+        status: { not: 'revoked' },
+        invitedBy: { organizationId, isPlatformOwner: false },
+      },
+    }),
     db.vacancy.count({ where: { organizationId, deletedAt: null } }),
     db.vacancy.count({ where: { organizationId, status: 'published', deletedAt: null } }),
   ]);
 
   return {
     companyStructureReady: companyCount > 0,
-    teamInvited: userCount > 1,
+    teamInvited: teamInvitationCount > 0,
     brandingSet: org?.logo != null,
     firstVacancyPosted: vacancyCount > 0,
     firstVacancyPublished: publishedVacancyCount > 0,
@@ -57,17 +68,32 @@ async function loadSetupChecklistItems(organizationId: string): Promise<SetupChe
 }
 
 export const organizationRouter = router({
-  // Get current organization
+  // Current organization — an explicit, non-sensitive projection any staff session may read: the branding
+  // logo, the audit-log export day boundaries and the read-only "Datos de la organización" card (D-11). It
+  // used to return the full row (settings, billingEmail) plus every active company (taxId, legalName) to
+  // every role, committee and employee included (D-20). Now only the locale profile leaves the server:
+  // country, currency, time zone and language as the product resolves them, and the candidate contact
+  // mailbox when one is explicitly configured (a billing-email fallback is reported as a source, never as
+  // an address). Never the raw settings, the billing email or company tax data.
   getCurrent: protectedProcedure.query(async ({ ctx }) => {
-    return db.organization.findUnique({
+    const org = await db.organization.findUnique({
       where: { id: ctx.user.organizationId },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logo: true,
+        settings: true,
+        billingEmail: true,
         companies: {
           where: { isActive: true },
-          orderBy: { name: 'asc' },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+          select: { name: true, country: true, currency: true, timezone: true, language: true },
         },
       },
     });
+    return org ? projectOrganizationProfile(org) : null;
   }),
 
   // Update organization
@@ -213,7 +239,7 @@ export const organizationRouter = router({
         });
       } catch (err) {
         if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
-          throw new TRPCError({ code: 'CONFLICT', message: 'El usuario ya esta asignado a esta unidad' });
+          throw new TRPCError({ code: 'CONFLICT', message: 'El usuario ya está asignado a esta unidad' });
         }
         throw err;
       }
@@ -230,7 +256,7 @@ export const organizationRouter = router({
         },
       });
       if (result.count === 0) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
       return { success: true };
     }),

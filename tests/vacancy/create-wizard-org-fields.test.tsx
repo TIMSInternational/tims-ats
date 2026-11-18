@@ -79,7 +79,7 @@ describe('vacancy create wizard — org placement, approval/publish exclusivity,
     expect(listTeams).toHaveBeenLastCalledWith({ businessUnitId: BU }, expect.objectContaining({ enabled: true }));
     fireEvent.change(screen.getByLabelText('Equipo'), { target: { value: TEAM_B } });
     expect(screen.getByText(/no tiene líder/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar hiring manager' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Elegir responsable…' }));
     fireEvent.click(screen.getByRole('button', { name: /Hana Manager/ }));
     goToStep3();
     fireEvent.click(screen.getByRole('button', { name: 'Crear vacante' }));

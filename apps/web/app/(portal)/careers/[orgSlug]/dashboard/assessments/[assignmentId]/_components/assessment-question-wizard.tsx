@@ -1,8 +1,11 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { trpc } from '../../../../../../../../lib/trpc';
 import { useI18n } from '../../../../../../../../lib/i18n';
+import { formatMessage } from '../../../../../../../../lib/i18n/format';
+import { Button, ErrorState, ProgressBar, Skeleton } from '../../../../../../../../components';
+import { AssessmentTimer } from './assessment-timer';
 import { AssessmentQuestionCard, type QuestionCardAnswer, type QuestionCardOption } from './assessment-question-card';
 import { AssessmentSubmitConfirm } from './assessment-submit-confirm';
 import { mapAssessmentErrorMessage } from './assessment-error-messages';
@@ -36,6 +39,25 @@ export function AssessmentQuestionWizard({
   );
   const [showConfirm, setShowConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const promptRef = useRef<HTMLElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const movedRef = useRef(false);
+
+  // After Next/Back (not on first render) the new question's prompt takes focus, so it is read next
+  // (accessibility.md › Mobility); the progress line below is a polite live region.
+  useEffect(() => {
+    if (!movedRef.current) return;
+    promptRef.current?.focus();
+  }, [currentIndex]);
+  // A failed submit closes the dialog: focus goes to the error, so it is announced and the next Tab reaches the
+  // submit button again (feedback.md › Best practices).
+  useEffect(() => {
+    if (errorMessage) errorRef.current?.focus();
+  }, [errorMessage]);
+  const goTo = (index: number) => {
+    movedRef.current = true;
+    setCurrentIndex(index);
+  };
 
   const submitMutation = trpc.candidatePortal.submitAssessment.useMutation({
     onSuccess: () => {
@@ -84,10 +106,16 @@ export function AssessmentQuestionWizard({
   };
 
   if (questionsQuery.isLoading) {
-    return <p className="text-center text-[13px] text-[#8B8B8B] p-8">{t.assessmentPlayer.loading}</p>;
+    return (
+      <div aria-busy="true" className="mx-auto max-w-2xl space-y-3 p-4">
+        <span className="sr-only">{t.assessmentPlayer.loading}</span>
+        <Skeleton className="h-5 w-1/3" />
+        <Skeleton className="h-40 w-full rounded-2xl" />
+      </div>
+    );
   }
   if (questionsQuery.isError || !questionsQuery.data) {
-    return <p className="text-center text-[13px] text-[#B42318] p-8">{t.assessmentPlayer.loadError}</p>;
+    return <ErrorState title={t.assessmentPlayer.loadError} onRetry={() => void questionsQuery.refetch()} />;
   }
 
   // getAssessmentQuestions.useQuery's `options` field arrives typed as
@@ -103,7 +131,7 @@ export function AssessmentQuestionWizard({
   // deactivated after assignment) has nothing to render — bail out with the
   // generic load-error message rather than crashing on questions[0].id below.
   if (questions.length === 0) {
-    return <p className="text-center text-[13px] text-[#B42318] p-8">{t.assessmentPlayer.loadError}</p>;
+    return <ErrorState title={t.assessmentPlayer.loadError} />;
   }
 
   const total = questions.length;
@@ -119,59 +147,68 @@ export function AssessmentQuestionWizard({
     .map((q) => q.order + 1);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] p-4">
-      <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-6 space-y-5">
-        <div className="flex items-center justify-between text-[12px] text-[#8B8B8B]">
-          <span>
-            {t.assessmentPlayer.questionLabel} {currentIndex + 1} {t.assessmentPlayer.ofLabel} {total}
-          </span>
-          {remainingSeconds !== null && (
-            <span>
-              {t.assessmentPlayer.timerLabel} {String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:
-              {String(remainingSeconds % 60).padStart(2, '0')}
-            </span>
-          )}
+    <div className="min-h-dvh bg-surface p-4">
+      <div className="mx-auto max-w-2xl space-y-5 rounded-2xl bg-white p-5 shadow-card sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p aria-live="polite" className="text-callout font-medium text-secondary tabular-nums">
+            {formatMessage(t.assessmentPlayer.questionProgress, { current: currentIndex + 1, total })}
+          </p>
+          {remainingSeconds !== null && <AssessmentTimer remainingSeconds={remainingSeconds} />}
         </div>
-        <div className="h-1.5 rounded-full bg-[#EDEDED]">
-          <div
-            className="h-1.5 rounded-full bg-[#1F114C]"
-            style={{ width: `${((currentIndex + 1) / total) * 100}%` }}
-          />
-        </div>
+        <ProgressBar
+          value={currentIndex + 1}
+          max={total}
+          label={formatMessage(t.assessmentPlayer.questionProgress, { current: currentIndex + 1, total })}
+          hideLabel
+        />
 
-        {errorMessage && <p className="text-[12px] text-[#B42318]">{errorMessage}</p>}
+        {errorMessage && (
+          <p
+            ref={errorRef}
+            tabIndex={-1}
+            role="alert"
+            className="flex items-start gap-1 text-callout text-danger outline-none"
+          >
+            <svg
+              className="mt-px size-3.5 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v4m0 4h.01" strokeLinecap="round" />
+            </svg>
+            <span>{errorMessage}</span>
+          </p>
+        )}
 
         <AssessmentQuestionCard
+          ref={promptRef}
           question={question}
           answer={answers[question.id]}
           onChange={(a) => handleAnswerChange(question.id, a)}
         />
 
         <div className="flex gap-3 pt-2">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="lg"
+            className="flex-1"
             disabled={currentIndex === 0}
-            onClick={() => setCurrentIndex((i) => i - 1)}
-            className="flex-1 h-10 rounded-xl border border-[#E5E5E5] text-[13px] font-medium text-[#585858] disabled:opacity-40"
+            onClick={() => goTo(currentIndex - 1)}
           >
             {t.assessmentPlayer.wizardBack}
-          </button>
+          </Button>
           {isLast ? (
-            <button
-              type="button"
-              onClick={() => setShowConfirm(true)}
-              className="flex-1 h-10 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold"
-            >
+            <Button size="lg" className="flex-1" onClick={() => setShowConfirm(true)}>
               {t.assessmentPlayer.wizardReviewSubmit}
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
-              onClick={() => setCurrentIndex((i) => i + 1)}
-              className="flex-1 h-10 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold"
-            >
+            <Button size="lg" className="flex-1" onClick={() => goTo(currentIndex + 1)}>
               {t.assessmentPlayer.wizardNext}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -182,6 +219,11 @@ export function AssessmentQuestionWizard({
           isSubmitting={submitMutation.isPending}
           onConfirm={doSubmit}
           onCancel={() => setShowConfirm(false)}
+          onJumpTo={(order) => {
+            const index = questions.findIndex((q) => q.order + 1 === order);
+            setShowConfirm(false);
+            if (index !== -1) goTo(index);
+          }}
         />
       )}
     </div>

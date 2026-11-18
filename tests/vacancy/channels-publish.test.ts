@@ -18,6 +18,7 @@ const mockTx = () => ({
   },
   vacancy: {
     update: vi.fn().mockResolvedValue({ id: 'vac-1', status: 'published' }),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
 });
 
@@ -99,7 +100,7 @@ describe('vacancy.channels.publish — transaction wrapper', () => {
     expect(result).toMatchObject({ id: 'ch-1', status: 'published' });
   });
 
-  it('does not update vacancy status again when the vacancy is already published', async () => {
+  it('re-publishing an already-published vacancy still re-checks it inside the transaction (no-op write)', async () => {
     mockDb.vacancy.findFirst.mockResolvedValue({ id: VACANCY_ID, status: 'published' });
     const caller = await makeCaller();
 

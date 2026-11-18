@@ -1,7 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
-import { Modal } from '../../../../components';
+import { Button, Modal } from '../../../../components';
 import { CommitteeMembersPanel } from './committee-members-panel';
 
 interface CalibrationModalProps {
@@ -18,16 +18,18 @@ export function CalibrationModal({ sessionId, period, onClose }: CalibrationModa
   const { t } = useI18n();
 
   return (
-    <Modal title={`${t.committee.committeeTitle} · ${period}`} onClose={onClose}>
+    <Modal
+      title={`${t.committee.committeeTitle} · ${period}`}
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end">
+          <Button variant="secondary" onClick={onClose}>
+            {t.committee.close}
+          </Button>
+        </div>
+      }
+    >
       <CommitteeMembersPanel sessionId={sessionId} />
-      <div className="flex justify-end mt-5">
-        <button
-          onClick={onClose}
-          className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-        >
-          {t.committee.close}
-        </button>
-      </div>
     </Modal>
   );
 }

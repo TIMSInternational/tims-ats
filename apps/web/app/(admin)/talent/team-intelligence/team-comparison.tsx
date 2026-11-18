@@ -1,27 +1,38 @@
 'use client';
 
-import React from 'react';
 import { EmptyState } from '../../../../components/empty-state';
 
 interface TeamComparisonProps {
   t: {
+    teamComparison: string;
     teamComparisonEmptyTitle: string;
     teamComparisonEmptyBody: string;
   };
 }
 
+/** A view that is not built yet: its name and one plain line, compact (layout.md › Visual hierarchy). */
 export function TeamComparison({ t }: TeamComparisonProps) {
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+    <li className="rounded-lg border border-border p-3">
+      <h3 className="text-body font-semibold text-brand">{t.teamComparison}</h3>
       <EmptyState
+        size="compact"
+        className="items-start px-0 pb-0 text-left"
         icon={
-          <svg className="w-8 h-8 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <svg
+            className="size-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
             <path d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
           </svg>
         }
-        message={t.teamComparisonEmptyTitle}
+        title={t.teamComparisonEmptyTitle}
         description={t.teamComparisonEmptyBody}
       />
-    </div>
+    </li>
   );
 }

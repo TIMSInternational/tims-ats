@@ -22,7 +22,8 @@
 #   4. Seeds: prisma/seed.ts (catalog, orgs, the platform-owner users row) and
 #      prisma/seed-access.ts --apply (the 9-role permission matrix).
 #   5. The local auth user for the seeded platform owner, with a random password.
-#   6. Redis + LocalStack (SES, S3) containers; SES sender identities; the CV bucket.
+#   6. LocalStack (SES, S3, DynamoDB) container; SES sender identities; the CV bucket; the
+#      rate-limit table (same key schema and TTL attribute as production's tims-ats-ratelimit).
 #   7. The C# API container (prod Dockerfile + the throwaway CA in its trust store).
 #   8. Caddy: TLS in front of the API and of Supabase (for the API's invitation setup), plus the
 #      OIDC discovery document the API's JwtBearer handler reads.
@@ -109,13 +110,17 @@ load_schema() {
   #   - pg_dump 17's \restrict / \unrestrict meta-commands (nonce-normalised in the file) are
   #     psql-version specific → dropped;
   #   - `public` and `supabase_migrations` may already exist → CREATE SCHEMA IF NOT EXISTS;
-  #   - prod roles the dump GRANTs to (app_tenant, ci_readonly) do not exist locally → pre-created.
+  #   - prod roles the dump GRANTs to (app_tenant, ci_readonly, ci_rls_probe, backup_drill_reader) do not
+  #     exist locally → pre-created as NOLOGIN stand-ins. A new grantee in the baseline must be added here,
+  #     or the load aborts on ON_ERROR_STOP (`role "…" does not exist`).
   sed -E '/^\\(un)?restrict /d; s/^CREATE SCHEMA (public|supabase_migrations);/CREATE SCHEMA IF NOT EXISTS \1;/' \
     "$E2E_REPO_ROOT/packages/db/baseline/prod-public-schema.sql" >"$E2E_STATE/baseline-local.sql"
   psql "$E2E_DB_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_tenant') THEN CREATE ROLE app_tenant NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_readonly') THEN CREATE ROLE ci_readonly NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ci_rls_probe') THEN CREATE ROLE ci_rls_probe NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'backup_drill_reader') THEN CREATE ROLE backup_drill_reader NOLOGIN; END IF;
 END $$;
 GRANT app_tenant TO postgres;
 SQL
@@ -141,6 +146,33 @@ SQL
     done
   done
   [ "$missing" = 0 ] || e2e_die "ownership-flipped tables missing after baseline load"
+
+  apply_pending_migrations
+}
+
+# The baseline is PRODUCTION, so it lacks the Prisma migrations this branch ships and production has not applied yet.
+# Without them the journeys run new code against the old schema: a release that adds a column the TS reads (e.g.
+# fit_scores.restricted_overall_score, 20261109100000_fit_v2_integrity) fails every query that selects it, and the
+# candidate never appears in the pipeline (candidate-journey.spec.ts "recruiter sees the application in the pipeline").
+# packages/db/baseline/applied-through.txt names the newest migration the baseline already contains; every migration
+# directory after it is applied in order, exactly as the owner applies them to production (`prisma db execute`, by
+# hand). Fail loud: a migration that does not apply on the baseline would not apply in production either.
+apply_pending_migrations() {
+  local marker="$E2E_REPO_ROOT/packages/db/baseline/applied-through.txt" through dir name applied=0
+  [ -s "$marker" ] || e2e_die "missing $marker"
+  through="$(tr -d '[:space:]' <"$marker")"
+  [ -d "$E2E_REPO_ROOT/packages/db/prisma/migrations/$through" ] || e2e_die "applied-through.txt names no migration: $through"
+  for dir in "$E2E_REPO_ROOT"/packages/db/prisma/migrations/*/; do
+    name="$(basename "$dir")"
+    [[ "$name" > "$through" ]] || continue
+    e2e_log "applying pending migration $name (not in the production baseline yet)"
+    psql "$E2E_DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/migration.sql" >>"$E2E_STATE/logs/pending-migrations.log" 2>&1 || {
+      tail -20 "$E2E_STATE/logs/pending-migrations.log" >&2
+      e2e_die "pending migration $name failed on the baseline"
+    }
+    applied=$((applied + 1))
+  done
+  e2e_log "$applied pending migration(s) applied on top of the baseline"
 }
 
 # ── 4. Seeds ──────────────────────────────────────────────────────────────────────────────
@@ -178,18 +210,14 @@ create_owner() {
   e2e_log "platform-owner auth user created"
 }
 
-# ── 6. Redis + LocalStack ─────────────────────────────────────────────────────────────────
+# ── 6. LocalStack ─────────────────────────────────────────────────────────────────────────
 start_support() {
   docker network inspect "$E2E_NETWORK" >/dev/null 2>&1 || docker network create "$E2E_NETWORK" >/dev/null
-  if ! docker ps -q -f "name=^$E2E_NAME-redis$" | grep -q .; then
-    docker rm -f "$E2E_NAME-redis" >/dev/null 2>&1 || true
-    docker run -d --name "$E2E_NAME-redis" --network "$E2E_NETWORK" redis:7-alpine >/dev/null
-  fi
   if ! docker ps -q -f "name=^$E2E_NAME-localstack$" | grep -q .; then
     docker rm -f "$E2E_NAME-localstack" >/dev/null 2>&1 || true
     # Pinned: localstack/localstack:latest now requires an auth token; 3.8 does not.
     docker run -d --name "$E2E_NAME-localstack" --network "$E2E_NETWORK" \
-      -p "127.0.0.1:$E2E_LOCALSTACK_PORT:4566" -e SERVICES=ses,s3 \
+      -p "127.0.0.1:$E2E_LOCALSTACK_PORT:4566" -e SERVICES=ses,s3,dynamodb \
       localstack/localstack:3.8 >/dev/null
   fi
   e2e_wait_http "localstack" "$E2E_LOCALSTACK_URL/_localstack/health" 180
@@ -198,6 +226,10 @@ start_support() {
     docker exec "$E2E_NAME-localstack" awslocal ses verify-email-identity --email-address "$addr" >/dev/null
   done
   docker exec "$E2E_NAME-localstack" sh -c 'awslocal s3 mb s3://tims-cv-e2e >/dev/null 2>&1 || true'
+  # The shared rate-limit store the API uses (Platform__RateLimitDynamoDbTable below).
+  docker exec "$E2E_NAME-localstack" sh -c 'awslocal dynamodb describe-table --table-name tims-ats-ratelimit >/dev/null 2>&1 ||
+    awslocal dynamodb create-table --table-name tims-ats-ratelimit --billing-mode PAY_PER_REQUEST \
+      --attribute-definitions AttributeName=pk,AttributeType=S --key-schema AttributeName=pk,KeyType=HASH >/dev/null'
   docker exec "$E2E_NAME-localstack" awslocal s3api put-bucket-cors --bucket tims-cv-e2e \
     --cors-configuration "{\"CORSRules\":[{\"AllowedOrigins\":[\"$E2E_BASE_URL\"],\"AllowedMethods\":[\"POST\",\"PUT\",\"GET\"],\"AllowedHeaders\":[\"*\"]}]}"
 }
@@ -247,7 +279,8 @@ Platform__SupabaseJwtIssuer=$E2E_SUPABASE_DIRECT_URL/auth/v1
 Platform__SupabaseJwksMetadataAddress=http://$E2E_NAME-caddy:$E2E_OIDC_PORT/.well-known/openid-configuration
 Platform__AllowedCorsOrigins=$E2E_BASE_URL
 Platform__ImpersonationSecret=$(relay_secret)
-Platform__RedisConnectionString=$E2E_NAME-redis:6379
+Platform__RateLimitDynamoDbTable=tims-ats-ratelimit
+Platform__RateLimitDynamoDbRegion=us-east-1
 Email__Enabled=true
 Email__Region=us-east-1
 Email__FromAddress=noreply@tims.local
@@ -331,6 +364,8 @@ AWS_SECRET_ACCESS_KEY=test
 AWS_CONFIG_FILE=/dev/null
 AWS_SHARED_CREDENTIALS_FILE=/dev/null
 AWS_ENDPOINT_URL=$E2E_LOCALSTACK_URL
+RATE_LIMIT_DYNAMODB_TABLE=tims-ats-ratelimit
+RATE_LIMIT_DYNAMODB_REGION=us-east-1
 CV_UPLOADS_BUCKET=tims-cv-e2e
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA

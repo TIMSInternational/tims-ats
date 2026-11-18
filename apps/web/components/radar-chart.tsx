@@ -1,6 +1,13 @@
 'use client';
 
-import { Radar, RadarChart as RechartsRadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
+import {
+  Radar,
+  RadarChart as RechartsRadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+} from 'recharts';
 
 export interface RadarChartDimension {
   label: string;
@@ -16,7 +23,8 @@ export function RadarChart({ dimensions }: { dimensions: RadarChartDimension[] }
         <RechartsRadarChart data={data} outerRadius="70%">
           <PolarGrid stroke="#EDEDED" />
           <PolarAngleAxis dataKey="dimension" tick={{ fill: '#585858', fontSize: 11 }} />
-          <PolarRadiusAxis domain={[0, 100]} tick={{ fill: '#B8B8B8', fontSize: 9 }} tickCount={5} />
+          {/* Scale ticks: the muted text token (#6b6b6b, 5.3:1 on white) at the 11px floor, not #B8B8B8 at 9px. */}
+          <PolarRadiusAxis domain={[0, 100]} tick={{ fill: 'var(--color-muted)', fontSize: 11 }} tickCount={5} />
           <Radar dataKey="score" stroke="#DD0C15" fill="#DD0C15" fillOpacity={0.25} />
         </RechartsRadarChart>
       </ResponsiveContainer>

@@ -14,14 +14,29 @@ import { logger } from '@tims/shared';
 // another org's cached AI output. A ttl of 0 short-circuits both read and write
 // (no Redis round-trip, nothing ever stored).
 //
-// Production uses Upstash Redis (same creds as the rate limiter); local dev with
-// no Upstash env falls back to an in-memory Map with TTL expiry.
+// Backend: an in-memory Map with TTL expiry (per process) by default. Upstash Redis
+// is used ONLY when AI_CACHE_UPSTASH_ENABLED is exactly 'true' AND the Upstash REST
+// credentials are set. The credentials alone are NOT enough: they exist for the rate
+// limiter, and storing AI outputs (which can contain candidate-derived text) at the
+// Upstash subprocessor is a separate data decision that must be opted into explicitly.
+// See docs/runbooks/production-rate-limits.md.
 // ---------------------------------------------------------------------------
 
-const KEY_PREFIX = 'tims:ai:cache';
+// v2 (2026-10-22): before #356 every response was cached, INCLUDING the agent's degraded fallback for a
+// malformed model output. invokeAgent now caches only validated output and reports every cache hit as
+// `validated: true` / `success: true`, so a legacy entry under the old namespace would be certified as
+// validated for the rest of its TTL (30 days for vacancy-writer). Versioning the namespace makes every
+// legacy entry unreachable; they expire on their own TTL. Bump it again whenever the meaning of a
+// cached value changes.
+const KEY_PREFIX = 'tims:ai:cache:v2';
+
+/** True only when the AI cache was explicitly opted into the shared Upstash store. */
+export function isAiCacheUpstashEnabled(): boolean {
+  return process.env.AI_CACHE_UPSTASH_ENABLED === 'true';
+}
 
 const redis =
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  isAiCacheUpstashEnabled() && process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
     ? new Redis({
         url: process.env.UPSTASH_REDIS_REST_URL,
         token: process.env.UPSTASH_REDIS_REST_TOKEN,

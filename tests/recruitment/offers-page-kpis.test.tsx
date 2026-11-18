@@ -27,8 +27,17 @@ vi.mock('../../apps/web/lib/trpc', () => ({
           return 'status' in input ? filteredQuery : allQuery;
         },
       },
+      getPending: {
+        useQuery: () => ({ data: [], isLoading: false, isError: false, refetch }),
+      },
     },
   },
+}));
+
+// The page keeps the open offer in the URL (?offer=<id>, B-27); no offer is open here.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('../../apps/web/app/(admin)/recruitment/offers/_components/offer-table', () => ({

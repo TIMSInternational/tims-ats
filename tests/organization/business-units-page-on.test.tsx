@@ -100,8 +100,8 @@ describe('business units settings — C# management (flag on)', () => {
   it('deactivating a unit with active teams shows the 409 as a clear inline message', async () => {
     writeResponse = () => json({ code: 'business_unit_has_active_teams', message: 'conflict' }, 409);
     const card = await renderPage();
-    const [unitDeactivate] = within(card).getAllByRole('button', { name: 'Desactivar' });
-    fireEvent.click(unitDeactivate!);
+    fireEvent.click(within(card).getByRole('button', { name: 'Acciones de Operaciones' }));
+    fireEvent.click(within(card).getByRole('menuitem', { name: 'Desactivar unidad' }));
     expect(await within(card).findByRole('alert')).toHaveTextContent('todavía tiene equipos activos');
     expect(writes()).toEqual([
       { url: `/api/platform/tenant/org-structure/business-units/${BU}`, method: 'PATCH', body: { isActive: false } },
@@ -112,7 +112,7 @@ describe('business units settings — C# management (flag on)', () => {
     await renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Nueva unidad' }));
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: '  Ventas ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Crear unidad' }));
     await waitFor(() =>
       expect(writes()).toEqual([
         {
@@ -124,20 +124,34 @@ describe('business units settings — C# management (flag on)', () => {
     );
   });
 
+  it('submits the unit dialog with Enter in the name field', async () => {
+    await renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Nueva unidad' }));
+    const name = screen.getByLabelText('Nombre');
+    fireEvent.change(name, { target: { value: 'Ventas' } });
+    fireEvent.submit(name.closest('form')!);
+    await waitFor(() => expect(writes()).toHaveLength(1));
+  });
+
   it('shows a failed create inside the modal', async () => {
     writeResponse = () => json({ code: 'invalid_input', message: 'Nombre duplicado' }, 400);
     await renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Nueva unidad' }));
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Ventas' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Nombre duplicado');
+    fireEvent.click(screen.getByRole('button', { name: 'Crear unidad' }));
+    // Translated copy for the stable code, never the backend's own text (settings-15, settings-check-03).
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Algún dato no es válido, por ejemplo un nombre vacío o demasiado largo.');
+    expect(alert).not.toHaveTextContent('Nombre duplicado');
   });
 
   it('clears a team leader and sets a new one through the picker', async () => {
     const card = await renderPage();
-    fireEvent.click(within(card).getByRole('button', { name: 'Quitar líder' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Acciones de Logística' }));
+    fireEvent.click(within(card).getByRole('menuitem', { name: 'Quitar líder' }));
     await waitFor(() => expect(writes()).toHaveLength(1));
-    fireEvent.click(within(card).getByRole('button', { name: 'Cambiar líder' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Acciones de Logística' }));
+    fireEvent.click(within(card).getByRole('menuitem', { name: 'Cambiar líder…' }));
     fireEvent.click(await screen.findByRole('button', { name: /Leo Lider/ }));
     await waitFor(() => expect(writes()).toHaveLength(2));
     expect(writes()).toEqual([
@@ -154,6 +168,10 @@ describe('business units settings — C# management (flag on)', () => {
     await waitFor(() => expect(writes()).toHaveLength(1));
     fireEvent.click(screen.getAllByRole('button', { name: 'Cerrar' })[0]!);
     fireEvent.click(within(card).getByRole('button', { name: 'Quitar' }));
+    // Removing an assignee asks first, naming the person.
+    const confirm = screen.getByRole('dialog', { name: '¿Quitar a Ada Admin de la unidad?' });
+    expect(writes()).toHaveLength(1);
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Quitar de la unidad' }));
     await waitFor(() => expect(writes()).toHaveLength(2));
     expect(writes()).toEqual([
       {
@@ -171,10 +189,10 @@ describe('business units settings — C# management (flag on)', () => {
 
   it("sets a user's primary business unit", async () => {
     await renderPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Unidad principal de un usuario' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Asignar unidad principal…' }));
     fireEvent.click(await screen.findByRole('button', { name: /Leo Lider/ }));
     fireEvent.change(screen.getByLabelText('Unidad principal'), { target: { value: BU } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     await waitFor(() =>
       expect(writes()).toEqual([
         {

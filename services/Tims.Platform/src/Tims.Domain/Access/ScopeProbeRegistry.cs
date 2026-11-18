@@ -227,7 +227,7 @@ public static class ScopeProbeRegistry
         // (the listActionPlans row filter), so it had a probe-table field map (action_plans → responsibleId, above)
         // + the ScopeWhereFor SubjectAsync("responsibleId") logic but NO EntityRootTable entry — the by-id probe
         // root is added THIS slice (exactly like Slice-12 wired the missing salaryAdjustment root). action_plans has
-        // no deleted_at → NOT soft-deletable. The "Plan de accion no encontrado" message already exists
+        // no deleted_at → NOT soft-deletable. The "Plan de acción no encontrado" message already exists
         // (ScopedNotFoundException).
         [ScopedEntity.ActionPlan] = "action_plans",
     };

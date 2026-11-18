@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
-import { useI18n } from '../../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
+import { CountBadge, EmptyState, ErrorState, Skeleton, StatusBadge } from '../../../../components';
 import type { LowProgressOkr, OverdueCommitment } from '../../../../lib/trpc-types';
 import {
   getOkrProgressSeverity,
@@ -11,10 +12,14 @@ import {
   type AlertSeverity,
 } from '../../../../lib/low-progress-alerts-helpers';
 
-const SEV_META: Record<AlertSeverity, { badge: string; border: string }> = {
-  critical: { badge: 'bg-[#DD0C15]', border: 'border-red-200 bg-red-50/50' },
-  warning: { badge: 'bg-amber-500', border: 'border-amber-200 bg-amber-50/50' },
+// Severity is a word + icon chip (dark text on a tint, ≥ 4.8:1), never white on amber.
+const SEV_META: Record<AlertSeverity, { tone: 'danger' | 'warning'; border: string }> = {
+  critical: { tone: 'danger', border: 'border-danger/30' },
+  warning: { tone: 'warning', border: 'border-warning/30' },
 };
+
+const ALERT_ROW =
+  'w-full rounded-lg border bg-white p-3 text-left transition-colors duration-150 hover:bg-surface-hover pointer-coarse:min-h-11';
 
 const THRESHOLD_OPTIONS = [10, 20, 30, 50] as const;
 
@@ -37,27 +42,27 @@ export function LowProgressAlertsPanel({ onSelectOkr, onSelectCommitment }: LowP
   const total = q.data?.totalAlerts ?? 0;
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
+    <section className="rounded-xl border border-border bg-white shadow-card" aria-labelledby="low-progress-heading">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 md:px-5">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+          <svg className="size-4 text-brand" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
           </svg>
-          <span className="text-[13px] font-semibold text-[#333]">{t.performance.lowProgressAlertsTitle}</span>
-          {total > 0 && (
-            <span className="text-[10px] bg-[#DD0C15] text-white px-1.5 py-0.5 rounded-full font-bold">{total}</span>
-          )}
+          <h2 id="low-progress-heading" className="text-subheading font-semibold text-primary">
+            {t.performance.lowProgressAlertsTitle}
+          </h2>
+          {total > 0 && <CountBadge count={total} tone="attention" />}
         </div>
-        <label className="flex items-center gap-1.5 text-[11px] text-[#8B8B8B]">
+        <label className="flex items-center gap-2 text-callout text-secondary">
           {t.performance.lowProgressThresholdLabel}
           <select
             value={threshold}
             onChange={(e) => setThreshold(Number(e.target.value))}
-            className="text-[11px] border border-[#EDEDED] rounded-lg px-2 py-1 text-[#585858] bg-white"
+            className="h-8 rounded-lg border border-field-border bg-white px-2 text-callout text-primary pointer-coarse:h-11"
           >
             {THRESHOLD_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>
-                {opt}%
+                {formatMessage(t.performance.thresholdOption, { n: opt })}
               </option>
             ))}
           </select>
@@ -65,21 +70,27 @@ export function LowProgressAlertsPanel({ onSelectOkr, onSelectCommitment }: LowP
       </div>
 
       {q.isLoading ? (
-        <div className="p-4 space-y-2">
-          <div className="h-14 bg-gray-50 rounded animate-pulse" />
-          <div className="h-14 bg-gray-50 rounded animate-pulse" />
+        <div className="space-y-2 p-4" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
         </div>
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15] p-4">{t.performance.lowProgressAlertsErr}</p>
+        <ErrorState
+          size="compact"
+          title={t.performance.lowProgressAlertsErr}
+          error={q.error}
+          onRetry={() => q.refetch()}
+        />
       ) : total === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B] p-4">{t.performance.lowProgressAlertsEmpty}</p>
+        <EmptyState size="compact" title={t.performance.lowProgressAlertsEmpty} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3">
           <OkrAlertList okrs={lowOkrs} threshold={threshold} onSelect={onSelectOkr} />
           <CommitmentAlertList commitments={overdueCommitments} onSelect={onSelectCommitment} />
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -94,33 +105,37 @@ function OkrAlertList({
 }) {
   const { t } = useI18n();
   if (okrs.length === 0) {
-    return <p className="text-[11px] text-[#8B8B8B] px-1 py-2">{t.performance.lowProgressNoOkrs}</p>;
+    return <p className="px-1 py-2 text-callout text-secondary">{t.performance.lowProgressNoOkrs}</p>;
   }
   return (
     <div className="space-y-2">
-      <h4 className="text-[10px] font-semibold text-[#585858] uppercase tracking-wide px-1">
+      <h3 className="px-1 text-callout font-semibold text-secondary">
         {t.performance.lowProgressOkrsHeading}
-      </h4>
+      </h3>
       {okrs.map((okr) => {
         const sev = getOkrProgressSeverity(okr.progress, threshold);
         const meta = SEV_META[sev];
-        const name = okr.user ? `${okr.user.firstName} ${okr.user.lastName}` : 'N/A';
+        const name = okr.user ? `${okr.user.firstName} ${okr.user.lastName}` : t.performance.unknownPerson;
         return (
           <button
             key={okr.id}
             type="button"
             onClick={onSelect}
-            className={`w-full text-left border rounded-lg p-3 hover:opacity-90 transition ${meta.border}`}
+            className={`${ALERT_ROW} ${meta.border}`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <span className={`text-[9px] font-bold ${meta.badge} text-white px-1.5 py-0.5 rounded uppercase`}>
+              <StatusBadge tone={meta.tone}>
                 {sev === 'critical' ? t.performance.severityCritical : t.performance.severityWarning}
-              </span>
-              {okr.team && <span className="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">{okr.team.name}</span>}
+              </StatusBadge>
+              {okr.team && (
+                <StatusBadge tone="brand" icon="none">
+                  {okr.team.name}
+                </StatusBadge>
+              )}
             </div>
-            <p className="text-[11px] text-[#333] font-medium leading-tight">{okr.title}</p>
-            <p className="text-[10px] text-[#585858] leading-tight mt-0.5">
-              {name} &middot; {okr.progress}%
+            <p className="text-body font-medium text-primary">{okr.title}</p>
+            <p className="mt-0.5 text-callout text-secondary">
+              {name} &middot; <span className="tabular-nums">{okr.progress} %</span>
             </p>
           </button>
         );
@@ -138,33 +153,33 @@ function CommitmentAlertList({
 }) {
   const { t } = useI18n();
   if (commitments.length === 0) {
-    return <p className="text-[11px] text-[#8B8B8B] px-1 py-2">{t.performance.lowProgressNoCommitments}</p>;
+    return <p className="px-1 py-2 text-callout text-secondary">{t.performance.lowProgressNoCommitments}</p>;
   }
   return (
     <div className="space-y-2">
-      <h4 className="text-[10px] font-semibold text-[#585858] uppercase tracking-wide px-1">
+      <h3 className="px-1 text-callout font-semibold text-secondary">
         {t.performance.lowProgressCommitmentsHeading}
-      </h4>
+      </h3>
       {commitments.map((c) => {
         const sev = getCommitmentSeverity(c.dueDate);
         const meta = SEV_META[sev];
         const days = getDaysOverdue(c.dueDate);
-        const name = c.employee ? `${c.employee.firstName} ${c.employee.lastName}` : 'N/A';
+        const name = c.employee ? `${c.employee.firstName} ${c.employee.lastName}` : t.performance.unknownPerson;
         return (
           <button
             key={c.id}
             type="button"
             onClick={onSelect}
-            className={`w-full text-left border rounded-lg p-3 hover:opacity-90 transition ${meta.border}`}
+            className={`${ALERT_ROW} ${meta.border}`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <span className={`text-[9px] font-bold ${meta.badge} text-white px-1.5 py-0.5 rounded uppercase`}>
+              <StatusBadge tone={meta.tone}>
                 {sev === 'critical' ? t.performance.severityCritical : t.performance.severityWarning}
-              </span>
+              </StatusBadge>
             </div>
-            <p className="text-[11px] text-[#333] font-medium leading-tight">{c.description}</p>
-            <p className="text-[10px] text-[#585858] leading-tight mt-0.5">
-              {name} &middot; {t.performance.lowProgressDaysOverdue.replace('{n}', String(days))}
+            <p className="text-body font-medium text-primary">{c.description}</p>
+            <p className="mt-0.5 text-callout text-secondary">
+              {name} &middot; {formatMessage(t.performance.lowProgressDaysOverdue, { n: days })}
             </p>
           </button>
         );

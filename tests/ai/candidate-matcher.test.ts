@@ -16,7 +16,7 @@ describe('matchCandidate', () => {
     });
 
     const result = await matchCandidate('org-1', {
-      candidateProfile: { name: 'Ana Gomez', title: 'Backend Dev', skills: ['ts', 'node'], experience: 5 },
+      candidateProfile: { title: 'Backend Dev', skills: ['ts', 'node'], experience: 5 },
       vacancies: [
         { id: 'v1', title: 'Senior Backend Engineer' },
         { id: 'v2', title: 'Frontend Engineer' },
@@ -37,7 +37,7 @@ describe('matchCandidate', () => {
     });
 
     await matchCandidate('org-1', {
-      candidateProfile: { name: 'Ana Gomez' },
+      candidateProfile: {},
       vacancies: [{ id: 'v1', title: 'Senior Backend Engineer' }],
     });
 

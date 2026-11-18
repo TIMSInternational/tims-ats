@@ -17,7 +17,7 @@ So those pickers 403 for the role that uses them most. This endpoint authorizes 
 
 | `purpose`             | Caller must hold                       | Caller scope needed    | Listed people                                                        |
 | --------------------- | -------------------------------------- | ---------------------- | -------------------------------------------------------------------- |
-| `interview_evaluator` | `interview:create` (`schedule`)        | organization / company | every active, non-deleted member of the org                          |
+| `interview_evaluator` | `interview:create` (`schedule`)        | any granted scope      | staff holding `interview:create` AND `interview:read` via ACTIVE roles, or `super_admin` (2026-11-06) |
 | `vacancy_approver`    | `vacancy:update` (`submitForApproval`) | any granted scope      | staff holding `vacancy:approve` via an ACTIVE role, or `super_admin` |
 | `offer_approver`      | `offer:create` (`submitForApproval`)   | any granted scope      | staff holding `offer:approve` via an ACTIVE role, or `super_admin`   |
 | `vacancy_assignee`    | `vacancy:create` (`vacancy.create`)    | organization / company | every active, non-deleted member of the org (PR #310)                |
@@ -32,7 +32,7 @@ So those pickers 403 for the role that uses them most. This endpoint authorizes 
 
 - **#337 purposes (`StaffOnly`).** Every purpose added in #337 lists only people holding at least one ACTIVE staff
   role in the organization, so an external-only principal (or a platform owner with no staff role) is never
-  enumerated. The four recruitment purposes above predate this and still list every active member.
+  enumerated. The recruitment purposes above predate this; `vacancy_assignee` still lists every active member.
 - **Subject-scoped purposes** mirror `assertSubjectInScope` / C# `SubjectInScope`: an org/company-scoped caller
   sees the whole staff list; a narrower caller sees only their subject set — own → self, team → self + members of
   the teams they lead, unit → members of their assigned units (direct `users.business_unit_id` or via a team of the
@@ -43,24 +43,28 @@ So those pickers 403 for the role that uses them most. This endpoint authorizes 
   also used for the onboarding buddy and coaching leader pickers. External principals are refused (403); an
   org-less platform owner gets 400.
 
-- **Whole-directory scope rule.** `interview_evaluator` has no eligibility filter, so it IS the staff directory.
-  A team/unit-scoped `interview:create` holder (leader, committee, hrbp) is refused (403) rather than shown people
-  outside their scope. Filtering to the caller's team instead was rejected: `interview.schedule` accepts ANY org
-  member as evaluator, so a filtered list would silently hide valid choices. No regression: today's `user.list`
-  already 403s these roles (no `user:read`). A team/unit-filtered evaluator directory is a follow-up, not built.
+- **Evaluators are people who can act (pilot call audit, 2026-11-06).** `interview_evaluator` used to have no
+  eligibility filter, so a Colaborador (employee role: no interview grant) was offered, received the invitation
+  with the room link and then got FORBIDDEN: the room reads the interview (`interview:read`) and the scorecard /
+  call are `submitScorecard` / `createVideoRoom` (`interview:create`). It now lists only holders of BOTH
+  (`EligibilityAlsoAction`), at any scope (the interview's panel arm lets an assigned evaluator see it at every
+  narrow scope), and `interview.schedule` / `addEvaluator` / `reschedule` refuse such an evaluator server-side
+  (`services/interview-evaluator-eligibility.service.ts`). Being permission-filtered, it is no longer the staff
+  directory, so a team/unit-scoped `interview:create` holder (leader, committee, hrbp) gets the list instead of a 403.
+- **Whole-directory scope rule.** A purpose with no eligibility filter IS the staff directory (`vacancy_assignee`):
+  a team/unit-scoped caller is refused (403) rather than shown people outside their scope.
 - **Approver lists** contain only approve-permission holders, which a narrow-scoped submitter (hrbp holds
   `vacancy:update` at unit scope) legitimately needs; any granted scope suffices.
-- **Deliberately not split:** the evaluators modal feeds `interview.addEvaluator` (`interview:update`). The
-  org-wide callers the scope rule admits (super_admin, hr_admin, recruiter) hold both create and update in the
-  matrix. `offer.submitForApproval` accepts `offer:update` OR `offer:create`; every matrix holder of update also
+- **Deliberately not split:** the evaluators modal feeds `interview.addEvaluator` (`interview:update`). Every
+  matrix holder of `interview:update` also holds `interview:create`. `offer.submitForApproval` accepts `offer:update` OR `offer:create`; every matrix holder of update also
   holds create.
 - **Eligibility is permission-based, not scope-aware.** A leader with team-scoped `offer:approve` is listed for any
   offer; `submitForApproval` re-checks each approver's scope against the specific record and rejects with a
   user-visible error (PR #310 adds a `vacancyId` filter for vacancy approvers).
 - **`vacancy_assignee` (PR #310)** feeds the vacancy wizard's "hiring manager" (`vacancy.create` `assignedTo`),
-  which accepts any active member — so it has no eligibility filter and, like `interview_evaluator`, needs org-wide
-  scope. It replaced `vacancy_approver` there: a hiring manager need not hold `vacancy:approve`, and that purpose is
-  gated on `vacancy:update`, which a leader creating a vacancy lacks. A team-scoped leader is refused this picker,
+  which accepts any active member — so it has no eligibility filter and needs org-wide scope. It replaced
+  `vacancy_approver` there: a hiring manager need not hold `vacancy:approve`, and that purpose is gated on
+  `vacancy:update` (a leader holds it at team scope since 2026-11-06, to send their own drafts for approval). A team-scoped leader is refused this picker,
   exactly as the legacy `user.list` refuses them.
 - **`?vacancyId=` (PR #310, `vacancy_approver` only)** keeps only approvers whose resolved `vacancy:approve` scope
   covers that vacancy (`VacancyApproverScope`, a port of `assertScoped`). The CALLER's own `vacancy:update` scope

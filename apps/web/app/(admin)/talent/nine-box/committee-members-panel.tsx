@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { UserPicker, CandidateAvatar, Skeleton } from '../../../../components';
+import { Button, CandidateAvatar, EmptyState, ErrorState, Skeleton, UserPicker } from '../../../../components';
 import {
   useNineBoxCalibration,
   useNineBoxAddCalibrationMember,
@@ -21,12 +21,14 @@ interface CommitteeMembersPanelProps {
  * Reads the calibration via `useNineBoxCalibration`; add/remove via
  * addCalibrationMember / removeCalibrationMember, invalidating the C# nine-box
  * reads (including this session) on success. Self-contained — mount it
- * anywhere a sessionId is in scope.
+ * anywhere a sessionId is in scope. Removal is an inline two-step on the row
+ * (no window.confirm on top of the modal).
  */
 export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const [confirmingUserId, setConfirmingUserId] = useState<string | null>(null);
 
   const calibration = useNineBoxCalibration(sessionId);
 
@@ -48,6 +50,7 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
   const remove = useNineBoxRemoveCalibrationMember({
     onSuccess: () => {
       toast(t.committee.removed, { type: 'success' });
+      setConfirmingUserId(null);
       invalidate();
     },
     onError: (err) => {
@@ -58,59 +61,110 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
   const memberRows = calibration.data?.members ?? [];
   const assignedIds = memberRows.map((m) => m.user.id);
 
-  const onRemove = (userId: string) => {
-    if (window.confirm(t.committee.removeConfirm)) {
-      remove.mutate({ sessionId, userId });
-    }
-  };
-
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px] font-semibold text-[#1F114C]">{t.committee.members}</p>
+    <section aria-labelledby={`committee-${sessionId}`}>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 id={`committee-${sessionId}`} className="text-subheading font-semibold text-brand">
+          {t.committee.members}
+        </h3>
         {!adding && (
-          <button
+          <Button
+            variant="tertiary"
+            size="sm"
             onClick={() => setAdding(true)}
-            className="flex items-center gap-1 text-[11px] text-[#1F114C] font-medium hover:underline"
+            icon={
+              <svg
+                className="size-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            }
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
             {t.committee.addMember}
-          </button>
+          </Button>
         )}
       </div>
 
       {calibration.isLoading ? (
-        <Skeleton className="h-20 w-full rounded-lg" />
+        <div aria-busy="true" className="space-y-1.5">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          <Skeleton className="h-11 w-full rounded-lg" />
+          <Skeleton className="h-11 w-full rounded-lg" />
+        </div>
       ) : calibration.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{calibration.error.message}</p>
+        <ErrorState
+          size="compact"
+          title={t.committee.loadError}
+          error={calibration.error}
+          onRetry={() => calibration.refetch()}
+        />
       ) : (
         <>
           {memberRows.length === 0 ? (
-            <p className="text-[12px] text-[#8B8B8B] py-3 text-center">{t.committee.noMembers}</p>
+            <EmptyState size="compact" title={t.committee.noMembers} />
           ) : (
-            <ul className="space-y-1.5 mb-3">
-              {memberRows.map((m) => (
-                <li key={m.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-[#EDEDED]">
-                  <CandidateAvatar
-                    firstName={m.user.firstName}
-                    lastName={m.user.lastName}
-                    avatar={m.user.avatar}
-                    size="sm"
-                  />
-                  <span className="text-[12px] text-[#333] font-medium flex-1">
-                    {m.user.firstName} {m.user.lastName}
-                  </span>
-                  <button
-                    onClick={() => onRemove(m.user.id)}
-                    disabled={remove.isPending}
-                    className="h-7 px-2.5 rounded-md text-[11px] text-[#DD0C15] border border-red-200 hover:bg-red-50 transition disabled:opacity-50"
+            <ul className="mb-3 space-y-1.5">
+              {memberRows.map((m) => {
+                const confirming = confirmingUserId === m.user.id;
+                return (
+                  <li
+                    key={m.id}
+                    className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border px-3 py-2"
                   >
-                    {t.committee.remove}
-                  </button>
-                </li>
-              ))}
+                    <CandidateAvatar
+                      firstName={m.user.firstName}
+                      lastName={m.user.lastName}
+                      avatar={m.user.avatar}
+                      size="sm"
+                      decorative
+                    />
+                    <span className="flex-1 text-body font-medium text-primary">
+                      {m.user.firstName} {m.user.lastName}
+                    </span>
+                    {confirming ? (
+                      <span
+                        className="flex flex-wrap items-center gap-2"
+                        role="group"
+                        aria-label={t.committee.removeConfirm}
+                      >
+                        <span className="text-callout text-secondary">{t.committee.removeConfirm}</span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setConfirmingUserId(null)}
+                          disabled={remove.isPending}
+                        >
+                          {t.common.cancel}
+                        </Button>
+                        <Button
+                          variant="destructive-secondary"
+                          size="sm"
+                          onClick={() => remove.mutate({ sessionId, userId: m.user.id })}
+                          loading={remove.isPending}
+                          loadingLabel={t.committee.removing}
+                          autoFocus
+                        >
+                          {t.committee.remove}
+                        </Button>
+                      </span>
+                    ) : (
+                      <Button
+                        variant="destructive-secondary"
+                        size="sm"
+                        onClick={() => setConfirmingUserId(m.user.id)}
+                        disabled={remove.isPending}
+                      >
+                        {t.committee.remove}
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
 
@@ -119,6 +173,8 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
               purpose="ninebox_committee_member"
               excludeIds={assignedIds}
               disabled={add.isPending}
+              ariaLabel={t.committee.addMember}
+              autoFocus
               onSelect={(userId) => add.mutate({ sessionId, userId })}
               searchPlaceholder={t.committee.searchUser}
               loadingLabel={t.committee.loadingUsers}
@@ -127,6 +183,6 @@ export function CommitteeMembersPanel({ sessionId }: CommitteeMembersPanelProps)
           )}
         </>
       )}
-    </div>
+    </section>
   );
 }

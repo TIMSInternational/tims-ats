@@ -1,34 +1,44 @@
 'use client';
 
+import { useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDashboardCustomerHealth } from '../../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../../lib/i18n';
-import { HEALTH_CONFIG, PLAN_BG_CLASSES, PLAN_LABELS, Skeleton } from '../dashboard-utils';
+import { formatMessage, pluralize } from '../../../../lib/i18n/format';
+import { HEALTH_CONFIG, PLAN_BG_CLASSES, PLAN_CHIP_FALLBACK, PLAN_LABELS, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
+import { StatusBadge } from '../../../../components/status-badge';
 
 export function CustomerHealthGrid() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const d = t.dashboard;
+  const titleId = useId();
   const { data, isLoading, isError, refetch } = useDashboardCustomerHealth();
 
   return (
-    <div className="rounded-xl border border-border bg-white p-5 flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+    <section
+      aria-labelledby={titleId}
+      className="flex flex-col rounded-xl border border-border bg-white p-5 shadow-card"
+    >
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-primary">{t.dashboard.customerHealthTitle}</h3>
-          <p className="text-xs text-muted">{t.dashboard.customerHealthSubtitle}</p>
+          <h2 id={titleId} className="text-heading font-semibold text-brand">
+            {d.customerHealthTitle}
+          </h2>
+          <p className="text-callout text-secondary">{d.customerHealthSubtitle}</p>
         </div>
         {data && (
-          <div className="flex items-center gap-3">
+          // "2 Saludable · 11 Crítico": the word, not just a coloured dot and a number.
+          <div className="flex flex-wrap items-center gap-1.5">
             {(['healthy', 'at_risk', 'critical'] as const).map((h) => {
-              const count = data.filter((d) => d.health === h).length;
+              const count = data.filter((row) => row.health === h).length;
               if (count === 0) return null;
               const cfg = HEALTH_CONFIG[h];
               return (
-                <span key={h} className="flex items-center gap-1 text-xs text-muted">
-                  <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
-                  {count}
-                </span>
+                <StatusBadge key={h} tone={cfg.tone}>
+                  {count} {d[cfg.labelKey]}
+                </StatusBadge>
               );
             })}
           </div>
@@ -36,52 +46,58 @@ export function CustomerHealthGrid() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-20 rounded-lg" />
           ))}
         </div>
       ) : isError ? (
-        <div className="h-[200px] flex items-center justify-center">
-          <ErrorState onRetry={() => refetch()} />
-        </div>
+        <ErrorState size="compact" onRetry={() => refetch()} />
       ) : !data || data.length === 0 ? (
-        <div className="h-[200px] flex items-center justify-center text-sm text-muted">No customer data</div>
+        <p className="py-10 text-center text-body text-secondary">{d.noCustomerData}</p>
       ) : (
-        <div className="grid grid-cols-3 gap-2 max-h-[240px] overflow-y-auto">
+        <ul className="grid max-h-[240px] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
           {data.map((org) => {
-            const healthCfg = HEALTH_CONFIG[org.health];
-            const planClass = PLAN_BG_CLASSES[org.plan] ?? 'bg-gray-100 text-gray-700';
+            const healthCfg = HEALTH_CONFIG[org.health] ?? HEALTH_CONFIG.healthy;
+            const planClass = PLAN_BG_CLASSES[org.plan] ?? PLAN_CHIP_FALLBACK;
 
             // Determine the key signal to show
             let signal: string;
             if (org.signals.overdueInvoices > 0) {
-              signal = `${org.signals.overdueInvoices} overdue invoice${org.signals.overdueInvoices > 1 ? 's' : ''}`;
+              signal = pluralize(
+                org.signals.overdueInvoices,
+                { one: d.overdueInvoicesOne, other: d.overdueInvoicesOther },
+                locale,
+              );
             } else if (org.signals.trialDaysLeft !== null) {
-              signal = `Trial: ${org.signals.trialDaysLeft}d left`;
+              signal = formatMessage(d.trialDaysLeft, { count: org.signals.trialDaysLeft });
             } else {
-              signal = `${org.signals.loginRate}% login rate`;
+              signal = formatMessage(d.loginRatePct, { pct: org.signals.loginRate });
             }
 
             return (
-              <button
-                key={org.orgId}
-                onClick={() => router.push(`/platform/organizations/${org.orgId}`)}
-                className={`text-left rounded-lg border p-3 transition-all hover:shadow-sm ${healthCfg.bg}`}
-              >
-                <div className="flex items-start justify-between mb-1.5">
-                  <span className="text-xs font-semibold text-primary truncate max-w-[100px]">{org.orgName}</span>
-                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 mt-0.5 ${healthCfg.dot}`} />
-                </div>
-                <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded ${planClass} mb-1`}>
-                  {PLAN_LABELS[org.plan] ?? org.plan}
-                </span>
-                <p className="text-[11px] text-secondary">{signal}</p>
-              </button>
+              <li key={org.orgId}>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/platform/organizations/${org.orgId}`)}
+                  className="h-full w-full rounded-lg border border-border p-3 text-left transition-colors hover:bg-surface-hover"
+                >
+                  <span className="mb-1.5 block break-words text-callout font-semibold text-primary">
+                    {org.orgName}
+                  </span>
+                  <div className="mb-1 flex flex-wrap items-center gap-1">
+                    <StatusBadge tone={healthCfg.tone}>{d[healthCfg.labelKey]}</StatusBadge>
+                    <span className={`rounded px-1.5 py-0.5 text-caption font-medium ${planClass}`}>
+                      {PLAN_LABELS[org.plan] ?? org.plan}
+                    </span>
+                  </div>
+                  <p className="text-caption text-secondary">{signal}</p>
+                </button>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

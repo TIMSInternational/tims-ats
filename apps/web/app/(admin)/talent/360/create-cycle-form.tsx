@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { useEvaluation360CreateCycle } from '../../../../lib/platform-api/evaluation360';
+import { Button, BUTTON_GROUP_CLASSES, Field, TextInput } from '../../../../components';
 
 interface CreateCycleFormProps {
   onClose: () => void;
@@ -25,34 +26,38 @@ export function CreateCycleForm({ onClose }: CreateCycleFormProps) {
     onError: (err) => toast(err.message, { type: 'error' }),
   });
 
+  const canSubmit = !create.isPending && name.trim().length > 0;
+
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.evaluation360.cycleNameLabel}</label>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value.slice(0, 200))}
-        placeholder={t.evaluation360.cycleNamePlaceholder}
-        disabled={create.isPending}
-        className="w-full bg-white border border-[#EDEDED] rounded-lg px-3 h-9 text-[13px] text-[#333] mb-4 focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
-      />
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onClose}
+    <form
+      aria-labelledby="create-cycle-title"
+      className="rounded-xl border border-border bg-white p-5 shadow-card"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (canSubmit) create.mutate({ name: name.trim() });
+      }}
+    >
+      <h2 id="create-cycle-title" className="mb-3 text-heading font-semibold text-brand">
+        {t.evaluation360.newCycleTitle}
+      </h2>
+      <Field label={t.evaluation360.cycleNameLabel} className="mb-4">
+        <TextInput
+          value={name}
+          onChange={(e) => setName(e.target.value.slice(0, 200))}
+          placeholder={t.evaluation360.cycleNamePlaceholder}
           disabled={create.isPending}
-          className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition disabled:opacity-50"
-        >
+          maxLength={200}
+          autoFocus
+        />
+      </Field>
+      <div className={BUTTON_GROUP_CLASSES}>
+        <Button variant="secondary" onClick={onClose} disabled={create.isPending}>
           {t.common.cancel}
-        </button>
-        <button
-          type="button"
-          onClick={() => create.mutate({ name: name.trim() })}
-          disabled={create.isPending || name.trim().length === 0}
-          className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50"
-        >
-          {create.isPending ? t.common.saving : t.evaluation360.saveButton}
-        </button>
+        </Button>
+        <Button type="submit" disabled={!canSubmit} loading={create.isPending} loadingLabel={t.evaluation360.creating}>
+          {t.evaluation360.saveButton}
+        </Button>
       </div>
-    </div>
+    </form>
   );
 }

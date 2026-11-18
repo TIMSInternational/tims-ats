@@ -1,12 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { validateQuestionCoherence, QUESTION_TYPES } from '@tims/shared';
 import type { QuestionType, QuestionOption } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { Modal } from '../../../../components';
+import { formatMessage } from '../../../../lib/i18n/format';
+import {
+  Button,
+  CHOICE_INPUT_CLASSES,
+  CHOICE_ROW_CLASSES,
+  Field,
+  FIELD_LABEL_CLASSES,
+  IconButton,
+  Modal,
+  Select,
+  TextArea,
+  TextInput,
+} from '../../../../components';
 
 export interface EditableQuestion {
   id: string;
@@ -30,10 +42,6 @@ function newOption(): QuestionOption {
   return { id: crypto.randomUUID(), label: '' };
 }
 
-const inputClass =
-  'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]';
-const labelClass = 'block text-xs font-medium text-[#8B8B8B] mb-1.5';
-
 export function QuestionModal({ assessmentTypeId, question, onClose, onSaved }: QuestionModalProps) {
   const { t } = useI18n();
   const isEdit = !!question;
@@ -48,13 +56,17 @@ export function QuestionModal({ assessmentTypeId, question, onClose, onSaved }: 
   const [order, setOrder] = useState(question?.order ?? 0);
   const [isActive, setIsActive] = useState(question?.isActive ?? true);
   const [error, setError] = useState<string | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
 
   const isFreeText = type === 'free_text';
   const errorMap = t.assessments.errors as Record<string, string>;
 
+  // The dialog stays open on failure: the error shows inline (role="alert") and, per the project rule
+  // (.claude/rules/frontend.md: onError toast on every mutation), as a toast too.
   const onError = (err: { message: string }) => {
-    setError(errorMap[err.message] ?? err.message);
-    toast(errorMap[err.message] ?? err.message, { type: 'error' });
+    const message = errorMap[err.message] ?? err.message;
+    setError(message);
+    toast(message, { type: 'error' });
   };
 
   const createM = trpc.assessment.createQuestion.useMutation({
@@ -98,6 +110,7 @@ export function QuestionModal({ assessmentTypeId, question, onClose, onSaved }: 
 
     if (!prompt.trim()) {
       setError(t.assessments.promptRequired);
+      promptRef.current?.focus();
       return;
     }
     const coherence = validateQuestionCoherence({ type, options: cleanOptions, correctOptionIds: cleanCorrect });
@@ -130,135 +143,151 @@ export function QuestionModal({ assessmentTypeId, question, onClose, onSaved }: 
     }
   };
 
+  const f = t.assessments.fields;
   return (
-    <Modal title={isEdit ? t.assessments.editTitle : t.assessments.createTitle} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal
+      title={isEdit ? t.assessments.editTitle : t.assessments.createTitle}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t.assessments.cancel}
+          </Button>
+          <Button onClick={handleSubmit} loading={isPending} loadingLabel={t.assessments.saving}>
+            {isEdit ? t.assessments.save : t.assessments.create}
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-4">
-        <div>
-          <label className={labelClass}>{t.assessments.fields.type}</label>
-          <select
+        <Field label={f.type} id="question-type">
+          <Select
             value={type}
             onChange={(e) => {
               const next = e.target.value as QuestionType;
               setType(next);
               if (next === 'single_choice') setCorrectOptionIds((prev) => prev.slice(0, 1));
             }}
-            className={inputClass}
           >
             {QUESTION_TYPES.map((qt) => (
               <option key={qt} value={qt}>
                 {t.assessments.types[qt]}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        <div>
-          <label className={labelClass}>{t.assessments.fields.prompt}</label>
-          <textarea
+        <Field
+          label={f.prompt}
+          id="question-prompt"
+          required
+          error={error === t.assessments.promptRequired ? error : undefined}
+        >
+          <TextArea
+            ref={promptRef}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={t.assessments.fields.promptPlaceholder}
+            placeholder={f.promptPlaceholder}
             rows={3}
             maxLength={5000}
-            className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
           />
-        </div>
+        </Field>
 
         {!isFreeText && (
-          <div>
-            <label className={labelClass}>{t.assessments.fields.markCorrect}</label>
+          <fieldset>
+            <legend className={FIELD_LABEL_CLASSES}>{f.markCorrect}</legend>
             <div className="space-y-2">
-              {options.map((opt) => (
-                <div key={opt.id} className="flex items-center gap-2">
-                  <input
-                    type={type === 'single_choice' ? 'radio' : 'checkbox'}
-                    checked={correctOptionIds.includes(opt.id)}
-                    onChange={() => toggleCorrect(opt.id)}
-                    aria-label={t.assessments.fields.markCorrect}
-                    className="shrink-0"
-                  />
-                  <input
-                    value={opt.label}
-                    onChange={(e) => setOptionLabel(opt.id, e.target.value)}
-                    placeholder={t.assessments.fields.optionPlaceholder}
-                    maxLength={500}
-                    className="flex-1 h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
-                  />
-                  {options.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removeOption(opt.id)}
-                      className="shrink-0 w-8 h-8 rounded-lg text-[#8B8B8B] hover:bg-[#F5F5F5]"
-                      aria-label={t.assessments.delete}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
+              {options.map((opt, index) => {
+                const n = index + 1;
+                return (
+                  <div key={opt.id} className="flex items-center gap-2">
+                    <input
+                      type={type === 'single_choice' ? 'radio' : 'checkbox'}
+                      name="question-correct"
+                      checked={correctOptionIds.includes(opt.id)}
+                      onChange={() => toggleCorrect(opt.id)}
+                      aria-label={formatMessage(f.markCorrectN, { n })}
+                      className={CHOICE_INPUT_CLASSES}
+                    />
+                    <TextInput
+                      value={opt.label}
+                      onChange={(e) => setOptionLabel(opt.id, e.target.value)}
+                      placeholder={f.optionPlaceholder}
+                      aria-label={formatMessage(f.optionN, { n })}
+                      maxLength={500}
+                      className="flex-1"
+                    />
+                    {options.length > 2 && (
+                      <IconButton label={formatMessage(f.removeOptionN, { n })} onClick={() => removeOption(opt.id)}>
+                        <svg
+                          className="size-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </IconButton>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             {options.length < 20 && (
-              <button
-                type="button"
+              <Button
+                variant="tertiary"
+                size="sm"
+                className="mt-2"
                 onClick={() => setOptions((prev) => [...prev, newOption()])}
-                className="mt-2 text-xs font-medium text-[#1F114C] hover:underline"
               >
-                + {t.assessments.fields.addOption}
-              </button>
+                + {f.addOption}
+              </Button>
             )}
-          </div>
+          </fieldset>
         )}
 
-        <div className="flex gap-4">
-          <div className="w-28">
-            <label className={labelClass}>{t.assessments.fields.points}</label>
-            <input
+        <div className="flex flex-wrap items-end gap-4">
+          <Field label={f.points} id="question-points" className="w-28">
+            <TextInput
               type="number"
               min={1}
               max={1000}
               value={points}
               onChange={(e) => setPoints(Math.max(1, Number(e.target.value) || 1))}
-              className={inputClass}
+              className="tabular-nums"
             />
-          </div>
-          <div className="w-28">
-            <label className={labelClass}>{t.assessments.fields.order}</label>
-            <input
+          </Field>
+          <Field label={f.order} id="question-order" className="w-28">
+            <TextInput
               type="number"
               min={0}
               max={10000}
               value={order}
               onChange={(e) => setOrder(Math.max(0, Number(e.target.value) || 0))}
-              className={inputClass}
+              className="tabular-nums"
             />
-          </div>
+          </Field>
           {isEdit && (
-            <label className="flex items-end gap-2 pb-2.5 text-sm text-[#585858]">
-              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-              {t.assessments.fields.active}
+            <label className={CHOICE_ROW_CLASSES}>
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className={CHOICE_INPUT_CLASSES}
+              />
+              {f.active}
             </label>
           )}
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F5F5F5]"
-          >
-            {t.assessments.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="h-10 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] disabled:opacity-50"
-          >
-            {isEdit ? t.assessments.save : t.assessments.create}
-          </button>
-        </div>
+        {error && error !== t.assessments.promptRequired && (
+          <p role="alert" className="text-callout text-danger">
+            {error}
+          </p>
+        )}
       </div>
     </Modal>
   );

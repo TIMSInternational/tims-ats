@@ -156,7 +156,7 @@ export const subscriptionsRouter = router({
         select: { id: true, status: true, plan: true },
       });
       if (!existing) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripcion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripción no encontrada' });
       }
 
       const data: {
@@ -191,7 +191,7 @@ export const subscriptionsRouter = router({
         select: { id: true, status: true },
       });
       if (!existing) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripcion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripción no encontrada' });
       }
       if (existing.status !== SubscriptionStatus.cancelled) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Solo se pueden reactivar suscripciones canceladas' });
@@ -219,7 +219,7 @@ export const subscriptionsRouter = router({
         },
       });
       if (!sub) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripcion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripción no encontrada' });
       }
 
       return {
@@ -285,7 +285,7 @@ export const subscriptionsRouter = router({
         },
       });
       if (!sub) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripcion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Suscripción no encontrada' });
       }
       if (sub.status !== SubscriptionStatus.past_due) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Solo se pueden enviar recordatorios a suscripciones con pago vencido' });
@@ -300,7 +300,7 @@ export const subscriptionsRouter = router({
           metadata: {
             plan: sub.plan,
             billingEmail: sub.organization.billingEmail,
-            message: input.message || 'Recordatorio de pago automatico',
+            message: input.message || 'Recordatorio de pago automático',
           },
         },
       });

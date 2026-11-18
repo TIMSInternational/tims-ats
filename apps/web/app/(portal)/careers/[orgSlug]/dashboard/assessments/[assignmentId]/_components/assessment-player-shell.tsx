@@ -8,10 +8,35 @@ import { AssessmentQuestionWizard } from './assessment-question-wizard';
 import { AssessmentResultScreen } from './assessment-result-screen';
 import { mapAssessmentErrorMessage } from './assessment-error-messages';
 import { AssessmentBackLink } from './assessment-back-link';
+import { EmptyState, ErrorState, Skeleton } from '../../../../../../../../components';
 
 interface AssessmentPlayerShellProps {
   orgSlug: string;
   assignmentId: string;
+}
+
+function Frame({ orgSlug, children }: { orgSlug: string; children: React.ReactNode }) {
+  return (
+    <div className="min-h-dvh bg-surface">
+      <AssessmentBackLink orgSlug={orgSlug} />
+      <main className="mx-auto w-full max-w-2xl px-4 py-6">{children}</main>
+    </div>
+  );
+}
+
+function StateIcon() {
+  return (
+    <svg
+      className="size-8 text-muted"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path d="M9 12h6m-6 4h6M9 4.5h6a1.5 1.5 0 011.5 1.5v.75h-9V6A1.5 1.5 0 019 4.5zM7.5 6.75H6A1.5 1.5 0 004.5 8.25v11.25A1.5 1.5 0 006 21h12a1.5 1.5 0 001.5-1.5V8.25A1.5 1.5 0 0018 6.75h-1.5" />
+    </svg>
+  );
 }
 
 export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlayerShellProps) {
@@ -28,44 +53,44 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
 
   if (assessmentsQuery.isLoading) {
     return (
-      <>
-        <AssessmentBackLink orgSlug={orgSlug} />
-        <p className="text-center text-[13px] text-[#8B8B8B] p-8">{t.assessmentPlayer.loading}</p>
-      </>
+      <Frame orgSlug={orgSlug}>
+        <div aria-busy="true" className="space-y-3 rounded-2xl bg-white p-6 shadow-card">
+          <span className="sr-only">{t.assessmentPlayer.loading}</span>
+          <Skeleton className="h-5 w-1/2" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+        </div>
+      </Frame>
     );
   }
   if (assessmentsQuery.isError) {
     return (
-      <>
-        <AssessmentBackLink orgSlug={orgSlug} />
-        <p className="text-center text-[13px] text-[#B42318] p-8">{t.assessmentPlayer.loadError}</p>
-      </>
+      <Frame orgSlug={orgSlug}>
+        <ErrorState title={t.assessmentPlayer.loadError} onRetry={() => void assessmentsQuery.refetch()} />
+      </Frame>
     );
   }
 
   const assignment = (assessmentsQuery.data ?? []).find((item) => item.id === assignmentId);
   if (!assignment) {
     return (
-      <>
-        <AssessmentBackLink orgSlug={orgSlug} />
-        <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.notFound}</p>
-      </>
+      <Frame orgSlug={orgSlug}>
+        <EmptyState icon={<StateIcon />} title={t.assessmentPlayer.notFound} />
+      </Frame>
     );
   }
 
   if (assignment.status === 'cancelled') {
     return (
-      <>
-        <AssessmentBackLink orgSlug={orgSlug} />
-        <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.cancelled}</p>
-      </>
+      <Frame orgSlug={orgSlug}>
+        <EmptyState icon={<StateIcon />} title={t.assessmentPlayer.cancelled} />
+      </Frame>
     );
   }
 
   if (assignment.status === 'completed') {
     return (
-      <>
-        <AssessmentBackLink orgSlug={orgSlug} />
+      <Frame orgSlug={orgSlug}>
         <AssessmentResultScreen
           normalizedScore={assignment.result?.normalizedScore ?? null}
           hasPending={assignment.result?.hasPending ?? false}
@@ -73,7 +98,7 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
           percentile={assignment.result?.percentile ?? null}
           normSampleSize={assignment.result?.normSampleSize ?? null}
         />
-      </>
+      </Frame>
     );
   }
 
@@ -94,8 +119,7 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
 
   if (assignment.status === 'assigned') {
     return (
-      <>
-        <AssessmentBackLink orgSlug={orgSlug} />
+      <Frame orgSlug={orgSlug}>
         <AssessmentConsentGate
           isSubmitting={startMutation.isPending}
           errorMessage={consentError}
@@ -104,7 +128,7 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
             startMutation.mutate({ orgSlug, assignmentId, consentAccepted: true });
           }}
         />
-      </>
+      </Frame>
     );
   }
 
@@ -113,9 +137,8 @@ export function AssessmentPlayerShell({ orgSlug, assignmentId }: AssessmentPlaye
   // let the candidate click Start and hit a confusing assignment_not_startable
   // backend error, so render a plain message instead.
   return (
-    <>
-      <AssessmentBackLink orgSlug={orgSlug} />
-      <p className="text-center text-[13px] text-[#585858] p-8">{t.assessmentPlayer.notStartable}</p>
-    </>
+    <Frame orgSlug={orgSlug}>
+      <EmptyState icon={<StateIcon />} title={t.assessmentPlayer.notStartable} />
+    </Frame>
   );
 }

@@ -36,10 +36,15 @@ public static class IdentityFixture
     public static readonly Guid InactiveUserId = Guid.Parse("a0000000-0000-0000-0000-000000000003");
     public static readonly Guid OrglessOwnerUserId = Guid.Parse("a0000000-0000-0000-0000-000000000004");
 
+    // An otherwise-valid (active) staff user whose ORGANIZATION is suspended (is_active=false): the
+    // staff resolver must refuse it (Pilot UX re-audit platform-owner access-3).
+    public static readonly Guid SuspendedOrgStaffUserId = Guid.Parse("a0000000-0000-0000-0000-000000000005");
+
     public const string ActiveStaffSub = "sub-active-staff";
     public const string PlatformOwnerSub = "sub-platform-owner";
     public const string InactiveSub = "sub-inactive";
     public const string OrglessOwnerSub = "sub-orgless-owner";
+    public const string SuspendedOrgStaffSub = "sub-suspended-org-staff";
     public const string UnknownSub = "sub-does-not-exist";
 
     // A portal candidate's Supabase session id — deliberately NOT present in `users` (candidates have
@@ -138,7 +143,8 @@ public static class IdentityFixture
                 (@activeStaff, @orgA, @activeStaffSub, 'staff@tims.test', false, true),
                 (@platformOwner, @orgA, @platformOwnerSub, 'owner@tims.test', true, true),
                 (@inactive, @orgA, @inactiveSub, 'inactive@tims.test', false, false),
-                (@orglessOwner, NULL, @orglessOwnerSub, 'root@tims.test', true, true);
+                (@orglessOwner, NULL, @orglessOwnerSub, 'root@tims.test', true, true),
+                (@suspendedOrgStaff, @suspendedOrg, @suspendedOrgStaffSub, 'suspended-staff@tims.test', false, true);
 
             -- Active staff holds BOTH recruiter (staff) and external (non-staff, must be filtered).
             INSERT INTO user_roles (id, user_id, role_id) VALUES
@@ -176,6 +182,8 @@ public static class IdentityFixture
         seed.Parameters.AddWithValue("platformOwnerSub", PlatformOwnerSub);
         seed.Parameters.AddWithValue("inactiveSub", InactiveSub);
         seed.Parameters.AddWithValue("orglessOwnerSub", OrglessOwnerSub);
+        seed.Parameters.AddWithValue("suspendedOrgStaff", SuspendedOrgStaffUserId);
+        seed.Parameters.AddWithValue("suspendedOrgStaffSub", SuspendedOrgStaffSub);
         seed.Parameters.AddWithValue("candidateOrgA", CandidateOrgAId);
         seed.Parameters.AddWithValue("candidateStaffEmail", CandidateStaffEmailId);
         seed.Parameters.AddWithValue("candidateCrossTenant", CandidateCrossTenantId);

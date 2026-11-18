@@ -36,8 +36,8 @@ namespace Tims.Api.Succession;
 /// </summary>
 public static class SuccessionReadEndpoints
 {
-    private const string CompForbiddenMessage = "No tiene permiso para ver datos de compensacion";
-    private const string RoleNotFoundMessage = "Rol critico no encontrado";
+    private const string CompForbiddenMessage = "No tiene permiso para ver datos de compensación";
+    private const string RoleNotFoundMessage = "Rol crítico no encontrado";
     private const string CompensationModule = "compensation";
     private const string ReadAction = "read";
     private const string EmployeeCompensationEntity = "employeeCompensation";
@@ -483,7 +483,7 @@ public static class SuccessionReadEndpoints
     }
 
     // The by-id IDOR probe on the critical role (reads 2/7/8): a narrow-scoped caller must not reach an
-    // out-of-scope role by id-guessing → ScopedNotFoundException (404, "Rol critico no encontrado").
+    // out-of-scope role by id-guessing → ScopedNotFoundException (404, "Rol crítico no encontrado").
     private static async Task<IResult?> AssertRoleScopeAsync(
         ScopedProbe scopedProbe,
         Guid criticalRoleId,

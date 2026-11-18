@@ -42,6 +42,7 @@ const makeUser = (overrides: Partial<StaffAppUser> = {}): StaffAppUser => ({
   isPlatformOwner: false,
   lastLoginAt: new Date(Date.now() - 120_000), // 2 min ago → threshold exceeded → will update
   userRoles: [{ role: { slug: 'recruiter' } }, { role: { slug: 'employee' } }],
+  organization: { isActive: true },
   ...overrides,
 });
 
@@ -52,6 +53,7 @@ const ownerUser: StaffAppUser = makeUser({
   organizationId: null,
   isPlatformOwner: true,
   userRoles: [],
+  organization: null,
 });
 
 const targetUser: StaffAppUser = makeUser({
@@ -196,6 +198,22 @@ describe('resolveStaffContext — fallback (inactive user)', () => {
   it('returns NEEDS_FALLBACK when appUser.isActive is false', async () => {
     const inactiveUser = makeUser({ isActive: false });
     const db = makeDb({ findUserBySupabaseId: vi.fn().mockResolvedValue(inactiveUser) });
+
+    const result = await resolveStaffContext('supa-uid-1', 'staff@tims.co', null, makeHeaders(), db);
+    expect(result).toBe(NEEDS_FALLBACK);
+  });
+
+  it('returns NEEDS_FALLBACK when the staff row belongs to a deactivated organization (platform-owner access-3)', async () => {
+    const suspended = makeUser({ organization: { isActive: false } });
+    const db = makeDb({ findUserBySupabaseId: vi.fn().mockResolvedValue(suspended) });
+
+    const result = await resolveStaffContext('supa-uid-1', 'staff@tims.co', null, makeHeaders(), db);
+    expect(result).toBe(NEEDS_FALLBACK);
+  });
+
+  it('fails closed when a non-owner row arrives without its organization loaded', async () => {
+    const unloaded = makeUser({ organization: null });
+    const db = makeDb({ findUserBySupabaseId: vi.fn().mockResolvedValue(unloaded) });
 
     const result = await resolveStaffContext('supa-uid-1', 'staff@tims.co', null, makeHeaders(), db);
     expect(result).toBe(NEEDS_FALLBACK);

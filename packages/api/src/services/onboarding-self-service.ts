@@ -16,7 +16,7 @@
 //       * the new hire (plan.userId === caller) → tasks with responsible 'employee'
 //       * the plan's buddy (plan.buddyId === caller) → tasks with responsible 'buddy'
 //     The buddy arm is deliberate: the default checklist has a buddy-owned task
-//     ("Presentación con el buddy asignado", onboarding-defaults.ts), and the
+//     ("Presentación con el compañero guía", onboarding-defaults.ts), and the
 //     buddy is exactly the person who can truthfully say it happened. A buddy
 //     can never touch the hire's own tasks, and neither can touch hr/it/manager.
 //   - updatePlan, completeCheckIn: never (plan management and check-ins are run
