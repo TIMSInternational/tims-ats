@@ -462,6 +462,7 @@
   },
   "common": {
     "notDisclosed": "N/D",
+    "aiDisabled": "Las funciones de inteligencia artificial están desactivadas temporalmente. Inténtalo más tarde.",
     "export": "Exportar",
     "comingSoon": "próximamente",
     "loading": "Cargando...",

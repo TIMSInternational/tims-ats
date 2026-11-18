@@ -119,6 +119,10 @@ locals {
     # when it shipped. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one
     # stack and served by the other is the hole #173 closes.
     Platform__MfaEnforced = var.mfa_enforced
+    # Extra tenant roles that must step up too (e.g. "hr_admin,hrbp"); "" = only platform owners +
+    # super_admin. Unknown slugs are ignored (fails OPEN). Keep it equal to the web app's
+    # MFA_EXTRA_PRIVILEGED_ROLES for the same #173 reason as above.
+    Platform__MfaExtraPrivilegedRoles = var.mfa_extra_privileged_roles
   }
   env = merge(local.base_env, var.otlp_endpoint == "" ? {} : { Platform__OtlpEndpoint = var.otlp_endpoint })
 }

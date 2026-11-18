@@ -2,13 +2,14 @@ import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { generateText } from 'ai';
 import { bedrockCircuit } from './circuit';
 import { bedrockGuardrailOptions } from './pii';
+import { assertAiEnabled } from './kill-switch';
 
 // ---------------------------------------------------------------------------
 // Bedrock client — the ONLY place that calls AWS Bedrock.
 //
 // `bedrockGenerate` is the raw model call. It is intentionally NOT the gated
 // entry point: every agent goes through the gated `invokeAgent` in invoke.ts
-// (budget → cache → PII → bedrockGenerate → validate → log). Routers/services
+// (kill switch → budget → cache → PII → bedrockGenerate → validate → log). Routers/services
 // must never import this directly — a CI grep-gate enforces that (rule #2).
 //
 // The call is wrapped in `bedrockCircuit` (5 failures → open 30s) and, when a
@@ -72,6 +73,9 @@ export async function bedrockGenerate(
   userMessage: string,
   maxTokens: number = 2048,
 ): Promise<InvokeResult> {
+  // Second line of the global kill switch (the first is in invokeAgent). Checked OUTSIDE the
+  // circuit breaker so a deliberate stop is never counted as a Bedrock failure.
+  assertAiEnabled();
   const guardrail = bedrockGuardrailOptions();
   const start = Date.now();
 

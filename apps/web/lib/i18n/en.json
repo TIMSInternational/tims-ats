@@ -462,6 +462,7 @@
   },
   "common": {
     "notDisclosed": "N/D",
+    "aiDisabled": "AI features are temporarily turned off. Please try again later.",
     "export": "Export",
     "comingSoon": "coming soon",
     "loading": "Loading...",

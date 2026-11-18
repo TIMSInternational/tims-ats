@@ -13,11 +13,14 @@ import { checkBudget } from './budget';
 import { getCached, setCached } from './cache';
 import { logInvocation } from './logger';
 import { resolveAgentId, AGENT_REGISTRY } from './registry';
+import { assertAiEnabled } from './kill-switch';
 
 // ---------------------------------------------------------------------------
 // invokeAgent — THE single gated door for every AI call.
 //
-// Pipeline (coding rule #2): budget → cache → PII → bedrock → validate → log.
+// Pipeline (coding rule #2): kill switch → budget → cache → PII → bedrock → validate → log.
+//   0. kill     — AI_KILL_SWITCH (kill-switch.ts) refuses before ANY other step,
+//                 so a stopped platform reads no catalog, budget or cache.
 //   1. budget   — fail CLOSED: over-budget (or disabled) org is denied.
 //   2. cache    — org-scoped, TTL owned per agent; hit short-circuits Bedrock.
 //   3. PII      — agents sanitize/wrap inputs (pii.ts) when building the message;
@@ -70,6 +73,9 @@ export interface InvokeAgentResult<TOutput> {
 export async function invokeAgent<TInput, TOutput>(
   params: InvokeAgentParams<TInput, TOutput>,
 ): Promise<InvokeAgentResult<TOutput>> {
+  // 0. Global kill switch — fail closed before any database, cache or model work.
+  assertAiEnabled();
+
   const { slug, orgId, input, systemPrompt, buildUserMessage, schema, fallback, userId } = params;
 
   const def = AGENT_REGISTRY[slug];

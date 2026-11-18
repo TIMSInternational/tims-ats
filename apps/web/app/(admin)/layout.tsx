@@ -17,7 +17,8 @@ export default async function AdminLayout({
   const { effective, realRoleSlugs, realIsPlatformOwner } = await getEffectiveIdentity();
 
   // MFA enforcement gate (opt-in via MFA_ENFORCED). Privileged roles — platform
-  // owners and super_admins — must have stepped up to a verified TOTP factor
+  // owners and super_admins, plus any role the owner lists in MFA_EXTRA_PRIVILEGED_ROLES
+  // (read inside isMfaPrivileged) — must have stepped up to a verified TOTP factor
   // (Supabase aal2) before any admin route renders. Evaluated against the REAL
   // session's assurance level (impersonation rides a separate signed cookie, not
   // a Supabase session swap, so this correctly reflects the operator). /mfa lives

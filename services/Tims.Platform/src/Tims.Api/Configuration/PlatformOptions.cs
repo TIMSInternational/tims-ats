@@ -822,6 +822,18 @@ public sealed class PlatformOptions
     public string? MfaEnforced { get; init; }
 
     /// <summary>
+    /// Owner-controlled widening of WHO must step up when <see cref="MfaEnforced"/> is on — the
+    /// platform-service counterpart of the web app's <c>MFA_EXTRA_PRIVILEGED_ROLES</c>. A comma- or
+    /// space-separated list of tenant staff role slugs (e.g. <c>hr_admin,hrbp</c>), parsed by
+    /// <see cref="Tims.Domain.Identity.MfaGate.ParseExtraPrivilegedRoles"/>: unknown slugs are ignored
+    /// (fail OPEN), and unset/empty leaves the base set (platform owners + super_admin) unchanged.
+    ///
+    /// Set it to the SAME value as the web app's variable — a session refused by one stack and served
+    /// by the other is the hole #173 closed.
+    /// </summary>
+    public string? MfaExtraPrivilegedRoles { get; init; }
+
+    /// <summary>
     /// §8 Q0b slice 2 / issue #172: when true, the cross-org alert-metric read surface is mapped and live
     /// — <c>GET /internal/alert-metrics?organizationId=…&amp;metric=…</c>, serving <c>active_surveys</c>
     /// (`surveys`, flip #64) and <c>pending_salary_adjustments</c> (`salary_adjustments`, flip #66) to the
