@@ -46,7 +46,7 @@ public sealed partial class CandidateConsentRepository
             r.Status,
             r.Source,
             FormatUtc(r.CreatedAt),
-            FormatUtc(BusinessDays.DueAt(r.CreatedAt)))).ToList());
+            FormatUtc(_deadline.DueAt(r.CreatedAt)))).ToList());
     }
 
     /// <summary>
@@ -84,7 +84,7 @@ public sealed partial class CandidateConsentRepository
                     UserId = recipient.UserId,
                     Type = CandidateConsentConstants.NotificationType,
                     Title = CandidateConsentConstants.NotificationTitle,
-                    Message = CandidateConsentConstants.NotificationMessage,
+                    Message = _deadline.NotificationMessage,
                     Module = CandidateConsentConstants.NotificationModule,
                     EntityType = CandidateConsentConstants.NotificationEntityType,
                     EntityId = requestId,
@@ -93,7 +93,7 @@ public sealed partial class CandidateConsentRepository
             }
         }
 
-        return new DataSubjectRequestNotice(recipients, BusinessDays.DueAt(now));
+        return new DataSubjectRequestNotice(recipients, _deadline.DueAt(now));
     }
 
     private static string FormatUtc(DateTime value) =>

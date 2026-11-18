@@ -24,10 +24,12 @@ namespace Tims.Infrastructure.CandidateConsent;
 /// may carry personal data); the audit records who, how and whether a reason and a deletion request exist.</para>
 /// </summary>
 public sealed partial class CandidateConsentRepository(
-    CandidateConsentDbContext db, IConsentWithdrawalCascade? cascade = null) : ICandidateConsentRepository
+    CandidateConsentDbContext db, IConsentWithdrawalCascade? cascade = null, DataSubjectRequestDeadline? deadline = null)
+    : ICandidateConsentRepository
 {
     private readonly CandidateConsentDbContext _db = db;
     private readonly IConsentWithdrawalCascade _cascade = cascade ?? new NoConsentWithdrawalCascade();
+    private readonly DataSubjectRequestDeadline _deadline = deadline ?? DataSubjectRequestDeadline.Estimate;
 
     public async Task<CandidateConsentResult> GetAsync(Guid organizationId, Guid candidateId, CancellationToken cancellationToken)
     {

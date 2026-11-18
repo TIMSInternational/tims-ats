@@ -38,6 +38,41 @@ public sealed class DataSubjectRequestNotifierTests
     }
 
     [Fact]
+    public async Task Default_SendsTheEstimate_WithoutTheLey8968Wording()
+    {
+        var sender = new FakeSender();
+        await new DataSubjectRequestNotifier(sender, DataSubjectRequestDeadline.Estimate)
+            .SendAsync(Notice("a@tims.test"), Origin, CancellationToken.None);
+
+        var (_, subject, html) = sender.Sent[0];
+        Assert.Equal(DataSubjectRequestNotifier.Subject, subject);
+        Assert.Contains("no es un plazo legal", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("8968", subject + html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ley8968_StatesTheNoticeResponseTime_OnTheCostaRicanCalendar()
+    {
+        var sender = new FakeSender();
+        // Sat 3 Oct 2026 05:30 UTC is Fri 2 Oct 23:30 in San José: the email shows the Costa Rican date.
+        var notice = new DataSubjectRequestNotice(
+            [new DataSubjectRequestRecipient(Guid.NewGuid(), "a@tims.test", "Ana")],
+            new DateTime(2026, 10, 3, 5, 30, 0, DateTimeKind.Utc));
+        await new DataSubjectRequestNotifier(sender, DataSubjectRequestDeadline.Ley8968)
+            .SendAsync(notice, Origin, CancellationToken.None);
+
+        var (_, subject, html) = sender.Sent[0];
+        Assert.Equal(DataSubjectRequestNotifier.Ley8968Subject, subject);
+        Assert.Contains("responder en 5 días hábiles", subject, StringComparison.Ordinal);
+        Assert.Contains("Ley N.° 8968", html, StringComparison.Ordinal);
+        Assert.Contains("<strong>5 días hábiles</strong>", html, StringComparison.Ordinal);
+        Assert.Contains("02/10/2026", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("15 días", subject + html, StringComparison.Ordinal);
+        Assert.DoesNotContain("no es un plazo legal", html, StringComparison.Ordinal);
+        Assert.Contains("https://app.tims.test/settings/data-requests", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RejectedOrThrowingDelivery_IsCounted_NeverThrown()
     {
         var sender = new FakeSender { Reject = "b@tims.test", Throw = "c@tims.test" };
