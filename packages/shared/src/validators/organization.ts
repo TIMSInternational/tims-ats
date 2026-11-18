@@ -1,16 +1,43 @@
 import { z } from 'zod';
 
+/**
+ * The slug shape an organization can be created with (the C# create use case enforces the same
+ * pattern). Internal fixture organizations are seeded outside this rule, so a slug that fails it
+ * never belongs to a customer.
+ */
+export const ORGANIZATION_SLUG_PATTERN = /^[a-z0-9-]+$/;
+export const ORGANIZATION_SLUG_MIN_LENGTH = 2;
+export const ORGANIZATION_SLUG_MAX_LENGTH = 50;
+
+/** True when `slug` is one a customer organization could have been created with. */
+export function isCustomerOrganizationSlug(slug: string): boolean {
+  return (
+    slug.length >= ORGANIZATION_SLUG_MIN_LENGTH &&
+    slug.length <= ORGANIZATION_SLUG_MAX_LENGTH &&
+    ORGANIZATION_SLUG_PATTERN.test(slug)
+  );
+}
+
 export const createOrganizationSchema = z.object({
   name: z.string().min(2).max(200),
-  slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Solo letras minusculas, numeros y guiones'),
+  slug: z
+    .string()
+    .min(ORGANIZATION_SLUG_MIN_LENGTH)
+    .max(ORGANIZATION_SLUG_MAX_LENGTH)
+    .regex(ORGANIZATION_SLUG_PATTERN, 'Solo letras minusculas, numeros y guiones'),
   domain: z.string().optional(),
   billingEmail: z.string().email().optional(),
   // z.string().url() alone accepts any URL scheme (e.g. javascript:, data:) —
   // restrict to http/https server-side too (the branding page already does
   // this client-side, but the API must not rely on that alone).
-  logo: z.string().url().max(500).refine((v) => /^https?:\/\//i.test(v), {
-    message: 'El logo debe ser una URL http/https',
-  }).optional(),
+  logo: z
+    .string()
+    .url()
+    .max(500)
+    .refine((v) => /^https?:\/\//i.test(v), {
+      message: 'El logo debe ser una URL http/https',
+    })
+    .optional(),
 });
 
 export const updateOrganizationSchema = createOrganizationSchema.partial();
