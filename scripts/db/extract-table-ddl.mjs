@@ -127,7 +127,7 @@ export function tableOf(block) {
     case 'TRIGGER':
       return pick(/\bON public\.("?[\w]+"?)\s+FOR EACH/);
     case 'ACL':
-      // Only TABLE ACLs are table-scoped. A SEQUENCE ACL (`GRANT ... ON SEQUENCE public.x_seq`) is
+      // Only TABLE ACLs are table-scoped (a FUNCTION ACL returns null, like a FUNCTION block). A SEQUENCE ACL (`GRANT ... ON SEQUENCE public.x_seq`) is
       // resolved separately in buildDdl via the sequence→table mapping, because that needs the
       // `SEQUENCE OWNED BY` block and this function is per-block. See sequenceOfAcl.
       return pick(/\bON TABLE public\.("?[\w]+"?)\s/);

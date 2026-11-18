@@ -258,7 +258,10 @@ describe('against the committed production baseline', () => {
         tableScoped.includes(b.type) &&
         b.schema === 'public' &&
         // A SEQUENCE ACL is not table-scoped; it is resolved via the sequence→table mapping instead.
-        !sequenceOfAcl(b),
+        !sequenceOfAcl(b) &&
+        // A FUNCTION ACL (e.g. `REVOKE ALL ON FUNCTION public.fit_v2_request_recompute(...) FROM PUBLIC`) is
+        // not table-scoped either: functions are never extracted (tableOf returns null for FUNCTION blocks).
+        !/\bON FUNCTION public\./.test(b.body),
     );
     expect(blocks.length).toBeGreaterThan(900); // sanity: the real baseline is ~1000 such blocks
     for (const b of blocks) expect(tableOf(b), `${b.type} / ${b.name}`).toBeTruthy();
