@@ -31,7 +31,7 @@ allowBuilds:
 # Security patches scoped to affected dependency release lines.
 overrides:
   "@opentelemetry/api": "1.9.1"
-  "vite@>=8.0.0 <8.0.16": "8.0.16"
+  "vite@>=8.0.0 <8.1.6": "8.1.6"
   "brace-expansion@>=1 <2": "1.1.20"
   "brace-expansion@>=2 <3": "2.1.6"
   "brace-expansion@>=5 <5.0.11": "5.0.11"
