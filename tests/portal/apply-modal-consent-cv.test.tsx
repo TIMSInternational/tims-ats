@@ -25,9 +25,23 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 vi.mock('../../apps/web/components', () => ({
-  Modal: ({ title, children }: { title: string; children: React.ReactNode }) => (
+  // The action row is the Modal's pinned `footer`; render it after the body as the real Modal does.
+  Modal: ({
+    title,
+    description,
+    children,
+    footer,
+  }: {
+    title: string;
+    description?: React.ReactNode;
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+  }) => (
     <div role="dialog" aria-label={title}>
+      <h2>{title}</h2>
+      {description && <p data-testid="modal-description">{description}</p>}
       {children}
+      {footer}
     </div>
   ),
 }));
@@ -92,6 +106,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('apply modal — header', () => {
+  it('has a short title that never truncates, with the vacancy title in full beneath it', () => {
+    renderModal();
+    expect(screen.getByRole('dialog', { name: p.applyDialogTitle })).toBeInTheDocument();
+    expect(screen.getByTestId('modal-description')).toHaveTextContent('Backend Engineer');
+  });
+});
+
 describe('apply modal — explicit consent (F14)', () => {
   it('renders an UNCHECKED consent checkbox naming the org, purpose and a policy link; submit is disabled until checked', () => {
     goToReview();
@@ -129,6 +151,46 @@ describe('apply modal — explicit consent (F14)', () => {
       consentLocale: 'es',
     });
     expect(await screen.findByText(p.applicationSentTitle)).toBeInTheDocument();
+  });
+});
+
+describe('apply modal — field validation before the last step (C-08)', () => {
+  it('normalizes a LinkedIn value typed without https:// and submits it in the form the server accepts', async () => {
+    renderModal();
+    fillStep1();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(p.nextStep) }));
+    const linkedin = screen.getByPlaceholderText(p.linkedinPlaceholder);
+    fireEvent.change(linkedin, { target: { value: 'linkedin.com/in/ana-gomez' } });
+    fireEvent.blur(linkedin);
+    expect((linkedin as HTMLInputElement).value).toBe('https://linkedin.com/in/ana-gomez');
+    expect(screen.queryByText(p.linkedinInvalid)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(p.nextStep) }));
+    fireEvent.click(consentBox());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(mocks.applyMutateAsync).toHaveBeenCalledOnce());
+    expect(mocks.applyMutateAsync.mock.calls[0]![0]).toMatchObject({ linkedinUrl: 'https://linkedin.com/in/ana-gomez' });
+  });
+
+  it('blocks step 1 on an email the server would reject ("maria@gmail") and says why', () => {
+    renderModal();
+    const inputs = screen.getAllByRole('textbox');
+    fireEvent.change(inputs[0]!, { target: { value: 'Ana' } });
+    fireEvent.change(inputs[1]!, { target: { value: 'Gomez' } });
+    fireEvent.change(inputs[2]!, { target: { value: 'maria@gmail' } });
+    fireEvent.blur(inputs[2]!);
+    expect(screen.getByText(p.emailInvalid)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: new RegExp(p.nextStep) })).toBeDisabled();
+  });
+
+  it('blocks step 2 on a LinkedIn value that is not a URL', () => {
+    renderModal();
+    fillStep1();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(p.nextStep) }));
+    const linkedin = screen.getByPlaceholderText(p.linkedinPlaceholder);
+    fireEvent.change(linkedin, { target: { value: 'javascript:alert(1)' } });
+    fireEvent.blur(linkedin);
+    expect(screen.getByText(p.linkedinInvalid)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: new RegExp(p.nextStep) })).toBeDisabled();
   });
 });
 
@@ -175,6 +237,16 @@ describe('apply modal — CV on the review step (F5 UX)', () => {
     });
   });
 
+  it('a vacancy that closed before the CV upload says so instead of showing an upload failure', async () => {
+    mocks.presignMutateAsync.mockRejectedValue(Object.assign(new Error('not found'), { data: { code: 'NOT_FOUND' } }));
+    goToReview({ withCv: true });
+    fireEvent.click(consentBox());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(p.applyVacancyClosed, { type: 'error' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(mocks.applyMutateAsync).not.toHaveBeenCalled();
+  });
+
   it('"remove CV and continue" submits the application without the CV', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 403 }));
     goToReview({ withCv: true });
@@ -208,6 +280,8 @@ describe('apply modal — submit error copy', () => {
       { data: { code: 'BAD_REQUEST' } },
     );
 
+  // Every failed submit toasts once (frontend.md: onError toast on every mutation); a field the server
+  // rejected is also shown under that field.
   async function submitWith(error: unknown) {
     mocks.applyMutateAsync.mockRejectedValue(error);
     goToReview();
@@ -224,12 +298,33 @@ describe('apply modal — submit error copy', () => {
   });
 
   it('any other input-validation failure shows the generic error, not raw JSON', async () => {
-    expect(await submitWith(issuesError('email'))).toBe(p.applySubmitError);
+    expect(await submitWith(issuesError('phone'))).toBe(p.applySubmitError);
+  });
+
+  it('a rejected email names the field and returns the candidate to the step that holds it', async () => {
+    expect(await submitWith(issuesError('email'))).toBe(p.emailInvalid);
+    // Back on step 1, with the field error shown under the email input.
+    expect(await screen.findByText(p.emailInvalid)).toBeInTheDocument();
+    expect(screen.getByLabelText(p.emailLabel)).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('a rejected LinkedIn URL names the field and returns the candidate to step 2', async () => {
+    expect(await submitWith(issuesError('linkedinUrl'))).toBe(p.linkedinInvalid);
+    expect(await screen.findByText(p.linkedinInvalid)).toBeInTheDocument();
+  });
+
+  it('a vacancy that closed while the form was open says so (NOT_FOUND), not "try again"', async () => {
+    const closed = Object.assign(new Error('No se encontró el recurso solicitado.'), { data: { code: 'NOT_FOUND' } });
+    mocks.applyMutateAsync.mockRejectedValue(closed);
+    goToReview();
+    fireEvent.click(consentBox());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(p.applyVacancyClosed, { type: 'error' }));
   });
 
   it('a deliberate BAD_REQUEST message (captcha) is shown as-is', async () => {
-    const captcha = Object.assign(new Error('Verificacion de seguridad fallida.'), { data: { code: 'BAD_REQUEST' } });
-    expect(await submitWith(captcha)).toBe('Verificacion de seguridad fallida.');
+    const captcha = Object.assign(new Error('Verificación de seguridad fallida.'), { data: { code: 'BAD_REQUEST' } });
+    expect(await submitWith(captcha)).toBe('Verificación de seguridad fallida.');
   });
 
   it('an internal error (e.g. a raw Prisma unique-constraint message) never reaches the toast verbatim', async () => {

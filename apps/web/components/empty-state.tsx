@@ -1,29 +1,94 @@
 'use client';
 
 import React from 'react';
+import { Button } from './button';
+import type { ButtonVariant } from './button-styles';
 
-interface EmptyStateProps {
-  icon: React.ReactNode;
-  message: string;
-  description?: string;
-  action?: { label: string; onClick: () => void };
+export interface EmptyStateAction {
+  label: string;
+  /** An action… */
+  onClick?: () => void;
+  /** …or a link (rendered as a Next.js Link). */
+  href?: string;
+  /** Defaults to primary for `action` and secondary for `secondaryAction`. Use secondary when the page already has a primary. */
+  variant?: ButtonVariant;
 }
 
-export function EmptyState({ icon, message, description, action }: EmptyStateProps) {
+interface EmptyStateProps {
+  /** Decorative icon. Defaults to a neutral tray; pass an outline svg at size-8 (size-5 when compact). */
+  icon?: React.ReactNode;
+  /** The title: what is empty ("Aún no hay vacantes"). `message` is the legacy name of the same prop. */
+  title?: React.ReactNode;
+  message?: React.ReactNode;
+  /** One line: why, and what the action does. */
+  description?: React.ReactNode;
+  /** "Nothing yet" invites the first action; "no results" offers "Borrar filtros" (t.common.clearFilters). */
+  action?: EmptyStateAction;
+  secondaryAction?: EmptyStateAction;
+  /** compact = one centred row for cards and dashboard panels. */
+  size?: 'default' | 'compact';
+  className?: string;
+}
+
+const DEFAULT_ICON_PATH =
+  'M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859M2.25 13.5V18A2.25 2.25 0 004.5 20.25h15A2.25 2.25 0 0021.75 18v-4.5M2.25 13.5l2.394-7.183A2.25 2.25 0 016.78 4.75h10.44a2.25 2.25 0 012.136 1.567L21.75 13.5';
+
+// A render helper, not a component (one component per file): an action is a link or a button.
+function renderAction(action: EmptyStateAction, fallback: ButtonVariant, size: 'sm' | 'md') {
+  const variant = action.variant ?? fallback;
+  return action.href ? (
+    <Button href={action.href} variant={variant} size={size}>
+      {action.label}
+    </Button>
+  ) : (
+    <Button onClick={action.onClick} variant={variant} size={size}>
+      {action.label}
+    </Button>
+  );
+}
+
+/** Empty state (foundation-spec.md §13, writing.md "Provide clear next steps on any blank screens"). */
+export function EmptyState({
+  icon,
+  title,
+  message,
+  description,
+  action,
+  secondaryAction,
+  size = 'default',
+  className = '',
+}: EmptyStateProps) {
+  const heading = title ?? message;
+  const compact = size === 'compact';
   return (
-    <div className="px-5 py-16 text-center">
-      <div className="flex justify-center mb-3">{icon}</div>
-      <p className="text-sm text-[#8B8B8B]">{message}</p>
-      {description && (
-        <p className="text-xs text-[#8B8B8B] mt-1">{description}</p>
+    <div
+      className={`flex flex-col items-center text-center ${compact ? 'px-4 py-4' : 'px-5 py-12 md:py-16'} ${className}`}
+    >
+      <div className={`flex justify-center text-muted ${compact ? 'mb-2' : 'mb-3'}`} aria-hidden="true">
+        {icon ?? (
+          <svg
+            className={compact ? 'size-5' : 'size-8'}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d={DEFAULT_ICON_PATH} />
+          </svg>
+        )}
+      </div>
+      {heading && (
+        <p className={compact ? 'text-body font-medium text-primary' : 'text-subheading font-semibold text-primary'}>
+          {heading}
+        </p>
       )}
-      {action && (
-        <button
-          onClick={action.onClick}
-          className="mt-4 h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition"
-        >
-          {action.label}
-        </button>
+      {description && <p className="mt-1 max-w-sm text-callout text-secondary">{description}</p>}
+      {(action || secondaryAction) && (
+        <div className={`flex flex-wrap items-center justify-center gap-2 ${compact ? 'mt-3' : 'mt-4'}`}>
+          {secondaryAction && renderAction(secondaryAction, 'secondary', compact ? 'sm' : 'md')}
+          {action && renderAction(action, 'primary', compact ? 'sm' : 'md')}
+        </div>
       )}
     </div>
   );

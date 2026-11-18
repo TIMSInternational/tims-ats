@@ -262,7 +262,7 @@ public sealed class NineBoxWriteRepository(NineBoxWriteDbContext db) : INineBoxW
         }
         catch (DbUpdateException ex) when (IsMemberUniqueViolation(ex))
         {
-            // FAITHFUL: TS catches P2002 → CONFLICT "El usuario ya es miembro de este comite". Atomic: the scope
+            // FAITHFUL: TS catches P2002 → CONFLICT "El usuario ya es miembro de este comité". Atomic: the scope
             // disposes WITHOUT commit → the INSERT rolls back, so NO duplicate row is created.
             return new AddCalibrationMemberResult(AddCalibrationMemberOutcome.Conflict, null);
         }

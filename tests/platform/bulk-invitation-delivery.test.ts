@@ -5,7 +5,11 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../../packages/api/src/repositories/bulk-invitation.repository', () => ({ bulkInvitationRepository: mocks }));
 vi.mock('../../packages/api/src/lib/ses', () => ({ sendEmail: mocks.sendEmail }));
-vi.mock('@tims/shared', () => ({ getAppUrl: () => 'https://tims.example' }));
+// Keep the real module (the email reads the shared role labels); only the link origin is pinned.
+vi.mock('@tims/shared', async (original) => ({
+  ...(await original<typeof import('@tims/shared')>()),
+  getAppUrl: () => 'https://tims.example',
+}));
 import { bulkInviteUsers, resendInvitation } from '../../packages/api/src/services/bulk-invitation.service';
 
 beforeEach(() => {

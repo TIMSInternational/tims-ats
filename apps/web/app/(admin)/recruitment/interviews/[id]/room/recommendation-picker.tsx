@@ -22,17 +22,17 @@ export function RecommendationPicker({ value, onChange, disabled = false }: Reco
   const { t } = useI18n();
   return (
     <fieldset className="mb-4" disabled={disabled}>
-      <legend className="text-[12px] font-medium text-[#333] mb-2">{t.interviewRoom.recommendationLabel}</legend>
+      <legend className="text-callout font-medium text-primary mb-2">{t.interviewRoom.recommendationLabel}</legend>
       <div className="flex flex-wrap gap-1.5">
         {RECOMMENDATIONS.map((rec) => {
           const checked = value === rec;
           return (
             <label
               key={rec}
-              className={`cursor-pointer rounded-full border px-2.5 py-1 text-[11px] transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#1F114C] ${
+              className={`inline-flex min-h-8 cursor-pointer items-center rounded-full border px-3 text-callout transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 pointer-coarse:min-h-11 ${
                 checked
-                  ? 'bg-[#1F114C] text-white border-[#1F114C]'
-                  : 'bg-white text-[#585858] border-[#EDEDED] hover:border-[#8B8B8B]'
+                  ? 'bg-brand text-white border-brand'
+                  : 'bg-white text-secondary border-field-border hover:border-secondary'
               }`}
             >
               <input

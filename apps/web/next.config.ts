@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 import { withSentryConfig } from "@sentry/nextjs";
+import { permissionsPolicy } from "./lib/security/permissions-policy";
 
 // NOTE: Content-Security-Policy is set per-request in `middleware.ts` so it can
 // carry a unique nonce (nonce-based CSP, no 'unsafe-inline' on script-src in
@@ -8,18 +9,44 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // No `x-powered-by: Next.js` response header (do not advertise the framework).
+  poweredByHeader: false,
+  // Mirror Vercel's server-only VERCEL_ENV into client bundles so getAppUrl()
+  // (packages/shared/src/app-url.ts) can recognise a deployed environment in the
+  // browser without depending on the project's "Automatically expose System
+  // Environment Variables" setting (#50). Empty string = not a Vercel deployment.
+  env: {
+    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV || "",
+  },
   // Monorepo: trace from the repo root so file tracing can see the pnpm store
   // (workspace packages + the Prisma query-engine binary live two levels up).
   outputFileTracingRoot: path.join(__dirname, "../../"),
   // Keep Prisma out of the webpack bundle so its native engine binary is
   // resolved/required from node_modules at runtime instead of being inlined.
-  serverExternalPackages: ["@prisma/client", "prisma"],
+  //
+  // pdf-parse (CV text extraction, packages/api/src/lib/cv-extraction.ts) runs as
+  // plain Node code, never through webpack: it picks its pdf.js build with a
+  // template-literal require, and pdf.js 1.10 loads its fake worker through
+  // require.ensure, which webpack rewrites into a context module over all four
+  // bundled pdf.js builds plus an async chunk. (F-7: PDF CVs have never parsed in
+  // production, while the same file parses in plain Node.)
+  // Next only externalizes a package that resolves from THIS app's root (the
+  // base-resolve check in next/dist/build/handle-externals.js); one declared only by
+  // a workspace package is silently bundled anyway. So pdf-parse is also an apps/web
+  // dependency, with the same spec as packages/api (one copy in the lockfile).
+  serverExternalPackages: ["@prisma/client", "prisma", "pdf-parse"],
   // Force the Linux query-engine binary into every serverless function bundle.
   // pnpm nests it under the hashed .pnpm store, which Next's tracing misses by
   // default — without this, runtime queries throw "Query Engine not found".
+  // The pdf.js build pdf-parse runs (cv-extraction.ts PDFJS_BUILD_VERSION) is listed
+  // explicitly too. Next's tracer currently expands pdf-parse's template-literal require
+  // to all four builds and follows pdf.js's require.ensure worker load, but the build
+  // that runs must not depend on that heuristic.
   outputFileTracingIncludes: {
     "**": [
       "../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/*.node",
+      "../../node_modules/.pnpm/pdf-parse@*/node_modules/pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js",
+      "../../node_modules/.pnpm/pdf-parse@*/node_modules/pdf-parse/lib/pdf.js/v1.10.100/build/pdf.worker.js",
     ],
   },
   transpilePackages: [
@@ -39,7 +66,7 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-XSS-Protection", value: "1; mode=block" },
-          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
+          { key: "Permissions-Policy", value: permissionsPolicy(process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN) },
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains",

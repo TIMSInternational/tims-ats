@@ -146,7 +146,7 @@ public enum AddCalibrationMemberOutcome
     /// <summary>The member was INSERTed → 200, the <c>{ id }</c>.</summary>
     Created,
 
-    /// <summary>The session {id, org} does NOT exist → 404 "Sesion de calibracion no encontrada".</summary>
+    /// <summary>The session {id, org} does NOT exist → 404 "Sesión de calibración no encontrada".</summary>
     SessionNotFound,
 
     /// <summary>The <c>userId</c> is NOT a user in the caller's org → 404 "Usuario no encontrado".</summary>
@@ -166,7 +166,7 @@ public enum RemoveCalibrationMemberOutcome
     /// <summary>The member row was DELETEd → 200, <c>{ success: true }</c>.</summary>
     Deleted,
 
-    /// <summary>The session {id, org} does NOT exist → 404 "Sesion de calibracion no encontrada".</summary>
+    /// <summary>The session {id, org} does NOT exist → 404 "Sesión de calibración no encontrada".</summary>
     SessionNotFound,
 
     /// <summary>The delete affected 0 rows (no such member) → 404 "Miembro no encontrado".</summary>

@@ -26,15 +26,24 @@ describe('interview evaluator management', () => {
   // read access. A team-scoped caller must not grab an out-of-scope interview
   // by id and self-add → both endpoints must SCOPE-probe the interview parent
   // (assertScoped), not just org-check it.
+  // Since B-05 (pilot) the probe is assertInterviewManageable: the interview scope (assertScoped) AND, at a
+  // narrow scope, the vacancy scope — a panelist sees the interview but may not change its panel.
+  const SCOPE_PROBE = /assertScoped\('interview'|assertInterviewManageable\(/;
   it('addEvaluator scope-probes the interview parent (no bare org-only findFirst)', () => {
     const body = blockAt(crud(), 'addEvaluator:');
-    expect(body).toMatch(/assertScoped\('interview'/);
+    expect(body).toMatch(SCOPE_PROBE);
     // The escalation hole was the bare org-only parent check — it must be gone.
     expect(body).not.toMatch(/interview\.findFirst/);
   });
   it('removeEvaluator scope-probes the interview parent', () => {
     const body = blockAt(crud(), 'removeEvaluator:');
-    expect(body).toMatch(/assertScoped\('interview'/);
+    expect(body).toMatch(SCOPE_PROBE);
     expect(body).not.toMatch(/interview\.findFirst/);
+  });
+  it('the management probe still scope-probes the interview before the vacancy arm', () => {
+    const service = readFileSync(join(ROOT, 'packages/api/src/services/interview-management.service.ts'), 'utf8');
+    const probe = service.indexOf("assertScoped('interview'");
+    expect(probe).toBeGreaterThan(-1);
+    expect(probe).toBeLessThan(service.indexOf("scopeWhereFor('vacancy'"));
   });
 });

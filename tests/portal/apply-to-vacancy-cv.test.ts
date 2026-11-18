@@ -5,11 +5,11 @@ import {
   APPLICATION_CONSENT_TYPE,
 } from '../../packages/shared/src/constants/application-consent';
 
-const VACANCY_ID = '11111111-1111-1111-1111-111111111111';
-const ORG_ID = '22222222-2222-2222-2222-222222222222';
-const CANDIDATE_ID = '33333333-3333-3333-3333-333333333333';
-const STAGE_ID = '44444444-4444-4444-4444-444444444444';
-const APPLICATION_ID = '55555555-5555-5555-5555-555555555555';
+const VACANCY_ID = '11111111-1111-4111-8111-111111111111';
+const ORG_ID = '22222222-2222-4222-8222-222222222222';
+const CANDIDATE_ID = '33333333-3333-4333-8333-333333333333';
+const STAGE_ID = '44444444-4444-4444-8444-444444444444';
+const APPLICATION_ID = '55555555-5555-4555-8555-555555555555';
 
 const dbMocks = {
   vacancy: { findFirstOrThrow: vi.fn() },
@@ -124,7 +124,7 @@ describe('portal.applyToVacancy — CAPTCHA verification', () => {
     vi.stubEnv('TURNSTILE_SECRET_KEY', 'test-secret');
     const caller = await makeCaller();
 
-    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow('Verificacion de seguridad fallida');
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).rejects.toThrow('Verificación de seguridad fallida');
     expect(dbMocks.candidate.findMany).not.toHaveBeenCalled();
   });
 
@@ -165,7 +165,7 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
     const caller = await makeCaller();
 
     await expect(caller.portal.applyToVacancy({ ...baseApplyInput, consentAccepted: false })).rejects.toThrow(
-      'Debes autorizar el tratamiento',
+      'Debe autorizar el tratamiento',
     );
     expect(dbMocks.candidate.findMany).not.toHaveBeenCalled();
   });
@@ -188,9 +188,15 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
       .applyToVacancy({ ...baseApplyInput, consentTextVersion: 'portal-apply-1999-01-01' })
       .catch((e: unknown) => e);
 
-    expect(applyErrorMessage(err, { applySubmitError: 'GENERIC', applyConsentVersionChanged: 'RELOAD' })).toBe(
-      'RELOAD',
-    );
+    expect(
+      applyErrorMessage(err, {
+        applySubmitError: 'GENERIC',
+        applyConsentVersionChanged: 'RELOAD',
+        applyVacancyClosed: 'CLOSED',
+        emailInvalid: 'EMAIL',
+        linkedinInvalid: 'LINKEDIN',
+      }),
+    ).toBe('RELOAD');
   });
 
   it('records the consent (org, candidate, purpose, text version, timestamp) inside the application transaction', async () => {
@@ -386,7 +392,7 @@ describe('portal.applyToVacancy — explicit data-processing consent (F14)', () 
       candidates: [existingAna],
       consents: [
         { ...withdrawnConsent(), consentType: 'ai_interview' },
-        { ...withdrawnConsent(), organizationId: '99999999-9999-9999-9999-999999999999' },
+        { ...withdrawnConsent(), organizationId: '99999999-9999-4999-8999-999999999999' },
       ],
     });
     const caller = await makeCaller();
@@ -708,11 +714,14 @@ describe('portal.applyToVacancy — CV processing never delays the response (#31
 
     await expect(caller.portal.applyToVacancy(cvInput)).resolves.toEqual({ received: true });
 
-    // Resolved with nothing started: processing happens only when the scheduler runs it.
+    // Resolved with nothing started: processing happens only when the scheduler runs it. Two tasks: the
+    // confirmation email (scheduled first) and the CV processing.
     expect(processCvUploadMock).not.toHaveBeenCalled();
-    expect(tasks).toHaveLength(1);
-    await tasks[0]!();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+    expect(tasks).toHaveLength(2);
+    for (const task of tasks) await task();
     expect(processCvUploadMock).toHaveBeenCalledWith(ORG_ID, CANDIDATE_ID, `cv-uploads/${ORG_ID}/x.pdf`, 'resume.pdf');
+    expect(sendApplicationReceivedMock).toHaveBeenCalledTimes(1);
   });
 
   it('records the submitted CV (unparsed, org-scoped) inside the application transaction, before responding', async () => {
@@ -798,13 +807,27 @@ describe('portal.applyToVacancy — CV processing never delays the response (#31
     const caller = await makeCaller(new Headers(), { runAfterResponse: (t) => tasks.push(t) });
 
     await expect(caller.portal.applyToVacancy(cvInput)).resolves.toEqual({ received: true });
-    await expect(tasks[0]!()).resolves.toBeUndefined();
+    await expect(Promise.all(tasks.map((t) => t()))).resolves.toBeDefined();
 
     const cvWarn = warn.mock.calls.find((c) => String(c[1]).includes('CV processing'));
     expect(cvWarn).toBeDefined();
     const serialized = JSON.stringify(cvWarn);
     expect(serialized).not.toContain('ana@example.com');
     expect(serialized).not.toContain(CANDIDATE_ID);
+  });
+
+  it('the confirmation email is handed to the scheduler, never sent before it runs (Vercel freeze, 2026-11-03)', async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    const caller = await makeCaller(new Headers(), { runAfterResponse: (t) => tasks.push(t) });
+
+    await expect(caller.portal.applyToVacancy(baseApplyInput)).resolves.toEqual({ received: true });
+    await flushDetached();
+    // Without a CV only the email is scheduled, and nothing ran detached.
+    expect(tasks).toHaveLength(1);
+    expect(consumeApplicationEmailQuotaMock).not.toHaveBeenCalled();
+    expect(sendApplicationReceivedMock).not.toHaveBeenCalled();
+    await tasks[0]!();
+    expect(sendApplicationReceivedMock).toHaveBeenCalledTimes(1);
   });
 
   it('a scheduler that throws falls back to detached execution; the application still succeeds', async () => {
@@ -906,13 +929,74 @@ describe('portal.applyToVacancy — application received email', () => {
       vacancyTitle: 'Analista de Datos',
       companyName: 'Acme',
       locale: 'es',
+      // The organization has no candidate contact configured: no contact line, no Reply-To.
+      contactEmail: null,
     });
     expect(dbMocks.application.create.mock.invocationCallOrder[0]).toBeLessThan(
       sendApplicationReceivedMock.mock.invocationCallOrder[0]!,
     );
   });
 
-  it('uses the English template for an English-language company', async () => {
+  it("passes the organization's candidate contact (settings first, then billing email) — never a vendor mailbox", async () => {
+    const vacancyFor = (organization: Record<string, unknown>) => ({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Analista de Datos',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization,
+      company: { language: 'es' },
+    });
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue(
+      vacancyFor({
+        name: 'Acme',
+        settings: { candidateContactEmail: 'Reclutamiento@Acme.test' },
+        billingEmail: 'facturas@acme.test',
+      }),
+    );
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy({ ...baseApplyInput, email: 'ana@example.com' });
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ contactEmail: 'reclutamiento@acme.test' });
+    // The lookup asks only for what the contact needs.
+    const include = dbMocks.vacancy.findFirstOrThrow.mock.calls.at(-1)![0].include;
+    // (slug builds the candidate-portal link in the same confirmation — careers WP.)
+    expect(include.organization).toEqual({ select: { name: true, slug: true, settings: true, billingEmail: true } });
+  });
+
+  it('links the organization\'s candidate portal in the confirmation (built server-side from the slug)', async () => {
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Analista de Datos',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization: { name: 'Acme', slug: 'acme' },
+      company: null,
+    });
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy(baseApplyInput);
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    const sent = sendApplicationReceivedMock.mock.calls[0]![0] as { portalUrl?: string };
+    expect(sent.portalUrl).toMatch(/^https?:\/\/[^/]+\/careers\/acme\/dashboard$/);
+  });
+
+  // The confirmation follows the language the candidate applied in (the consent locale the form sends), not
+  // the company's: a candidate who read the portal in English gets the English email, and vice versa.
+  it('uses the English template when the candidate applied in English, even for a Spanish-language company', async () => {
+    dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
+      id: VACANCY_ID,
+      organizationId: ORG_ID,
+      title: 'Data Analyst',
+      stages: [{ id: STAGE_ID, isDefault: true }],
+      organization: { name: 'Acme' },
+      company: { language: 'es' },
+    });
+    const caller = await makeCaller();
+    await caller.portal.applyToVacancy({ ...baseApplyInput, consentLocale: 'en' });
+    await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ locale: 'en', vacancyTitle: 'Data Analyst' });
+  });
+
+  it('uses the Spanish template when the candidate applied in Spanish, even for an English-language company', async () => {
     dbMocks.vacancy.findFirstOrThrow.mockResolvedValue({
       id: VACANCY_ID,
       organizationId: ORG_ID,
@@ -922,9 +1006,9 @@ describe('portal.applyToVacancy — application received email', () => {
       company: { language: 'en-US' },
     });
     const caller = await makeCaller();
-    await caller.portal.applyToVacancy(baseApplyInput);
+    await caller.portal.applyToVacancy({ ...baseApplyInput, consentLocale: 'es' });
     await vi.waitFor(() => expect(sendApplicationReceivedMock).toHaveBeenCalledOnce());
-    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ locale: 'en', vacancyTitle: 'Data Analyst' });
+    expect(sendApplicationReceivedMock.mock.calls[0]![0]).toMatchObject({ locale: 'es' });
   });
 
   it('a reused candidate is addressed by its STORED email + name, never the unauthenticated form values', async () => {

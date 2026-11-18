@@ -1,14 +1,11 @@
 'use client';
 
+import { useId } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { EmptyState, Skeleton } from '../../../components';
+import { EmptyState, Skeleton, StatusBadge } from '../../../components';
 import { LoadError } from './load-error';
 import { formatDate } from '../../../lib/format-utils';
-
-const EMPTY_ICON = (
-  <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />
-);
 
 function SkeletonRows() {
   return (
@@ -31,50 +28,45 @@ export function EmployeePrivacy() {
   const e = t.employeeHome;
   const consents = trpc.consent.myConsents.useQuery();
   const list = consents.data ?? [];
+  const titleId = useId();
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{e.privacy}</h2>
+    <section aria-labelledby={titleId} className="rounded-xl bg-white p-5 shadow-card">
+      <h2 id={titleId} className="mb-4 text-heading font-semibold text-brand">
+        {e.privacy}
+      </h2>
       {consents.isError ? (
-        <LoadError message={e.loadError} />
+        <LoadError message={e.loadError} onRetry={() => consents.refetch()} />
       ) : consents.isLoading ? (
         <SkeletonRows />
       ) : list.length === 0 ? (
-        <EmptyState icon={EMPTY_ICON} message={e.noConsents} />
+        <EmptyState size="compact" message={e.noConsents} />
       ) : (
-        <div className="space-y-1">
+        <ul className="space-y-1">
           {list.map((consent) => {
             const withdrawn = consent.withdrawnAt != null;
             return (
-              <div
+              <li
                 key={consent.id}
-                className="flex items-center justify-between rounded-lg px-3 py-2.5 -mx-3"
+                className="-mx-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg px-3 py-2.5"
               >
                 <div className="min-w-0">
-                  <span className="text-sm text-[#333] font-medium block truncate">
-                    {consent.consentType}
-                  </span>
-                  <span className="text-[12px] text-[#8B8B8B]">
+                  <span className="block truncate text-body font-medium text-primary">{consent.consentType}</span>
+                  <span className="text-callout text-muted">
                     {e.consentVersion} {consent.textVersion} ·{' '}
                     {withdrawn
                       ? `${e.consentWithdrawnOn} ${formatDate(consent.withdrawnAt)}`
                       : `${e.consentAgreedOn} ${formatDate(consent.agreedAt)}`}
                   </span>
                 </div>
-                <span
-                  className={`text-[12px] font-medium rounded-full px-2.5 py-1 ml-3 shrink-0 ${
-                    withdrawn
-                      ? 'bg-gray-100 text-gray-600'
-                      : 'bg-green-50 text-green-700'
-                  }`}
-                >
+                <StatusBadge tone={withdrawn ? 'neutral' : 'success'}>
                   {withdrawn ? e.consentWithdrawn : e.consentActive}
-                </span>
-              </div>
+                </StatusBadge>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

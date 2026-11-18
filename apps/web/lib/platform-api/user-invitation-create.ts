@@ -20,7 +20,7 @@ const responseSchema = z.object({
 const viaCSharp = process.env.NEXT_PUBLIC_USER_INVITATION_CREATE_VIA_CSHARP === 'true';
 
 export function useUserInvitationCreate(options: {
-  onSuccess?: (delivery: z.infer<typeof responseSchema>['delivery'] | 'legacy') => void;
+  onSuccess?: (delivery: z.infer<typeof responseSchema>['delivery']) => void;
   onError?: (error: Error) => void;
 } = {}) {
   const { t } = useI18n();
@@ -30,8 +30,9 @@ export function useUserInvitationCreate(options: {
     mutationFn: async (input: z.input<typeof inputSchema>) => {
       const parsed = inputSchema.parse(input);
       if (!viaCSharp) {
-        await legacy.mutateAsync(parsed);
-        return 'legacy' as const;
+        // The tRPC writer reports the same delivery outcomes as C#; only `accepted` means the email went out.
+        const created = await legacy.mutateAsync(parsed);
+        return responseSchema.shape.delivery.parse(created.delivery);
       }
       if (!isPlatformApiEnabled()) throw new Error(t.invitations.creationUnavailable);
       const result = responseSchema.parse(await platformPost('/platform/invitations/users', parsed));

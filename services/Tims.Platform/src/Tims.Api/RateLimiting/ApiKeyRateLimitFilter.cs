@@ -29,14 +29,14 @@ public sealed class ApiKeyRateLimitFilter : IEndpointFilter
         var services = http.RequestServices;
 
         // Skip the per-key limit ONLY when no limiter can make a decision — the same "no limiter
-        // available" state the guard encodes (no Redis configured AND not Development). A probe
+        // available" state the guard encodes (no shared store configured AND not Development). A probe
         // endpoint must stay observable rather than 500 on a misconfigured host; a real deployment
-        // always configures Redis, so this path throttles per key. When a limiter IS present, a
-        // Redis outage still fails closed in Production (the guard rethrows) exactly like the
+        // always configures the store, so this path throttles per key. When a limiter IS present, a
+        // store outage still fails closed in Production (the guard rethrows) exactly like the
         // product surface.
-        var redis = services.GetService<RedisSlidingWindowRateLimiter>();
+        var shared = services.GetService<DynamoDbSlidingWindowRateLimiter>();
         var environment = services.GetRequiredService<IHostEnvironment>();
-        if (redis is null && !environment.IsDevelopment())
+        if (shared is null && !environment.IsDevelopment())
         {
             return await next(context).ConfigureAwait(false);
         }

@@ -132,7 +132,7 @@ describe('vacancy.create — autoPublish', () => {
         data: expect.objectContaining({
           stages: {
             create: expect.arrayContaining([
-              expect.objectContaining({ name: 'Aplicado', order: 0, isDefault: true }),
+              expect.objectContaining({ name: 'Postulación recibida', order: 0, isDefault: true }),
               expect.objectContaining({ name: 'Contratado', order: 6, isDefault: false }),
             ]),
           },
@@ -165,7 +165,7 @@ describe('vacancy.create — autoPublish', () => {
         data: expect.objectContaining({
           status: 'draft',
           stages: {
-            create: expect.arrayContaining([expect.objectContaining({ name: 'Aplicado', order: 0, isDefault: true })]),
+            create: expect.arrayContaining([expect.objectContaining({ name: 'Postulación recibida', order: 0, isDefault: true })]),
           },
         }),
       }),
@@ -196,7 +196,7 @@ describe('vacancy.create — autoPublish', () => {
         data: expect.objectContaining({
           status: 'approved',
           stages: {
-            create: expect.arrayContaining([expect.objectContaining({ name: 'Aplicado', order: 0, isDefault: true })]),
+            create: expect.arrayContaining([expect.objectContaining({ name: 'Postulación recibida', order: 0, isDefault: true })]),
           },
         }),
       }),

@@ -2,7 +2,9 @@
 
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { RadarChart, Skeleton } from '../../../../../components';
+import { Button, RadarChart, Skeleton } from '../../../../../components';
+import { isFitEngineV2Enabled } from '../../../../../lib/platform-api/fit-engine';
+import { useFitRankingViaCsharp } from '../../../../../lib/platform-api/fit-engine-reads';
 
 export function CandidateFitPanel({
   candidateId,
@@ -14,11 +16,17 @@ export function CandidateFitPanel({
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const ranking = trpc.fitEngine.getRankingForVacancy.useQuery({ vacancyId });
+  // FIT v2: the row comes from the C# ranking under the flag (D6 for a team leader); the narrative stays on tRPC (its
+  // Bedrock pipeline has no C# plane), which builds it from the same D6 view.
+  const viaCsharp = isFitEngineV2Enabled();
+  const trpcRanking = trpc.fitEngine.getRankingForVacancy.useQuery({ vacancyId }, { enabled: !viaCsharp });
+  const csharpRanking = useFitRankingViaCsharp(vacancyId);
   const narrative = trpc.fitEngine.explainFit.useQuery({ candidateId, vacancyId });
 
-  const entry = (ranking.data ?? []).find((r) => r.candidateId === candidateId);
-  const breakdown = entry?.breakdown;
+  const rows: ReadonlyArray<{ candidateId: string; firstName: string; lastName: string; breakdown: unknown }> =
+    (viaCsharp ? csharpRanking.data : trpcRanking.data) ?? [];
+  const entry = rows.find((r) => r.candidateId === candidateId);
+  const breakdown = entry?.breakdown as Partial<Record<string, number | null>> | null | undefined;
 
   const dimensions = [
     { label: t.candidates.fitDimensionAssessment, score: breakdown?.assessment ?? null },
@@ -29,26 +37,45 @@ export function CandidateFitPanel({
   ];
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] mt-3">
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-[13px] font-semibold text-[#1F114C]">
+    <div className="mt-1 rounded-xl bg-white p-4 shadow-card md:p-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-subheading font-semibold text-brand">
           {entry ? `${entry.firstName} ${entry.lastName}` : ''}
-        </h4>
-        <button onClick={onClose} className="text-[11px] text-[#8B8B8B] hover:text-[#585858]">
+        </h3>
+        <Button variant="tertiary" size="sm" onClick={onClose}>
           {t.fitRanking.closeDetail}
-        </button>
+        </Button>
       </div>
 
-      <RadarChart dimensions={dimensions} />
+      <div className="grid gap-4 md:grid-cols-2 md:items-center">
+        {/* The list below is the chart's text equivalent, so the chart itself is hidden from assistive tech. */}
+        <div aria-hidden="true">
+          <RadarChart dimensions={dimensions} />
+        </div>
+        <ul aria-label={t.fitRanking.dimensionsLabel} className="divide-y divide-border">
+          {dimensions.map((dim) => (
+            <li key={dim.label} className="flex min-h-9 items-center justify-between gap-3">
+              <span className="text-body text-secondary">{dim.label}</span>
+              {dim.score === null ? (
+                <span className="text-body text-secondary">{t.candidates.fitDimensionUnavailable}</span>
+              ) : (
+                <span className="text-body font-medium tabular-nums text-primary">{dim.score}/100</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
 
-      <div className="mt-4 pt-4 border-t border-[#F6F6F6]">
-        <p className="text-[12px] font-medium text-[#585858] mb-2">{t.fitRanking.narrativeTitle}</p>
+      <div className="mt-4 border-t border-border pt-4">
+        <p className="mb-2 text-callout font-medium text-secondary">{t.fitRanking.narrativeTitle}</p>
         {narrative.isLoading ? (
           <Skeleton className="h-16 w-full rounded-lg" />
         ) : narrative.isError ? (
-          <p className="text-[12px] text-[#DD0C15]">{t.fitRanking.narrativeError}</p>
+          <p role="alert" className="text-callout text-danger">
+            {t.fitRanking.narrativeError}
+          </p>
         ) : (
-          <p className="text-[12px] text-[#585858] leading-relaxed">{narrative.data?.narrative}</p>
+          <p className="max-w-prose text-body leading-relaxed text-secondary">{narrative.data?.narrative}</p>
         )}
       </div>
     </div>

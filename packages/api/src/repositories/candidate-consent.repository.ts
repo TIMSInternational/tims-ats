@@ -119,4 +119,38 @@ export const candidateConsentRepository = {
   async isRecruitmentConsentWithdrawn(organizationId: string, candidateId: string): Promise<boolean> {
     return (await this.withdrawnCandidateIds(organizationId, [candidateId])).size > 0;
   },
+
+  /**
+   * The language the candidate was shown the application consent in (`application_consent_evidence.locale`,
+   * written by the public apply form): that application's evidence first, else the candidate's most recent.
+   * Candidate emails follow it; null (a staff-added candidate, a backfilled row) means "use the company
+   * language". Never throws: a failed read is null, because a language preference must never block an email.
+   */
+  async consentLocale(
+    organizationId: string,
+    ref: { applicationId?: string | null; candidateId: string },
+  ): Promise<string | null> {
+    const base: Prisma.ApplicationConsentEvidenceWhereInput = {
+      organizationId,
+      consentType: APPLICATION_CONSENT_TYPE,
+      locale: { not: null },
+    };
+    try {
+      if (ref.applicationId) {
+        const own = await db.applicationConsentEvidence.findFirst({
+          where: { ...base, applicationId: ref.applicationId },
+          select: { locale: true },
+        });
+        if (own?.locale) return own.locale;
+      }
+      const latest = await db.applicationConsentEvidence.findFirst({
+        where: { ...base, candidateId: ref.candidateId },
+        orderBy: { agreedAt: 'desc' },
+        select: { locale: true },
+      });
+      return latest?.locale ?? null;
+    } catch {
+      return null;
+    }
+  },
 };

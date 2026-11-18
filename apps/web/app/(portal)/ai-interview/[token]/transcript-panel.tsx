@@ -19,7 +19,7 @@ export function TranscriptPanel({ transcript, variant }: TranscriptPanelProps) {
   return (
     <div className={container}>
       {variant === 'panel' && (
-        <p className="text-[10px] uppercase tracking-wide text-[#8a83ad]">
+        <p className="text-caption font-medium text-[#cfc8ea]">
           {t.aiInterview.liveTranscript}
         </p>
       )}
@@ -31,10 +31,10 @@ export function TranscriptPanel({ transcript, variant }: TranscriptPanelProps) {
             ? 'bg-[#221a3d] text-[#e9e6f5]'
             : 'bg-[#1c1733] text-[#9a91c4] self-end';
         return (
-          <p key={entry.id} className={`text-sm rounded-lg px-3 py-2 ${bubble}`}>
-            <span className="opacity-60">{who}: </span>
+          <p key={entry.id} className={`rounded-lg px-3 py-2 text-base sm:text-subheading ${bubble}`}>
+            <span className="font-medium">{who}: </span>
             {entry.text}
-            {live && <span className="opacity-50">▍</span>}
+            {live && <span className="opacity-50" aria-hidden="true">▍</span>}
           </p>
         );
       })}

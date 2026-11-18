@@ -32,7 +32,7 @@ public sealed class PlatformDashboardAttentionUseCaseTests
         Assert.Equal("critical", item.Severity);
         Assert.Equal("Factura vencida - Acme Corp", item.Title);
         // The grouping separator is the whole point: a bare ToString() would emit "1234.5".
-        Assert.Equal("$1,234.5 USD vencida hace 3 dias", item.Description);
+        Assert.Equal("$1,234.5 USD vencida hace 3 días", item.Description);
         Assert.Equal("/platform/invoices?org=org-1", item.ActionUrl);
         Assert.Equal("Ver factura", item.ActionLabel);
         Assert.Equal(1234.5, item.Amount);
@@ -50,14 +50,14 @@ public sealed class PlatformDashboardAttentionUseCaseTests
 
         // `inv.dueDate ? … : 0` — the guard the column's nullability requires even though the query
         // filters on it.
-        Assert.Equal("$100 COP vencida hace 0 dias", items[0].Description);
+        Assert.Equal("$100 COP vencida hace 0 días", items[0].Description);
         Assert.Equal(0, items[0].DaysUntil);
     }
 
     [Theory]
-    [InlineData(1, "El periodo de prueba expira en 1 dia")]
-    [InlineData(2, "El periodo de prueba expira en 2 dias")]
-    [InlineData(0, "El periodo de prueba expira en 0 dias")]
+    [InlineData(1, "El periodo de prueba expira en 1 día")]
+    [InlineData(2, "El periodo de prueba expira en 2 días")]
+    [InlineData(0, "El periodo de prueba expira en 0 días")]
     public void ExpiringTrial_pluralises_on_anything_but_exactly_one(int daysLeft, string expected)
     {
         // Math.ceil means "ends in n days minus a minute" still reads as n; seed exactly n whole days
@@ -82,7 +82,7 @@ public sealed class PlatformDashboardAttentionUseCaseTests
             [], [], []);
 
         // Math.ceil, not floor: half a day left is "1 dia", never "0 dias".
-        Assert.Equal("El periodo de prueba expira en 1 dia", items[0].Description);
+        Assert.Equal("El periodo de prueba expira en 1 día", items[0].Description);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class PlatformDashboardAttentionUseCaseTests
         var item = Assert.Single(items);
         // 2499 — a bare `${price}` interpolation, NOT toLocaleString, so NO comma. The two number
         // formats live four lines apart in the TS helper and this is the assertion that keeps them apart.
-        Assert.Equal("Suscripcion enterprise con pago pendiente ($2499/mes)", item.Description);
+        Assert.Equal("Suscripción enterprise con pago pendiente ($2499/mes)", item.Description);
         Assert.Equal("Pago fallido - Initech", item.Title);
         Assert.Equal(2499, item.Amount);
         Assert.Equal("USD", item.Currency);
@@ -112,7 +112,7 @@ public sealed class PlatformDashboardAttentionUseCaseTests
             [], []);
 
         // `PLAN_PRICES[plan] || 0` — reproduced rather than throwing on an unmapped plan.
-        Assert.Equal("Suscripcion legacy con pago pendiente ($0/mes)", items[0].Description);
+        Assert.Equal("Suscripción legacy con pago pendiente ($0/mes)", items[0].Description);
         Assert.Equal(0d, items[0].Amount);
     }
 
@@ -127,10 +127,10 @@ public sealed class PlatformDashboardAttentionUseCaseTests
             ],
             []);
 
-        Assert.Equal("Invitacion sin aceptar - a@x.test", items[0].Title);
-        Assert.Equal("Enviada hace 9 dias para Acme Corp", items[0].Description);
+        Assert.Equal("Invitación sin aceptar - a@x.test", items[0].Title);
+        Assert.Equal("Enviada hace 9 días para Acme Corp", items[0].Description);
         // No organization ⇒ the trailing clause vanishes entirely, and the org fields are null.
-        Assert.Equal("Enviada hace 6 dias", items[1].Description);
+        Assert.Equal("Enviada hace 6 días", items[1].Description);
         Assert.Null(items[1].OrgId);
         Assert.Null(items[1].OrgName);
     }
@@ -143,8 +143,8 @@ public sealed class PlatformDashboardAttentionUseCaseTests
             [new SuspendedOrgRow("org-7", "Wayne Enterprises")]);
 
         var item = Assert.Single(items);
-        Assert.Equal("Organizacion suspendida - Wayne Enterprises", item.Title);
-        Assert.Equal("La organizacion esta desactivada y sus usuarios no pueden acceder", item.Description);
+        Assert.Equal("Organización suspendida - Wayne Enterprises", item.Title);
+        Assert.Equal("La organización está desactivada y sus usuarios no pueden acceder", item.Description);
         Assert.Equal("/platform/organizations/org-7", item.ActionUrl);
         Assert.Equal("Revisar", item.ActionLabel);
         Assert.Equal("warning", item.Severity);

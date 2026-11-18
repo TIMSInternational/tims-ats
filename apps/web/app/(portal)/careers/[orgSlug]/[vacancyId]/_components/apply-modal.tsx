@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { APPLICATION_CONSENT_TEXT_VERSION } from '@tims/shared';
 import { trpc } from '../../../../../../lib/trpc';
@@ -10,8 +10,19 @@ import { useI18n } from '../../../../../../lib/i18n';
 import { ApplyModalStep1 } from './apply-modal-step1';
 import { ApplyModalStep2 } from './apply-modal-step2';
 import { ApplyModalReview } from './apply-modal-review';
+import { ApplySuccess } from './apply-success';
+import { ApplyStepIndicator } from './apply-step-indicator';
+import { ApplyModalFooter } from './apply-modal-footer';
+import { DiscardChangesPrompt } from '../../../../../../components/discard-changes-prompt';
 import { useCvUpload } from '../_lib/use-cv-upload';
-import { applyErrorMessage } from '../_lib/apply-error-message';
+import {
+  applyErrorField,
+  applyErrorMessage,
+  applyErrorStep,
+  isVacancyClosedError,
+  type ApplyErrorField,
+} from '../_lib/apply-error-message';
+import { isValidApplyEmail, isValidLinkedinUrl, normalizeLinkedinUrl } from '../_lib/apply-fields';
 
 interface ApplyModalProps {
   vacancyId: string;
@@ -33,6 +44,8 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   // Platform-default candidate privacy notice for this org. A per-organization policy URL
   // setting does not exist yet (follow-up); this route names the org as controller.
   const privacyHref = `/careers/${encodeURIComponent(params?.orgSlug ?? '')}/privacy`;
+  // The candidate portal: the dashboard sends a signed-out candidate to the portal login.
+  const portalHref = `/careers/${encodeURIComponent(params?.orgSlug ?? '')}/dashboard`;
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -51,25 +64,60 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   // Explicit consent: never pre-checked, required to submit.
   const [consentAccepted, setConsentAccepted] = useState(false);
+  // A field the server rejected: its step shows the field error until the value changes.
+  const [rejectedField, setRejectedField] = useState<ApplyErrorField | null>(null);
   const cv = useCvUpload(vacancyId);
 
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const applyMutation = trpc.portal.applyToVacancy.useMutation();
   const utils = trpc.useUtils();
 
-  const isStep1Valid = firstName.trim() && lastName.trim() && email.trim() && email.includes('@');
+  const isStep1Valid = Boolean(firstName.trim() && lastName.trim() && isValidApplyEmail(email));
+  const isStep2Valid = isValidLinkedinUrl(linkedinUrl);
   // When a captcha is configured, a solved token is required to submit.
   const captchaSatisfied = !turnstileSiteKey || !!captchaToken;
   const cvUploadFailed = cv.error === 'upload_failed';
 
+  // Something typed is lost when the modal unmounts (there is no draft), so closing a filled form
+  // asks first (the Modal's in-dialog "¿Descartar los cambios?") — and nothing closes it while the
+  // application is being sent.
+  const hasInput = [firstName, lastName, email, phone, location, currentTitle, currentCompany, yearsExperience, linkedinUrl, coverLetter]
+    .some((value) => value.trim().length > 0) || cv.file !== null || consentAccepted;
+  // A STABLE callback: Modal re-runs its focus effect whenever onClose changes identity, so a fresh
+  // function per keystroke would pull focus out of the field being typed in. The guard reads the
+  // latest state from a ref instead.
+  const closeState = useRef({ submitting, onClose });
+  useEffect(() => {
+    closeState.current = { submitting, onClose };
+  });
+  const requestClose = useCallback(() => {
+    if (closeState.current.submitting) return;
+    closeState.current.onClose();
+  }, []);
+  // "Cancelar" is a close request too: with typed data it asks first, with the same in-dialog prompt.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const cancel = () => (hasInput ? setConfirmingCancel(true) : requestClose());
+
+  // The vacancy stopped taking applications while the form was open: say so, and refetch the page so
+  // it shows the closed state.
+  const handleVacancyClosed = () => {
+    toast(p.applyVacancyClosed, { type: 'error' });
+    setSubmitting(false);
+    void utils.portal.getVacancy.invalidate({ id: vacancyId });
+  };
+
   const submit = async ({ skipCv }: { skipCv: boolean }) => {
-    if (!isStep1Valid || !consentAccepted) return;
+    if (!isStep1Valid || !isStep2Valid || !consentAccepted) return;
     setSubmitting(true);
     let cvFields: { cvFileKey?: string; cvFileName?: string } = {};
     if (!skipCv) {
       try {
         cvFields = await cv.uploadCvIfNeeded();
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message === 'vacancy_closed') {
+          handleVacancyClosed();
+          return;
+        }
         // The hook set error='upload_failed'; the review step now shows an inline
         // alert with "retry" and "remove CV and continue". Nothing was submitted.
         setSubmitting(false);
@@ -87,7 +135,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         currentTitle: currentTitle.trim() || undefined,
         currentCompany: currentCompany.trim() || undefined,
         yearsExperience: yearsExperience ? parseInt(yearsExperience) : undefined,
-        linkedinUrl: linkedinUrl.trim() || undefined,
+        linkedinUrl: normalizeLinkedinUrl(linkedinUrl) || undefined,
         coverLetter: coverLetter.trim() || undefined,
         ...cvFields,
         captchaToken: captchaToken ?? undefined,
@@ -103,7 +151,19 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
     } catch (err) {
       // Duplicates are acknowledged server-side like any new application, so there is no
       // "already applied" error to map.
+      if (isVacancyClosedError(err)) {
+        handleVacancyClosed();
+        return;
+      }
+      // Every failed submit toasts (frontend.md: onError toast on every mutation; error toasts stay until
+      // dismissed). A field the candidate can fix also takes them back to the step that holds it, where the
+      // field itself shows the error.
       toast(applyErrorMessage(err, p), { type: 'error' });
+      const field = applyErrorField(err);
+      if (field) {
+        setRejectedField(field);
+        setStep(applyErrorStep(field));
+      }
       setSubmitting(false);
     }
   };
@@ -114,78 +174,59 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
   };
 
   if (success) {
-    return (
-      <Modal title="" onClose={onClose} maxWidth="max-w-lg">
-        <div className="flex flex-col items-center py-6 text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
-            <svg
-              className="h-8 w-8 text-green-500"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h3 className="mb-2 text-[18px] font-bold text-[#1F114C]">{p.applicationSentTitle}</h3>
-          <p className="mb-1 text-[14px] text-[#585858]">
-            {p.applicationReceivedPrefix} <span className="font-medium text-[#333]">{vacancyTitle}</span>{' '}
-            {p.applicationReceivedSuffix}
-          </p>
-          <p className="mb-6 text-[13px] text-[#8B8B8B]">
-            {p.teamWillReviewPrefix} {companyName} {p.teamWillReviewSuffix}
-          </p>
-          <button
-            onClick={onClose}
-            className="h-10 rounded-lg bg-[#1F114C] px-6 text-[13px] font-medium text-white transition-colors hover:bg-[#2a1a5c]"
-          >
-            {p.understood}
-          </button>
-        </div>
-      </Modal>
-    );
+    return <ApplySuccess vacancyTitle={vacancyTitle} companyName={companyName} portalHref={portalHref} onClose={onClose} />;
   }
 
-  const stepLabels = [p.stepPersonal, p.stepProfile, p.stepReview];
-
   return (
-    <Modal title={`${p.applyTitlePrefix} ${vacancyTitle}`} onClose={onClose} maxWidth="max-w-2xl">
-      {/* Step indicator */}
-      <div className="mb-6 flex items-center gap-2">
-        {stepLabels.map((label, i) => (
-          <div key={i} className="flex flex-1 items-center gap-2">
-            <div
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-                step > i + 1
-                  ? 'bg-green-500 text-white'
-                  : step === i + 1
-                    ? 'bg-[#DD0C15] text-white'
-                    : 'bg-[#EDEDED] text-[#8B8B8B]'
-              }`}
-            >
-              {step > i + 1 ? '✓' : i + 1}
-            </div>
-            <span className={`text-[11px] ${step === i + 1 ? 'font-medium text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
-              {label}
-            </span>
-            {i < 2 && <div className={`h-[1px] flex-1 ${step > i + 1 ? 'bg-green-500' : 'bg-[#EDEDED]'}`} />}
-          </div>
-        ))}
-      </div>
+    <Modal
+      // A short title that never truncates on a phone; the vacancy (often long) wraps in full beneath it.
+      title={p.applyDialogTitle}
+      description={vacancyTitle}
+      onClose={requestClose}
+      size="lg"
+      fullScreenOnMobile
+      dirty={hasInput && !submitting}
+      discardTitle={p.applyDiscardTitle}
+      discardBody={p.applyDiscardBody}
+      footer={
+        confirmingCancel ? undefined : (
+        <ApplyModalFooter
+          step={step}
+          submitting={submitting}
+          canContinue={
+            step === 1
+              ? isStep1Valid
+              : step === 2
+                ? isStep2Valid
+                : isStep1Valid && isStep2Valid && !submitting && captchaSatisfied && consentAccepted && !cvUploadFailed
+          }
+          onBack={() => setStep((step - 1) as Step)}
+          onCancel={cancel}
+          onNext={() => setStep((step + 1) as Step)}
+          onSubmit={() => void submit({ skipCv: false })}
+        />
+        )
+      }
+    >
+      <ApplyStepIndicator step={step} labels={[p.stepPersonal, p.stepProfile, p.stepReview]} />
 
       {step === 1 && (
         <ApplyModalStep1
+          showRequiredHint={!isStep1Valid}
           firstName={firstName}
           setFirstName={setFirstName}
           lastName={lastName}
           setLastName={setLastName}
           email={email}
-          setEmail={setEmail}
+          setEmail={(value) => {
+            setEmail(value);
+            if (rejectedField === 'email') setRejectedField(null);
+          }}
           phone={phone}
           setPhone={setPhone}
           location={location}
           setLocation={setLocation}
+          emailRejected={rejectedField === 'email'}
         />
       )}
 
@@ -198,7 +239,10 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
           yearsExperience={yearsExperience}
           setYearsExperience={setYearsExperience}
           linkedinUrl={linkedinUrl}
-          setLinkedinUrl={setLinkedinUrl}
+          setLinkedinUrl={(value) => {
+            setLinkedinUrl(value);
+            if (rejectedField === 'linkedinUrl') setRejectedField(null);
+          }}
           coverLetter={coverLetter}
           setCoverLetter={setCoverLetter}
           cvFile={cv.file}
@@ -206,6 +250,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
           cvUploading={cv.uploading}
           onCvFileChange={cv.handleFileChange}
           onCvRemove={cv.removeFile}
+          profileLinkRejected={rejectedField === 'linkedinUrl'}
         />
       )}
 
@@ -238,57 +283,14 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         />
       )}
 
-      {/* Navigation */}
-      <div className="mt-6 flex items-center justify-between border-t border-[#EDEDED] pt-4">
-        <div>
-          {step > 1 && !submitting && (
-            <button
-              onClick={() => setStep((step - 1) as Step)}
-              className="flex items-center gap-1 text-[12px] text-[#585858] transition hover:text-[#1F114C]"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-              {p.previousStep}
-            </button>
-          )}
-          {submitting && (
-            <span className="flex items-center gap-1.5 text-[11px] text-[#8B8B8B]">
-              <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#DD0C15]/30 border-t-[#DD0C15]" />
-              {p.submittingApplication}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="h-9 rounded-lg border border-[#EDEDED] px-4 text-sm text-[#585858] transition hover:bg-[#F6F6F6] disabled:opacity-50"
-          >
-            {p.cancel}
-          </button>
-          {step < 3 ? (
-            <button
-              onClick={() => setStep((step + 1) as Step)}
-              disabled={step === 1 && !isStep1Valid}
-              className="flex h-9 items-center gap-1 rounded-lg bg-[#1F114C] px-5 text-sm font-medium text-white transition hover:bg-[#2a1a5c] disabled:opacity-50"
-            >
-              {p.nextStep}
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={() => void submit({ skipCv: false })}
-              disabled={!isStep1Valid || submitting || !captchaSatisfied || !consentAccepted || cvUploadFailed}
-              className="flex h-9 items-center gap-2 rounded-lg bg-[#DD0C15] px-5 text-sm font-medium text-white transition hover:bg-[#c00b13] disabled:opacity-50"
-            >
-              {submitting ? p.sendingShort : p.submitApplication}
-            </button>
-          )}
-        </div>
-      </div>
+      {confirmingCancel && (
+        <DiscardChangesPrompt
+          onKeepEditing={() => setConfirmingCancel(false)}
+          onDiscard={requestClose}
+          title={p.applyDiscardTitle}
+          body={p.applyDiscardBody}
+        />
+      )}
     </Modal>
   );
 }

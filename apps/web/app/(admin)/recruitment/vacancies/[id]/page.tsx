@@ -1,20 +1,27 @@
 'use client';
 
 import { use } from 'react';
-import Link from 'next/link';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { formatDate, formatCurrency } from '../../../../../lib/format-utils';
-import { StatusBadge, ErrorState, Skeleton } from '../../../../../components';
+import { Button, ErrorState, PageHeader, Skeleton, StatusBadge } from '../../../../../components';
 import { GeneralInfo } from './general-info';
 import { JobProfileCard } from './job-profile-card';
 import { ChannelsCard } from './channels-card';
+import { PublicUrlCard } from './public-url-card';
 import { CandidatesSummary } from './candidates-summary';
 import { SlaCard } from './sla-card';
 import { ApprovalChain } from './approval-chain';
+import { ApprovalDecisionCallout } from './approval-decision-callout';
 import { FitRanking } from './fit-ranking';
 import { RoleFamilyCard } from './role-family-card';
 import { FitRequirementsCard } from './fit-requirements-card';
+import { VacancyAssessmentsCard } from './vacancy-assessments-card';
+import { SubmitForApprovalCta } from './submit-for-approval-cta';
+import { VacancyLifecycleActions } from './vacancy-lifecycle-actions';
+import { vacancyStatusMap } from '../vacancy-status';
+
+const CONTENT = 'mx-auto w-full max-w-6xl px-4 py-5 md:px-6 md:py-6';
+const COLUMNS = 'grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]';
 
 export default function VacancyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -22,28 +29,27 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
   const vacancy = trpc.vacancy.getById.useQuery({ id });
   const stats = trpc.vacancy.getStats.useQuery({ id });
 
-  const statusMap: Record<string, { cls: string; label: string }> = {
-    draft: { cls: 'bg-gray-100 text-gray-600', label: t.vacancies.statusDraft },
-    pending_approval: { cls: 'bg-amber-50 text-amber-600 border border-amber-200', label: t.vacancies.statusPendingApproval },
-    approved: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: t.vacancies.statusApproved },
-    published: { cls: 'bg-green-50 text-green-600 border border-green-200', label: t.vacancies.statusPublished },
-    closed: { cls: 'bg-red-50 text-red-600', label: t.vacancies.statusClosed },
-    frozen: { cls: 'bg-purple-50 text-purple-600 border border-purple-200', label: t.vacancies.statusFrozen },
-  };
+  const statusMap = vacancyStatusMap(t.vacancies);
+  const back = { href: '/recruitment/vacancies', label: t.sidebar.vacancies };
 
-  if (vacancy.isLoading) {
+  // isPending, not isLoading: a query paused offline has no data yet and must not read as "not found".
+  if (vacancy.isPending) {
     return (
-      <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
-          <Skeleton className="h-5 w-64 rounded" />
+      <div className="flex h-full flex-col overflow-hidden" aria-busy="true">
+        <span className="sr-only" role="status">
+          {t.common.loadingContent}
+        </span>
+        <div className="flex min-h-16 shrink-0 flex-col justify-center gap-2 border-b border-border bg-white px-4 py-3 md:px-6">
+          <Skeleton className="h-3 w-20 rounded" />
+          <Skeleton className="h-6 w-64 max-w-full rounded" />
         </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:flex-[65] space-y-4">
+        <div className="flex-1 overflow-y-auto">
+          <div className={`${CONTENT} ${COLUMNS}`}>
+            <div className="space-y-4">
               <Skeleton className="h-48 w-full rounded-xl" />
               <Skeleton className="h-64 w-full rounded-xl" />
             </div>
-            <div className="w-full md:flex-[35] space-y-4">
+            <div className="space-y-4">
               <Skeleton className="h-48 w-full rounded-xl" />
               <Skeleton className="h-32 w-full rounded-xl" />
             </div>
@@ -53,84 +59,101 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  if (vacancy.isError) {
+  // A vacancy outside the caller's organisation, or deleted, answers NOT_FOUND: a retry can never work, so say
+  // what happened and offer the way back (feedback.md: help people understand why).
+  const notFound = vacancy.error?.data?.code === 'NOT_FOUND' || (vacancy.isSuccess && !vacancy.data);
+  if (notFound) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <ErrorState onRetry={() => vacancy.refetch()} />
+      <div className="flex h-full items-center justify-center">
+        <ErrorState
+          variant="notFound"
+          title={t.vacancies.notFoundTitle}
+          description={t.vacancies.notFoundDesc}
+          back={{ href: back.href, label: t.vacancies.backToList }}
+        />
       </div>
     );
   }
 
-  if (!vacancy.data) {
+  if (vacancy.isError || !vacancy.data) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-[#8B8B8B]">{t.common.noResults}</p>
+      <div className="flex h-full items-center justify-center">
+        <ErrorState onRetry={() => vacancy.refetch()} error={vacancy.error} />
       </div>
     );
   }
 
   const v = vacancy.data;
+  const approvalFirst = v.status === 'draft' || v.status === 'pending_approval';
+  const showApprovalChain = v.approvals.length > 0 || v.status === 'draft';
+  const approvalChain = showApprovalChain ? (
+    <ApprovalChain vacancyId={id} vacancyStatus={v.status} approvals={v.approvals} />
+  ) : null;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Top Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <Link href="/recruitment/vacancies" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
-            {t.sidebar.vacancies}
-          </Link>
-          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-          <span className="text-sm font-medium text-[#1F114C]">{v.title}</span>
-          <StatusBadge status={v.status} map={statusMap} />
-        </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/recruitment/vacancies/${id}`}
-            className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px] hover:bg-[#F6F6F6] transition"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
-            {t.vacancies.editVacancy}
-          </Link>
-          <Link
-            href={`/recruitment/pipeline?vacancy=${id}`}
-            className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition"
-          >
-            {t.vacancies.viewPipeline}
-          </Link>
-        </div>
-      </div>
+    <div className="flex h-full flex-col overflow-hidden">
+      <PageHeader
+        back={back}
+        title={v.title}
+        meta={<StatusBadge status={v.status} map={statusMap} />}
+        actions={
+          <>
+            {/* Navigation, not an action: secondary. Each status has at most one primary (buttons.md › Style). */}
+            <Button variant="secondary" href={`/recruitment/pipeline?vacancy=${id}`}>
+              {t.vacancies.viewPipeline}
+            </Button>
+            {/* Editar and Congelar (secondary), Reanudar (a frozen vacancy's primary). */}
+            <VacancyLifecycleActions vacancy={v} />
+            {/* A draft's next step: the primary action. */}
+            <SubmitForApprovalCta vacancyId={id} vacancyStatus={v.status} />
+          </>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="flex flex-col md:flex-row gap-6">
-          {/* Left Column 65% */}
-          <div className="w-full md:flex-[65] space-y-4">
-            <GeneralInfo vacancy={v} />
-            {v.jobProfile && <JobProfileCard jobProfile={v.jobProfile} />}
-            {v.status !== 'draft' && v.status !== 'pending_approval' && (
-              <ChannelsCard vacancyId={id} vacancyStatus={v.status} channels={v.channels} />
-            )}
+      <div className="flex-1 overflow-y-auto">
+        <div className={CONTENT}>
+          {/* An approver's one task opens the page. */}
+          <ApprovalDecisionCallout vacancyId={id} approvals={v.approvals} />
+          {/* A-08: say plainly what "Congelada" means and that it can be undone. */}
+          {v.status === 'frozen' && (
+            <p
+              role="status"
+              className="mb-4 rounded-lg border border-info/30 bg-info-bg px-4 py-2 text-callout text-info"
+            >
+              {t.vacancies.frozenNotice}
+            </p>
+          )}
+          <div className={COLUMNS}>
+            <div className="min-w-0 space-y-4">
+              <GeneralInfo vacancy={v} />
+              <PublicUrlCard vacancyId={id} vacancyStatus={v.status} />
+              {v.jobProfile && <JobProfileCard jobProfile={v.jobProfile} />}
+              {/* The TIMS tests editor is a long form: it needs the wide column (layout.md › Adaptability). */}
+              <FitRequirementsCard vacancyId={id} fitRequirements={v.jobProfile?.fitRequirements ?? null} />
+              <VacancyAssessmentsCard vacancyId={id} />
+              {v.status !== 'draft' && v.status !== 'pending_approval' && (
+                <ChannelsCard vacancyId={id} vacancyStatus={v.status} channels={v.channels} />
+              )}
+            </div>
+
+            <div className="min-w-0 space-y-4">
+              {approvalFirst && approvalChain}
+              <CandidatesSummary
+                vacancyId={id}
+                stats={stats.data ?? null}
+                isLoading={stats.isLoading}
+                isError={stats.isError}
+                onRetry={() => stats.refetch()}
+              />
+              <SlaCard vacancy={v} />
+              <RoleFamilyCard vacancyId={id} roleFamily={v.roleFamily ?? null} />
+              {!approvalFirst && approvalChain}
+            </div>
           </div>
 
-          {/* Right Column 35% */}
-          <div className="w-full md:flex-[35] space-y-4">
-            <CandidatesSummary
-              vacancyId={id}
-              stats={stats.data ?? null}
-              isLoading={stats.isLoading}
-              isError={stats.isError}
-            />
-            <SlaCard vacancy={v} />
-            <RoleFamilyCard vacancyId={id} roleFamily={v.roleFamily ?? null} />
-            <FitRequirementsCard vacancyId={id} fitRequirements={v.jobProfile?.fitRequirements ?? null} />
-            {(v.approvals.length > 0 || v.status === 'draft') && (
-              <ApprovalChain vacancyId={id} vacancyStatus={v.status} approvals={v.approvals} />
-            )}
+          <div className="mt-6">
+            <FitRanking vacancyId={id} />
           </div>
-        </div>
-
-        <div className="mt-6">
-          <FitRanking vacancyId={id} />
         </div>
       </div>
     </div>

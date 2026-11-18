@@ -68,7 +68,9 @@ withdrawal, so an application cannot commit against a consent being revoked at t
 - When a withdrawal **creates** a new `data_subject_requests` row (not on an idempotent repeat), every active
   `hr_admin` / `super_admin` user of that organization gets an in-app `notifications` row in the same transaction
   and, after commit, an email. Email failures are logged without personal data and never fail the request. The
-  notice states the 15-business-day answer period of Ley 1581 de 2012, art. 15.
+  notice cites no specific law and promises no legal deadline (pilot companies are in more than one country): it
+  asks staff to answer under the applicable data protection law and shows the computed `dueAt` as an estimate,
+  not a legal deadline.
 - Scoring honours withdrawal: FitEngine refuses (or skips) scoring a candidate whose recruitment consent is
   withdrawn.
 

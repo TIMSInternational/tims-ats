@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal } from '../../../components';
+import { CHOICE_INPUT_CLASSES, CHOICE_ROW_CLASSES, Field, Modal, Select, TextArea, TextInput } from '../../../components';
+import { ModalActions } from '../people/performance/modal-actions';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { courseHoursToMinutes } from './course-duration';
@@ -18,10 +19,13 @@ export function CreateCourseModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const create = trpc.learning.createCourse.useMutation();
   const durationHours = Number(duration);
-  const isValid = title.trim().length > 0 && title.length <= 255
-    && duration !== '' && Number.isFinite(durationHours)
+  const isDurationValid = duration !== '' && Number.isFinite(durationHours)
     && durationHours >= 0.25 && durationHours <= 168
     && Number.isInteger(durationHours * 4);
+  const isValid = title.trim().length > 0 && title.length <= 255 && isDurationValid;
+  // Show the 0.25 h rule as an inline error once the field has been left with a bad value.
+  const [durationTouched, setDurationTouched] = useState(false);
+  const durationError = durationTouched && duration !== '' && !isDurationValid ? t.learning.durationError : undefined;
 
   const onSubmit = async () => {
     if (!isValid) return;
@@ -38,49 +42,71 @@ export function CreateCourseModal({ onClose }: { onClose: () => void }) {
       await Promise.all([utils.learning.listCourses.invalidate(), utils.learning.getDashboardKpis.invalidate()]);
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t.common.error);
+      setError(cause instanceof Error && cause.message ? `${t.learning.createCourseError} ${cause.message}` : t.learning.createCourseError);
     }
   };
 
   return (
-    <Modal title={t.learning.newCourse} onClose={onClose}>
+    <Modal
+      title={t.learning.newCourseTitle}
+      onClose={onClose}
+      dirty={(title.length > 0 || description.length > 0 || duration.length > 0 || category.length > 0) && !create.isPending}
+      footer={
+        <ModalActions
+          onCancel={onClose}
+          onSubmit={onSubmit}
+          submitLabel={t.learning.createCourseAction}
+          isComplete={isValid}
+          isPending={create.isPending}
+          hint={t.learning.createCourseHint}
+        />
+      }
+    >
       <div className="space-y-4">
-        <label className="block text-[12px] font-medium text-[#585858]">
-          {t.learning.courseTitle}
-          <input type="text" maxLength={255} value={title} onChange={(event) => setTitle(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
-        </label>
-        <label className="block text-[12px] font-medium text-[#585858]">
-          {t.learning.courseDescription}
-          <textarea maxLength={2000} value={description} onChange={(event) => setDescription(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block text-[12px] font-medium text-[#585858]">
-            {t.learning.courseType}
-            <select value={type} onChange={(event) => setType(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] bg-white p-2 text-[13px]">
+        <Field label={t.learning.courseTitle} required>
+          <TextInput maxLength={255} value={title} onChange={(event) => setTitle(event.target.value)} />
+        </Field>
+        <Field label={t.learning.courseDescription} optional>
+          <TextArea maxLength={2000} value={description} onChange={(event) => setDescription(event.target.value)} />
+        </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label={t.learning.courseType}>
+            <Select value={type} onChange={(event) => setType(event.target.value)}>
               <option value="online">{t.learning.typeOnline}</option>
               <option value="in_person">{t.learning.typeInPerson}</option>
               <option value="hybrid">{t.learning.typeHybrid}</option>
-            </select>
-          </label>
-          <label className="block text-[12px] font-medium text-[#585858]">
-            {t.learning.durationHours}
-            <input type="number" min="0.25" max="168" step="0.25" value={duration} onChange={(event) => setDuration(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
-            <span className="mt-1 block text-[11px] font-normal text-[#8B8B8B]">{t.learning.durationHint}</span>
-          </label>
+            </Select>
+          </Field>
+          <Field label={t.learning.durationHours} required help={t.learning.durationHint} error={durationError}>
+            <TextInput
+              type="number"
+              inputMode="decimal"
+              min="0.25"
+              max="168"
+              step="0.25"
+              value={duration}
+              onChange={(event) => setDuration(event.target.value)}
+              onBlur={() => setDurationTouched(true)}
+            />
+          </Field>
         </div>
-        <label className="block text-[12px] font-medium text-[#585858]">
-          {t.learning.courseCategory}
-          <input type="text" maxLength={100} value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]" />
+        <Field label={t.learning.courseCategory} optional>
+          <TextInput maxLength={100} value={category} onChange={(event) => setCategory(event.target.value)} />
+        </Field>
+        <label className={CHOICE_ROW_CLASSES}>
+          <input
+            type="checkbox"
+            checked={isRequired}
+            onChange={(event) => setIsRequired(event.target.checked)}
+            className={CHOICE_INPUT_CLASSES}
+          />
+          {t.learning.requiredCourse}
         </label>
-        <label className="flex items-center gap-2 text-[12px] font-medium text-[#585858]">
-          <input type="checkbox" checked={isRequired} onChange={(event) => setIsRequired(event.target.checked)} />
-          {t.learning.filterRequired}
-        </label>
-        {error && <p role="alert" className="text-[12px] text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={create.isPending} className="rounded-lg border border-[#EDEDED] px-4 py-2 text-[12px]">{t.common.cancel}</button>
-          <button type="button" onClick={onSubmit} disabled={!isValid || create.isPending} className="rounded-lg bg-[#DD0C15] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50">{t.common.create}</button>
-        </div>
+        {error && (
+          <p role="alert" className="text-callout text-danger">
+            {error}
+          </p>
+        )}
       </div>
     </Modal>
   );

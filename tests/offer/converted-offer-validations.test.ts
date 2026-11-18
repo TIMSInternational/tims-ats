@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
-const CHECK_ID = '22222222-2222-2222-2222-222222222222';
-const OFFER_ID = '33333333-3333-3333-3333-333333333333';
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
+const CHECK_ID = '22222222-2222-4222-8222-222222222222';
+const OFFER_ID = '33333333-3333-4333-8333-333333333333';
 
 const mocks = vi.hoisted(() => ({
   findValidation: vi.fn(),
@@ -30,31 +30,45 @@ async function caller() {
   const { offerValidationsRouter } = await import('../../packages/api/src/routers/offer/validations');
   return createCallerFactory(router({ offer: offerValidationsRouter }))({
     user: {
-      id: 'hr-1', organizationId: ORG_ID, roles: ['hr_admin'], isPlatformOwner: false,
-      impersonatorId: null, email: 'hr@tims.co', isActive: true,
+      id: 'hr-1',
+      organizationId: ORG_ID,
+      roles: ['hr_admin'],
+      isPlatformOwner: false,
+      impersonatorId: null,
+      email: 'hr@tims.co',
+      isActive: true,
     },
-    headers: new Headers(), supabaseAuth: null, externalAuth: null,
+    headers: new Headers(),
+    supabaseAuth: null,
+    externalAuth: null,
   } as never);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.findValidation.mockResolvedValue({ id: CHECK_ID, offerId: OFFER_ID, status: 'pending', offer: { status: 'converted' } });
+  mocks.findValidation.mockResolvedValue({
+    id: CHECK_ID,
+    offerId: OFFER_ID,
+    status: 'pending',
+    offer: { status: 'converted' },
+  });
   mocks.findLegalCheck.mockResolvedValue({ id: CHECK_ID, offerId: OFFER_ID, offer: { status: 'converted' } });
 });
 
 describe('converted offer validation history', () => {
   it('rejects changing a pre-employment result after hire conversion', async () => {
     const api = await caller();
-    await expect(api.offer.updateValidation({ id: CHECK_ID, status: 'passed' }))
-      .rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(api.offer.updateValidation({ id: CHECK_ID, status: 'passed' })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
     expect(mocks.updateValidation).not.toHaveBeenCalled();
   });
 
   it('rejects changing a legal check after hire conversion', async () => {
     const api = await caller();
-    await expect(api.offer.updateLegalCheck({ id: CHECK_ID, completed: true }))
-      .rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect(api.offer.updateLegalCheck({ id: CHECK_ID, completed: true })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
     expect(mocks.updateLegalCheck).not.toHaveBeenCalled();
   });
 

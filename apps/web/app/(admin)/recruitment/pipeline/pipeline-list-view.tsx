@@ -1,150 +1,184 @@
 'use client';
 
 import Link from 'next/link';
-import { CandidateAvatar, StatusBadge } from '../../../../components';
+import { Button, CandidateAvatar, StatusBadge } from '../../../../components';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { getPipelineFit } from '../../../../lib/pipeline-fit';
+import { candidateSourceLabel } from '../../../../lib/candidate-labels';
+import { daysInStageLabel } from '../../../../lib/pipeline-days';
+import { formatDate } from '../../../../lib/format-utils';
+import { isActionableApplication, isOverdueInStage, stageOverdueCount, type ScheduleRequest } from './pipeline-actions';
+import { applicationStatusMap } from './pipeline-status';
+import { RejectionBadge } from './rejection-badge';
+import { PipelineFitChip } from './pipeline-fit-chip';
+import { PipelineStageHeader } from './pipeline-stage-header';
 
 interface PipelineListViewProps {
   stages: PipelineStageWithApps[];
   onMove: (applicationId: string, toStageId: string) => void;
-  onReject: (applicationId: string, reason: string) => void;
+  /** Opens the reject modal for one application. Omitted when the user lacks pipeline:update. */
+  onReject?: (applicationId: string, candidateName: string) => void;
+  /** Opens the prefilled schedule form (A-10). Omitted when the user lacks interview:create. */
+  onSchedule?: (request: ScheduleRequest) => void;
 }
 
-const STAGE_COLORS: Record<number, string> = {
-  0: 'bg-[#E8E5F0] text-[#1F114C]',
-  1: 'bg-[#D4CFE5] text-[#1F114C]',
-  2: 'bg-[#B8AED4] text-white',
-  3: 'bg-[#7B6BAA] text-white',
-  4: 'bg-[#5C4B99] text-white',
-  5: 'bg-[#1F114C] text-white',
-};
+// Below md the actions are a two-column grid of full-width, 44px buttons (accessibility.md › Mobility).
+const ACTION_CLS = 'max-md:w-full max-md:min-h-11';
+const FACT_LABEL = 'mr-1 text-caption text-muted';
 
-function getStageColor(idx: number) {
-  return STAGE_COLORS[Math.min(idx, 5)] ?? STAGE_COLORS[5];
-}
-
-function daysAgo(date: Date | string): number {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
-}
-
-function hoursAgo(date: Date | string): number {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return Math.max(0, (Date.now() - d.getTime()) / 3600000);
-}
-
-function fitColor(score: number) {
-  if (score >= 75) return 'text-green-600 bg-green-50';
-  if (score >= 50) return 'text-amber-600 bg-amber-50';
-  return 'text-red-600 bg-red-50';
-}
-
-const SOURCE_LABELS: Record<string, string> = {
-  linkedin: 'LinkedIn', referral: 'Referido', portal: 'Portal',
-  job_board: 'Job Board', university: 'Universidad', internal: 'Interno',
-};
-
-const STATUS_MAP: Record<string, { cls: string; label: string }> = {
-  active: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: 'Activo' },
-  rejected: { cls: 'bg-red-50 text-red-600 border border-red-200', label: 'Rechazado' },
-  withdrawn: { cls: 'bg-gray-100 text-gray-600', label: 'Retirado' },
-  hired: { cls: 'bg-green-50 text-green-600 border border-green-200', label: 'Contratado' },
-};
-
-export function PipelineListView({ stages, onMove }: PipelineListViewProps) {
+/**
+ * The list view (the default on phones). Below md each row stacks — name, then the facts, then the actions —
+ * instead of a fixed ~510 px row that pushed "Avanzar" and "Rechazar" off a 390 px screen (A-22). The page
+ * shows an empty state when no stage has candidates.
+ */
+export function PipelineListView({ stages, onMove, onReject, onSchedule }: PipelineListViewProps) {
   const { t } = useI18n();
+  const p = t.pipeline;
+  const statusMap = applicationStatusMap(p.applicationStatus);
   return (
     <div className="space-y-4 overflow-y-auto h-full pb-4">
       {stages.map((stage, stageIdx) => {
         if (stage.applications.length === 0) return null;
+        const headingId = `list-stage-${stage.id}`;
         return (
-          <div key={stage.id} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
-            {/* Stage header */}
-            <div className={`flex items-center justify-between px-4 py-2.5 ${getStageColor(stageIdx)}`}>
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-semibold">{stage.name}</span>
-                <span className="bg-white/20 text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                  {stage.applications.length}
-                </span>
-              </div>
-              {stage.slaHours && (
-                <span className="text-[10px] opacity-70">{stage.slaHours}h SLA</span>
-              )}
-            </div>
+          <section
+            key={stage.id}
+            aria-labelledby={headingId}
+            className="bg-white rounded-xl shadow-card overflow-hidden"
+          >
+            <PipelineStageHeader
+              headingId={headingId}
+              name={stage.name}
+              index={stageIdx}
+              shown={stage.applications.length}
+              total={stage.count}
+              slaHours={stage.slaHours}
+              overdueCount={stageOverdueCount(stage)}
+              className="border-b border-border px-1"
+            />
 
             {/* Candidates in this stage */}
-            <div className="divide-y divide-[#F0F0F0]">
+            <div className="divide-y divide-border">
               {stage.applications.map((app) => {
-                const c = app.candidate as { id: string; firstName: string; lastName: string; avatar: string | null; currentTitle?: string | null; email: string };
-                const days = daysAgo(app.appliedAt);
+                const c = app.candidate;
+                const name = `${c.firstName} ${c.lastName}`;
                 const fit = getPipelineFit(app.candidate);
-                // SLA overdue is time-in-CURRENT-stage, not time since the original
-                // application, and uses precise hours so sub-24h SLAs can trigger same-day.
-                const isOverdue = stage.slaHours != null && hoursAgo(app.enteredStageAt) > stage.slaHours;
+                const actionable = isActionableApplication(app);
+                const isOverdue = isOverdueInStage(app, stage.slaHours);
                 const nextStage = stages[stageIdx + 1];
 
                 return (
-                  <div key={app.id} className={`flex items-center gap-4 px-4 py-3 hover:bg-[#FAFAFA] transition ${isOverdue ? 'border-l-[3px] border-l-[#DD0C15]' : ''}`}>
+                  <div
+                    key={app.id}
+                    className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4 px-4 py-3 hover:bg-surface-hover transition-colors"
+                  >
                     {/* Avatar + Name */}
-                    <div className="flex items-center gap-2.5 w-[220px] shrink-0">
-                      <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="sm" />
+                    <div className="flex items-center gap-2.5 min-w-0 md:w-55 md:shrink-0">
+                      <CandidateAvatar
+                        firstName={c.firstName}
+                        lastName={c.lastName}
+                        avatar={c.avatar}
+                        size="sm"
+                        decorative
+                      />
                       <div className="min-w-0">
-                        <Link href={`/recruitment/candidates/${c.id}`} className="text-[12px] font-medium text-[#333] truncate block hover:underline">
-                          {c.firstName} {c.lastName}
+                        <Link
+                          href={`/recruitment/candidates/${c.id}`}
+                          className="text-body font-medium text-primary truncate block hover:underline"
+                        >
+                          {name}
                         </Link>
-                        {c.currentTitle && <p className="text-[10px] text-[#8B8B8B] truncate">{c.currentTitle}</p>}
+                        {c.currentTitle && <p className="text-callout text-secondary truncate">{c.currentTitle}</p>}
                       </div>
                     </div>
 
-                    {/* Only persisted FIT results may be presented as scores. */}
-                    <div className="w-[60px] shrink-0">
-                      {fit ? (
-                        <span title={`${t.pipeline.fitScore}: ${fit.score}${fit.isPartial ? ` (${t.pipeline.fitPartial})` : ''}`} className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${fitColor(fit.score)}`}>
-                          {Math.round(fit.score)}{fit.isPartial ? '*' : ''}
+                    {/* Facts, each with its own label (no column headings here): one wrapping line on phones */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 md:flex-nowrap">
+                      {/* Only persisted FIT results may be presented as scores. */}
+                      <div className="flex items-center md:w-36 md:shrink-0">
+                        {fit && (
+                          <span aria-hidden="true" className={FACT_LABEL}>
+                            {p.factFit}
+                          </span>
+                        )}
+                        <PipelineFitChip score={fit?.score ?? null} isPartial={fit?.isPartial} />
+                      </div>
+                      <div className="min-w-0 md:w-36 md:shrink-0 whitespace-nowrap truncate">
+                        <span className={FACT_LABEL}>{p.factSource}</span>
+                        <span className="text-caption text-secondary">
+                          {candidateSourceLabel(app.source, t.candidates)}
                         </span>
-                      ) : (
-                        <span title={t.pipeline.fitPending} className="text-[11px] text-[#8B8B8B]">—</span>
+                      </div>
+                      {actionable && (
+                        <div className="flex flex-wrap items-center gap-1.5 md:w-44 md:shrink-0">
+                          <span
+                            title={p.appliedOnTitle.replace('{date}', formatDate(app.appliedAt))}
+                            className="text-caption text-secondary"
+                          >
+                            {daysInStageLabel(app.enteredStageAt, p)}
+                          </span>
+                          {isOverdue && <StatusBadge tone="danger">{p.slaOverdueChip}</StatusBadge>}
+                        </div>
                       )}
-                    </div>
-
-                    {/* Source */}
-                    <div className="w-[80px] shrink-0">
-                      <span className="text-[10px] text-[#585858]">{SOURCE_LABELS[app.source] ?? app.source}</span>
-                    </div>
-
-                    {/* Days */}
-                    <div className="w-[70px] shrink-0">
-                      <span className={`text-[11px] ${isOverdue ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>
-                        {days}d {isOverdue && '⚠'}
-                      </span>
-                    </div>
-
-                    {/* Status */}
-                    <div className="w-[80px] shrink-0">
-                      <StatusBadge status={app.status} map={STATUS_MAP} />
+                      <div className="md:w-28 md:shrink-0">
+                        {app.status === 'rejected' ? (
+                          <RejectionBadge rejectedAt={app.rejectedAt} rejectedReason={app.rejectedReason} showReason />
+                        ) : (
+                          <StatusBadge status={app.status} map={statusMap} />
+                        )}
+                      </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 ml-auto">
-                      {nextStage && (
-                        <button
+                    <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:ml-auto">
+                      {actionable && nextStage && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className={ACTION_CLS}
                           onClick={() => onMove(app.id, nextStage.id)}
-                          className="text-[10px] text-[#1F114C] bg-[#F0EEF5] hover:bg-[#E8E5F0] px-2.5 py-1 rounded-lg font-medium transition"
                         >
-                          {t.pipeline.advance}
-                        </button>
+                          {formatMessage(p.moveToStageNamed, { stage: nextStage.name })}
+                        </Button>
                       )}
-                      <Link href={`/recruitment/candidates/${c.id}`} className="text-[10px] text-[#585858] hover:text-[#1F114C] transition">
-                        {t.pipeline.viewProfile}
-                      </Link>
+                      {actionable && onSchedule && (
+                        <Button
+                          variant="tertiary"
+                          size="sm"
+                          className={ACTION_CLS}
+                          onClick={() => onSchedule({ applicationId: app.id, candidateId: c.id, candidateName: name })}
+                          aria-label={p.scheduleInterviewFor.replace('{name}', name)}
+                        >
+                          {p.scheduleShort}
+                        </Button>
+                      )}
+                      <Button
+                        href={`/recruitment/candidates/${c.id}`}
+                        variant="tertiary"
+                        size="sm"
+                        className={ACTION_CLS}
+                      >
+                        {p.viewProfile}
+                      </Button>
+                      {actionable && onReject && (
+                        <Button
+                          variant="destructive-secondary"
+                          size="sm"
+                          className={ACTION_CLS}
+                          onClick={() => onReject(app.id, name)}
+                          aria-label={t.rejectCandidateModal.actionLabel.replace('{name}', name)}
+                        >
+                          {p.reject}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </section>
         );
       })}
     </div>

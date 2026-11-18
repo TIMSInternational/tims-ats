@@ -2,8 +2,20 @@
 
 import { useState } from 'react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
+import { getAuthRedirectUrl } from '@tims/shared';
 import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { ensureCanonicalAuthOrigin, useCanonicalAuthOrigin } from '../../../lib/auth/canonical-auth-origin';
+import { authErrorMessage } from '../auth-error-message';
+import { useAuthCaptcha } from '../../../lib/auth/use-auth-captcha';
+import { AuthCaptcha } from '../../../components/auth-captcha';
+import { Button } from '../../../components/button';
+import { TEXT_LINK_CLASSES } from '../../../components/button-styles';
+import { Field } from '../../../components/field';
+import { TextInput } from '../../../components/text-input';
+import { CaptchaHint } from '../captcha-hint';
+import { AuthSuccess } from '../auth-success';
+import { AuthCard, AUTH_ERROR_CLASSES, AUTH_SUBTITLE_CLASSES, AUTH_TITLE_CLASSES } from '../auth-card';
 
 export default function ForgotPasswordPage() {
   const { t } = useI18n();
@@ -11,19 +23,39 @@ export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // C-34: Turnstile token for Supabase Auth captcha (single-use: reset after every attempt).
+  const captcha = useAuthCaptcha();
+  useCanonicalAuthOrigin();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ensureCanonicalAuthOrigin()) return;
+    if (!captcha.satisfied) return;
     setLoading(true);
     setError('');
 
-    const supabase = createSupabaseBrowserClient();
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?recovery=1`,
-    });
-
-    if (resetError) {
-      setError(resetError.message);
+    // The link lands on the CONFIGURED app origin (NEXT_PUBLIC_APP_URL), never on
+    // whatever host this page happens to be served from (#50).
+    let redirectTo: string;
+    try {
+      redirectTo = getAuthRedirectUrl('/auth/callback', { recovery: '1' });
+    } catch {
+      setError(t.auth.authEmailLinkUnavailable);
+      setLoading(false);
+      return;
+    }
+    const captchaOption = captcha.tokenOption();
+    captcha.reset();
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo, ...captchaOption });
+      if (resetError) {
+        setError(authErrorMessage(resetError, t.auth, t.auth.resetLinkFailed));
+        setLoading(false);
+        return;
+      }
+    } catch (thrown) {
+      setError(authErrorMessage(thrown, t.auth, t.auth.resetLinkFailed));
       setLoading(false);
       return;
     }
@@ -32,73 +64,78 @@ export default function ForgotPasswordPage() {
     setLoading(false);
   };
 
-  return (
-    <div className="w-full max-w-[420px]">
-      <div className="text-center mb-8 lg:hidden">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
-          <span className="text-white text-xl font-bold">T</span>
-        </div>
-        <h1 className="text-2xl font-bold text-[#1F114C]">{t.auth.recoverPassword}</h1>
-        <p className="text-sm text-[#8B8B8B] mt-1">{t.auth.recoverSubtitle}</p>
-      </div>
+  const captchaPending = captcha.siteKey !== undefined && !captcha.satisfied;
+  const [sentBefore, sentAfter] = t.auth.emailSentBody.split('{email}');
 
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
-        {sent ? (
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-              <svg
-                className="w-6 h-6 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.emailSentTitle}</h3>
-            <p className="text-[13px] text-[#585858] mb-4">
-              {t.auth.checkInboxAt} <strong>{email}</strong> {t.auth.followInstructions}
-            </p>
-            <Link href="/login" className="text-[13px] text-[#DD0C15] font-medium hover:underline">
+  return (
+    <AuthCard>
+      {sent ? (
+        <AuthSuccess title={t.auth.emailSentTitle} icon="mail">
+          <p className="mb-4 text-body text-secondary">
+            {sentBefore}
+            <strong className="break-all text-primary">{email}</strong>
+            {sentAfter}
+          </p>
+          <div className="flex flex-col items-center gap-1">
+            <Link href="/login" className={`${TEXT_LINK_CLASSES} min-h-7`}>
               {t.auth.backToLogin}
             </Link>
+            <button
+              type="button"
+              onClick={() => setSent(false)}
+              className={`${TEXT_LINK_CLASSES} min-h-7 text-callout`}
+            >
+              {t.auth.useAnotherEmail}
+            </button>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
-                {error}
-              </div>
-            )}
-            <div>
-              <label htmlFor="forgot-email" className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.auth.email}</label>
-              <input
-                id="forgot-email"
+        </AuthSuccess>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <h1 className={AUTH_TITLE_CLASSES}>{t.auth.recoverPassword}</h1>
+            <p className={AUTH_SUBTITLE_CLASSES}>{t.auth.recoverSubtitle}</p>
+          </div>
+          {error && (
+            <div role="alert" className={AUTH_ERROR_CLASSES}>
+              {error}
+            </div>
+          )}
+          <Field label={t.auth.email} id="forgot-email">
+            {(control) => (
+              <TextInput
+                {...control}
+                size="lg"
                 autoComplete="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
                 placeholder="tu@empresa.com"
               />
-            </div>
-            <button
+            )}
+          </Field>
+          <AuthCaptcha captcha={captcha} />
+          <div>
+            <Button
               type="submit"
-              disabled={loading}
-              className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
+              size="lg"
+              fullWidth
+              loading={loading}
+              loadingLabel={t.auth.sendingLink}
+              disabled={!captcha.satisfied}
+              aria-describedby={captchaPending ? 'forgot-captcha-hint' : undefined}
             >
-              {loading ? t.auth.sendingLink : t.auth.sendLink}
-            </button>
-            <div className="text-center">
-              <Link href="/login" className="text-[12px] text-[#8B8B8B] hover:text-[#585858]">
-                {t.auth.backToLogin}
-              </Link>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+              {t.auth.sendLink}
+            </Button>
+            <CaptchaHint id="forgot-captcha-hint" pending={captchaPending} />
+          </div>
+          <div className="text-center">
+            <Link href="/login" className={`${TEXT_LINK_CLASSES} min-h-7 text-callout`}>
+              {t.auth.backToLogin}
+            </Link>
+          </div>
+        </form>
+      )}
+    </AuthCard>
   );
 }

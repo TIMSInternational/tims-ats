@@ -1,14 +1,19 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
+import { CHOICE_INPUT_CLASSES, Field, Select, TextArea, TextInput } from '../../../../components';
 import {
-  SOURCES,
-  POOL_TYPES,
-  EXPERIENCE_LEVELS,
-  inputCls,
-  labelCls,
-  textareaCls,
-} from './create-modal.helpers';
+  CANDIDATE_STAFF_POOL_TYPES,
+  candidatePoolLabel,
+  candidatePoolOptionLabel,
+  candidateSourceLabel,
+} from '../../../../lib/candidate-labels';
+import { SOURCES, EXPERIENCE_LEVELS, CHOICE_CARD_CLASSES, LEGEND_CLASSES } from './create-modal.helpers';
+
+// Fields are stacked on phones and paired from sm (text-fields.md › Best practices: "Stack multiple text
+// fields vertically when possible"). Every control has a real <label> through Field; placeholders only hint.
+const PAIR = 'grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3';
 
 interface Step1FieldsProps {
   firstName: string;
@@ -21,47 +26,69 @@ interface Step1FieldsProps {
   setPhone: (v: string) => void;
   location: string;
   setLocation: (v: string) => void;
+  /** Inline error for the email field (e.g. the address is already registered). */
+  emailError?: string;
 }
 
-export function Step1Fields({
-  firstName,
-  setFirstName,
-  lastName,
-  setLastName,
-  email,
-  setEmail,
-  phone,
-  setPhone,
-  location,
-  setLocation,
-}: Step1FieldsProps) {
+export function Step1Fields(p: Step1FieldsProps) {
   const { t } = useI18n();
+  const c = t.candidates;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.firstName} *</label>
-          <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={120} className={inputCls} placeholder="Maria" autoFocus />
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.lastName} *</label>
-          <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={120} className={inputCls} placeholder={t.candidates.formLastNamePlaceholder} />
-        </div>
+      <p className="text-callout text-secondary">
+        <span aria-hidden="true">* </span>
+        {c.requiredNote}
+      </p>
+      <div className={PAIR}>
+        <Field label={c.firstName} required id="cand-first-name">
+          <TextInput
+            value={p.firstName}
+            onChange={(e) => p.setFirstName(e.target.value)}
+            maxLength={120}
+            autoComplete="off"
+            placeholder={c.formFirstNamePlaceholder}
+            autoFocus
+          />
+        </Field>
+        <Field label={c.lastName} required id="cand-last-name">
+          <TextInput
+            value={p.lastName}
+            onChange={(e) => p.setLastName(e.target.value)}
+            maxLength={120}
+            autoComplete="off"
+            placeholder={c.formLastNamePlaceholder}
+          />
+        </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.email} *</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} className={inputCls} placeholder="maria.lopez@gmail.com" />
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.phone}</label>
-          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={30} className={inputCls} placeholder="+57 310 123 4567" />
-        </div>
+      <div className={PAIR}>
+        <Field label={c.email} required id="cand-email" error={p.emailError}>
+          <TextInput
+            type="email"
+            value={p.email}
+            onChange={(e) => p.setEmail(e.target.value)}
+            maxLength={254}
+            autoComplete="off"
+            placeholder="maria.lopez@gmail.com"
+          />
+        </Field>
+        <Field label={c.phone} id="cand-phone">
+          <TextInput
+            type="tel"
+            value={p.phone}
+            onChange={(e) => p.setPhone(e.target.value)}
+            maxLength={30}
+            placeholder={c.formPhonePlaceholder}
+          />
+        </Field>
       </div>
-      <div>
-        <label className={labelCls}>{t.candidates.location}</label>
-        <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formLocationPlaceholder} />
-      </div>
+      <Field label={c.location} id="cand-location">
+        <TextInput
+          value={p.location}
+          onChange={(e) => p.setLocation(e.target.value)}
+          maxLength={200}
+          placeholder={c.formLocationPlaceholder}
+        />
+      </Field>
     </div>
   );
 }
@@ -81,54 +108,66 @@ interface Step2FieldsProps {
   setNotes: (v: string) => void;
 }
 
-export function Step2Fields({
-  currentTitle,
-  setCurrentTitle,
-  currentCompany,
-  setCurrentCompany,
-  yearsExperience,
-  setYearsExperience,
-  linkedinUrl,
-  setLinkedinUrl,
-  skills,
-  setSkills,
-  notes,
-  setNotes,
-}: Step2FieldsProps) {
+export function Step2Fields(p: Step2FieldsProps) {
   const { t } = useI18n();
+  const c = t.candidates;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.currentTitle}</label>
-          <input type="text" value={currentTitle} onChange={(e) => setCurrentTitle(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formCurrentTitlePlaceholder} />
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.currentCompany}</label>
-          <input type="text" value={currentCompany} onChange={(e) => setCurrentCompany(e.target.value)} maxLength={200} className={inputCls} placeholder="MercadoLibre" />
-        </div>
+      <div className={PAIR}>
+        <Field label={c.currentTitle} id="cand-title">
+          <TextInput
+            value={p.currentTitle}
+            onChange={(e) => p.setCurrentTitle(e.target.value)}
+            maxLength={200}
+            placeholder={c.formCurrentTitlePlaceholder}
+          />
+        </Field>
+        <Field label={c.currentCompany} id="cand-company">
+          <TextInput
+            value={p.currentCompany}
+            onChange={(e) => p.setCurrentCompany(e.target.value)}
+            maxLength={200}
+            placeholder="MercadoLibre"
+          />
+        </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{t.candidates.formYearsExpLabel}</label>
-          <select value={yearsExperience} onChange={(e) => setYearsExperience(parseInt(e.target.value))} className={`${inputCls} bg-white`}>
-            {EXPERIENCE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>{t.candidates.linkedinUrl}</label>
-          <input type="url" value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} maxLength={2048} className={inputCls} placeholder="https://linkedin.com/in/maria-lopez" />
-        </div>
+      <div className={PAIR}>
+        <Field label={c.formYearsExpLabel} id="cand-years">
+          <Select value={p.yearsExperience} onChange={(e) => p.setYearsExperience(parseInt(e.target.value))}>
+            {EXPERIENCE_LEVELS.map((l) => (
+              <option key={l.value} value={l.value}>
+                {c[l.labelKey]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={c.linkedinUrl} id="cand-linkedin">
+          <TextInput
+            type="url"
+            value={p.linkedinUrl}
+            onChange={(e) => p.setLinkedinUrl(e.target.value)}
+            maxLength={2048}
+            placeholder="https://linkedin.com/in/maria-lopez"
+          />
+        </Field>
       </div>
-      <div>
-        <label className={labelCls}>{t.candidates.formKeySkillsLabel}</label>
-        <input type="text" value={skills} onChange={(e) => setSkills(e.target.value)} maxLength={500} className={inputCls} placeholder={t.candidates.formKeySkillsPlaceholder} />
-        <p className="text-[10px] text-[#8B8B8B] mt-1">{t.candidates.formSkillsHint}</p>
-      </div>
-      <div>
-        <label className={labelCls}>{t.candidates.formRecruiterNotesLabel}</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} rows={3} className={textareaCls} placeholder={t.candidates.formRecruiterNotesPlaceholder} />
-      </div>
+      <Field label={c.formKeySkillsLabel} help={c.formSkillsHint} id="cand-skills">
+        <TextInput
+          value={p.skills}
+          onChange={(e) => p.setSkills(e.target.value)}
+          maxLength={500}
+          placeholder={c.formKeySkillsPlaceholder}
+        />
+      </Field>
+      <Field label={c.formRecruiterNotesLabel} id="cand-notes">
+        <TextArea
+          value={p.notes}
+          onChange={(e) => p.setNotes(e.target.value)}
+          maxLength={5000}
+          rows={3}
+          placeholder={c.formRecruiterNotesPlaceholder}
+        />
+      </Field>
     </div>
   );
 }
@@ -149,101 +188,92 @@ interface Step3FieldsProps {
   skills: string;
 }
 
-export function Step3Fields({
-  source,
-  setSource,
-  poolType,
-  setPoolType,
-  referrerName,
-  setReferrerName,
-  firstName,
-  lastName,
-  email,
-  currentTitle,
-  currentCompany,
-  location,
-  skills,
-}: Step3FieldsProps) {
+export function Step3Fields(props: Step3FieldsProps) {
   const { t } = useI18n();
+  const c = t.candidates;
+  const skillList = props.skills
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const role = props.currentCompany
+    ? formatMessage(c.summaryRoleAt, { title: props.currentTitle, company: props.currentCompany })
+    : props.currentTitle;
+  const rows: { label: string; value: string }[] = [
+    { label: c.summaryName, value: `${props.firstName} ${props.lastName}` },
+    { label: c.summaryEmail, value: props.email },
+    ...(props.currentTitle ? [{ label: c.summaryRole, value: role }] : []),
+    ...(props.location ? [{ label: c.summaryLocation, value: props.location }] : []),
+    { label: c.summarySource, value: candidateSourceLabel(props.source, c) },
+    { label: c.summaryType, value: candidatePoolLabel(props.poolType, c) },
+    ...(skillList.length
+      ? [{ label: c.summarySkills, value: `${skillList.slice(0, 4).join(', ')}${skillList.length > 4 ? '…' : ''}` }]
+      : []),
+  ];
+
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formHowCandidateArrived}</p>
-        <div className="grid grid-cols-2 gap-2">
+      <fieldset>
+        <legend className={LEGEND_CLASSES}>{c.formHowCandidateArrived}</legend>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {SOURCES.map((s) => (
-            <button key={s.value} type="button" onClick={() => setSource(s.value)}
-              className={`text-left px-3 py-2.5 rounded-lg border text-[12px] transition ${
-                source === s.value ? 'border-[#1F114C] bg-[#F0EEF5] text-[#1F114C] font-medium' : 'border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
-              }`}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {source === 'referral' && (
-        <div>
-          <label className={labelCls}>{t.candidates.formReferrerNameLabel}</label>
-          <input type="text" value={referrerName} onChange={(e) => setReferrerName(e.target.value)} maxLength={200} className={inputCls} placeholder={t.candidates.formReferrerNamePlaceholder} />
-        </div>
-      )}
-
-      <div>
-        <p className="text-[13px] font-medium text-[#1F114C] mb-3">{t.candidates.formCandidateTypeLabel}</p>
-        <div className="space-y-2">
-          {POOL_TYPES.map((p) => (
-            <label key={p.value}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition ${
-                poolType === p.value ? 'border-[#1F114C] bg-[#F0EEF5]' : 'border-[#EDEDED] hover:bg-[#F6F6F6]'
-              }`}>
-              <input type="radio" name="poolType" value={p.value} checked={poolType === p.value}
-                onChange={(e) => setPoolType(e.target.value)} className="w-4 h-4 text-[#1F114C] focus:ring-[#1F114C]/20" />
-              <span className={`text-[12px] ${poolType === p.value ? 'text-[#1F114C] font-medium' : 'text-[#585858]'}`}>{p.label}</span>
+            <label key={s} className={CHOICE_CARD_CLASSES}>
+              <input
+                type="radio"
+                name="cand-source"
+                value={s}
+                checked={props.source === s}
+                onChange={() => props.setSource(s)}
+                className={CHOICE_INPUT_CLASSES}
+              />
+              {candidateSourceLabel(s, c)}
             </label>
           ))}
         </div>
-      </div>
+      </fieldset>
 
-      {/* Summary */}
-      <div className="border-t border-[#EDEDED] pt-4">
-        <p className="text-[13px] font-medium text-[#1F114C] mb-2">Resumen</p>
-        <div className="bg-[#F6F6F6] rounded-lg p-3 space-y-1.5">
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Nombre:</span>
-            <span className="text-[12px] text-[#333] font-medium">{firstName} {lastName}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Email:</span>
-            <span className="text-[12px] text-[#333]">{email}</span>
-          </div>
-          {currentTitle && (
-            <div className="flex justify-between">
-              <span className="text-[12px] text-[#585858]">Cargo:</span>
-              <span className="text-[12px] text-[#333]">{currentTitle}{currentCompany ? ` en ${currentCompany}` : ''}</span>
-            </div>
-          )}
-          {location && (
-            <div className="flex justify-between">
-              <span className="text-[12px] text-[#585858]">Ubicacion:</span>
-              <span className="text-[12px] text-[#333]">{location}</span>
-            </div>
-          )}
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Fuente:</span>
-            <span className="text-[12px] text-[#333]">{SOURCES.find((s) => s.value === source)?.label}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[12px] text-[#585858]">Tipo:</span>
-            <span className="text-[12px] text-[#333]">{POOL_TYPES.find((p) => p.value === poolType)?.label?.split(' — ')[0]}</span>
-          </div>
-          {skills.trim() && (
-            <div className="flex justify-between">
-              <span className="text-[12px] text-[#585858]">Skills:</span>
-              <span className="text-[12px] text-[#333]">{skills.split(',').slice(0, 4).map((s) => s.trim()).join(', ')}{skills.split(',').length > 4 ? '...' : ''}</span>
-            </div>
-          )}
+      {props.source === 'referral' && (
+        <Field label={c.formReferrerNameLabel} id="cand-referrer">
+          <TextInput
+            value={props.referrerName}
+            onChange={(e) => props.setReferrerName(e.target.value)}
+            maxLength={200}
+            placeholder={c.formReferrerNamePlaceholder}
+          />
+        </Field>
+      )}
+
+      <fieldset>
+        <legend className={LEGEND_CLASSES}>{c.formCandidateTypeLabel}</legend>
+        <div className="space-y-2">
+          {CANDIDATE_STAFF_POOL_TYPES.map((p) => (
+            <label key={p} className={CHOICE_CARD_CLASSES}>
+              <input
+                type="radio"
+                name="cand-pool-type"
+                value={p}
+                checked={props.poolType === p}
+                onChange={(e) => props.setPoolType(e.target.value)}
+                className={CHOICE_INPUT_CLASSES}
+              />
+              {candidatePoolOptionLabel(p, t.candidates)}
+            </label>
+          ))}
         </div>
-      </div>
+      </fieldset>
+
+      <section aria-labelledby="cand-summary-title" className="border-t border-border pt-4">
+        <h3 id="cand-summary-title" className="mb-2 text-subheading font-semibold text-primary">
+          {c.summaryTitle}
+        </h3>
+        <dl className="space-y-1.5 rounded-lg bg-surface p-3">
+          {rows.map((row) => (
+            <div key={row.label} className="flex flex-col gap-0.5 sm:flex-row sm:justify-between sm:gap-4">
+              <dt className="text-callout text-secondary">{row.label}</dt>
+              <dd className="break-words text-callout font-medium text-primary sm:text-right">{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
     </div>
   );
 }

@@ -36,6 +36,7 @@ public sealed class FitEngineReadDbContext(DbContextOptions<FitEngineReadDbConte
             entity.Property(f => f.VacancyId).HasColumnName("vacancy_id");
             entity.Property(f => f.OverallScore).HasColumnName("overall_score");
             entity.Property(f => f.Breakdown).HasColumnName("breakdown").HasColumnType("jsonb");
+            entity.Property(f => f.Weights).HasColumnName("weights").HasColumnType("jsonb");
             entity.Property(f => f.IsPartial).HasColumnName("is_partial");
             entity.Property(f => f.CalculatedAt).HasColumnName("calculated_at").HasColumnType("timestamp");
         });

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import { Modal, UserPicker } from '../../../../../components';
+import { Button, DialogCancelButton, IconButton, Modal, UserPicker } from '../../../../../components';
 import type { PickedUser } from '../../../../../components/user-picker';
 import { isAssignablePeopleViaCSharp } from '../../../../../lib/platform-api/assignable-people';
 
@@ -15,7 +15,13 @@ interface SubmitApprovalModalProps {
   errorMessage?: string | null;
 }
 
-export function SubmitApprovalModal({ vacancyId, onConfirm, onClose, isPending, errorMessage }: SubmitApprovalModalProps) {
+export function SubmitApprovalModal({
+  vacancyId,
+  onConfirm,
+  onClose,
+  isPending,
+  errorMessage,
+}: SubmitApprovalModalProps) {
   const { t } = useI18n();
   const [selected, setSelected] = useState<PickedUser[]>([]);
 
@@ -30,28 +36,55 @@ export function SubmitApprovalModal({ vacancyId, onConfirm, onClose, isPending, 
   };
 
   return (
-    <Modal title={t.vacancies.submitForApproval} onClose={onClose}>
-      <p className="text-xs text-[#8B8B8B] mb-4">{t.vacancies.selectApprovers}</p>
-
+    <Modal
+      title={t.vacancies.submitForApproval}
+      description={t.vacancies.selectApprovers}
+      onClose={onClose}
+      dirty={selected.length > 0 && !isPending}
+      footer={
+        <>
+          <DialogCancelButton onCancel={onClose} disabled={isPending} />
+          <Button
+            onClick={() => onConfirm(selected.map((u) => u.id))}
+            disabled={selected.length === 0}
+            loading={isPending}
+            loadingLabel={t.vacancies.submitting}
+          >
+            {t.vacancies.submitForApproval}
+          </Button>
+        </>
+      }
+    >
       {selected.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {selected.map((u) => (
-            <span
-              key={u.id}
-              className="inline-flex items-center gap-1.5 bg-[#F6F6F6] text-[#333] text-[12px] px-2.5 py-1 rounded-full"
-            >
-              {u.firstName} {u.lastName}
-              <button
-                type="button"
-                onClick={() => removeApprover(u.id)}
-                className="text-[#8B8B8B] hover:text-[#DD0C15]"
-                aria-label={t.vacancies.removeApprover}
+        <ul className="mb-3 flex flex-wrap gap-2">
+          {selected.map((u) => {
+            const name = `${u.firstName} ${u.lastName}`;
+            return (
+              <li
+                key={u.id}
+                className="inline-flex items-center gap-1 rounded-full bg-surface py-0.5 pl-2.5 pr-0.5 text-callout text-primary"
               >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
+                {name}
+                <IconButton
+                  label={`${t.vacancies.removeApprover} ${name}`}
+                  size="sm"
+                  onClick={() => removeApprover(u.id)}
+                >
+                  <svg
+                    className="size-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </IconButton>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       <UserPicker
@@ -64,29 +97,17 @@ export function SubmitApprovalModal({ vacancyId, onConfirm, onClose, isPending, 
         searchPlaceholder={t.vacancies.searchApprovers}
         loadingLabel={t.vacancies.loadingApprovers}
         emptyLabel={t.vacancies.noApproversFound}
+        ariaLabel={t.vacancies.searchApprovers}
       />
 
       {errorMessage && (
-        <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-[#991b1b]">
+        <p
+          role="alert"
+          className="mt-3 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-callout text-danger"
+        >
           {errorMessage}
         </p>
       )}
-
-      <div className="flex justify-end gap-3 mt-6">
-        <button
-          onClick={onClose}
-          className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition"
-        >
-          {t.common.cancel}
-        </button>
-        <button
-          onClick={() => onConfirm(selected.map((u) => u.id))}
-          disabled={selected.length === 0 || isPending}
-          className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
-        >
-          {isPending ? t.common.saving : t.vacancies.submitForApproval}
-        </button>
-      </div>
     </Modal>
   );
 }

@@ -88,11 +88,11 @@ export const candidateAssessmentLifecycleService = {
     return runWithTenant(org.id, async () => {
       const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
       if (!candidate) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
       const assignment = await candidateAssessmentRepo.findOwnedAssignment(org.id, candidate.id, assignmentId);
       if (!assignment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
       if (isExpired(assignment.expiresAt)) {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_expired' });
@@ -122,11 +122,11 @@ export const candidateAssessmentLifecycleService = {
     return runWithTenant(org.id, async () => {
       const candidate = await candidatePortalRepo.findActiveCandidate(org.id, email);
       if (!candidate) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
       const assignment = await candidateAssessmentRepo.findOwnedAssignment(org.id, candidate.id, assignmentId);
       if (!assignment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
       if (assignment.status !== 'in_progress') {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_not_in_progress' });

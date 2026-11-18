@@ -1,3 +1,5 @@
+import { readLaunchScope, type LaunchScope } from '../../../lib/launch-scope';
+
 export type DashboardKey =
   | 'org'
   | 'hrExec'
@@ -20,13 +22,27 @@ export type DashboardKey =
 //
 // Precedence on multi-role collisions:
 //   super_admin > hr_admin > hrbp > recruiter > leader > committee > employee.
-export function pickPrimaryDashboard(roleSlugs: readonly string[]): DashboardKey {
-  if (roleSlugs.includes('super_admin')) return 'org';
-  if (roleSlugs.includes('hr_admin')) return 'hrExec';
-  if (roleSlugs.includes('hrbp')) return 'unit';
+//
+// Pilot launch scope (NEXT_PUBLIC_LAUNCH_SCOPE=pilot): the Org Command Center, HR-Exec and Unit Health
+// dashboards are HR-suite surfaces (performance / engagement / learning / compensation), so super_admin,
+// hr_admin and hrbp land on the Recruiter dashboard instead. leader, committee and employee keep their own
+// landings, which render a recruitment/onboarding-only variant under the pilot (see recruitment-dashboard).
+export function pickPrimaryDashboard(
+  roleSlugs: readonly string[],
+  scope: LaunchScope = readLaunchScope(),
+): DashboardKey {
+  const pilot = scope === 'pilot';
+  if (roleSlugs.includes('super_admin')) return pilot ? 'recruiter' : 'org';
+  if (roleSlugs.includes('hr_admin')) return pilot ? 'recruiter' : 'hrExec';
+  if (roleSlugs.includes('hrbp')) return pilot ? 'recruiter' : 'unit';
   if (roleSlugs.includes('recruiter')) return 'recruiter';
   if (roleSlugs.includes('leader')) return 'manager';
   if (roleSlugs.includes('committee')) return 'committee';
   if (roleSlugs.includes('employee')) return 'employee';
   return 'unassigned';
+}
+
+/** The setup checklist belongs to the org stewards (super_admin, hr_admin) whichever dashboard they land on. */
+export function showsSetupChecklistFor(roleSlugs: readonly string[]): boolean {
+  return roleSlugs.includes('super_admin') || roleSlugs.includes('hr_admin');
 }

@@ -3,9 +3,19 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
-import Link from 'next/link';
 import { useI18n } from '../../../lib/i18n';
+import { Button } from '../../../components/button';
+import { buttonClasses, TEXT_LINK_CLASSES } from '../../../components/button-styles';
+import { Field } from '../../../components/field';
+import { TextInput } from '../../../components/text-input';
+import { AuthCard, AUTH_ERROR_CLASSES, AUTH_SUBTITLE_CLASSES, AUTH_TITLE_CLASSES } from '../auth-card';
+import { AuthSuccess } from '../auth-success';
+import { PasswordInput } from '../password-input';
 import { clearPasswordSetupAuthorization, establishPasswordSetupSession } from './password-setup-session';
+
+const passwordLengthOk = (value: string) => value.length >= 12 && value.length <= 128;
+
+const INVITATION_TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function ResetPasswordPage() {
   return (
@@ -28,6 +38,29 @@ function ResetPasswordForm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const setupPromise = useRef<Promise<string | null> | null>(null);
+  const invitationParam = searchParams.get('invitation');
+  const invitationToken = invitationParam && INVITATION_TOKEN.test(invitationParam) ? invitationParam : null;
+  const verifying = !setupUserId && !invalidLink;
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmError, setConfirmError] = useState('');
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The automatic redirect must not fire after the user left (Continuar, or any other navigation).
+  useEffect(
+    () => () => {
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    },
+    [],
+  );
+  // Where the success view goes, by timer or by its "Continuar" button (the same destination).
+  const destination = (() => {
+    const invitation = searchParams.get('invitation');
+    return invitation && /^[0-9a-f-]{36}$/i.test(invitation)
+      ? `/accept-invitation?token=${encodeURIComponent(invitation)}`
+      : '/dashboard';
+  })();
 
   useEffect(() => {
     let active = true;
@@ -51,12 +84,15 @@ function ResetPasswordForm() {
     e.preventDefault();
     setError('');
 
-    if (password.length < 12 || password.length > 128) {
-      setError(t.auth.passwordMinLength);
+    // Same rules as before, shown under the field they concern; focus goes to the first invalid one.
+    if (!passwordLengthOk(password)) {
+      setPasswordError(t.auth.passwordMinLength);
+      passwordRef.current?.focus();
       return;
     }
     if (password !== confirmPassword) {
-      setError(t.auth.passwordsDontMatch);
+      setConfirmError(t.auth.passwordsDontMatch);
+      confirmRef.current?.focus();
       return;
     }
 
@@ -97,14 +133,7 @@ function ResetPasswordForm() {
 
       clearPasswordSetupAuthorization();
       setSuccess(true);
-      setTimeout(() => {
-        const invitation = searchParams.get('invitation');
-        router.push(
-          invitation && /^[0-9a-f-]{36}$/i.test(invitation)
-            ? `/accept-invitation?token=${encodeURIComponent(invitation)}`
-            : '/dashboard',
-        );
-      }, 2000);
+      redirectTimer.current = setTimeout(() => router.push(destination), 2000);
     } catch {
       setError(t.auth.passwordUpdateFailed);
     } finally {
@@ -113,115 +142,123 @@ function ResetPasswordForm() {
   };
 
   return (
-    <div className="w-full max-w-[420px]">
-      <div className="text-center mb-8 lg:hidden">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
-          <span className="text-white text-xl font-bold">T</span>
-        </div>
-        <h1 className="text-2xl font-bold text-[#1F114C]">{t.auth.newPassword}</h1>
-        <p className="text-sm text-[#8B8B8B] mt-1">{t.auth.enterNewPassword}</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
-        {success ? (
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-              <svg
-                className="w-6 h-6 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h3 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.auth.passwordUpdated}</h3>
-            <p className="text-[13px] text-[#585858]">{t.auth.redirectingToDashboard}</p>
+    <AuthCard>
+      {success ? (
+        <AuthSuccess title={t.auth.passwordUpdated}>
+          <p className="mb-6 text-body text-secondary">{t.auth.redirectingToDashboard}</p>
+          <Button
+            href={destination}
+            size="lg"
+            fullWidth
+            onClick={() => {
+              if (redirectTimer.current) clearTimeout(redirectTimer.current);
+            }}
+          >
+            {t.auth.continue}
+          </Button>
+        </AuthSuccess>
+      ) : invalidLink ? (
+        <div className="space-y-4">
+          {/* Invalid, expired or spent link: no form, only the ways out (a new link, or back to the
+              invitation that sent it, and the sign-in page). A session can outlive a spent link and
+              middleware bounces signed-in users off /forgot-password and /login, so both exits sign
+              out first. Plain <a>: /logout is a GET route handler and must never be prefetched. */}
+          <h1 className={AUTH_TITLE_CLASSES}>{t.auth.newPassword}</h1>
+          <div role="alert" className={AUTH_ERROR_CLASSES}>
+            {t.auth.invalidPasswordSetupLink}
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {(error || invalidLink) && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
-                {invalidLink ? t.auth.invalidPasswordSetupLink : error}
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="new-password" className="block text-[12px] font-medium text-[#585858] mb-1.5">
-                {t.auth.newPasswordLabel}
-              </label>
-              <div className="relative">
-                <input
-                  id="new-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={12}
-                  maxLength={128}
-                  className="w-full h-11 px-4 pr-11 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
-                  placeholder={t.auth.passwordMinPlaceholder}
-                />
-                <button
-                  type="button"
-                  aria-label={showPassword ? t.auth.hidePasswords : t.auth.showPasswords}
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B8B8B] hover:text-[#585858] transition-colors"
-                >
-                  {showPassword ? (
-                    <svg
-                      className="w-[18px] h-[18px]"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M3.98 8.223A10.477 10.477 0 001.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-[18px] h-[18px]"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                      <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
+          <a
+            href={
+              invitationToken
+                ? `/accept-invitation?token=${encodeURIComponent(invitationToken)}`
+                : '/logout?next=/forgot-password'
+            }
+            className={buttonClasses({ size: 'lg', fullWidth: true })}
+          >
+            {invitationToken ? t.auth.backToInvitation : t.auth.requestNewLink}
+          </a>
+          <div className="text-center">
+            <a href="/logout" className={`${TEXT_LINK_CLASSES} min-h-7 text-callout`}>
+              {t.auth.backToLogin}
+            </a>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <h1 className={AUTH_TITLE_CLASSES}>{t.auth.newPassword}</h1>
+            <p className={AUTH_SUBTITLE_CLASSES}>{t.auth.enterNewPassword}</p>
+          </div>
+          {verifying && (
+            <p role="status" className="text-body text-secondary">
+              {t.auth.verifyingPasswordSetupLink}
+            </p>
+          )}
+          {error && (
+            <div role="alert" className={AUTH_ERROR_CLASSES}>
+              {error}
             </div>
+          )}
 
-            <div>
-              <label htmlFor="confirm-password" className="block text-[12px] font-medium text-[#585858] mb-1.5">
-                {t.auth.confirmPasswordLabel}
-              </label>
-              <input
-                id="confirm-password"
-                type={showPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+          <Field label={t.auth.newPasswordLabel} id="new-password" help={t.auth.passwordHelp} error={passwordError}>
+            {(control) => (
+              <PasswordInput
+                {...control}
+                ref={passwordRef}
+                autoComplete="new-password"
+                shown={showPassword}
+                onToggle={() => setShowPassword(!showPassword)}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError(passwordLengthOk(e.target.value) ? '' : t.auth.passwordMinLength);
+                }}
+                onBlur={(e) => {
+                  if (e.target.value)
+                    setPasswordError(passwordLengthOk(e.target.value) ? '' : t.auth.passwordMinLength);
+                }}
                 required
                 minLength={12}
                 maxLength={128}
-                className="w-full h-11 px-4 rounded-xl border border-[#EDEDED] text-[13px] text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
-                placeholder={t.auth.repeatPassword}
               />
-            </div>
+            )}
+          </Field>
 
-            <button
-              type="submit"
-              disabled={loading || !setupUserId}
-              className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
-            >
-              {loading ? t.auth.updatingPassword : t.auth.updatePassword}
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
+          <Field label={t.auth.confirmPasswordLabel} id="confirm-password" error={confirmError}>
+            {(control) => (
+              <TextInput
+                {...control}
+                ref={confirmRef}
+                size="lg"
+                autoComplete="new-password"
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  if (confirmError && e.target.value === password) setConfirmError('');
+                }}
+                onBlur={(e) => {
+                  if (e.target.value) setConfirmError(e.target.value === password ? '' : t.auth.passwordsDontMatch);
+                }}
+                required
+                minLength={12}
+                maxLength={128}
+              />
+            )}
+          </Field>
+
+          <Button
+            type="submit"
+            size="lg"
+            fullWidth
+            loading={loading}
+            loadingLabel={t.auth.updatingPassword}
+            disabled={loading || !setupUserId}
+          >
+            {t.auth.updatePassword}
+          </Button>
+        </form>
+      )}
+    </AuthCard>
   );
 }

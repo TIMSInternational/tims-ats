@@ -1,10 +1,12 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { formatPercent } from '../../../../lib/format-utils';
 import { useEngagementEnps } from '../../../../lib/platform-api/engagement';
+import { EmptyState, Skeleton } from '../../../../components';
 
 export function ClimateResults() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useEngagementEnps();
 
   // eNPS is suppressed (min-5 k-anonymity) when the backend nulls its head-counts.
@@ -12,46 +14,52 @@ export function ClimateResults() {
   const segments =
     q.data && !suppressed
       ? [
-          { label: t.climate.promoters, value: q.data.promoters ?? 0, cls: 'bg-green-500' },
-          { label: t.climate.passives, value: q.data.passives ?? 0, cls: 'bg-amber-400' },
-          { label: t.climate.detractors, value: q.data.detractors ?? 0, cls: 'bg-red-500' },
+          { label: t.climate.promoters, value: q.data.promoters ?? 0, cls: 'bg-success' },
+          { label: t.climate.passives, value: q.data.passives ?? 0, cls: 'bg-warning' },
+          { label: t.climate.detractors, value: q.data.detractors ?? 0, cls: 'bg-danger' },
         ]
       : [];
   const total = q.data?.totalResponses ?? 0;
+  const pct = (value: number) => (total > 0 ? Math.round((value / total) * 100) : 0);
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <h3 className="text-[13px] font-semibold text-[#333] mb-3">{t.climate.enpsDistribution}</h3>
+    <section aria-labelledby="climate-enps" className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5">
+      <h2 id="climate-enps" className="mb-3 text-heading font-semibold text-brand">
+        {t.climate.enpsDistribution}
+      </h2>
+      {/* The page shows one error for the eNPS read, so this card only handles loading and empty. */}
       {q.isLoading ? (
-        <div className="h-20 bg-gray-50 rounded animate-pulse" />
-      ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{t.climate.errClimate}</p>
+        <div aria-busy="true" className="space-y-2">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          <Skeleton className="h-6 w-full rounded-full" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
       ) : suppressed ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.climate.enpsSuppressed}</p>
+        <EmptyState size="compact" title={t.climate.enpsSuppressed} />
       ) : total === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.climate.noClimateData}</p>
+        <EmptyState size="compact" title={t.climate.noClimateData} />
       ) : (
         <>
-          <div className="flex h-6 rounded-full overflow-hidden mb-3">
+          <div className="mb-3 flex h-6 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
             {segments.map((s) => (
               <div key={s.label} className={s.cls} style={{ width: `${(s.value / total) * 100}%` }} />
             ))}
           </div>
-          <div className="space-y-1.5">
+          <ul className="space-y-1.5">
             {segments.map((s) => (
-              <div key={s.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2.5 h-2.5 rounded-sm ${s.cls}`} />
-                  <span className="text-[11px] text-[#333]">{s.label}</span>
-                </div>
-                <span className="text-[11px] text-[#8B8B8B]">
-                  {s.value} · {Math.round((s.value / total) * 100)}%
+              <li key={s.label} className="flex items-center justify-between gap-2 text-callout">
+                <span className="flex items-center gap-1.5 text-primary">
+                  <span className={`size-2.5 rounded-sm ${s.cls}`} aria-hidden="true" />
+                  {s.label}
                 </span>
-              </div>
+                <span className="tabular-nums text-secondary">
+                  {s.value} · {formatPercent(pct(s.value), locale)}
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </>
       )}
-    </div>
+    </section>
   );
 }

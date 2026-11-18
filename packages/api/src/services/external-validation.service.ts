@@ -37,10 +37,10 @@ export const externalValidationService = {
         { status: input.status, result: input.result, notes: input.notes },
       );
       if (status === 404) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Validacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Validación no encontrada' });
       }
       if (status === 409) {
-        throw new TRPCError({ code: 'CONFLICT', message: 'La validacion no esta abierta para envio de resultados' });
+        throw new TRPCError({ code: 'CONFLICT', message: 'La validación no está abierta para envío de resultados' });
       }
       if (status !== 200) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'External write via platform service failed' });
@@ -51,7 +51,7 @@ export const externalValidationService = {
 
     const existing = await getValidationForSubmit(meta.organizationId, input.validationId);
     if (!existing) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Validacion no encontrada' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Validación no encontrada' });
     }
     const { count, completedAt } = await submitValidationResult(
       meta.organizationId,
@@ -60,7 +60,7 @@ export const externalValidationService = {
       { status: input.status, result: input.result, notes: input.notes },
     );
     if (count === 0) {
-      throw new TRPCError({ code: 'CONFLICT', message: 'La validacion no esta abierta para envio de resultados' });
+      throw new TRPCError({ code: 'CONFLICT', message: 'La validación no está abierta para envío de resultados' });
     }
     // Fail-SOFT: the write is committed and is the source of truth; a lost audit
     // row must not abort a successful vendor submission (unlike a restricted READ).

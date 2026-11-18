@@ -9,14 +9,38 @@
 // multi-step writes atomic), and only after `org.id` exists (FK dependency).
 import type { Prisma } from '@tims/db';
 import { MATRIX, SYSTEM_ROLE_CATALOG, flattenEntries } from '@tims/db';
+import type { OrgLocaleProfile } from '@tims/shared';
 
+/**
+ * Country of a new organization's default company when the creation input carries no locale profile
+ * (Pilot UX re-audit company-admin data-60; it was a hard-coded 'CO'). The platform-owner forms now always
+ * send a profile (country, time zone, currency, locale); self-serve sign-up and any older caller still do
+ * not, and keep exactly this default. Mirrored by OrgProvisioningWriter.DefaultCountry in C# (parity pinned
+ * by tests/organization/signup-defaults.test.ts).
+ */
+export const DEFAULT_COMPANY_COUNTRY = 'CR';
+
+/**
+ * The default Company/BusinessUnit/Team. With a `profile`, the company takes its country, currency and
+ * time zone; without one, the country is DEFAULT_COMPANY_COUNTRY and currency/time zone stay the column
+ * defaults — unchanged from before the profile existed. Mirrored by OrgProvisioningWriter.ProvisionDefaultsAsync.
+ */
 export async function provisionOrgDefaults(
   tx: Prisma.TransactionClient,
   orgId: string,
   companyName: string,
+  profile?: OrgLocaleProfile,
 ): Promise<{ companyId: string; businessUnitId: string; teamId: string }> {
   const company = await tx.company.create({
-    data: { organizationId: orgId, name: companyName, country: 'CO' },
+    data: profile
+      ? {
+          organizationId: orgId,
+          name: companyName,
+          country: profile.country,
+          currency: profile.currency,
+          timezone: profile.timezone,
+        }
+      : { organizationId: orgId, name: companyName, country: DEFAULT_COMPANY_COUNTRY },
     select: { id: true },
   });
 

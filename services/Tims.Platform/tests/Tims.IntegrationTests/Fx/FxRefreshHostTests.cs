@@ -152,6 +152,10 @@ public sealed class FxRefreshHostTests(FxSchemaFixture fixture)
             builder.UseEnvironment("Production");
             builder.UseSetting("Platform:DatabaseConnectionString", _fixture.ConnectionString);
             builder.UseSetting("Platform:FxRefreshEnabled", "true");
+            // Production refuses to start without the rate-limit store; configure one (never called here)
+            // so the failure this test asserts is the lost FX registration, not that.
+            builder.UseSetting("Platform:RateLimitDynamoDbTable", "tims-ats-ratelimit");
+            builder.UseSetting("Platform:RateLimitDynamoDbRegion", "us-west-2");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IFxRateGateway>();

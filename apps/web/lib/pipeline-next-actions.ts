@@ -1,3 +1,5 @@
+import { isHrefHiddenInScope, readLaunchScope, type LaunchScope } from './launch-scope';
+import { moduleForPath } from './nav/routes';
 // Pure mapping: pipeline stage -> suggested next action (Sprint 1.3 Task 2).
 //
 // Powers the proactive "what should I do now" toast shown after a successful
@@ -54,5 +56,59 @@ function normalizeStageName(name: string): string {
 export function getNextActionForStage(stageName: string, _stageType?: string | null): NextAction | null {
   if (!stageName) return null;
   const normalized = normalizeStageName(stageName);
-  return CANONICAL_STAGE_ACTIONS[normalized] ?? null;
+  const exact = CANONICAL_STAGE_ACTIONS[normalized];
+  if (exact) return exact;
+  // Every interview stage gets the interview action (A-10): the default pipeline names them "Entrevista con
+  // RR. HH." and "Entrevista final" (and older vacancies "Entrevista RRHH"), none of which is "Entrevistas".
+  if (/^entrevistas?\b/.test(normalized)) return CANONICAL_STAGE_ACTIONS.entrevistas ?? null;
+  return null;
+}
+
+/** The final "Contratado" stage of the default pipeline (any case or accents). */
+export function isHiredStageName(stageName: string): boolean {
+  return normalizeStageName(stageName) === 'contratado';
+}
+
+export interface NextActionContext {
+  /** The viewer's permission check. When given, an action whose destination module the viewer cannot
+   *  read is dropped (e.g. "Iniciar el onboarding" for a recruiter without onboarding access). */
+  can?: (module: string, action?: string) => boolean;
+  /** The candidate that was just moved. An offer is created from the candidate's profile (the offers
+   *  list has no create button), so "Preparar la oferta" opens that profile when the candidate is known. */
+  candidateId?: string | null;
+  /** The application that was just moved: "Programar la entrevista" then opens the candidate's profile with
+   *  the schedule form already filled for this application (A-10), instead of the empty interviews list. */
+  applicationId?: string | null;
+}
+
+/** Query parameter the Candidate 360 reads to open the schedule form for one of its applications. */
+export const SCHEDULE_QUERY_PARAM = 'schedule';
+
+/**
+ * Resolves the destination of a suggested next action for the viewer, or drops it when following it
+ * would dead-end: the destination is hidden in the current launch scope (e.g. assessments under the
+ * pilot) or the viewer lacks the grant the route guard checks (both answer with AccessDenied).
+ */
+export function visibleNextAction(
+  action: NextAction | null,
+  scope: LaunchScope = readLaunchScope(),
+  context: NextActionContext = {},
+): NextAction | null {
+  if (!action) return null;
+  const { can, candidateId, applicationId } = context;
+  const profileHref = candidateId ? `/recruitment/candidates/${encodeURIComponent(candidateId)}` : null;
+  const resolved =
+    action.labelKey === 'oferta' && profileHref
+      ? { ...action, href: profileHref }
+      : action.labelKey === 'entrevistas' && profileHref && applicationId
+        ? { ...action, href: `${profileHref}?${SCHEDULE_QUERY_PARAM}=${encodeURIComponent(applicationId)}` }
+        : action;
+  if (isHrefHiddenInScope(resolved.href, scope)) return null;
+  if (can) {
+    const routeModule = moduleForPath(resolved.href);
+    if (routeModule && !can(routeModule, 'read')) return null;
+    if (resolved.labelKey === 'oferta' && !can('offer', 'create')) return null;
+    if (resolved.labelKey === 'entrevistas' && !can('interview', 'create')) return null;
+  }
+  return resolved;
 }

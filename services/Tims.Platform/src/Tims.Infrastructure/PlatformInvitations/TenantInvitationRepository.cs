@@ -163,6 +163,16 @@ public sealed class TenantInvitationRepository(PlatformOrganizationsCreateDbCont
             return changed == 1;
         }
 
+        public async Task<string?> FindTimeZoneAsync(Guid requested, CancellationToken ct)
+        {
+            // Bound to one organization: another organization's settings are never read through this repository.
+            if (requested != organizationId) return null;
+            await using var scope = await TenantScope.BeginAsync(db, organizationId, ct);
+            var zone = await OrganizationTimeZoneQuery.FindAsync(db, organizationId, ct);
+            await scope.CommitAsync(ct);
+            return zone;
+        }
+
         private static NpgsqlParameter Timestamp(string name, DateTime value) => new(name, NpgsqlDbType.Timestamp)
         {
             Value = DateTime.SpecifyKind(value, DateTimeKind.Unspecified),

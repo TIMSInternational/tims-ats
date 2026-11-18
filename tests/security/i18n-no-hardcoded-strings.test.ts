@@ -49,26 +49,13 @@ const EXCLUDE_PATHS = ['apps/web/app/(admin)/platform/email-preview/'];
 // now anchored to each branch's own line, but a jsx-text and a ternary vector
 // could still coincide), so the vector disambiguates them.
 const KNOWN_DEBT = new Set<string>([
-  // The five dashboard entries below were re-anchored 2026-08-17: the #81 step-4 FE-wrapper
-  // rewiring ran prettier over these files and shifted the (unchanged, still-grandfathered)
-  // strings to new lines. Same debt, same text, new anchors.
-  'apps/web/app/(admin)/dashboard/activity-feed.tsx:113:ternary',
-  'apps/web/app/(admin)/dashboard/charts/customer-health.tsx:49:jsx-text',
-  'apps/web/app/(admin)/dashboard/charts/plan-distribution.tsx:87:jsx-text',
-  'apps/web/app/(admin)/dashboard/charts/revenue-by-customer.tsx:63:jsx-text',
-  'apps/web/app/(admin)/dashboard/customer-table.tsx:161:jsx-text',
+  // The five platform-dashboard entries were burned down 2026-11-14 (HIG pass): their strings moved to t.dashboard.*.
   'apps/web/app/(admin)/people/onboarding/onboarding-panels.tsx:106:ternary',
   'apps/web/app/(admin)/people/onboarding/onboarding-panels.tsx:167:jsx-text',
   'apps/web/app/(admin)/people/onboarding/onboarding-panels.tsx:185:jsx-text',
   'apps/web/app/(admin)/people/onboarding/onboarding-table.tsx:159:jsx-text',
   'apps/web/app/(admin)/people/performance/feedback-panel.tsx:135:jsx-text',
   'apps/web/app/(admin)/people/performance/feedback-panel.tsx:185:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/activity-section.tsx:57:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:102:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/billing-section.tsx:105:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/overview-section.tsx:183:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/[id]/sections/users-section.tsx:123:jsx-text',
-  'apps/web/app/(admin)/platform/organizations/org-actions-dropdown.tsx:28:ternary',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/page.tsx:100:jsx-text',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/scorecard-panel.tsx:108:jsx-text',
   'apps/web/app/(admin)/recruitment/interviews/[id]/room/video-area.tsx:81:ternary',
@@ -85,15 +72,15 @@ const KNOWN_DEBT = new Set<string>([
   'apps/web/app/(admin)/recruitment/offers/_components/offer-letter.tsx:199:jsx-text',
   'apps/web/app/(admin)/recruitment/offers/_components/offer-validations.tsx:174:jsx-text',
   'apps/web/app/(admin)/recruitment/offers/_components/signing-link-modal.tsx:88:jsx-text',
-  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.tsx:197:ternary',
-  'apps/web/app/(admin)/recruitment/pipeline/add-candidate-modal.tsx:220:ternary',
-  'apps/web/app/(admin)/recruitment/pipeline/pipeline-list-view.tsx:133:jsx-text',
-  'apps/web/app/(admin)/recruitment/pipeline/pipeline-list-view.tsx:137:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:163:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-filters.tsx:166:jsx-text',
   'apps/web/app/(admin)/recruitment/talent-pools/talent-pool-table.tsx:150:jsx-text',
-  'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:108:ternary',
-  'apps/web/app/(admin)/talent/succession/exit-simulator.tsx:124:ternary',
+  // Same pre-existing admin-only debt, newly VISIBLE (not new): these single-word literals were
+  // already hardcoded but spelled without their accents ("Dia", "Telefono", "Atras"), and the
+  // scanner only treats a single word as prose when it carries a Spanish accent. Restoring the
+  // accents (fix/es-accents) made them detectable. Remove each entry when it moves to t.*.
+  'apps/web/app/(admin)/people/onboarding/onboarding-table.tsx:138:jsx-text',
+  'apps/web/app/(admin)/people/performance/page.tsx:68:jsx-text',
 ]);
 
 // Exact trimmed literals that are allowed (not user-facing prose, or

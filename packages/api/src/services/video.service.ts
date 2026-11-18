@@ -21,7 +21,7 @@ function assertConfigured(): { apiBase: string; apiKey: string } {
   if (!apiKey) {
     throw new TRPCError({
       code: 'PRECONDITION_FAILED',
-      message: 'La sala de video no esta configurada. Falta DAILY_API_KEY.',
+      message: 'La sala de video no está configurada. Falta DAILY_API_KEY.',
     });
   }
   return { apiBase: dailyApiBase(), apiKey };

@@ -21,7 +21,7 @@ export function AiOrb({ state, size = 'lg' }: AiOrbProps) {
     <div className="flex flex-col items-center gap-3">
       <div className="relative flex items-center justify-center">
         {state === 'speaking' && (
-          <span className="absolute inline-flex h-full w-full rounded-full bg-[#7c5cff]/30 animate-ping" />
+          <span className="absolute inline-flex size-full rounded-full bg-white/20 animate-ping motion-reduce:animate-none" aria-hidden="true" />
         )}
         <span
           className={`relative ${diameter} rounded-full bg-[radial-gradient(circle_at_35%_30%,#7c5cff,#2a1866)] shadow-[0_0_0_8px_rgba(124,92,255,0.16)] transition-opacity ${
@@ -29,7 +29,7 @@ export function AiOrb({ state, size = 'lg' }: AiOrbProps) {
           } ${state === 'connecting' ? 'animate-pulse' : ''}`}
         />
       </div>
-      <p className="text-xs text-[#b9b0e0]">
+      <p className="text-callout text-[#cfc8ea]">
         {t.aiInterview.interviewer} · {label}
       </p>
     </div>

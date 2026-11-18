@@ -24,6 +24,8 @@ export type MimeMessage = {
   html: string;
   text: string;
   calendar?: MimeCalendarAttachment;
+  /** Optional bare Reply-To mailbox (validated like To). */
+  replyTo?: string | null;
   /** Domain used for the Message-ID. */
   messageIdDomain: string;
   date?: Date;
@@ -94,6 +96,7 @@ function part(headers: string[], body: string): string {
 export function buildMimeMessage(msg: MimeMessage): string {
   const from = assertHeaderSafe('From', msg.from);
   const to = assertMailbox('To', msg.to);
+  const replyTo = msg.replyTo ? assertMailbox('Reply-To', msg.replyTo) : null;
   const subject = encodeHeaderWord(assertHeaderSafe('Subject', msg.subject));
   const domain = assertHeaderSafe('Message-ID', msg.messageIdDomain).replace(/[^A-Za-z0-9.-]/g, '') || 'localhost';
 
@@ -126,6 +129,7 @@ export function buildMimeMessage(msg: MimeMessage): string {
   const headers = [
     `From: ${from}`,
     `To: ${to}`,
+    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
     `Subject: ${subject}`,
     `Date: ${(msg.date ?? new Date()).toUTCString()}`,
     `Message-ID: <${randomBytes(16).toString('hex')}@${domain}>`,

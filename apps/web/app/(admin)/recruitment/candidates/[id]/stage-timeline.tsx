@@ -1,100 +1,138 @@
 'use client';
 
+import { useState } from 'react';
+import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import { pluralize } from '../../../../../lib/i18n/format';
+import { selectClasses } from '../../../../../components';
+import { CARD, CARD_TITLE } from './card-styles';
 import { formatDate } from '../../../../../lib/format-utils';
+import { candidateSourceLabel } from '../../../../../lib/candidate-labels';
+import { wholeDaysSince } from '../../../../../lib/pipeline-days';
+import { buildStageSteps, type StageStep } from './stage-steps';
 
 interface Application {
   id: string;
   status: string;
   source: string;
   appliedAt: Date | string;
+  rejectedAt?: Date | string | null;
   vacancy: { id: string; title: string; status: string };
   currentStage: { id: string; name: string; order: number };
 }
 
-interface StageStep {
-  name: string;
-  date: string | null;
-  isCurrent: boolean;
-  isCompleted: boolean;
-}
+// The dot is decoration: every step also says in words whether it was reached, is current or is pending.
+const DOT: Record<StageStep['state'], string> = {
+  reached: 'bg-success',
+  current: 'bg-brand ring-2 ring-brand/30',
+  pending: 'border border-field-border bg-white',
+};
+const NAME: Record<StageStep['state'], string> = {
+  reached: 'text-primary',
+  current: 'text-brand',
+  pending: 'text-muted',
+};
 
-function buildStageSteps(app: Application): StageStep[] {
-  const currentOrder = app.currentStage.order;
-  // Build typical pipeline stages in order
-  const stages = [
-    { name: 'Postulada', order: 0 },
-    { name: 'Preseleccion', order: 1 },
-    { name: 'Evaluaciones', order: 2 },
-    { name: app.currentStage.name, order: currentOrder },
-    { name: 'Oferta', order: currentOrder + 1 },
-    { name: 'Contratacion', order: currentOrder + 2 },
-  ];
-
-  // Deduplicate by name
-  const seen = new Set<string>();
-  const unique: typeof stages = [];
-  for (const s of stages) {
-    if (!seen.has(s.name)) {
-      seen.add(s.name);
-      unique.push(s);
-    }
-  }
-
-  return unique.map((s) => ({
-    name: s.name,
-    date: s.order === 0 ? formatDate(app.appliedAt) : null,
-    isCurrent: s.order === currentOrder,
-    isCompleted: s.order < currentOrder,
-  }));
-}
-
+/** The application's process through its vacancy's real stages, with the dates it entered each one (A-03). */
 export function StageTimeline({ applications }: { applications: Application[] }) {
-  const { t } = useI18n();
-  const activeApp = applications.find((a) => a.status === 'active') ?? applications[0];
+  const { t, locale } = useI18n();
+  const ordered = [...applications].sort(
+    (a, b) =>
+      Number(b.status === 'active') - Number(a.status === 'active') ||
+      new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime(),
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const app = ordered.find((a) => a.id === selectedId) ?? ordered[0];
+  const stages = trpc.pipeline.listStages.useQuery({ vacancyId: app?.vacancy.id ?? '' }, { enabled: !!app });
+  const history = trpc.pipeline.getMovementHistory.useQuery({ applicationId: app?.id ?? '' }, { enabled: !!app });
 
-  if (!activeApp) return null;
+  if (!app) return null;
+  const c = t.candidates;
+  // Both reads must succeed: without the movement history, dates and "not reached" would be guesses (Codex P2).
+  const steps = stages.data && history.data ? buildStageSteps(stages.data, history.data, app) : null;
+  const loadError = stages.isError ? c.stagesLoadError : history.isError ? c.historyLoadError : null;
+  const totalDays = Math.max(1, wholeDaysSince(app.appliedAt));
 
-  const steps = buildStageSteps(activeApp);
-  const appliedDate = new Date(activeApp.appliedAt);
-  const totalDays = Math.max(1, Math.ceil((Date.now() - appliedDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const stepNote = (step: StageStep): string | null => {
+    if (step.state === 'current') {
+      if (app.status === 'rejected')
+        return c.stageEndedRejected.replace('{date}', app.rejectedAt ? formatDate(app.rejectedAt) : '—');
+      if (app.status === 'hired') return c.stageEndedHired;
+      return step.enteredAt ? c.stageCurrentSince.replace('{date}', formatDate(step.enteredAt)) : c.stageCurrent;
+    }
+    if (step.state === 'pending') return c.stageNotReached;
+    return step.enteredAt ? c.stageEnteredOn.replace('{date}', formatDate(step.enteredAt)) : null;
+  };
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.candidates.processTimeline}</h3>
-      <div className="space-y-0">
-        {steps.map((step, i) => {
-          const dotColor = step.isCompleted
-            ? 'bg-green-500'
-            : step.isCurrent
-              ? 'bg-[#7B6BAA] ring-2 ring-[#7B6BAA]/30'
-              : 'bg-[#EDEDED]';
-          const textColor = step.isCompleted || step.isCurrent ? 'text-[#333]' : 'text-[#8B8B8B]';
-          const isLast = i === steps.length - 1;
-
-          return (
-            <div key={i} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div className={`w-3 h-3 rounded-full ${dotColor} mt-1 shrink-0`} />
-                {!isLast && <div className="w-0.5 h-8 bg-[#EDEDED]" />}
-              </div>
-              <div className="pb-1">
-                <p className={`text-[12px] font-medium ${step.isCurrent ? 'text-[#7B6BAA]' : textColor}`}>
-                  {step.name}
-                  {step.isCurrent && ' (actual)'}
-                </p>
-                {step.date && (
-                  <p className="text-[11px] text-[#8B8B8B]">{step.date} — via {activeApp.source}</p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-[11px] text-[#585858] mt-3 border-t border-[#F0F0F0] pt-3">
-        {t.candidates.totalTimeInProcess}{' '}
-        <span className="font-medium text-[#1F114C]">{totalDays} {t.candidates.days}</span>
+    <section className={CARD}>
+      <h2 className={`${CARD_TITLE} mb-1`}>{c.processTimeline}</h2>
+      {ordered.length > 1 ? (
+        <div className="mb-3">
+          <label htmlFor={`stage-timeline-app-${app.id}`} className="sr-only">
+            {c.stageModalVacancy}
+          </label>
+          <select
+            id={`stage-timeline-app-${app.id}`}
+            value={app.id}
+            onChange={(e) => setSelectedId(e.target.value)}
+            className={selectClasses('md', 'mt-1')}
+          >
+            {ordered.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.vacancy.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <p className="mb-3 text-callout text-secondary">
+          {c.processTimelineFor.replace('{vacancy}', app.vacancy.title)}
+        </p>
+      )}
+      <p className="mb-3 text-callout text-secondary">
+        {c.stageAppliedVia
+          .replace('{date}', formatDate(app.appliedAt))
+          .replace('{source}', candidateSourceLabel(app.source, c))}
       </p>
-    </div>
+      {loadError ? (
+        <div className="space-y-1">
+          <p className="text-body font-medium text-brand">
+            {app.currentStage.name} · {c.stageCurrent}
+          </p>
+          <p role="alert" className="text-callout text-secondary">
+            {loadError}
+          </p>
+        </div>
+      ) : !steps ? (
+        <div className="h-24 animate-pulse rounded-lg bg-surface" aria-hidden="true" />
+      ) : (
+        <ol>
+          {steps.map((step, i) => {
+            const isLast = i === steps.length - 1;
+            const ended = step.state === 'current' && app.status === 'rejected';
+            const note = stepNote(step);
+            return (
+              <li key={step.id} className="flex gap-3" aria-current={step.state === 'current' ? 'step' : undefined}>
+                <div className="flex flex-col items-center" aria-hidden="true">
+                  <div className={`mt-1 size-3 shrink-0 rounded-full ${ended ? 'bg-danger' : DOT[step.state]}`} />
+                  {!isLast && <div className="h-8 w-0.5 bg-border" />}
+                </div>
+                <div className="pb-1">
+                  <p className={`text-body font-medium ${ended ? 'text-danger' : NAME[step.state]}`}>{step.name}</p>
+                  {note && <p className="text-callout text-secondary">{note}</p>}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <p className="mt-3 border-t border-border pt-3 text-callout text-secondary">
+        {c.totalTimeInProcess}{' '}
+        <span className="font-medium text-brand">
+          {pluralize(totalDays, { one: c.daysOne, other: c.daysOther }, locale)}
+        </span>
+      </p>
+    </section>
   );
 }

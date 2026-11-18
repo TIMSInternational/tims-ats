@@ -4,7 +4,17 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal, UserPicker } from '../../../../components';
+import {
+  Button,
+  BUTTON_GROUP_CLASSES,
+  DialogCancelButton,
+  Field,
+  FIELD_LABEL_CLASSES,
+  Modal,
+  Select,
+  TextArea,
+  UserPicker,
+} from '../../../../components';
 import type { PickedUser } from '../../../../components/user-picker';
 import { useSuccessionAddSuccessor } from '../../../../lib/platform-api/succession';
 
@@ -73,18 +83,31 @@ export function AddSuccessorModal({
     });
   };
 
+  const dirty =
+    !submit.isPending && (developmentPlan.trim().length > 0 || (!!candidate && candidate !== initialCandidate));
+
   return (
-    <Modal title={t.succession.addSuccessorTitle} onClose={onClose}>
-      <div className="space-y-4">
-        {/* Critical Role */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.roleLabel}</label>
-          <select
-            value={roleId}
-            onChange={(e) => setRoleId(e.target.value)}
-            disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
+    <Modal
+      title={t.succession.addSuccessorTitle}
+      onClose={onClose}
+      dirty={dirty}
+      footer={
+        <div className={BUTTON_GROUP_CLASSES}>
+          <DialogCancelButton onCancel={onClose} disabled={submit.isPending} />
+          <Button
+            onClick={onSubmit}
+            disabled={!canSubmit}
+            loading={submit.isPending}
+            loadingLabel={t.succession.adding}
           >
+            {t.succession.addSuccessor}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <Field label={t.succession.roleLabel} required>
+          <Select value={roleId} onChange={(e) => setRoleId(e.target.value)} disabled={submit.isPending}>
             <option value="" disabled>
               {t.succession.selectRolePlaceholder}
             </option>
@@ -93,106 +116,77 @@ export function AddSuccessorModal({
                 {r.title}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        {/* Candidate */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.candidateLabel}</label>
-          {candidate ? (
-            <div className="flex items-center justify-between border border-[#EDEDED] rounded-lg px-3 py-2.5">
-              <span className="text-[12px] text-[#333] font-medium">
+        {candidate ? (
+          <div>
+            <p className={FIELD_LABEL_CLASSES}>{t.succession.candidateLabel}</p>
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+              <span className="text-body font-medium text-primary">
                 {candidate.firstName} {candidate.lastName}
               </span>
-              <button
-                type="button"
-                onClick={() => setCandidate(null)}
-                disabled={submit.isPending}
-                className="text-[11px] text-[#DD0C15] hover:underline disabled:opacity-50"
-              >
-                {t.common.cancel}
-              </button>
+              <Button variant="tertiary" size="sm" onClick={() => setCandidate(null)} disabled={submit.isPending}>
+                {t.succession.changeCandidate}
+              </Button>
             </div>
-          ) : (
-            <UserPicker
-              purpose="succession_candidate"
-              onSelect={(_userId, user) => setCandidate(user)}
+          </div>
+        ) : (
+          <Field label={t.succession.candidateLabel} required>
+            {(control) => (
+              <UserPicker
+                purpose="succession_candidate"
+                inputId={control.id}
+                onSelect={(_userId, user) => setCandidate(user)}
+                disabled={submit.isPending}
+                searchPlaceholder={t.committee.searchUser}
+                loadingLabel={t.committee.loadingUsers}
+                emptyLabel={t.committee.noUsers}
+              />
+            )}
+          </Field>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label={t.succession.readinessLabel}>
+            <Select
+              value={readiness}
+              onChange={(e) => setReadiness(e.target.value as (typeof READINESS_KEYS)[number]['value'])}
               disabled={submit.isPending}
-              searchPlaceholder={t.committee.searchUser}
-              loadingLabel={t.committee.loadingUsers}
-              emptyLabel={t.committee.noUsers}
-            />
-          )}
+            >
+              {READINESS_KEYS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {t.succession[r.labelKey]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label={t.succession.successorTypeLabel}>
+            <Select
+              value={type}
+              onChange={(e) => setType(e.target.value as (typeof TYPE_KEYS)[number]['value'])}
+              disabled={submit.isPending}
+            >
+              {TYPE_KEYS.map((ty) => (
+                <option key={ty.value} value={ty.value}>
+                  {t.succession[ty.labelKey]}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
 
-        {/* Readiness */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.readinessLabel}</label>
-          <select
-            value={readiness}
-            onChange={(e) => setReadiness(e.target.value as (typeof READINESS_KEYS)[number]['value'])}
-            disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
-          >
-            {READINESS_KEYS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {t.succession[r.labelKey]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Type */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">{t.succession.successorTypeLabel}</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as (typeof TYPE_KEYS)[number]['value'])}
-            disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
-          >
-            {TYPE_KEYS.map((ty) => (
-              <option key={ty.value} value={ty.value}>
-                {t.succession[ty.labelKey]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Development Plan */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.succession.developmentPlanLabel}
-          </label>
-          <textarea
+        <Field label={t.succession.developmentPlanLabel} optional help={`${developmentPlan.length}/1000`}>
+          <TextArea
             value={developmentPlan}
             onChange={(e) => setDevelopmentPlan(e.target.value.slice(0, 1000))}
             maxLength={1000}
             rows={3}
             disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] placeholder:text-[#B8B8B8] resize-none focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
+            className="resize-none"
           />
-          <p className="text-[10px] text-[#8B8B8B] text-right mt-1">{developmentPlan.length}/1000</p>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submit.isPending}
-            className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition disabled:opacity-50"
-          >
-            {t.common.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!canSubmit}
-            className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submit.isPending ? t.common.saving : t.common.save}
-          </button>
-        </div>
+        </Field>
       </div>
     </Modal>
   );

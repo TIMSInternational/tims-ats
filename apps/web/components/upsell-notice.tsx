@@ -17,18 +17,18 @@ interface UpsellNoticeProps {
 // across any gated feature without duplicating i18n keys or markup.
 export function UpsellNotice({ message, ctaLabel, onContact }: UpsellNoticeProps) {
   return (
-    <div className="inline-flex items-center gap-1.5 text-[11px] text-[#8B8B8B]">
+    <div className="inline-flex flex-wrap items-center gap-1.5 text-callout text-secondary">
       <span>{message}</span>
       {onContact ? (
         <button
           type="button"
           onClick={onContact}
-          className="text-[#1F114C] font-medium hover:underline"
+          className="text-brand font-medium underline-offset-2 hover:underline pointer-coarse:min-h-11"
         >
           {ctaLabel}
         </button>
       ) : (
-        <span className="text-[#1F114C] font-medium">{ctaLabel}</span>
+        <span className="text-brand font-medium">{ctaLabel}</span>
       )}
     </div>
   );

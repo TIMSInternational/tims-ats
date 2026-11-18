@@ -3,7 +3,14 @@
 import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal } from '../../../../components';
+import {
+  BUTTON_GROUP_CLASSES,
+  Button,
+  FIELD_LABEL_CLASSES,
+  Modal,
+  inputClasses,
+  textareaClasses,
+} from '../../../../components';
 import {
   ASSESSMENT_TYPE_DESCRIPTION_MAX,
   ASSESSMENT_TYPE_DURATION_MAX,
@@ -28,9 +35,8 @@ interface AssessmentTypeModalProps {
   onSaved: (row: AssessmentTypeRow) => void;
 }
 
-const inputClass =
-  'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]';
-const labelClass = 'block text-xs font-medium text-[#8B8B8B] mb-1.5';
+const inputClass = inputClasses();
+const labelClass = FIELD_LABEL_CLASSES;
 
 export function AssessmentTypeModal({ type, onClose, onSaved }: AssessmentTypeModalProps) {
   const { t } = useI18n();
@@ -133,7 +139,7 @@ export function AssessmentTypeModal({ type, onClose, onSaved }: AssessmentTypeMo
             maxLength={ASSESSMENT_TYPE_DESCRIPTION_MAX}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
+            className={textareaClasses()}
           />
         </div>
         <div>
@@ -153,25 +159,17 @@ export function AssessmentTypeModal({ type, onClose, onSaved }: AssessmentTypeMo
           />
         </div>
         {error && (
-          <p role="alert" className="text-sm text-[#B42318]">
+          <p role="alert" className="text-callout text-danger">
             {error}
           </p>
         )}
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F5F5F5]"
-          >
+        <div className={`${BUTTON_GROUP_CLASSES} pt-2`}>
+          <Button variant="secondary" onClick={onClose}>
             {copy.cancel}
-          </button>
-          <button
-            type="submit"
-            disabled={pending}
-            className="h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-60"
-          >
-            {pending ? copy.saving : copy.save}
-          </button>
+          </Button>
+          <Button type="submit" loading={pending} loadingLabel={copy.saving}>
+            {copy.save}
+          </Button>
         </div>
       </form>
     </Modal>

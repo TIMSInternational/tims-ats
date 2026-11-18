@@ -51,6 +51,9 @@ model AiAgentUsageLog {
   billableUsd    Float    @default(0) @map("billable_usd")
   latencyMs      Int      @default(0) @map("latency_ms")
   cached         Boolean  @default(false)
+  /// Whether the model output passed schema validation. NULL = row written before
+  /// this column existed, or by a path that does not record an outcome.
+  success        Boolean?
   createdAt      DateTime @default(now()) @map("created_at")
 
   agent AiAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)

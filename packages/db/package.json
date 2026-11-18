@@ -5,10 +5,10 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "generate": "prisma generate",
-    "push": "bash ../../scripts/db/guard-prod-ddl.sh prisma db push",
-    "migrate": "bash ../../scripts/db/guard-prod-ddl.sh prisma migrate dev",
-    "studio": "prisma studio",
+    "generate": "prisma generate --schema prisma/schema",
+    "push": "bash ../../scripts/db/guard-prod-ddl.sh prisma db push --schema prisma/schema",
+    "migrate": "bash ../../scripts/db/guard-prod-ddl.sh prisma migrate dev --schema prisma/schema",
+    "studio": "prisma studio --schema prisma/schema",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

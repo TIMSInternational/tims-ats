@@ -1,7 +1,8 @@
 'use client';
 
 import { useI18n } from '../../../../../lib/i18n/index';
-import { formatDate, getInitials } from '../../../../../lib/format-utils';
+import { StatusBadge } from '../../../../../components/status-badge';
+import { formatDate } from '../../../../../lib/format-utils';
 
 interface Approval {
   id: string;
@@ -21,58 +22,72 @@ export function ApprovalChain({ approvals }: ApprovalChainProps) {
 
   if (approvals.length === 0) return null;
 
+  // An ordered list with the outcome in words on every step (StatusBadge), so a screen reader hears
+  // "Paso 1, Laura M., Aprobado" and not just a name (accessibility.md › Vision). Stacks on phones.
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.offers.approvalChain}</h3>
-      <div className="flex items-center gap-2">
+    <section className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5" aria-labelledby="approval-chain-title">
+      <h2 id="approval-chain-title" className="mb-4 text-heading font-semibold text-brand">{t.offers.approvalChain}</h2>
+      <ol className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-2">
         {approvals.map((approval, i) => {
           const isApproved = approval.status === 'approved';
           const isRejected = approval.status === 'rejected';
-          const isPending = approval.status === 'pending';
-          const name = `${approval.approver.firstName} ${approval.approver.lastName}`;
-          const role = approval.approver.jobTitle || `Step ${approval.step}`;
+          // A withdrawn request cancels its pending steps (offer.withdrawApproval).
+          const isCancelled = approval.status === 'cancelled';
+          // B-12: the approver's job title, else "Paso n" (never the English "Step n").
+          const role = approval.approver.jobTitle || t.offers.approvalStepN.replace('{n}', String(approval.step));
+          // B-02: the approver's reason (required on reject) is shown, not only a red X.
+          const comment = approval.comment?.trim();
+          const outcome = isApproved
+            ? { tone: 'success' as const, label: t.offers.approvalStepApproved }
+            : isRejected
+              ? { tone: 'danger' as const, label: t.offers.approvalStepRejected }
+              : isCancelled
+                ? { tone: 'neutral' as const, label: t.offers.approvalStepCancelled }
+                : { tone: 'warning' as const, label: t.offers.approvalStepPending };
 
           return (
-            <div key={approval.id} className="contents">
-              {i > 0 && (
-                <div className={`h-0.5 w-8 ${isApproved ? 'bg-green-500' : isRejected ? 'bg-red-500' : 'bg-[#EDEDED]'}`} />
-              )}
-              <div className="flex flex-col items-center flex-1">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
-                    isApproved
-                      ? 'bg-green-500'
-                      : isRejected
-                        ? 'bg-red-500'
-                        : 'bg-[#EDEDED]'
-                  }`}
-                >
-                  {isApproved ? (
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                  ) : isRejected ? (
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                      <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  )}
-                </div>
-                <p className="text-[10px] text-[#333] font-medium text-center">{role}</p>
-                <p className={`text-[9px] ${isApproved ? 'text-green-600' : isRejected ? 'text-red-600' : 'text-[#8B8B8B]'}`}>
+            <li key={approval.id} className="flex flex-1 items-start gap-3 sm:flex-col sm:items-center sm:gap-1 sm:text-center">
+              {i > 0 && <span aria-hidden="true" className="hidden h-0.5 w-full bg-border sm:block" />}
+              <span
+                aria-hidden="true"
+                className={`flex size-8 shrink-0 items-center justify-center rounded-full ${
+                  isApproved ? 'bg-success text-white' : isRejected ? 'bg-danger text-white' : 'bg-surface text-secondary'
+                }`}
+              >
+                {isApproved ? (
+                  <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                ) : isRejected || isCancelled ? (
+                  <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                    <path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </span>
+              <div className="min-w-0 space-y-0.5 sm:flex sm:flex-col sm:items-center">
+                <p className="text-callout font-medium text-primary">{role}</p>
+                <p className="text-callout text-primary">
                   {approval.approver.firstName} {approval.approver.lastName.charAt(0)}.
                 </p>
-                {approval.decidedAt && (
-                  <p className="text-[9px] text-[#8B8B8B]">{formatDate(approval.decidedAt)}</p>
+                <StatusBadge tone={outcome.tone}>{outcome.label}</StatusBadge>
+                {approval.decidedAt && <p className="text-caption text-muted tabular-nums">{formatDate(approval.decidedAt)}</p>}
+                {comment && (isApproved || isRejected) && (
+                  <p className={`mt-1 max-w-[220px] whitespace-pre-line break-words text-callout ${isRejected ? 'text-danger' : 'text-secondary'}`}>
+                    {(isRejected ? t.offers.approvalRejectionComment : t.offers.approvalDecisionComment).replace(
+                      '{comment}',
+                      comment,
+                    )}
+                  </p>
                 )}
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ol>
+    </section>
   );
 }

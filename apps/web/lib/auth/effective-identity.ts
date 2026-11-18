@@ -7,6 +7,7 @@ import { getUser } from '@tims/auth/server';
 import { db } from '@tims/db';
 import { verifyImpersonationToken, IMPERSONATION_COOKIE } from '@tims/api';
 import { filterStaffRoleSlugs } from '@tims/shared';
+import { belongsToInactiveOrganization } from './staff-context';
 
 // ---------------------------------------------------------------------------
 // Effective (impersonation-aware) server identity for the admin RSCs.
@@ -115,12 +116,18 @@ export const getEffectiveIdentity = cache(async (): Promise<ResolvedIdentity> =>
       isActive: true,
       avatar: true,
       userRoles: { select: { role: { select: { slug: true } } } },
+      organization: { select: { isActive: true } },
     },
   });
 
-  // Must be a linked, active staff identity that is org-scoped or a platform owner.
+  // Must be a linked, active staff identity that is org-scoped or a platform owner. Otherwise clear the
+  // session; `reason=no_access` makes /login explain it instead of silently showing the form again.
   if (!appUser || !appUser.isActive || (!appUser.isPlatformOwner && !appUser.organizationId)) {
-    redirect('/logout');
+    redirect('/logout?reason=no_access');
+  }
+  // Staff of a deactivated organization (platform-owner access-3): clear the session and say why on /login.
+  if (belongsToInactiveOrganization(appUser)) {
+    redirect('/logout?reason=org_inactive');
   }
 
   const realShaped: IdentityInput = {
@@ -153,9 +160,16 @@ export const getEffectiveIdentity = cache(async (): Promise<ResolvedIdentity> =>
           organizationId: true,
           isActive: true,
           userRoles: { select: { role: { select: { slug: true } } } },
+          organization: { select: { isActive: true } },
         },
       });
-      if (target && target.isActive && target.organizationId && !target.isPlatformOwner) {
+      if (
+        target &&
+        target.isActive &&
+        target.organizationId &&
+        !target.isPlatformOwner &&
+        !belongsToInactiveOrganization(target)
+      ) {
         targetShaped = {
           id: target.id,
           firstName: target.firstName,

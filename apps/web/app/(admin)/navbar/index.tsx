@@ -1,114 +1,145 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useI18n } from '../../../lib/i18n';
+import { resolveBreadcrumb, type Crumb } from '../../../lib/nav/breadcrumbs';
+import { IconButton } from '../../../components/icon-button';
+import { Menu } from '../../../components/menu';
 import { SearchCommand } from './search-command';
+import { SearchSheetButton } from './search-sheet-button';
 import { NotificationDropdown } from './notification-dropdown';
+import { SupportEmailLink } from './support-email-link';
 
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void) {
-  useEffect(() => {
-    const listener = (e: MouseEvent) => {
-      if (!ref.current || ref.current.contains(e.target as Node)) return;
-      handler();
-    };
-    document.addEventListener('mousedown', listener);
-    return () => document.removeEventListener('mousedown', listener);
-  }, [ref, handler]);
-}
+// Language names are shown in their own language (endonyms), whatever the UI locale. No flags: a flag
+// names a country, not a language (icons.md › Best practices).
+const LANGUAGES = [
+  { code: 'ES' as const, label: 'Español' },
+  { code: 'EN' as const, label: 'English' },
+];
 
-export function Navbar({ isPlatformOwner = false, onHelpClick, onMenuClick }: { isPlatformOwner?: boolean; onHelpClick?: () => void; onMenuClick?: () => void }) {
+export function Navbar({
+  isPlatformOwner = false,
+  onMenuClick,
+  menuOpen,
+}: {
+  isPlatformOwner?: boolean;
+  onMenuClick?: () => void;
+  /** Whether the sidebar drawer is open (below lg), for the hamburger's aria-expanded. */
+  menuOpen?: boolean;
+}) {
   const pathname = usePathname();
   const { locale, setLocale, t } = useI18n();
 
-  const breadcrumbs = t.breadcrumbs as Record<string, { parent?: string; label: string }>;
-  const crumb = breadcrumbs[pathname] || { label: 'TIMS Platform' };
+  const crumb = resolveBreadcrumb(pathname, t.breadcrumbs as Record<string, Crumb>);
+  const currentLanguage = LANGUAGES.find((l) => l.code === locale)?.label ?? locale;
 
-  const [langOpen, setLangOpen] = useState(false);
-  const langRef = useRef<HTMLDivElement>(null);
-  useClickOutside(langRef, () => setLangOpen(false));
+  // A useful window title per page (toolbars.md › Titles: "Don't title windows with your app name").
+  // Detail pages inherit their list page's crumb.
+  const crumbLabel = crumb?.label;
+  const productName = t.auth.platformName;
+  useEffect(() => {
+    document.title = crumbLabel ? `${crumbLabel} · ${productName}` : productName;
+  }, [crumbLabel, productName]);
 
   return (
-    <header className="flex items-center justify-between px-2 md:px-3 min-h-[40px] shrink-0">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        {/* Mobile hamburger — opens the sidebar drawer */}
-        <button
+    <header className="tims-chrome flex min-h-10 shrink-0 items-center justify-between gap-2 px-2 lg:px-3">
+      <div className="flex min-w-0 items-center gap-1.5">
+        {/* Hamburger — opens the sidebar drawer below lg */}
+        <IconButton
+          label={t.nav.menu}
+          variant="chrome"
+          size="sm"
           onClick={onMenuClick}
-          className="md:hidden -ml-1 mr-1 w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center hover:bg-[var(--chrome-hover)] transition-colors shrink-0"
-          aria-label="Menu"
+          aria-expanded={menuOpen}
+          hideTooltip
+          className="-ml-1 mr-1 lg:hidden"
         >
-          <svg className="w-4.5 h-4.5 text-[var(--chrome-text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" /></svg>
-        </button>
-        {crumb.parent && (
-          <>
-            <span className="hidden md:inline text-[12px] text-[var(--chrome-text-tertiary)]">{crumb.parent}</span>
-            <svg className="hidden md:block w-3 h-3 text-[var(--chrome-text-light)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="m9 18 6-6-6-6" />
-            </svg>
-          </>
+          <svg
+            className="size-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+          </svg>
+        </IconButton>
+        {crumb && (
+          <nav aria-label={t.nav.breadcrumb} className="min-w-0">
+            <ol className="flex min-w-0 items-center gap-1.5">
+              {crumb.parent && (
+                <li className="hidden items-center gap-1.5 md:flex">
+                  <span className="text-callout text-[var(--chrome-text-tertiary)]">{crumb.parent}</span>
+                  <svg
+                    className="size-3 text-[var(--chrome-text-light)]"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                </li>
+              )}
+              <li className="min-w-0">
+                <span
+                  aria-current="page"
+                  className="block truncate text-callout font-semibold text-[var(--chrome-text-primary)]"
+                >
+                  {crumb.label}
+                </span>
+              </li>
+            </ol>
+          </nav>
         )}
-        <span className="text-[12px] font-semibold text-[var(--chrome-text-primary)] truncate">{crumb.label}</span>
       </div>
 
-      {/* Right actions — search + help collapse on mobile so the cluster fits */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        <div className="hidden md:block">
-          <SearchCommand onFocus={() => setLangOpen(false)} />
-        </div>
-
-        <NotificationDropdown onOpen={() => setLangOpen(false)} />
-
-        {/* Help */}
-        <button
-          onClick={onHelpClick}
-          className="w-8 h-8 rounded-[var(--r-md)] hidden md:flex items-center justify-center hover:bg-[var(--chrome-hover)] transition-colors"
-          title={t.nav.helpCenter}
-        >
-          <svg className="w-[16px] h-[16px] text-[var(--chrome-text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-            <path d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
-          </svg>
-        </button>
-
-        {/* Language */}
-        <div ref={langRef} className="relative">
-          <button
-            onClick={() => setLangOpen(!langOpen)}
-            className={`h-7 px-2 rounded-[var(--r-md)] flex items-center gap-1.5 transition-colors ${
-              langOpen ? 'bg-[var(--chrome-hover)]' : 'hover:bg-[var(--chrome-hover)]'
-            }`}
-          >
-            <span className="text-[12px] text-[var(--chrome-text-secondary)] font-medium">{locale}</span>
-            <svg className={`w-3 h-3 text-[var(--chrome-text-tertiary)] transition-transform ${langOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-
-          {langOpen && (
-            <div className="absolute right-0 top-full mt-2 w-[140px] bg-white rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-[#EDEDED] z-50 overflow-hidden py-1">
-              {[
-                { code: 'ES' as const, label: 'Espanol', flag: '🇪🇸' },
-                { code: 'EN' as const, label: 'English', flag: '🇺🇸' },
-              ].map((l) => (
-                <button
-                  key={l.code}
-                  onClick={() => { setLocale(l.code); setLangOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#FAFAFA] transition-colors ${
-                    locale === l.code ? 'bg-[#F6F6F6]' : ''
-                  }`}
-                >
-                  <span className="text-[14px]">{l.flag}</span>
-                  <span className="text-[12px] text-[#333]">{l.label}</span>
-                  {locale === l.code && (
-                    <svg className="w-3.5 h-3.5 text-[#1F114C] ml-auto" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-              ))}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {/* The global search is the platform-owner cross-tenant search (platformProcedure / PlatformOwnerGate):
+            a tenant user can only ever get a FORBIDDEN from it, so it is not rendered for them at all — no
+            broken box, and no denied request (and authz_denied audit event) per keystroke. */}
+        {isPlatformOwner && (
+          <>
+            <div className="hidden md:block">
+              <SearchCommand />
             </div>
-          )}
-        </div>
+            {/* Below md the field does not fit: a search button opens it in a full-screen sheet. */}
+            <div className="md:hidden">
+              <SearchSheetButton />
+            </div>
+          </>
+        )}
+
+        <NotificationDropdown isPlatformOwner={isPlatformOwner} />
+
+        {/* Support: mailto link, hidden when no support address is configured */}
+        <SupportEmailLink />
+
+        <Menu
+          label={`${t.nav.language}: ${currentLanguage}`}
+          selectedKey={locale}
+          panelClassName="w-40"
+          triggerClassName="flex h-7 items-center gap-1.5 rounded-[var(--r-md)] px-2 text-[var(--chrome-text-secondary)] transition-colors hover:bg-[var(--chrome-hover)] aria-expanded:bg-[var(--chrome-hover)] pointer-coarse:h-11"
+          trigger={
+            <>
+              <span className="text-callout font-medium">{locale}</span>
+              <svg
+                className="size-3 text-[var(--chrome-text-tertiary)]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </>
+          }
+          items={LANGUAGES.map((l) => ({ key: l.code, label: l.label, onSelect: () => setLocale(l.code) }))}
+        />
       </div>
     </header>
   );

@@ -33,18 +33,21 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Keep <html lang> in step with the UI locale, including a saved English locale restored after a
+  // reload, so screen readers pronounce the page in its real language (WCAG 3.1.1).
+  useEffect(() => {
+    document.documentElement.lang = locale === 'ES' ? 'es' : 'en';
+  }, [locale]);
+
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
     localStorage.setItem(LOCALE_KEY, l);
-    document.documentElement.lang = l === 'ES' ? 'es' : 'en';
   }, []);
 
-  return (
-    <I18nContext.Provider value={{ locale, setLocale, t: translations[locale] }}>
-      {children}
-    </I18nContext.Provider>
-  );
+  return <I18nContext.Provider value={{ locale, setLocale, t: translations[locale] }}>{children}</I18nContext.Provider>;
 }
+
+export { formatMessage, pluralize, type PluralForms } from './format';
 
 export function useI18n() {
   return useContext(I18nContext);

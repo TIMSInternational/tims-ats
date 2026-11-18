@@ -11,9 +11,16 @@
 // stored row always identifies the text the candidate actually agreed to.
 //
 // PENDING LEGAL REVIEW: the wording below (and its es/en i18n twins) has not yet been
-// reviewed by Colombian counsel — see docs/architecture/csharp-migration/candidate-consent.md.
+// reviewed by counsel — see docs/architecture/csharp-migration/candidate-consent.md.
+//
+// Version history (rows recorded under a superseded version keep it, so stored evidence still
+// identifies what the candidate agreed to):
+//   'portal-apply-2026-09-29' — the linked privacy notice (`portalPrivacy.*`) cited Colombia's
+//                               Ley 1581 de 2012 and the SIC for every organization.
+//   'portal-apply-2026-11-06' — same consent sentence (so the same text hash); the linked notice
+//                               is country-neutral ("legislación de protección de datos aplicable").
 export const APPLICATION_CONSENT_TYPE = 'recruitment_data_processing';
-export const APPLICATION_CONSENT_TEXT_VERSION = 'portal-apply-2026-09-29';
+export const APPLICATION_CONSENT_TEXT_VERSION = 'portal-apply-2026-11-06';
 
 export const APPLICATION_CONSENT_LOCALES = ['es', 'en'] as const;
 export type ApplicationConsentLocale = (typeof APPLICATION_CONSENT_LOCALES)[number];

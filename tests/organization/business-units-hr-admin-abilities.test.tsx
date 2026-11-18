@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // The C# org-structure gates follow today's tRPC capabilities (TenantOrgStructureEndpoints): a seed-shaped
@@ -67,14 +67,18 @@ describe('business units settings — hr_admin (organization:read + user:*)', ()
     expect(within(card).getByRole('button', { name: 'Agregar responsable' })).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Quitar' })).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Miembros' })).toBeInTheDocument();
-    expect(within(card).getByRole('button', { name: 'Cambiar líder' })).toBeInTheDocument();
-    expect(within(card).getByRole('button', { name: 'Quitar líder' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Unidad principal de un usuario' })).toBeInTheDocument();
+    // Leader changes live in the team row's "Acciones de …" menu.
+    fireEvent.click(within(card).getByRole('button', { name: 'Acciones de Logística' }));
+    expect(within(card).getByRole('menuitem', { name: 'Cambiar líder…' })).toBeInTheDocument();
+    expect(within(card).getByRole('menuitem', { name: 'Quitar líder' })).toBeInTheDocument();
+    expect(within(card).queryByRole('menuitem', { name: 'Renombrar…' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('menuitem', { name: 'Desactivar equipo' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Asignar unidad principal…' })).toBeInTheDocument();
 
     // organization:create / organization:update — super_admin only
     expect(screen.queryByRole('button', { name: 'Nueva unidad' })).not.toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Nuevo equipo' })).not.toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: 'Renombrar' })).not.toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Editar…' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Acciones de Operaciones' })).not.toBeInTheDocument();
   });
 });

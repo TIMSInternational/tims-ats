@@ -31,6 +31,14 @@ public sealed partial class OrganizationInvitationEndpointTests
     [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"UPPER\"}")]
     [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\\nInjected\",\"organizationSlug\":\"ok\"}")]
     [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"organizationPlan\":\"free\"}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":null}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":\"GT\"}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":{\"country\":\"GT\",\"timezone\":\"America/Guatemala\",\"currency\":\"GTQ\"}}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":{\"country\":\"GT\",\"timezone\":\"America/Guatemala\",\"currency\":\"GTQ\",\"locale\":\"es-GT\",\"extra\":\"x\"}}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":{\"country\":\"GT\",\"timezone\":\"Mars/Olympus\",\"currency\":\"GTQ\",\"locale\":\"es-GT\"}}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":{\"country\":\"GT\",\"timezone\":\"America/Guatemala\",\"currency\":\"XYZ\",\"locale\":\"es-GT\"}}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":{\"country\":\"gt\",\"timezone\":\"America/Guatemala\",\"currency\":\"GTQ\",\"locale\":\"es-GT\"}}")]
+    [InlineData("{\"email\":\"a@b.com\",\"organizationName\":\"Test\",\"organizationSlug\":\"ok\",\"localeProfile\":{\"country\":\"GT\",\"timezone\":\"America/Guatemala\",\"currency\":\"GTQ\",\"locale\":42}}")]
     public async Task Invalid_body_cannot_create_or_send(string body)
     {
         var sender = new FakeSender(); var before = await fixture.Organizations.CountAllRowsAsync();

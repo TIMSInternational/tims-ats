@@ -3,126 +3,186 @@
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
 import { formatDate } from '../../../../lib/format-utils';
-import { DataTable, EmptyState, ErrorState, CandidateAvatar, FitScoreBadge, StageBadge } from '../../../../components';
+import { DataTable, EmptyState, ErrorState, CandidateAvatar, FitScoreBadge, StatusBadge } from '../../../../components';
 import type { CandidateListItem } from '../../../../lib/trpc-types';
+import { candidatePoolLabel, candidateSourceLabel } from '../../../../lib/candidate-labels';
+import { useReviewPendingFitScores } from '../../../../lib/platform-api/fit-engine';
+import { FitReviewPendingBadge } from '../fit-review-pending-badge';
 
 interface CandidateTableProps {
   candidates: CandidateListItem[];
   isLoading: boolean;
   isError?: boolean;
+  error?: unknown;
   onRetry?: () => void;
+  /** A search or filter is active, so an empty list means "no match", not "no candidates". */
+  hasFilters?: boolean;
+  onClearFilters?: () => void;
+  onCreate?: () => void;
 }
 
-const POOL_STYLES: Record<string, string> = {
-  applicant: 'bg-blue-50 text-blue-700',
-  referral: 'bg-green-50 text-green-700',
-  sourced: 'bg-violet-50 text-violet-700',
-  silver_medalist: 'bg-amber-50 text-amber-700',
-  passive: 'bg-gray-100 text-gray-600',
-};
+const MAX_TAGS = 2;
 
-export function CandidateTable({ candidates, isLoading, isError, onRetry }: CandidateTableProps) {
+export function CandidateTable({
+  candidates,
+  isLoading,
+  isError,
+  error,
+  onRetry,
+  hasFilters,
+  onClearFilters,
+  onCreate,
+}: CandidateTableProps) {
   const { t } = useI18n();
+  // FIT v2: which shown scores are provisional (from C#; candidate.list carries the id, not the breakdown).
+  // A failed read is shown as "unknown", never as final.
+  const reviewState = useReviewPendingFitScores(
+    candidates.flatMap((c) => (c.fitScores?.[0]?.id ? [c.fitScores[0].id] : [])),
+  );
+  const pendingFit = reviewState.data;
 
   if (isError) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
-        <ErrorState onRetry={onRetry} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white shadow-card">
+        <ErrorState message={t.candidates.listLoadError} onRetry={onRetry} error={error} />
       </div>
     );
   }
-
-  const poolLabels: Record<string, string> = {
-    applicant: t.candidates.poolApplicant,
-    referral: t.candidates.poolReferral,
-    sourced: t.candidates.poolSourced,
-    silver_medalist: t.candidates.poolSilverMedalist,
-    passive: t.candidates.poolPassive,
-  };
 
   const columns = [
     { key: 'name', label: t.candidates.colName },
     { key: 'pool', label: t.candidates.colPool },
     { key: 'source', label: t.candidates.colSource },
     { key: 'fit', label: t.candidates.colFitScore, align: 'center' as const },
-    { key: 'apps', label: t.candidates.applications, align: 'center' as const },
+    { key: 'apps', label: t.candidates.applications, align: 'right' as const },
     { key: 'tags', label: t.candidates.colTags },
     { key: 'created', label: t.candidates.colCreated },
-    { key: 'actions', label: t.candidates.colActions, align: 'right' as const },
   ];
+
+  const fitCell = (c: CandidateListItem) => {
+    const fitScore = c.fitScores?.[0]?.overallScore;
+    if (fitScore == null) {
+      return (
+        <span className="text-muted">
+          <span aria-hidden="true">—</span>
+          <span className="sr-only">{t.candidates.noFitScore}</span>
+        </span>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <FitScoreBadge score={fitScore} size="md" />
+        {reviewState.isError ? (
+          <FitReviewPendingBadge compact unknown />
+        ) : (
+          pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />
+        )}
+      </div>
+    );
+  };
+
+  const empty = hasFilters ? (
+    <EmptyState
+      icon={
+        <svg
+          className="size-8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+        </svg>
+      }
+      title={t.candidates.noMatches}
+      description={t.candidates.noMatchesDesc}
+      action={
+        onClearFilters ? { label: t.common.clearFilters, onClick: onClearFilters, variant: 'secondary' } : undefined
+      }
+    />
+  ) : (
+    <EmptyState
+      title={t.candidates.noCandidates}
+      description={t.candidates.noCandidatesDesc}
+      action={onCreate ? { label: t.candidates.newCandidate, onClick: onCreate, variant: 'secondary' } : undefined}
+    />
+  );
+
+  const mobileList = candidates.map((c) => (
+    <Link
+      key={c.id}
+      href={`/recruitment/candidates/${c.id}`}
+      className="flex min-h-12 items-center gap-3 px-4 py-3 hover:bg-surface-hover"
+    >
+      <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="sm" decorative />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-body font-medium text-primary">
+          {c.firstName} {c.lastName}
+        </p>
+        <p className="truncate text-callout text-secondary">{c.email}</p>
+        <StatusBadge tone="neutral" icon="none" className="mt-1">
+          {candidatePoolLabel(c.poolType, t.candidates)}
+        </StatusBadge>
+      </div>
+      {c.fitScores?.[0]?.overallScore != null && <FitScoreBadge score={c.fitScores[0].overallScore} size="md" />}
+      <svg
+        className="size-4 shrink-0 text-muted"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path d="M9 5l7 7-7 7" />
+      </svg>
+    </Link>
+  ));
 
   return (
     <DataTable
       columns={columns}
       loading={isLoading}
       skeletonRows={8}
-      empty={
-        <EmptyState
-          icon={<svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
-          message={t.candidates.noCandidates}
-          description={t.candidates.noCandidatesDesc}
-        />
-      }
+      label={t.candidates.title}
+      mobileList={mobileList}
+      empty={empty}
     >
-      {candidates.map((c) => {
-        const fitScore = c.fitScores?.[0]?.overallScore;
-        const poolCls = POOL_STYLES[c.poolType] ?? 'bg-gray-100 text-gray-600';
-
-        return (
-          <tr key={c.id} className="border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition">
-            <td className="px-4 py-3">
-              <Link href={`/recruitment/candidates/${c.id}`} className="flex items-center gap-3 hover:underline">
-                <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="sm" />
-                <div>
-                  <p className="text-[13px] font-medium text-[#333]">{c.firstName} {c.lastName}</p>
-                  <p className="text-[11px] text-[#8B8B8B]">{c.email}</p>
-                </div>
-              </Link>
-            </td>
-            <td className="px-4 py-3">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${poolCls}`}>
-                {poolLabels[c.poolType] ?? c.poolType}
-              </span>
-            </td>
-            <td className="px-4 py-3">
-              <span className="text-[12px] text-[#585858]">{c.source}</span>
-            </td>
-            <td className="px-4 py-3 text-center">
-              {fitScore != null ? (
-                <div className="flex justify-center">
-                  <FitScoreBadge score={fitScore} size="sm" />
-                </div>
-              ) : (
-                <span className="text-[11px] text-[#CDCDCD]">—</span>
-              )}
-            </td>
-            <td className="px-4 py-3 text-center">
-              <span className="text-[13px] text-[#333]">{c._count.applications}</span>
-            </td>
-            <td className="px-4 py-3">
-              <div className="flex flex-wrap gap-1 max-w-[150px]">
-                {c.tags.slice(0, 3).map((tag) => (
-                  <span key={tag.id} className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{tag.tag}</span>
-                ))}
-                {c.tags.length > 3 && (
-                  <span className="text-[9px] text-[#8B8B8B]">+{c.tags.length - 3}</span>
-                )}
+      {candidates.map((c) => (
+        <tr key={c.id} className="border-b border-border hover:bg-surface-hover">
+          <td className="px-4 py-3">
+            <Link href={`/recruitment/candidates/${c.id}`} className="group flex items-center gap-3 rounded-lg">
+              <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="sm" decorative />
+              <div className="min-w-0">
+                <p className="text-body font-medium text-primary group-hover:underline">
+                  {c.firstName} {c.lastName}
+                </p>
+                <p className="text-callout text-secondary">{c.email}</p>
               </div>
-            </td>
-            <td className="px-4 py-3">
-              <span className="text-[12px] text-[#8B8B8B]">{formatDate(c.createdAt)}</span>
-            </td>
-            <td className="px-4 py-3 text-right">
-              <Link
-                href={`/recruitment/candidates/${c.id}`}
-                className="h-7 px-2.5 rounded-md text-[11px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition inline-flex items-center"
-              >
-                {t.candidates.viewProfile}
-              </Link>
-            </td>
-          </tr>
-        );
-      })}
+            </Link>
+          </td>
+          <td className="px-4 py-3">
+            <StatusBadge tone="neutral" icon="none">
+              {candidatePoolLabel(c.poolType, t.candidates)}
+            </StatusBadge>
+          </td>
+          <td className="px-4 py-3 text-body text-secondary">{candidateSourceLabel(c.source, t.candidates)}</td>
+          <td className="px-4 py-3 text-center">{fitCell(c)}</td>
+          <td className="px-4 py-3 text-right text-body tabular-nums text-primary">{c._count.applications}</td>
+          <td className="px-4 py-3">
+            <div className="flex max-w-40 flex-wrap gap-1">
+              {c.tags.slice(0, MAX_TAGS).map((tag) => (
+                <StatusBadge key={tag.id} tone="neutral" icon="none">
+                  {tag.tag}
+                </StatusBadge>
+              ))}
+              {c.tags.length > MAX_TAGS && <span className="text-caption text-muted">+{c.tags.length - MAX_TAGS}</span>}
+            </div>
+          </td>
+          <td className="px-4 py-3 text-body tabular-nums text-secondary">{formatDate(c.createdAt)}</td>
+        </tr>
+      ))}
     </DataTable>
   );
 }

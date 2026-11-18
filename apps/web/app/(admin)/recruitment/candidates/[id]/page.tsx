@@ -1,11 +1,15 @@
 'use client';
 
 import { use, useState } from 'react';
-import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { ErrorState, Skeleton } from '../../../../../components';
+import { EmptyState, ErrorState, PageHeader, StageBadge, StatusBadge, TabPanel, Tabs } from '../../../../../components';
+import { CandidateDetailSkeleton } from './candidate-detail-skeleton';
+import { ProviderAssessmentsCard } from './provider-assessments-card';
 import { CandidateHeader } from './candidate-header';
+import { CandidateHeaderActions } from './candidate-header-actions';
+import { CARD } from './card-styles';
 import { ApplicationsCard, PersonalInfoCard, ProfileTab } from './profile-tab';
 import { AssessmentResults } from './assessment-results';
 import { FitBreakdown } from './fit-breakdown';
@@ -16,93 +20,80 @@ import { CandidateTimeline } from './candidate-timeline';
 import { RiskFlags } from './risk-flags';
 import { CvParseCard } from './cv-parse-card';
 import { ScreenCandidateCard } from './screen-candidate-card';
-import { AssignAssessmentModal } from './assign-assessment-modal';
+import { CandidateAssignActions } from './candidate-assign-actions';
+import { ProviderResultsBoard } from './provider-results/provider-results-board';
 import { CandidateConsentCard } from './consent-card';
-
-const TABS = [
-  'tabProfile', 'tabApplications', 'tabAssessments', 'tabInterviews',
-  'tabFitGaps', 'tabDocuments', 'tabValidations', 'tabTimeline', 'tabNotes',
-] as const;
-
-type TabKey = (typeof TABS)[number];
-
-function EmptyTabPanel({ title, message }: { title: string; message: string }) {
-  return (
-    <div className="bg-white rounded-xl p-8 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-2">{title}</h3>
-      <p className="text-[12px] text-[#8B8B8B]">{message}</p>
-    </div>
-  );
-}
-
-function NotesPanel({ title, notes, empty }: { title: string; notes: string | null | undefined; empty: string }) {
-  const value = notes?.trim();
-
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{title}</h3>
-      {value ? (
-        <p className="text-[13px] text-[#585858] whitespace-pre-wrap leading-relaxed">{value}</p>
-      ) : (
-        <p className="text-[12px] text-[#8B8B8B] py-4 text-center">{empty}</p>
-      )}
-    </div>
-  );
-}
+import { isPilotScope } from '../../../../../lib/launch-scope';
+import { useCan } from '../../../../../lib/permissions';
+import { SCHEDULE_QUERY_PARAM } from '../../../../../lib/pipeline-next-actions';
+import { readTabParam, replaceQuery, visibleCandidateTabs, type TabKey } from './candidate-tabs';
+import { CandidateInterviewsTab } from './candidate-interviews-tab';
+import { CandidateOffersCard } from './candidate-offers-card';
+import { CandidateNotesPanel } from './notes-panel';
+import { ScheduleModal, type SchedulePrefill } from '../../interviews/schedule-modal';
+import {
+  useCandidateFitScoresViaCsharp,
+  withCandidatePageFitScores,
+} from '../../../../../lib/platform-api/fit-engine-reads';
 
 export default function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<TabKey>('tabProfile');
-  const [showAssignAssessment, setShowAssignAssessment] = useState(false);
+  const can = useCan();
+  const searchParams = useSearchParams();
+  // The open tab lives in the URL (?tab=), so a refresh or Back keeps it (journeys-27).
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    () => readTabParam(searchParams?.get('tab'), isPilotScope()) ?? 'tabProfile',
+  );
+  // ?schedule=<applicationId> (the "Programar la entrevista" step after a move) opens the prefilled form (A-10).
+  const [scheduleFor, setScheduleFor] = useState<string | null>(() => searchParams?.get(SCHEDULE_QUERY_PARAM) ?? null);
+  // Bumped after scheduling: remounts the interviews tab, which refetches on mount.
+  const [interviewsVersion, setInterviewsVersion] = useState(0);
+  const selectTab = (tab: TabKey) => {
+    setActiveTab(tab);
+    replaceQuery({ tab: tab === 'tabProfile' ? null : tab });
+  };
+  const closeSchedule = () => {
+    setScheduleFor(null);
+    replaceQuery({ [SCHEDULE_QUERY_PARAM]: null });
+  };
 
   const candidate = trpc.candidate.getById.useQuery({ id });
+  // FIT v2 (flag on): the header, breakdown and assessment panels read the fit scores from C# (D6 for a team leader).
+  const csharpFitScores = useCandidateFitScoresViaCsharp(id);
   const timeline = trpc.candidate.getTimeline.useQuery({ candidateId: id });
 
-  if (candidate.isLoading) {
+  if (candidate.isLoading) return <CandidateDetailSkeleton />;
+
+  // A deleted candidate, an old link or another organisation's record cannot be fixed by retrying: say so and
+  // offer the way back (writing.md › Best practices). Other failures keep the retry.
+  if (candidate.data == null && (!candidate.isError || candidate.error?.data?.code === 'NOT_FOUND')) {
     return (
-      <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex items-center px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
-          <Skeleton className="h-5 w-64 rounded" />
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          <Skeleton className="h-40 w-full rounded-xl mb-6" />
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:flex-[60] space-y-4">
-              <Skeleton className="h-48 w-full rounded-xl" />
-              <Skeleton className="h-32 w-full rounded-xl" />
-            </div>
-            <div className="w-full md:flex-[40] space-y-4">
-              <Skeleton className="h-64 w-full rounded-xl" />
-              <Skeleton className="h-32 w-full rounded-xl" />
-            </div>
-          </div>
-        </div>
+      <div className="flex h-full items-center justify-center">
+        <ErrorState
+          variant="notFound"
+          title={t.candidates.notFoundTitle}
+          description={t.candidates.notFoundDesc}
+          back={{ href: '/recruitment/candidates', label: t.candidates.backToCandidates }}
+        />
       </div>
     );
   }
 
-  if (candidate.isError) {
+  if (candidate.isError || !candidate.data) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <ErrorState onRetry={() => candidate.refetch()} />
+      <div className="flex h-full items-center justify-center">
+        <ErrorState message={t.candidates.loadError} onRetry={() => candidate.refetch()} error={candidate.error} />
       </div>
     );
   }
 
-  if (!candidate.data) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-[#8B8B8B]">{t.common.noResults}</p>
-      </div>
-    );
-  }
-
-  const c = candidate.data;
+  const c = withCandidatePageFitScores(candidate.data, csharpFitScores);
+  const showAssessments = !isPilotScope();
   const appCount = c.applications?.length ?? 0;
   const tabLabels: Record<string, string> = {
     tabProfile: t.candidates.tabProfile,
-    tabApplications: `${t.candidates.tabApplications} (${appCount})`,
+    tabApplications: t.candidates.tabApplications,
     tabAssessments: t.candidates.tabAssessments,
     tabInterviews: t.candidates.tabInterviews,
     tabFitGaps: t.candidates.tabFitGaps,
@@ -112,122 +103,188 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
     tabNotes: t.candidates.tabNotes,
   };
 
-  const empty = t.common.noResults;
+  const emptyCard = (title: string, description?: string) => (
+    <section className={CARD}>
+      <EmptyState size="compact" title={title} description={description} />
+    </section>
+  );
+  const activeApplications = c.applications.filter((application) => application.status === 'active');
+  const canSchedule = can('interview', 'create') && activeApplications.length > 0;
+  const openSchedule = canSchedule ? () => setScheduleFor(activeApplications[0]?.id ?? '') : undefined;
+  // The preferred application first (the one named by ?schedule=, else the first active one).
+  const schedulePrefill: SchedulePrefill | null =
+    canSchedule && scheduleFor !== null
+      ? {
+          candidateId: c.id,
+          candidateName: `${c.firstName} ${c.lastName}`,
+          applications: [...activeApplications]
+            .sort((a, b) => Number(b.id === scheduleFor) - Number(a.id === scheduleFor))
+            .map((a) => ({ id: a.id, vacancyId: a.vacancy.id, vacancyTitle: a.vacancy.title })),
+        }
+      : null;
 
   const renderActiveTab = () => {
     switch (activeTab) {
       case 'tabProfile':
         return (
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:flex-[60] space-y-4">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-4">
               <ProfileTab candidate={c} />
             </div>
-            <div className="w-full md:flex-[40] space-y-4">
-              {c.assessmentAssignments.length > 0 && (
+            <div className="min-w-0 space-y-4">
+              {showAssessments && c.assessmentAssignments.length > 0 && (
                 <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
               )}
-              {c.fitScores.length > 0 && <FitBreakdown fitScores={c.fitScores} />}
-              <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
-              <CvParseCard candidateId={id} />
+              {showAssessments && (
+                <ProviderAssessmentsCard
+                  candidateId={id}
+                  applications={c.applications}
+                  onSeeDetails={openAssessmentsTab}
+                />
+              )}
               <StageTimeline applications={c.applications} />
+              <CandidateOffersCard candidateId={id} />
               <TagsCard tags={c.tags} candidateId={id} />
               <CandidateConsentCard candidateId={id} />
               <RiskFlags />
-              <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />
+              <CandidateTimeline
+                events={timeline.data ?? []}
+                isLoading={timeline.isLoading}
+                isError={timeline.isError}
+                onRetry={() => timeline.refetch()}
+                maxItems={5}
+                onViewAll={openTimelineTab}
+              />
             </div>
           </div>
         );
       case 'tabApplications':
-        return c.applications.length > 0
-          ? <ApplicationsCard applications={c.applications} />
-          : <EmptyTabPanel title={tabLabels.tabApplications} message={empty} />;
+        return c.applications.length > 0 ? (
+          <ApplicationsCard applications={c.applications} />
+        ) : (
+          emptyCard(t.candidates.noApplications)
+        );
       case 'tabAssessments':
-        return c.assessmentAssignments.length > 0
-          ? <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
-          : <EmptyTabPanel title={tabLabels.tabAssessments} message={empty} />;
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <ProviderResultsBoard candidateId={id} applications={c.applications} />
+              <ProviderAssessmentsCard candidateId={id} applications={c.applications} />
+            </div>
+            {c.assessmentAssignments.length > 0 ? (
+              <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
+            ) : (
+              emptyCard(t.candidates.noAssessments)
+            )}
+          </div>
+        );
       case 'tabInterviews':
-        return <EmptyTabPanel title={tabLabels.tabInterviews} message={empty} />;
+        return <CandidateInterviewsTab key={interviewsVersion} candidateId={id} onSchedule={openSchedule} />;
       case 'tabFitGaps':
         return (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4">
-            {c.fitScores.length > 0
-              ? <FitBreakdown fitScores={c.fitScores} />
-              : <EmptyTabPanel title={tabLabels.tabFitGaps} message={empty} />}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+            {c.fitScores.length > 0 ? (
+              <FitBreakdown fitScores={c.fitScores} />
+            ) : (
+              emptyCard(t.candidates.noFitYet, t.candidates.noFitYetDesc)
+            )}
             <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
           </div>
         );
       case 'tabDocuments':
-        return <DocumentsCard documents={c.documents} />;
+        return (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <DocumentsCard documents={c.documents} candidateId={id} />
+            <CvParseCard candidateId={id} />
+          </div>
+        );
       case 'tabValidations':
         return (
           <div className="space-y-4">
             <RiskFlags />
-            <EmptyTabPanel title={tabLabels.tabValidations} message={empty} />
+            {emptyCard(t.candidates.noValidations)}
           </div>
         );
       case 'tabTimeline':
-        return <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />;
+        return (
+          <CandidateTimeline
+            events={timeline.data ?? []}
+            isLoading={timeline.isLoading}
+            isError={timeline.isError}
+            onRetry={() => timeline.refetch()}
+          />
+        );
       case 'tabNotes':
-        return <NotesPanel title={tabLabels.tabNotes} notes={c.notes} empty={empty} />;
+        return <CandidateNotesPanel candidateId={id} notes={c.notes} />;
       default:
         return (
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:flex-[60] space-y-4">
-              <PersonalInfoCard candidate={c} />
-            </div>
+          <div className="min-w-0 space-y-4">
+            <PersonalInfoCard candidate={c} />
           </div>
         );
     }
   };
 
-  return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Top Bar breadcrumb */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
-        <div className="flex items-center gap-2">
-          <Link href="/recruitment/candidates" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
-            {t.candidates.title}
-          </Link>
-          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-          <span className="text-sm font-medium text-[#1F114C]">{c.firstName} {c.lastName}</span>
-        </div>
-        {c.applications.some((application) => application.status === 'active') && (
-          <button type="button" onClick={() => setShowAssignAssessment(true)} className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white">
-            {t.assessments.assignAssessment}
-          </button>
-        )}
-      </div>
+  // After the tab switch on purpose: the tab keys' first mention order is pinned (candidate-detail-tabs test).
+  const openAssessmentsTab = () => selectTab('tabAssessments');
+  const openTimelineTab = () => selectTab('tabTimeline');
+  const visibleTabs = visibleCandidateTabs(!showAssessments).map((tab) => ({
+    id: tab,
+    label: tabLabels[tab],
+    count: tab === 'tabApplications' ? appCount : undefined,
+  }));
+  const currentStage = activeApplications[0]?.currentStage;
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Header Card */}
+  return (
+    <div className="flex flex-col md:h-full md:overflow-hidden">
+      <PageHeader
+        back={{ href: '/recruitment/candidates', label: t.candidates.title }}
+        title={`${c.firstName} ${c.lastName}`}
+        meta={
+          <>
+            {currentStage && <StageBadge name={currentStage.name} order={currentStage.order} />}
+            {c.isActive && <StatusBadge tone="success">{t.candidates.active}</StatusBadge>}
+          </>
+        }
+        actions={
+          <>
+            {showAssessments && (
+              <CandidateAssignActions
+                candidateId={id}
+                applications={c.applications}
+                onOpenAssessmentsTab={openAssessmentsTab}
+              />
+            )}
+            <CandidateHeaderActions candidate={c} onScheduleInterview={openSchedule} />
+          </>
+        }
+      />
+
+      <div className="min-w-0 flex-1 px-4 py-5 md:overflow-y-auto md:px-6 md:py-6">
         <CandidateHeader candidate={c} />
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-[#EDEDED] overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              type="button"
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2.5 text-[13px] font-medium transition shrink-0 whitespace-nowrap ${
-                activeTab === tab
-                  ? 'text-[#1F114C] border-b-2 border-[#DD0C15]'
-                  : 'text-[#8B8B8B] hover:text-[#585858]'
-              }`}
-            >
-              {tabLabels[tab]}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          label={t.candidates.sectionsLabel}
+          tabs={visibleTabs}
+          selectedId={activeTab}
+          onSelect={(tab) => selectTab(tab as TabKey)}
+          idPrefix="candidate"
+          className="mb-6"
+        />
 
-        {renderActiveTab()}
+        <TabPanel idPrefix="candidate" tabId={activeTab}>
+          {renderActiveTab()}
+        </TabPanel>
       </div>
-      {showAssignAssessment && (
-        <AssignAssessmentModal
-          candidateId={id}
-          applications={c.applications.filter((application) => application.status === 'active')}
-          onClose={() => setShowAssignAssessment(false)}
+      {schedulePrefill && (
+        <ScheduleModal
+          prefill={schedulePrefill}
+          onClose={closeSchedule}
+          onSuccess={() => {
+            closeSchedule();
+            setInterviewsVersion((v) => v + 1);
+            selectTab('tabInterviews');
+          }}
         />
       )}
     </div>

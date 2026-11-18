@@ -1,12 +1,14 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { csvRow, getAppUrl, ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
+import { csvRow, getAppUrl, ASSIGNABLE_STAFF_ROLES, platformOwnerEmailLockKey } from '@tims/shared';
 import { router } from '../../trpc';
 import { db } from '@tims/db';
 import type { Prisma } from '@tims/db';
 import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
 import { invalidatePermissionCache } from '../../lib/cache';
+import { recordPlatformAudit } from './platform-audit';
+import { memberAdminLockKey } from '../../services/member-admin.policy';
 
 const userListSelect = {
   id: true,
@@ -123,22 +125,79 @@ export const usersRouter = router({
     });
   }),
 
+  // The owner allowlist grants cross-tenant access to every organization, so both writes are audited
+  // (platform-owner access-2 / access-6 / journeys-30). The UI asks for the address to be typed twice.
   addPlatformOwnerEmail: platformProcedure
-    .input(z.object({ email: z.string().email().max(255) }))
-    .mutation(async ({ input }) => {
-      return db.platformOwnerEmail.create({
-        data: { email: input.email },
+    .input(z.object({ email: z.string().trim().toLowerCase().email().max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      // Case-insensitive `equals` is an ILIKE (`_`/`%` are wildcards): only an exact case-folded match is a
+      // duplicate, so `ops_admin@x` can be added beside `ops-admin@x`.
+      const existing = (
+        await db.platformOwnerEmail.findMany({
+          where: { email: { equals: input.email, mode: 'insensitive' } },
+          select: { email: true },
+        })
+      ).some((e) => e.email.toLowerCase() === input.email);
+      if (existing) throw new TRPCError({ code: 'CONFLICT', message: 'Ese correo ya está en la lista' });
+      const created = await db.platformOwnerEmail.create({
+        data: { email: input.email, addedBy: ctx.user.id },
         select: { email: true, createdAt: true },
       });
+      await recordPlatformAudit(ctx, {
+        action: 'platform_owner_email_added',
+        entity: 'platform_owner_email',
+        metadata: { email: created.email },
+      });
+      return created;
     }),
 
+  // Removing an address now also REVOKES it: an owner account already created from it loses the
+  // platform-owner flag in the same transaction (both stacks read users.is_platform_owner on every
+  // request), so removal no longer leaves a full owner behind. The caller cannot remove their own address.
   removePlatformOwnerEmail: platformProcedure
-    .input(z.object({ email: z.string().email().max(255) }))
-    .mutation(async ({ input }) => {
-      return db.platformOwnerEmail.delete({
-        where: { email: input.email },
-        select: { email: true },
+    .input(z.object({ email: z.string().trim().email().max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.email.toLowerCase() === ctx.user.email.toLowerCase()) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'No puedes quitar tu propio correo de la lista' });
+      }
+      const result = await db.$transaction(async (tx) => {
+        // Same lock as first-sign-in owner provisioning (apps/web lib/auth/platform-owner-provisioning): a
+        // sign-in racing this removal either finishes first (and is revoked below) or finds the address gone.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${platformOwnerEmailLockKey(input.email)}, 0))`;
+        // Prisma's case-insensitive `equals` is an ILIKE on PostgreSQL, where `_` and `%` are wildcards: removing
+        // `ops_admin@x` would also match `ops-admin@x`. Keep only exact (case-folded) matches before deleting or
+        // revoking anything (Codex review of release/pilot-ux-wave2, P1).
+        const address = input.email.toLowerCase();
+        const exact = (email: string) => email.toLowerCase() === address;
+        const entries = (
+          await tx.platformOwnerEmail.findMany({
+            where: { email: { equals: input.email, mode: 'insensitive' } },
+            select: { email: true },
+          })
+        ).filter((e) => exact(e.email));
+        if (entries.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Ese correo no está en la lista' });
+        await tx.platformOwnerEmail.deleteMany({ where: { email: { in: entries.map((e) => e.email) } } });
+        const owners = (
+          await tx.user.findMany({
+            where: { email: { equals: input.email, mode: 'insensitive' }, isPlatformOwner: true, id: { not: ctx.user.id } },
+            select: { id: true, email: true },
+          })
+        ).filter((u) => exact(u.email));
+        const revoked =
+          owners.length === 0
+            ? { count: 0 }
+            : await tx.user.updateMany({
+                where: { id: { in: owners.map((u) => u.id) }, isPlatformOwner: true },
+                data: { isPlatformOwner: false },
+              });
+        return { email: entries[0]!.email, ownersRevoked: revoked.count };
       });
+      await recordPlatformAudit(ctx, {
+        action: 'platform_owner_email_removed',
+        entity: 'platform_owner_email',
+        metadata: { email: result.email, ownersRevoked: result.ownersRevoked },
+      });
+      return result;
     }),
 
   deactivateOrgUser: platformProcedure
@@ -220,7 +279,7 @@ export const usersRouter = router({
       if (!supabaseUrl || !serviceKey) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Servicio de autenticacion no configurado',
+          message: 'Servicio de autenticación no configurado',
         });
       }
       const { createClient } = await import('@supabase/supabase-js');
@@ -275,14 +334,14 @@ export const usersRouter = router({
       if (!user.supabaseUserId) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'El usuario no tiene una sesion de autenticacion activa',
+          message: 'El usuario no tiene una sesión de autenticación activa',
         });
       }
       // supabaseUserId is stored as plain String (not @db.Uuid). Validate the
       // format before it becomes the `::uuid`-cast bind value, so a malformed
       // record fails cleanly here instead of as a raw Postgres cast 500.
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(user.supabaseUserId)) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ID de autenticacion malformado' });
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ID de autenticación malformado' });
       }
 
       // Parameterized ($executeRaw, not Unsafe) — deletes every session row for the
@@ -328,11 +387,26 @@ export const usersRouter = router({
       });
       if (!role) throw new TRPCError({ code: 'NOT_FOUND', message: 'Rol no encontrado' });
 
-      await db.userRole.deleteMany({
-        where: { userId: input.userId, role: { organizationId: input.organizationId } },
-      });
-      await db.userRole.create({
-        data: { userId: input.userId, roleId: role.id },
+      // Delete-then-create in ONE transaction (D-14): run separately, a failure between the two left the
+      // user with no role at all ("Tu acceso está pendiente"). The user must belong to the organization.
+      const previousRoles = await db.$transaction(async (tx) => {
+        // Serialized with the tenant role writers (memberAdminLockKey): two overlapping replacements on one
+        // member could otherwise each delete before the other's insert and leave both roles.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${memberAdminLockKey(input.organizationId)}, 0))`;
+        const user = await tx.user.findFirst({
+          where: { id: input.userId, organizationId: input.organizationId },
+          select: { id: true, isPlatformOwner: true, userRoles: { select: { role: { select: { slug: true } } } } },
+        });
+        if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'Usuario no encontrado' });
+        if (user.isPlatformOwner)
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'No se puede cambiar el rol de un platform owner' });
+        await tx.userRole.deleteMany({
+          where: { userId: input.userId, role: { organizationId: input.organizationId } },
+        });
+        await tx.userRole.create({
+          data: { userId: input.userId, roleId: role.id, assignedBy: ctx.user.id },
+        });
+        return user.userRoles.map((ur) => ur.role.slug);
       });
 
       // Role change → drop the org's cached permission decisions.
@@ -346,7 +420,7 @@ export const usersRouter = router({
             action: 'user_role_changed',
             entity: 'user',
             entityId: input.userId,
-            metadata: { newRole: input.roleSlug },
+            metadata: { newRole: input.roleSlug, previousRoles },
           },
         })
         .catch(() => {});

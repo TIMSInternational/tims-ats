@@ -21,7 +21,7 @@ public sealed class IdentityRepository(IdentityDbContext db) : IIdentityReposito
                 .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct);
 
-        return user is null ? null : Map(user);
+        return user is null ? null : Map(user, await OrganizationIsActiveAsync(user, ct));
     }
 
     public async Task<AppUserRow?> FindByIdAsync(string userId, CancellationToken ct)
@@ -37,15 +37,34 @@ public sealed class IdentityRepository(IdentityDbContext db) : IIdentityReposito
                 .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
-        return user is null ? null : Map(user);
+        return user is null ? null : Map(user, await OrganizationIsActiveAsync(user, ct));
     }
 
-    private static AppUserRow Map(UserEntity user) => new(
+    /// <summary>
+    /// False only when the user's organization row exists and is deactivated (`is_active = false`;
+    /// Pilot UX re-audit platform-owner access-3). Platform owners and org-less rows skip the lookup —
+    /// the resolver exempts owners and already refuses org-less non-owners. The FK guarantees the row
+    /// exists in production, so "no row" never widens access there.
+    /// </summary>
+    private async Task<bool> OrganizationIsActiveAsync(UserEntity user, CancellationToken ct)
+    {
+        if (user.IsPlatformOwner || user.OrganizationId is not { } organizationId)
+        {
+            return true;
+        }
+
+        return !await _db.Organizations
+            .AsNoTracking()
+            .AnyAsync(o => o.Id == organizationId && !o.IsActive, ct);
+    }
+
+    private static AppUserRow Map(UserEntity user, bool organizationIsActive) => new(
         Id: user.Id.ToString(),
         SupabaseUserId: user.SupabaseUserId,
         Email: user.Email,
         OrganizationId: user.OrganizationId?.ToString(),
         IsActive: user.IsActive,
         IsPlatformOwner: user.IsPlatformOwner,
-        RoleSlugs: user.UserRoles.Select(ur => ur.Role.Slug).ToList());
+        RoleSlugs: user.UserRoles.Select(ur => ur.Role.Slug).ToList(),
+        OrganizationIsActive: organizationIsActive);
 }

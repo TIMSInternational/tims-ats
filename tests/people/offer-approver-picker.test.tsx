@@ -24,6 +24,7 @@ vi.mock('../../apps/web/lib/trpc', () => ({
       submitForApproval: { useMutation: () => mutation(submitMutateAsync) },
       approve: { useMutation: () => mutation(vi.fn()) },
       reject: { useMutation: () => mutation(vi.fn()) },
+      withdrawApproval: { useMutation: () => mutation(vi.fn()) },
     },
   },
 }));

@@ -47,7 +47,7 @@ async function assertPlacement(
       where: { id: companyId, organizationId, isActive: true },
       select: { id: true },
     });
-    if (!company) reject('La empresa no existe o no esta activa en tu organizacion');
+    if (!company) reject('La empresa no existe o no está activa en tu organización');
   }
 
   let unitCompanyId: string | null | undefined;
@@ -56,7 +56,7 @@ async function assertPlacement(
       where: { id: businessUnitId, organizationId, isActive: true },
       select: { id: true, companyId: true },
     });
-    if (!unit) reject('La unidad de negocio no existe o no esta activa en tu organizacion');
+    if (!unit) reject('La unidad de negocio no existe o no está activa en tu organización');
     unitCompanyId = unit.companyId;
   }
 
@@ -66,7 +66,7 @@ async function assertPlacement(
       where: { id: teamId, organizationId, isActive: true },
       select: { businessUnitId: true },
     });
-    if (!team) reject('El equipo no existe o no esta activo en tu organizacion');
+    if (!team) reject('El equipo no existe o no está activo en tu organización');
     teamUnitId = team.businessUnitId;
   }
 
@@ -75,7 +75,7 @@ async function assertPlacement(
       where: { id: assignedTo, organizationId, isActive: true, deletedAt: null },
       select: { id: true },
     });
-    if (!user) reject('El responsable asignado no es un usuario activo de tu organizacion');
+    if (!user) reject('El responsable asignado no es un usuario activo de tu organización');
   }
 
   // team ↔ unit, when this write touches either side and both end up set.

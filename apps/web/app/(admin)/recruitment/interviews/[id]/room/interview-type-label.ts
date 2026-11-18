@@ -9,6 +9,7 @@ const TYPE_KEYS = {
   onsite: 'typeOnsite',
   technical: 'typeTechnical',
   cultural: 'typeCultural',
+  online: 'typeOnline',
 } as const;
 
 /** Localized interview type; unknown stored values fall back to the raw string. */

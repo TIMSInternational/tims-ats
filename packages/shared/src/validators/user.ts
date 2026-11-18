@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ASSIGNABLE_STAFF_ROLES } from '../types/roles';
+import { isValidTimeZone } from '../time-zone';
 
 export const createUserSchema = z.object({
   email: z.string().email(),
@@ -26,7 +27,9 @@ export const updateProfileSchema = z.object({
   jobTitle: z.string().max(200).optional(),
   phone: z.string().max(20).optional(),
   locale: z.enum(['es', 'en']).optional(),
-  timezone: z.string().max(64).optional(),
+  // An IANA zone this runtime can format with ("America/Costa_Rica"): interview emails and dates are shown in it,
+  // so free text that no formatter understands would silently fall back to UTC.
+  timezone: z.string().max(64).refine(isValidTimeZone, { message: 'Zona horaria no válida' }).optional(),
   avatar: z.string().url().max(2048).optional(),
 });
 

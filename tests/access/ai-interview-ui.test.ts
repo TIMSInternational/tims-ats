@@ -121,6 +121,13 @@ describe('consent-screen.tsx — consent recording', () => {
     expect(read(CONSENT)).not.toContain('style={{');
   });
 
+  it('toasts a mapped message when recording consent fails (onError toast on every mutation)', () => {
+    const src = read(CONSENT);
+    expect(src).toMatch(/onError:[\s\S]*toast\(/);
+    expect(src).toContain('t.aiInterview.consentError');
+    expect(src).not.toContain('err.message');
+  });
+
   it('has no any type', () => {
     expect(read(CONSENT)).not.toMatch(/:\s*any\b/);
     expect(read(CONSENT)).not.toMatch(/as any\b/);

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useI18n } from '../../../../../../../../lib/i18n';
+import { Button, CHOICE_INPUT_CLASSES } from '../../../../../../../../components';
 
 interface AssessmentConsentGateProps {
   onStart: () => void;
@@ -14,31 +15,54 @@ export function AssessmentConsentGate({ onStart, isSubmitting, errorMessage }: A
   const [checked, setChecked] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full space-y-5">
-        <h1 className="text-lg font-semibold text-[#1F114C]">{t.assessmentPlayer.consentTitle}</h1>
-        <p className="text-[13px] text-[#585858] leading-relaxed whitespace-pre-line">
+    <div className="flex justify-center">
+      <div className="w-full max-w-lg space-y-5 rounded-2xl bg-white p-6 shadow-card sm:p-8">
+        <h1 className="font-display text-title font-semibold text-brand">{t.assessmentPlayer.consentTitle}</h1>
+        <p className="max-w-prose whitespace-pre-line text-body leading-relaxed text-secondary">
           {t.assessmentPlayer.consentBody}
         </p>
-        <label className="flex items-start gap-3 cursor-pointer">
+        <label className="flex cursor-pointer items-start gap-3 pointer-coarse:min-h-11">
           <input
             type="checkbox"
             checked={checked}
             onChange={(e) => setChecked(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-[#D1D5DB] text-[#1F114C] focus:ring-[#1F114C]"
+            className={`${CHOICE_INPUT_CLASSES} mt-0.5`}
           />
-          <span className="text-[13px] text-[#585858]">{t.assessmentPlayer.consentCheckboxLabel}</span>
+          <span className="text-body text-primary">{t.assessmentPlayer.consentCheckboxLabel}</span>
         </label>
-        {errorMessage && <p className="text-[12px] text-[#B42318]">{errorMessage}</p>}
-        <button
-          type="button"
+        {errorMessage && (
+          <p role="alert" className="flex items-start gap-1 text-callout text-danger">
+            <ErrorIcon />
+            <span>{errorMessage}</span>
+          </p>
+        )}
+        <Button
+          size="lg"
+          fullWidth
           onClick={onStart}
-          disabled={!checked || isSubmitting}
-          className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-sm font-semibold hover:bg-[#2a1a5e] transition disabled:opacity-40 disabled:cursor-not-allowed"
+          disabled={!checked}
+          loading={isSubmitting}
+          loadingLabel={t.assessmentPlayer.consentStarting}
         >
-          {isSubmitting ? t.assessmentPlayer.consentStarting : t.assessmentPlayer.consentStartButton}
-        </button>
+          {t.assessmentPlayer.consentStartButton}
+        </Button>
       </div>
     </div>
+  );
+}
+
+function ErrorIcon() {
+  return (
+    <svg
+      className="mt-px size-3.5 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v4m0 4h.01" strokeLinecap="round" />
+    </svg>
   );
 }

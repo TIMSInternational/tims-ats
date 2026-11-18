@@ -24,6 +24,13 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
   const { t } = useI18n();
   const { userId } = usePermissions();
   const [activeTab, setActiveTab] = useState<Tab>('scorecard');
+  // A tab's panel mounts the first time it opens and then stays mounted (hidden), so a generated AI
+  // guide or summary survives switching to the scorecard and back.
+  const [visited, setVisited] = useState<ReadonlySet<Tab>>(() => new Set(['scorecard'] as Tab[]));
+  const openTab = (tab: Tab) => {
+    setActiveTab(tab);
+    setVisited((prev) => (prev.has(tab) ? prev : new Set([...prev, tab])));
+  };
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (focusRequest === 0) return;
@@ -43,11 +50,11 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
   };
 
   return (
-    <div className="flex-1 md:flex-[40] flex flex-col bg-white border-t md:border-t-0 md:border-l border-[#EDEDED] min-h-0">
+    <div className="flex-1 md:flex-[40] flex flex-col bg-white border-t md:border-t-0 md:border-l border-border min-h-0">
       <h2 ref={headingRef} tabIndex={-1} className="sr-only">
         {t.interviewRoom.panelHeading}
       </h2>
-      <div role="tablist" aria-label={t.interviewRoom.tabsLabel} className="flex border-b border-[#EDEDED] shrink-0">
+      <div role="tablist" aria-label={t.interviewRoom.tabsLabel} className="flex border-b border-border shrink-0">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -56,9 +63,9 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
             id={`room-tab-${tab}`}
             aria-selected={activeTab === tab}
             aria-controls={`room-panel-${tab}`}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 text-[12px] font-medium text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1F114C] ${
-              activeTab === tab ? 'text-[#1F114C] border-b-2 border-[#DD0C15]' : 'text-[#8B8B8B] hover:text-[#585858]'
+            onClick={() => openTab(tab)}
+            className={`-mb-px flex-1 border-b-2 py-3 text-center text-body transition-colors pointer-coarse:min-h-11 ${
+              activeTab === tab ? 'border-brand font-semibold text-brand' : 'border-transparent text-secondary hover:text-brand'
             }`}
           >
             {tabLabel[tab]}
@@ -78,21 +85,25 @@ export function ScorecardPanel({ interview, candidateInitials, focusRequest = 0 
       >
         <ScorecardForm interview={interview} currentUserId={userId} />
       </div>
-      {activeTab !== 'scorecard' && (
-        <div
-          role="tabpanel"
-          id={`room-panel-${activeTab}`}
-          aria-labelledby={`room-tab-${activeTab}`}
-          className="flex-1 min-h-0 flex flex-col"
-        >
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
-            {activeTab === 'ai' ? (
-              <InterviewAiPanel interviewId={interview.id} isViewerBlinded={isViewerBlinded} />
-            ) : (
-              <CandidateTab interview={interview} candidateInitials={candidateInitials} />
-            )}
+      {(['ai', 'candidate'] as const).map((tab) =>
+        visited.has(tab) ? (
+          <div
+            key={tab}
+            role="tabpanel"
+            id={`room-panel-${tab}`}
+            aria-labelledby={`room-tab-${tab}`}
+            hidden={activeTab !== tab}
+            className={`flex-1 min-h-0 flex-col ${activeTab === tab ? 'flex' : 'hidden'}`}
+          >
+            <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+              {tab === 'ai' ? (
+                <InterviewAiPanel interviewId={interview.id} isViewerBlinded={isViewerBlinded} />
+              ) : (
+                <CandidateTab interview={interview} candidateInitials={candidateInitials} />
+              )}
+            </div>
           </div>
-        </div>
+        ) : null,
       )}
     </div>
   );

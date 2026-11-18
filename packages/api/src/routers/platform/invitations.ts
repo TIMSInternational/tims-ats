@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ASSIGNABLE_STAFF_ROLES, csvRow, getAppUrl } from '@tims/shared';
+import { ASSIGNABLE_STAFF_ROLES, csvRow, getAppUrl, orgLocaleProfileSchema, orgLocaleSettings } from '@tims/shared';
 import { router, publicProcedure } from '../../trpc';
 import { db, InvitationType, InvitationStatus } from '@tims/db';
 import type { Prisma } from '@tims/db';
@@ -11,6 +11,7 @@ import { platformProcedure } from './_common';
 import { logPlatformExport } from '../../access/security-audit';
 import { provisionOrgDefaults, provisionOrgEntitlements, provisionOrgRoles } from '../../services/org-provisioning';
 import { renderInvitationEmail } from '../../services/invitation-email';
+import { recordPlatformAudit } from './platform-audit';
 
 const INVITATION_TYPE = z.enum(['org_admin', 'user']);
 const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'revoked']);
@@ -19,6 +20,29 @@ const INVITATION_STATUS = z.enum(['pending', 'sent', 'accepted', 'expired', 'rev
 // same way. exportInvitationsCsv was unbounded until 2026-08-13 (GHSA-6759-h69h-m739): one call
 // returned every invitation across every tenant, and the whole set was materialised into a string.
 const EXPORT_LIMIT = 10_000;
+
+/**
+ * Delivery outcome of a just-created invitation, same vocabulary as the C# writers
+ * (InitialInvitationDelivery): `accepted` = SES took the email and the row is now `sent`; `unconfirmed` =
+ * the send failed or is unknown, so the row stays `pending` for a resend; `changed` = the row left `pending`
+ * meanwhile; `state_unconfirmed` = SES took it but the status write failed. Creation is committed in every
+ * case, so the caller must never retry by creating again.
+ */
+type InvitationDelivery = 'accepted' | 'unconfirmed' | 'changed' | 'state_unconfirmed';
+
+async function markInvitationSent(id: string, delivered: boolean): Promise<{ delivery: InvitationDelivery; sentAt: Date | null }> {
+  if (!delivered) return { delivery: 'unconfirmed', sentAt: null };
+  const sentAt = new Date();
+  try {
+    const updated = await db.platformInvitation.updateMany({
+      where: { id, status: InvitationStatus.pending },
+      data: { status: InvitationStatus.sent, sentAt },
+    });
+    return updated.count === 1 ? { delivery: 'accepted', sentAt } : { delivery: 'changed', sentAt: null };
+  } catch {
+    return { delivery: 'state_unconfirmed', sentAt: null };
+  }
+}
 
 const invitationListSelect = {
   id: true,
@@ -102,9 +126,15 @@ export const invitationsRouter = router({
           .max(63)
           .regex(/^[a-z0-9-]+$/),
         organizationPlan: z.enum(['trial', 'starter', 'professional', 'enterprise']).default('trial'),
+        // Country, time zone, currency and number locale (the "Invitar organización" form always sends it).
+        // Absent = the pre-profile behaviour: empty settings and a CR company on the column defaults.
+        localeProfile: orgLocaleProfileSchema.optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Resolve + validate the link origin BEFORE any write: a misconfigured NEXT_PUBLIC_APP_URL must fail
+      // the request cleanly, not after the org + invitation rows (with a live token) were committed.
+      const appUrl = getAppUrl();
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -115,6 +145,7 @@ export const invitationsRouter = router({
             slug: input.organizationSlug,
             plan: input.organizationPlan,
             billingEmail: input.email,
+            ...(input.localeProfile ? { settings: orgLocaleSettings(input.localeProfile) } : {}),
           },
         });
 
@@ -125,7 +156,7 @@ export const invitationsRouter = router({
         // the invitee ever accepts), so it needs the same default Company/
         // BusinessUnit/Team + starter entitlements bundle or it's an empty
         // shell exactly like the two paths this sprint fixed.
-        await provisionOrgDefaults(tx, org.id, input.organizationName);
+        await provisionOrgDefaults(tx, org.id, input.organizationName, input.localeProfile);
         await provisionOrgEntitlements(tx, org.id);
 
         await provisionOrgRoles(tx, org.id);
@@ -149,22 +180,31 @@ export const invitationsRouter = router({
           organizationSlug: input.organizationSlug,
           organizationPlan: input.organizationPlan,
           token,
-          status: InvitationStatus.sent,
+          // `sent` only once SES accepted the email (below); until then the owner sees it as pending (D-04).
+          status: InvitationStatus.pending,
           invitedById: ctx.user.id,
-          sentAt: new Date(),
           expiresAt,
         },
         select: invitationListSelect,
       });
 
-      const appUrl = getAppUrl();
-      await sendEmail({
+      const delivered = await sendEmail({
         to: input.email,
-        subject: `Invitacion para administrar ${input.organizationName} en TIMS ATS`,
-        html: renderInvitationEmail({ organization: input.organizationName, role: 'Administrador', url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
+        subject: `Invitación para administrar ${input.organizationName} en TIMS ATS`,
+        // An org_admin invitation is accepted as super_admin (InvitationOnboardingRepository).
+        html: renderInvitationEmail({ organization: input.organizationName, role: 'super_admin', url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
+      });
+      const { delivery, sentAt } = await markInvitationSent(invitation.id, delivered);
+      // Same action/entity as the C# writer (OrganizationInvitationCreateRepository), so one filter finds both.
+      await recordPlatformAudit(ctx, {
+        organizationId: org.id,
+        action: 'org_invitation_created',
+        entity: 'platform_invitation',
+        entityId: invitation.id,
+        metadata: { type: 'org_admin', plan: input.organizationPlan, delivery },
       });
 
-      return invitation;
+      return delivery === 'accepted' ? { ...invitation, status: InvitationStatus.sent, sentAt, delivery } : { ...invitation, delivery };
     }),
 
   createUserInvitation: platformProcedure
@@ -176,6 +216,8 @@ export const invitationsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Validate the link origin before the invitation row (a live bearer token) is written.
+      const appUrl = getAppUrl();
       const org = await db.organization.findUnique({ where: { id: input.organizationId }, select: { name: true, isActive: true, deletedAt: true } });
       if (!org?.isActive || org.deletedAt) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
       const roleSlug = input.roleSlug ?? 'employee';
@@ -196,28 +238,44 @@ export const invitationsRouter = router({
           organizationName: org.name,
           roleSlug,
           token,
-          status: InvitationStatus.sent,
+          // `sent` only once SES accepted the email (below); until then the owner sees it as pending (D-04).
+          status: InvitationStatus.pending,
           invitedById: ctx.user.id,
-          sentAt: new Date(),
           expiresAt,
         },
         select: invitationListSelect,
       });
 
-      const appUrl = getAppUrl();
-      await sendEmail({
+      const delivered = await sendEmail({
         to: input.email,
-        subject: `Invitacion para unirte a ${org.name} en TIMS ATS`,
+        subject: `Invitación para unirte a ${org.name} en TIMS ATS`,
         html: renderInvitationEmail({ organization: org.name, role: roleSlug, url: `${appUrl}/accept-invitation?token=${token}`, expiresAt }),
       });
+      const { delivery, sentAt } = await markInvitationSent(invitation.id, delivered);
+      await recordPlatformAudit(ctx, {
+        organizationId: input.organizationId,
+        action: 'user_invitation_created',
+        entity: 'platform_invitation',
+        entityId: invitation.id,
+        metadata: { roleSlug, delivery, surface: 'platform' },
+      });
 
-      return invitation;
+      return delivery === 'accepted' ? { ...invitation, status: InvitationStatus.sent, sentAt, delivery } : { ...invitation, delivery };
     }),
 
-  resendInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
+  resendInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+    const target = await db.platformInvitation.findUnique({ where: { id: input.id }, select: { organizationId: true } });
     const result = await resendInvitation(input.id);
+    // Every outcome is audited, like the C# resend endpoint ("invitation_resend" with the outcome).
+    await recordPlatformAudit(ctx, {
+      organizationId: target?.organizationId,
+      action: 'invitation_resend',
+      entity: 'platform_invitation',
+      entityId: input.id,
+      metadata: { outcome: 'error' in result ? result.error : 'sent', surface: 'platform' },
+    });
     if ('error' in result) {
-      if (result.error === 'not_found') throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+      if (result.error === 'not_found') throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitación no encontrada' });
       if (result.error === 'delivery_failed')
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -228,20 +286,29 @@ export const invitationsRouter = router({
     return result;
   }),
 
-  revokeInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
+  revokeInvitation: platformProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ ctx, input }) => {
     const existing = await db.platformInvitation.findUnique({
       where: { id: input.id },
-      select: { id: true, status: true },
+      select: { id: true, status: true, organizationId: true },
     });
-    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+    if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitación no encontrada' });
     if (existing.status === 'accepted')
-      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede revocar una invitacion aceptada' });
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'No se puede revocar una invitación aceptada' });
 
-    return db.platformInvitation.update({
+    const revoked = await db.platformInvitation.update({
       where: { id: input.id },
       data: { status: InvitationStatus.revoked },
       select: { id: true, status: true },
     });
+    // Same action/entity/metadata shape as the C# tenant revoke (TenantInvitationRepository).
+    await recordPlatformAudit(ctx, {
+      organizationId: existing.organizationId,
+      action: 'user_invitation_revoked',
+      entity: 'platform_invitation',
+      entityId: input.id,
+      metadata: { previousStatus: existing.status, surface: 'platform' },
+    });
+    return revoked;
   }),
 
   exportInvitationsCsv: platformProcedure
@@ -322,7 +389,7 @@ export const invitationsRouter = router({
         organization: { select: { id: true, name: true, slug: true } },
       },
     });
-    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitacion no encontrada' });
+    if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'Invitación no encontrada' });
 
     // A public read must not race a revoke or resend and overwrite its terminal/new expiry state.
     // Expiry is derived for this response; administrative writers persist lifecycle transitions.
@@ -348,7 +415,7 @@ export const invitationsRouter = router({
     void input;
     throw new TRPCError({
       code: 'PRECONDITION_FAILED',
-      message: 'Completa la configuracion de tu cuenta desde el enlace de invitacion.',
+      message: 'Completa la configuración de tu cuenta desde el enlace de invitación.',
     });
   }),
 
@@ -372,6 +439,12 @@ export const invitationsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const result = await bulkInviteUsers(input.organizationId, ctx.user.id, input.users);
       if (!result) throw new TRPCError({ code: 'NOT_FOUND', message: 'Organization not found' });
+      await recordPlatformAudit(ctx, {
+        organizationId: input.organizationId,
+        action: 'bulk_invitation_created',
+        entity: 'platform_invitation',
+        metadata: { requested: input.users.length, surface: 'platform' },
+      });
       return result;
     }),
 });

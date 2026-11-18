@@ -3,7 +3,7 @@ import { invokeAgent } from '../invoke';
 import { wrapAsData, sanitizeInput } from '../pii';
 import { sanitizeRatings, type ScorecardInput } from './interview-summarizer';
 
-const SYSTEM_PROMPT = `You are an interview-fairness auditor for an HR platform.
+export const BIAS_DETECTOR_SYSTEM_PROMPT = `You are an interview-fairness auditor for an HR platform.
 Analyze evaluator scorecards for signals of evaluation bias.
 
 Output format: JSON with the following structure:
@@ -25,29 +25,30 @@ Rules:
 - If evidence is insufficient to assess a type, omit it (do NOT assert absence of bias you cannot verify)
 - overallRisk must reflect the strongest credible indicator found
 - Respond in the same language as the scorecard content
-- Max 6 indicators, max 4 recommendations`;
+- Max 6 indicators, max 4 recommendations
+- Each indicator type under 100 characters, each description under 1000 characters; each recommendation under 500 characters`;
 
 const severityEnum = z.enum(['none', 'low', 'medium', 'high']);
 
 // 'unknown' is reserved for the degraded fallback — the prompt only offers the
 // model none/low/medium/high, so a fabricated "unknown" can't mask a real risk.
-const outputSchema = z.object({
+export const biasDetectorOutputSchema = z.object({
   biasIndicators: z
     .array(
       z.object({
-        type: z.string(),
+        type: z.string().max(100),
         severity: severityEnum,
-        description: z.string(),
+        description: z.string().max(1000),
       }),
     )
     .max(6),
   overallRisk: z.enum(['none', 'low', 'medium', 'high', 'unknown']),
-  recommendations: z.array(z.string()).max(4),
+  recommendations: z.array(z.string().max(500)).max(4),
 });
 
 // Model output OR a degraded shape whose overallRisk is 'unknown' —
 // NEVER a fabricated "low risk" (false compliance assurance).
-export type BiasAnalysisResult = z.infer<typeof outputSchema>;
+export type BiasAnalysisResult = z.infer<typeof biasDetectorOutputSchema>;
 
 const DEGRADED_FALLBACK: BiasAnalysisResult = {
   biasIndicators: [],
@@ -65,7 +66,7 @@ export async function detectScorecardBias(
     slug: 'bias-detector',
     orgId,
     input,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: BIAS_DETECTOR_SYSTEM_PROMPT,
     buildUserMessage: ({ vacancyTitle, scorecards }) => {
       const cards = scorecards
         .map(
@@ -77,7 +78,7 @@ Notes: ${sanitizeInput(s.overallNotes ?? 'None', 500)}`,
         .join('\n\n');
       return `${wrapAsData('position', sanitizeInput(vacancyTitle))}\n\n${wrapAsData('scorecards', cards)}\n\nAnalyze these scorecards for evaluation bias. Return JSON.`;
     },
-    schema: outputSchema,
+    schema: biasDetectorOutputSchema,
     fallback: () => DEGRADED_FALLBACK,
     maxTokens: 1024,
   });

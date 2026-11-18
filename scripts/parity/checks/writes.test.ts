@@ -266,11 +266,11 @@ describe('runWriteRbac denyBodyIncludes', () => {
   const anchorEp: WriteEndpointDef<WriteResolved> = {
     ...baseEp,
     expectedByRole: { super_admin: 'allow', hr_admin: 'deny' },
-    denyBodyIncludes: { hr_admin: 'miembro del comite' },
+    denyBodyIncludes: { hr_admin: 'miembro del comit' },
   };
 
   it('PASS when the deny body carries the expected reason', async () => {
-    const call: CallWrite = vi.fn(async () => ({ status: 403, body: { message: 'Solo un miembro del comite puede votar' } }));
+    const call: CallWrite = vi.fn(async () => ({ status: 403, body: { message: 'Solo un miembro del comité puede votar' } }));
     const results = await runWriteRbac(anchorEp, res, { hr_admin: 'h' }, 'super_admin', call, unchanged);
     expect(results[0].ok).toBe(true);
   });

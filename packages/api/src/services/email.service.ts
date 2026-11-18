@@ -33,10 +33,20 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     locale: 'es' | 'en';
+    /** The organization's candidate contact (services/candidate-contact.ts): contact line + Reply-To. */
+    contactEmail?: string | null;
+    /** Absolute link to the organization's candidate portal; the email omits the button without it. */
+    portalUrl?: string;
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.applicationReceived(rest);
-    return sendEmail({ to: candidateEmail, subject, html, abortSignal: AbortSignal.timeout(4_000) });
+    return sendEmail({
+      to: candidateEmail,
+      subject,
+      html,
+      abortSignal: AbortSignal.timeout(4_000),
+      replyTo: rest.contactEmail ?? null,
+    });
   },
 
   async sendOfferToCandidate(params: {
@@ -46,6 +56,10 @@ export const emailService = {
     companyName: string;
     signingUrl: string;
     expiresAt: Date | null;
+    /** The organization's time zone, for the validity date (E-23). */
+    timeZone?: string | null;
+    /** The organization's candidate contact (services/candidate-contact.ts): contact line + Reply-To. */
+    contactEmail?: string | null;
   }): Promise<boolean> {
     const { candidateEmail, ...rest } = params;
     const { subject, html } = emailTemplates.offerSent(rest);
@@ -55,6 +69,7 @@ export const emailService = {
       html,
       abortSignal: AbortSignal.timeout(OFFER_EMAIL_SEND_TIMEOUT_MS),
       breaker: sesOfferCircuit,
+      replyTo: rest.contactEmail ?? null,
     });
   },
 
@@ -65,10 +80,20 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     acceptedAt: Date;
+    offerUrl?: string | null;
+    timeZone?: string | null;
   }): Promise<boolean> {
     const { hrEmails, ...rest } = params;
     const { subject, html } = emailTemplates.offerAcceptedNotification(rest);
-    return sendEmail({ to: hrEmails, subject, html });
+    // Bounded (it runs inside after(), which keeps the function alive until the send settles) and on the
+    // offer breaker, so slow HR notices can never pause unrelated mail through the shared sesCircuit.
+    return sendEmail({
+      to: hrEmails,
+      subject,
+      html,
+      abortSignal: AbortSignal.timeout(OFFER_EMAIL_SEND_TIMEOUT_MS),
+      breaker: sesOfferCircuit,
+    });
   },
 
   async notifyOfferDeclined(params: {
@@ -78,9 +103,19 @@ export const emailService = {
     vacancyTitle: string;
     companyName: string;
     declinedAt: Date;
+    offerUrl?: string | null;
+    timeZone?: string | null;
   }): Promise<boolean> {
     const { hrEmails, ...rest } = params;
     const { subject, html } = emailTemplates.offerDeclinedNotification(rest);
-    return sendEmail({ to: hrEmails, subject, html });
+    // Bounded (it runs inside after(), which keeps the function alive until the send settles) and on the
+    // offer breaker, so slow HR notices can never pause unrelated mail through the shared sesCircuit.
+    return sendEmail({
+      to: hrEmails,
+      subject,
+      html,
+      abortSignal: AbortSignal.timeout(OFFER_EMAIL_SEND_TIMEOUT_MS),
+      breaker: sesOfferCircuit,
+    });
   },
 };

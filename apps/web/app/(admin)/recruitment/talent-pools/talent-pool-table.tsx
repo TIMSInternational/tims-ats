@@ -2,10 +2,20 @@
 
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
-import { toast } from '../../../../lib/toast';
-import { CandidateAvatar } from '../../../../components/candidate-avatar';
-import { ErrorState } from '../../../../components/error-state';
-import { Skeleton } from '../../../../components/skeleton';
+import { formatMessage } from '../../../../lib/i18n/format';
+import { formatRelativeTimeLocale } from '../../../../lib/format-utils';
+import {
+  CandidateAvatar,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  FitScoreBadge,
+  IconButton,
+  StatusBadge,
+} from '../../../../components';
+import { useReviewPendingFitScores } from '../../../../lib/platform-api/fit-engine';
+import { FitReviewPendingBadge } from '../fit-review-pending-badge';
+import { talentPoolTypeLabel } from './talent-pool-filters';
 
 interface CandidateItem {
   id: string;
@@ -33,209 +43,215 @@ interface TalentPoolTableProps {
   candidates: CandidateItem[];
   isLoading: boolean;
   isError?: boolean;
+  error?: unknown;
   onRetry?: () => void;
+  hasFilters?: boolean;
+  onClearFilters?: () => void;
   nextCursor?: string;
   currentCursor?: string;
   onNextPage: () => void;
   onPrevPage: () => void;
 }
 
-const POOL_BADGE_STYLES: Record<string, string> = {
-  active: 'bg-green-50 text-green-600',
-  passive: 'bg-gray-50 text-gray-600',
-  referral: 'bg-green-50 text-green-600',
-  historic_finalist: 'bg-amber-50 text-amber-600',
-  high_potential_rejected: 'bg-red-50 text-[#DD0C15]',
-  internal: 'bg-purple-50 text-purple-600',
-  ex_employee: 'bg-orange-50 text-orange-600',
-  sourced: 'bg-blue-50 text-blue-600',
-};
+const MAX_SKILLS = 2;
 
-function getFitColor(score: number): string {
-  if (score >= 75) return 'bg-green-500';
-  if (score >= 50) return 'bg-amber-500';
-  return 'bg-red-500';
+function skillsOf(c: CandidateItem): string[] {
+  return Array.isArray(c.skills) ? c.skills.filter((s): s is string => typeof s === 'string') : [];
 }
 
-function formatRelativeTime(dateStr: Date | string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days < 1) return 'Hoy';
-  if (days < 7) return `Hace ${days}d`;
-  if (days < 30) return `Hace ${Math.floor(days / 7)} sem`;
-  if (days < 365) return `Hace ${Math.floor(days / 30)} meses`;
-  return `Hace ${Math.floor(days / 365)} a`;
-}
-
-function TableSkeleton() {
-  return (
-    <div className="space-y-0">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="flex items-center px-4 py-3 border-b border-[#F0F0F0]">
-          <div className="w-8"><Skeleton className="w-3.5 h-3.5 rounded" /></div>
-          <div className="w-[280px] flex items-center gap-3">
-            <Skeleton className="w-9 h-9 rounded-full" />
-            <div className="space-y-1">
-              <Skeleton className="w-28 h-3 rounded" />
-              <Skeleton className="w-40 h-2.5 rounded" />
-            </div>
-          </div>
-          <div className="w-[100px] flex justify-center"><Skeleton className="w-8 h-5 rounded-full" /></div>
-          <div className="w-[120px]"><Skeleton className="w-20 h-5 rounded-full" /></div>
-          <div className="w-[140px]"><Skeleton className="w-24 h-3 rounded" /></div>
-          <div className="w-[180px] flex gap-1">
-            <Skeleton className="w-12 h-4 rounded" />
-            <Skeleton className="w-10 h-4 rounded" />
-          </div>
-          <div className="flex-1 flex justify-end gap-1.5">
-            <Skeleton className="w-16 h-6 rounded" />
-            <Skeleton className="w-12 h-6 rounded" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
+/** Talent-pool results on the shared DataTable (lists-and-tables.md): real headers, one link per row. */
 export function TalentPoolTable({
   candidates,
   isLoading,
   isError,
+  error,
   onRetry,
+  hasFilters,
+  onClearFilters,
   nextCursor,
   currentCursor,
   onNextPage,
   onPrevPage,
 }: TalentPoolTableProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const tp = t.talentPool;
+  // FIT v2: which shown scores are provisional (from C#; candidate.list carries the id, not the breakdown).
+  // A failed read is shown as "unknown", never as final.
+  const reviewState = useReviewPendingFitScores(
+    candidates.flatMap((c) => (c.fitScores[0]?.id ? [c.fitScores[0].id] : [])),
+  );
+  const pendingFit = reviewState.data;
 
   if (isError) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
-        <ErrorState onRetry={onRetry} />
+      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-card">
+        <ErrorState message={t.candidates.listLoadError} onRetry={onRetry} error={error} />
       </div>
     );
   }
 
+  const meta = (c: CandidateItem) =>
+    [
+      [c.currentTitle, c.currentCompany].filter(Boolean).join(' — '),
+      c.location,
+      c.yearsExperience != null ? formatMessage(tp.yearsExpShort, { n: c.yearsExperience }) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+  const fitCell = (c: CandidateItem) => {
+    const score = c.fitScores[0]?.overallScore;
+    if (score == null) {
+      return (
+        <span className="text-muted">
+          <span aria-hidden="true">—</span>
+          <span className="sr-only">{t.candidates.noFitScore}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex flex-col items-center gap-1">
+        <FitScoreBadge score={Math.round(score)} size="md" />
+        {reviewState.isError ? (
+          <FitReviewPendingBadge compact unknown />
+        ) : (
+          pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />
+        )}
+      </span>
+    );
+  };
+
+  const columns = [
+    { key: 'name', label: tp.candidate },
+    { key: 'fit', label: tp.fitScore, align: 'center' as const },
+    { key: 'type', label: tp.type },
+    { key: 'activity', label: tp.lastActivity },
+    { key: 'skills', label: tp.skills },
+  ];
+
+  const empty = (
+    <EmptyState
+      title={tp.noCandidatesFound}
+      description={hasFilters ? tp.noCandidatesFilteredDesc : tp.noCandidatesEmptyDesc}
+      action={
+        hasFilters && onClearFilters
+          ? { label: t.common.clearFilters, onClick: onClearFilters, variant: 'secondary' }
+          : undefined
+      }
+    />
+  );
+
+  const mobileList = candidates.map((c) => (
+    <Link
+      key={c.id}
+      href={`/recruitment/candidates/${c.id}`}
+      className="flex min-h-12 items-center gap-3 px-4 py-3 hover:bg-surface-hover"
+    >
+      <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="sm" decorative />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-body font-medium text-primary">
+          {c.firstName} {c.lastName}
+        </p>
+        {meta(c) && <p className="truncate text-callout text-secondary">{meta(c)}</p>}
+        <StatusBadge tone="neutral" icon="none" className="mt-1">
+          {talentPoolTypeLabel(c.poolType, t.candidates, tp)}
+        </StatusBadge>
+      </div>
+      {c.fitScores[0]?.overallScore != null && (
+        <FitScoreBadge score={Math.round(c.fitScores[0].overallScore)} size="md" />
+      )}
+      <svg
+        className="size-4 shrink-0 text-muted"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path d="M9 5l7 7-7 7" />
+      </svg>
+    </Link>
+  ));
+
   return (
     <>
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden overflow-x-auto">
-        <div className="min-w-[880px]">
-        {/* Header */}
-        <div className="flex items-center px-4 py-2.5 bg-[#FAFAFA] border-b border-[#EDEDED] text-[11px] text-[#585858] font-medium">
-          <div className="w-8"><input type="checkbox" className="w-3.5 h-3.5 accent-[#DD0C15]" /></div>
-          <div className="w-[280px]">{tp.candidate}</div>
-          <div className="w-[100px] text-center">{tp.fitScore}</div>
-          <div className="w-[120px]">{tp.type}</div>
-          <div className="w-[140px]">{tp.lastActivity}</div>
-          <div className="w-[180px]">{tp.tags}</div>
-          <div className="flex-1 text-right">{tp.actions}</div>
-        </div>
-
-        {/* Loading */}
-        {isLoading && <TableSkeleton />}
-
-        {/* Empty */}
-        {!isLoading && candidates.length === 0 && (
-          <div className="py-16 text-center text-[13px] text-[#8B8B8B]">
-            {tp.noCandidatesFound}
-          </div>
-        )}
-
-        {/* Rows */}
-        {!isLoading &&
-          candidates.map((c, idx) => {
-            const fitScore = c.fitScores[0]?.overallScore ?? null;
-            const poolStyle = POOL_BADGE_STYLES[c.poolType] ?? 'bg-gray-50 text-gray-600';
-            const lastDate = c.updatedAt || c.createdAt;
-            const subtitle = [c.currentTitle, c.currentCompany].filter(Boolean).join(' — ');
-            const locationExp = [c.location, c.yearsExperience != null ? `${c.yearsExperience} anos exp` : null]
-              .filter(Boolean)
-              .join(' · ');
-
-            return (
-              <div
-                key={c.id}
-                className={`flex items-center px-4 py-3 hover:bg-[#FAFAFA] cursor-pointer ${
-                  idx < candidates.length - 1 ? 'border-b border-[#F0F0F0]' : ''
-                } ${idx % 2 === 1 ? 'bg-[#FAFAFA]' : ''}`}
-              >
-                <div className="w-8"><input type="checkbox" className="w-3.5 h-3.5 accent-[#DD0C15]" /></div>
-                <div className="w-[280px] flex items-center gap-3">
-                  <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="md" />
-                  <div>
-                    <p className="text-[12px] font-medium text-[#333]">{c.firstName} {c.lastName}</p>
-                    {subtitle && <p className="text-[10px] text-[#8B8B8B]">{subtitle}</p>}
-                    {locationExp && <p className="text-[10px] text-[#8B8B8B]">{locationExp}</p>}
-                  </div>
+      <DataTable
+        columns={columns}
+        loading={isLoading}
+        skeletonRows={6}
+        label={tp.title}
+        mobileList={mobileList}
+        empty={empty}
+      >
+        {candidates.map((c) => (
+          <tr key={c.id} className="border-b border-border hover:bg-surface-hover">
+            <td className="px-4 py-3">
+              <Link href={`/recruitment/candidates/${c.id}`} className="group flex items-center gap-3 rounded-lg">
+                <CandidateAvatar firstName={c.firstName} lastName={c.lastName} avatar={c.avatar} size="md" decorative />
+                <div className="min-w-0">
+                  <p className="text-body font-medium text-primary group-hover:underline">
+                    {c.firstName} {c.lastName}
+                  </p>
+                  {meta(c) && <p className="text-callout text-secondary">{meta(c)}</p>}
                 </div>
-                <div className="w-[100px] text-center">
-                  {fitScore === null ? (
-                    <span className="text-[11px] text-[#8B8B8B]">—</span>
-                  ) : (
-                    <span className={`${getFitColor(fitScore)} text-white text-[10px] font-bold px-2 py-0.5 rounded-full`}>
-                      {Math.round(fitScore)}
-                    </span>
-                  )}
-                </div>
-                <div className="w-[120px]">
-                  <span className={`text-[10px] ${poolStyle} px-2 py-0.5 rounded-full`}>{c.poolType}</span>
-                </div>
-                <div className="w-[140px]">
-                  <p className="text-[11px] text-[#585858]">{formatRelativeTime(lastDate)}</p>
-                </div>
-                <div className="w-[180px] flex flex-wrap gap-1">
-                  {(Array.isArray(c.skills) ? c.skills as string[] : []).slice(0, 2).map((skill) => (
-                    <span key={skill} className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">{skill}</span>
+              </Link>
+            </td>
+            <td className="px-4 py-3 text-center">{fitCell(c)}</td>
+            <td className="px-4 py-3">
+              <StatusBadge tone="neutral" icon="none">
+                {talentPoolTypeLabel(c.poolType, t.candidates, tp)}
+              </StatusBadge>
+            </td>
+            <td className="px-4 py-3 text-body text-secondary">
+              {formatRelativeTimeLocale(c.updatedAt || c.createdAt, locale)}
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex max-w-48 flex-wrap gap-1">
+                {skillsOf(c)
+                  .slice(0, MAX_SKILLS)
+                  .map((skill) => (
+                    <StatusBadge key={skill} tone="neutral" icon="none">
+                      {skill}
+                    </StatusBadge>
                   ))}
-                  {c.tags.slice(0, 1).map((tag) => (
-                    <span key={tag.id} className="text-[9px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded">{tag.tag}</span>
-                  ))}
-                </div>
-                <div className="flex-1 flex justify-end gap-1.5">
-                  <button
-                    onClick={() => toast(tp.contactStarted, { type: 'success' })}
-                    className="text-[10px] text-[#DD0C15] bg-red-50 px-2 py-1 rounded font-medium"
-                  >
-                    {tp.contact}
-                  </button>
-                  <Link
-                    href={`/recruitment/candidates/${c.id}`}
-                    className="text-[10px] text-[#1F114C] bg-[#F6F6F6] px-2 py-1 rounded"
-                  >
-                    {tp.profile}
-                  </Link>
-                </div>
+                {c.tags.slice(0, 1).map((tag) => (
+                  <StatusBadge key={tag.id} tone="brand" icon="none">
+                    {tag.tag}
+                  </StatusBadge>
+                ))}
               </div>
-            );
-          })}
-        </div>
-      </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
 
-      {/* Pagination */}
-      {!isLoading && candidates.length > 0 && (
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-[11px] text-[#8B8B8B]">
-            {tp.showing} {candidates.length} {tp.candidatesLabel}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onPrevPage}
-              disabled={!currentCursor}
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#8B8B8B] flex items-center justify-center text-[11px] disabled:opacity-50"
+      {!isLoading && (currentCursor || nextCursor) && (
+        <nav className="mt-3 flex items-center justify-end gap-1" aria-label={t.common.pagination}>
+          <IconButton label={t.common.prevPage} variant="secondary" onClick={onPrevPage} disabled={!currentCursor}>
+            <svg
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
             >
-              ‹
-            </button>
-            <button
-              onClick={onNextPage}
-              disabled={!nextCursor}
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] text-[#585858] flex items-center justify-center text-[11px] disabled:opacity-50"
+              <path d="M15 19l-7-7 7-7" />
+            </svg>
+          </IconButton>
+          <IconButton label={t.common.nextPage} variant="secondary" onClick={onNextPage} disabled={!nextCursor}>
+            <svg
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
             >
-              ›
-            </button>
-          </div>
-        </div>
+              <path d="M9 5l7 7-7 7" />
+            </svg>
+          </IconButton>
+        </nav>
       )}
     </>
   );

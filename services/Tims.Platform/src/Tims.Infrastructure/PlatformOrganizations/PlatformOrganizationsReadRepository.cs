@@ -39,7 +39,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
 
     public async Task<PlatformOrganizationKpis> GetKpisAsync(DateTime now, CancellationToken cancellationToken)
     {
-        // Five separate scalars, mirroring the TS Promise.all + one follow-up (organizations.ts:25-40).
+        // Five separate scalars, mirroring the TS Promise.all + one follow-up (organizations.ts:27-42).
         var total = await db.Organizations.AsNoTracking().CountAsync(cancellationToken);
         var active = await db.Organizations.AsNoTracking().CountAsync(o => o.IsActive, cancellationToken);
         var suspended = await db.Organizations.AsNoTracking().CountAsync(o => !o.IsActive, cancellationToken);
@@ -63,7 +63,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
         var filtered = ApplyFilters(db.Organizations.AsNoTracking(), query);
 
         // The TS returns `total` for the SAME filter, computed independently of the page
-        // (organizations.ts:109). Count before any ordering/paging so it is unaffected by both.
+        // (organizations.ts:111). Count before any ordering/paging so it is unaffected by both.
         var total = await filtered.CountAsync(cancellationToken);
 
         // Sorting by `users` is a relation count in Prisma (`orderBy: { users: { _count } }`). EF cannot
@@ -138,7 +138,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
             .ToListAsync(cancellationToken);
 
         // ORDERED BY ID, matching the `orderBy: { id: 'asc' }` added to the TS `invoices` include
-        // (organizations.ts:101-106). NEITHER stack ordered this array before #211, so any org with two or
+        // (organizations.ts:103-108). NEITHER stack ordered this array before #211, so any org with two or
         // more pending invoices could diff purely on row order. Fixed on both sides rather than papered
         // over with `sortArraysBy: 'id'`, which normalize.ts applies at EVERY array depth and would
         // therefore also sort the top-level `organizations[]` — silently retiring the createdAt-desc
@@ -186,7 +186,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
                 subscriptions.TryGetValue(o.Id, out var sub)
                     ? new PlatformOrganizationListSubscription(sub.Plan, sub.Status, sub.TrialEndsAt)
                     : null,
-                // `users` is an ARRAY of 0 or 1 (organizations.ts:88-93, `take: 1`), never a scalar and
+                // `users` is an ARRAY of 0 or 1 (organizations.ts:90-95, `take: 1`), never a scalar and
                 // never null — TS emits `[]` for an org with no logged-in user, and `dropNullish` would
                 // drop a null but keeps an empty array, so a null here would be its own FAIL (#211).
                 lastLogins.TryGetValue(o.Id, out var lastLogin) && lastLogin is not null
@@ -220,7 +220,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
             .Where(t => unitIds.Contains(t.BusinessUnitId))
             .ToListAsync(cancellationToken);
 
-        // TS orders users by createdAt desc (organizations.ts:119-131).
+        // TS orders users by createdAt desc (organizations.ts:121-133).
         var users = await db.Users
             .AsNoTracking()
             .Where(u => u.OrganizationId == id)
@@ -234,7 +234,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
         var vacancyCount = await db.Vacancies.AsNoTracking().CountAsync(v => v.OrganizationId == id, cancellationToken);
         var invoiceCount = await db.Invoices.AsNoTracking().CountAsync(i => i.OrganizationId == id, cancellationToken);
 
-        // Only pending+sent invitations are counted (organizations.ts:135-142).
+        // Only pending+sent invitations are counted (organizations.ts:137-144).
         var invitationCount = await db.Invitations
             .AsNoTracking()
             .CountAsync(i => i.OrganizationId == id && OpenInvitationStatuses.Contains(i.Status), cancellationToken);
@@ -371,7 +371,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
     private static JsonNode? ParseJson(string? raw) => raw is null ? null : JsonNode.Parse(raw);
 
     /// <summary>
-    /// The TS `where` builder (organizations.ts:61-69). `search` matches name OR slug, case-insensitively;
+    /// The TS `where` builder (organizations.ts:63-71). `search` matches name OR slug, case-insensitively;
     /// `status` is a tri-state where only the literals "active"/"suspended" filter at all — any other
     /// value is IGNORED, which is a real TS behaviour worth reproducing rather than tightening.
     /// </summary>
@@ -399,7 +399,7 @@ public sealed class PlatformOrganizationsReadRepository(PlatformOrganizationsRea
     }
 
     /// <summary>
-    /// The TS `sortMap` (organizations.ts:71-77). Defaults: unspecified sortBy ⇒ createdAt desc; a
+    /// The TS `sortMap` (organizations.ts:73-79). Defaults: unspecified sortBy ⇒ createdAt desc; a
     /// specified sortBy with no sortDir ⇒ asc for name/plan, desc for createdAt/users.
     ///
     /// <para><b>`plan` sorts on the ENUM'S DECLARATION INDEX, not on the string</b> — see

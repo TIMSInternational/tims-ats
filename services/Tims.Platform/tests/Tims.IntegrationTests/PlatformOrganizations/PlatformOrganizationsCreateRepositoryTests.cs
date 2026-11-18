@@ -81,10 +81,10 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         var orgId = Guid.Parse((await CreateAsync(repository, input)).Row!.Id);
 
         var company = Assert.Single(await fixture.ReadCompaniesAsync(orgId));
-        // The company is named after the ORGANIZATION and its country is hard-coded 'CO' regardless of the
-        // tenant. Both are real defects in the TS and both are reproduced, not fixed.
+        // The company is named after the ORGANIZATION (a TS defect reproduced, not fixed) and its country is the
+        // pilot default 'CR' (OrgProvisioningWriter.DefaultCountry == TS DEFAULT_COMPANY_COUNTRY, data-60).
         Assert.Equal("Estructura SAS", company.Name);
-        Assert.Equal("CO", company.Country);
+        Assert.Equal("CR", company.Country);
         Assert.Equal(orgId, company.OrganizationId);
         // Everything else is a DB default the TS never sends.
         Assert.Equal("USD", company.Currency);
@@ -104,6 +104,35 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.Equal(businessUnit.Id, team.BusinessUnitId);
         Assert.Equal(orgId, team.OrganizationId);
         Assert.Equal(Now, team.UpdatedAt);
+    }
+
+    // ── R2b: a locale profile (country / time zone / currency / locale) reaches settings and the company ──
+
+    [Fact]
+    public async Task CreateAsync_with_a_locale_profile_writes_it_to_settings_and_the_default_company()
+    {
+        var input = NewInput(name: "Maquila Guatemala") with
+        {
+            LocaleProfile = new OrgLocaleProfile("GT", "America/Guatemala", "GTQ", "es-GT"),
+        };
+        await using var db = fixture.NewContext(fixture.ConnectionString);
+        var repository = new PlatformOrganizationsCreateRepository(db);
+
+        var result = await CreateAsync(repository, input);
+        var orgId = Guid.Parse(result.Row!.Id);
+
+        // The same four keys the TS orgLocaleSettings writes; jsonb re-orders them by key length.
+        var stored = await fixture.ReadOrganizationAsync(orgId);
+        Assert.Equal(
+            """{"locale": "es-GT", "country": "GT", "currency": "GTQ", "timezone": "America/Guatemala"}""",
+            stored!.Settings);
+
+        var company = Assert.Single(await fixture.ReadCompaniesAsync(orgId));
+        Assert.Equal("GT", company.Country);
+        Assert.Equal("GTQ", company.Currency);
+        Assert.Equal("America/Guatemala", company.Timezone);
+        // Not part of the profile: still the column default.
+        Assert.Equal("es", company.Language);
     }
 
     // ── R3: entitlements (org-provisioning.ts:47-67) ─────────────────────────────────────────────
@@ -162,7 +191,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
             entitlements, e => e.ModuleCode == PlatformOrganizationsCreateFixture.OtherPlanOnlyModule);
     }
 
-    // ── R4: the role (organizations.ts:204-206) ──────────────────────────────────────────────────
+    // ── R4: the role (organizations.ts:210-212) ──────────────────────────────────────────────────
 
     [Fact]
     public async Task CreateAsync_provisions_staff_roles_and_scoped_permissions()
@@ -193,7 +222,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.True(await fixture.CountRolePermissionsAsync() >= grants.Count);
     }
 
-    // ── R5 / R6: the subscription (organizations.ts:208-215) ─────────────────────────────────────
+    // ── R5 / R6: the subscription (organizations.ts:214-221) ─────────────────────────────────────
 
     [Fact]
     public async Task CreateAsync_opens_a_trialing_subscription_ending_in_fourteen_days_for_the_trial_plan()
@@ -271,7 +300,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.Equal(
             $$"""{"name":"Auditada","slug":"{{input.Slug}}","plan":"starter"}""",
             audit.ChangesText);
-        // adminEmail and billingEmail are ABSENT from the payload — organizations.ts:236 is a hard-coded
+        // adminEmail and billingEmail are ABSENT from the payload — organizations.ts:242 is a hard-coded
         // object literal, not the Zod parse output.
         Assert.DoesNotContain("adminEmail", audit.ChangesText!, StringComparison.Ordinal);
         Assert.DoesNotContain("billingEmail", audit.ChangesText, StringComparison.Ordinal);
@@ -327,7 +356,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         Assert.Contains("row-level security", thrown.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    // ── R10: the billingEmail fallback (organizations.ts:190, JS `||` not `??`) ──────────────────
+    // ── R10: the billingEmail fallback (organizations.ts:195, JS `||` not `??`) ──────────────────
 
     [Theory]
     [InlineData(null, "admin@tims.test")]
@@ -353,7 +382,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
     [Fact]
     public async Task A_notify_failure_propagates_but_leaves_the_whole_creation_committed()
     {
-        // organizations.ts:220 awaits notify with NO try and NO .catch, so a fan-out failure is a 500 to the
+        // organizations.ts:226 awaits notify with NO try and NO .catch, so a fan-out failure is a 500 to the
         // operator AFTER the transaction has committed. That half is parity.
         //
         // The other half is the recorded DIVERGENCE, and it is asserted here rather than merely commented:
@@ -543,7 +572,7 @@ public sealed class PlatformOrganizationsCreateRepositoryTests(PlatformOrganizat
         {
             Assert.Equal("success", n.Type);
             // Unaccented "organizacion" is what the TS actually writes.
-            Assert.Equal("Nueva organizacion creada: Notificada", n.Title);
+            Assert.Equal("Nueva organización creada: Notificada", n.Title);
             Assert.Equal("platform", n.Module);
             Assert.Equal("/platform/organizations", n.ActionUrl);
         });

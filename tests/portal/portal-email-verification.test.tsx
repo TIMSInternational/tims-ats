@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
   getUser: vi.fn(),
   findOrg: vi.fn(),
   getDisplayCandidate: vi.fn(),
+  getContactEmail: vi.fn(),
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
@@ -18,7 +19,9 @@ const m = vi.hoisted(() => ({
 vi.mock('server-only', () => ({}));
 vi.mock('@tims/auth/server', () => ({ getUser: m.getUser }));
 vi.mock('@tims/db', () => ({ db: { organization: { findUnique: m.findOrg } } }));
-vi.mock('@tims/api', () => ({ candidatePortalService: { getDisplayCandidate: m.getDisplayCandidate } }));
+vi.mock('@tims/api', () => ({
+  candidatePortalService: { getDisplayCandidate: m.getDisplayCandidate, getContactEmail: m.getContactEmail },
+}));
 const withdrawnAt = vi.hoisted(() => vi.fn(async (): Promise<string | null> => null));
 vi.mock('../../apps/web/app/(portal)/careers/[orgSlug]/dashboard/consent-status', () => ({
   findConsentWithdrawnAt: withdrawnAt,
@@ -38,8 +41,9 @@ const params = Promise.resolve({ orgSlug: 'acme' });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  m.findOrg.mockResolvedValue({ id: 'org-1', name: 'Acme', isActive: true });
+  m.findOrg.mockResolvedValue({ id: 'org-1', name: 'Acme', isActive: true, companies: [] });
   m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G' });
+  m.getContactEmail.mockReturnValue(null);
 });
 
 describe('candidate dashboard requires a confirmed email', () => {
@@ -60,12 +64,74 @@ describe('candidate dashboard requires a confirmed email', () => {
     expect(m.getDisplayCandidate).toHaveBeenCalledWith('org-1', 'ana@example.com');
   });
 
+  it('passes the candidate\'s own details and the organization contact to the dashboard (C-33)', async () => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    const org = { id: 'org-1', name: 'Acme', isActive: true, settings: { candidateContactEmail: ' Privacidad@Acme.test ' }, companies: [] };
+    m.findOrg.mockResolvedValue(org);
+    m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G', phone: '+506 8888 8888', location: null });
+    const element = (await PortalDashboardPage({ params })) as {
+      props: { profile: unknown; contactEmail: string | null };
+    };
+    expect(element.props.profile).toEqual({
+      firstName: 'Ana',
+      lastName: 'G',
+      email: 'ana@example.com',
+      phone: '+506 8888 8888',
+      location: null,
+    });
+    expect(element.props.contactEmail).toBe('privacidad@acme.test');
+    // The billing chain of the email Reply-To is never used for the privacy panel.
+    expect(m.getContactEmail).not.toHaveBeenCalled();
+    expect(m.findOrg.mock.calls[0]?.[0]).toMatchObject({ select: { settings: true } });
+    expect((m.findOrg.mock.calls[0]?.[0] as { select: Record<string, unknown> }).select).not.toHaveProperty('billingEmail');
+  });
+
+  it.each([
+    ['no candidate contact', {}],
+    ['a malformed one', { candidateContactEmail: 'Acme HR <hr@acme.test>' }],
+    ['a non-string one', { candidateContactEmail: 42 }],
+  ])('never shows the billing email in the privacy panel (%s): no contact instead', async (_label, settings) => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    // Even if a row still carried billingEmail, the page neither selects nor shows it.
+    m.findOrg.mockResolvedValue({ id: 'org-1', name: 'Acme', isActive: true, settings, billingEmail: 'billing@acme.test' });
+    m.getDisplayCandidate.mockResolvedValue({ firstName: 'Ana', lastName: 'G', phone: null, location: null });
+    m.getContactEmail.mockReturnValue('billing@acme.test');
+    const element = (await PortalDashboardPage({ params })) as { props: { contactEmail: string | null } };
+    expect(element.props.contactEmail).toBeNull();
+    expect(m.getContactEmail).not.toHaveBeenCalled();
+  });
+
+  it('has no profile without a candidate', async () => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    m.getDisplayCandidate.mockResolvedValue(null);
+    const element = (await PortalDashboardPage({ params })) as { props: { profile: unknown; hasCandidate: boolean } };
+    expect(element.props.hasCandidate).toBe(false);
+    expect(element.props.profile).toBeNull();
+    // A confirmed sign-up with no application here never receives the organization's mailbox.
+    expect((element.props as { contactEmail?: string | null }).contactEmail).toBeNull();
+    expect(m.getContactEmail).not.toHaveBeenCalled();
+  });
+
   it('passes the persisted withdrawal time to the dashboard (#312)', async () => {
     m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
     withdrawnAt.mockResolvedValueOnce('2026-10-01T10:00:00.000Z');
     const element = (await PortalDashboardPage({ params })) as { props: { consentWithdrawnAt: string | null } };
     expect(element.props.consentWithdrawnAt).toBe('2026-10-01T10:00:00.000Z');
     expect(withdrawnAt).toHaveBeenCalledWith('org-1', 'ana@example.com');
+  });
+
+  it("passes the organization's own zone; the per-item company fallback is the lists' job, as in the emails", async () => {
+    m.getUser.mockResolvedValue({ id: 'u1', email: 'ana@example.com', email_confirmed_at: '2026-09-30T10:00:00Z' });
+    const render = async (org: Record<string, unknown>) => {
+      m.findOrg.mockResolvedValueOnce({ id: 'org-1', name: 'Acme', isActive: true, billingEmail: null, ...org });
+      return ((await PortalDashboardPage({ params })) as { props: { timeZone: string | null } }).props.timeZone;
+    };
+    expect(await render({ settings: { timezone: 'America/Guatemala' } })).toBe('America/Guatemala');
+    expect(await render({ settings: { timezone: 'Mars/Olympus' } })).toBeNull();
+    expect(await render({ settings: {} })).toBeNull();
+    // Codex review of #424 (P2): no primary-company zone for the whole page — an interview's email uses ITS
+    // vacancy company, which may be another company or none (UTC).
+    expect(JSON.stringify(m.findOrg.mock.calls[0]?.[0])).not.toContain('companies');
   });
 
   it('no session still goes to login', async () => {

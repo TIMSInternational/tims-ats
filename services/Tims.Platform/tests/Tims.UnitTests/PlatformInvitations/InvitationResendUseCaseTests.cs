@@ -103,6 +103,31 @@ public sealed class InvitationResendUseCaseTests
         Assert.Equal(1, sender.Calls);
     }
 
+    [Fact]
+    public async Task Reminder_states_the_expiry_in_the_organization_time_zone()
+    {
+        var repository = new FakeRepository { Snapshot = Snapshot("expired"), TimeZone = "America/Costa_Rica" };
+        var sender = new FakeSender();
+        await UseCase(repository, sender).ExecuteAsync(repository.Snapshot.Id, Origin, CancellationToken.None);
+        // Expiry 2026-09-21 12:00 UTC is 6:00 a. m. that day in Costa Rica (Pilot UX audit E-23).
+        Assert.Equal(repository.Snapshot.OrganizationId, repository.TimeZoneLookup);
+        Assert.Contains("Válida hasta: 21 de septiembre de 2026, 6:00", sender.Html);
+        Assert.Contains("hora de Costa Rica (GMT-6)", sender.Html);
+        Assert.DoesNotContain("(UTC)", sender.Html);
+    }
+
+    [Fact]
+    public async Task Unreadable_time_zone_still_sends_the_reminder_in_utc()
+    {
+        var repository = new FakeRepository { Snapshot = Snapshot("sent"), TimeZoneFailure = new TimeoutException() };
+        var sender = new FakeSender();
+        var result = await UseCase(repository, sender).ExecuteAsync(repository.Snapshot.Id, Origin, CancellationToken.None);
+        Assert.Equal(InvitationResendOutcome.Sent, result.Outcome);
+        Assert.Equal(1, sender.Calls);
+        Assert.Contains("21 de septiembre de 2026, 12:00", sender.Html);
+        Assert.Contains("(UTC)", sender.Html);
+    }
+
     private static InvitationResendSnapshot Snapshot(string status) => new(Guid.NewGuid(), "candidate@example.test",
         Guid.NewGuid().ToString(), status, Guid.NewGuid(), "Org", Instant.UtcDateTime);
     private static InvitationResendUseCase UseCase(FakeRepository repository, FakeSender sender) => new(repository, sender, new FixedClock());
@@ -113,8 +138,16 @@ public sealed class InvitationResendUseCaseTests
         public InvitationResendSnapshot? Snapshot { get; init; }
         public bool Updated { get; init; } = true;
         public Exception? Failure { get; init; }
+        public string? TimeZone { get; init; }
+        public Exception? TimeZoneFailure { get; init; }
+        public Guid? TimeZoneLookup { get; private set; }
         public int Updates { get; private set; }
         public Task<InvitationResendSnapshot?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Snapshot);
+        public Task<string?> FindTimeZoneAsync(Guid organizationId, CancellationToken ct)
+        {
+            TimeZoneLookup = organizationId;
+            return TimeZoneFailure is null ? Task.FromResult(TimeZone) : Task.FromException<string?>(TimeZoneFailure);
+        }
         public Task<bool> MarkSentAsync(InvitationResendSnapshot expected, DateTime sentAt, DateTime expiresAt, CancellationToken ct)
         {
             Updates++;

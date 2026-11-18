@@ -73,6 +73,12 @@ variable "supabase_jwks_metadata_address" {
   type        = string
 }
 
+variable "rate_limit_dynamodb_table" {
+  description = "Platform:RateLimitDynamoDbTable — the shared rate-limit table (same one the web app uses). Created out-of-band, on-demand."
+  type        = string
+  default     = "tims-ats-ratelimit"
+}
+
 variable "otlp_endpoint" {
   description = "Platform:OtlpEndpoint — optional OpenTelemetry OTLP collector endpoint. Empty ⇒ unset."
   type        = string
@@ -118,6 +124,8 @@ variable "feature_flags" {
     access_review_write     = optional(bool, false)
     monitoring_read         = optional(bool, false) # Q0b slice 1 (#100) — gates flips #64/#66/#68
     alert_metrics_cron_read = optional(bool, false) # Q0b slice 2 (#172) — the last blocker on #64/#66
+    assessment_providers    = optional(bool, false) # AS-5 TIMS Assessments provider connector (inert until configured)
+    fit_engine_v2           = optional(bool, false) # FIT v2 per-instrument scoring; inert unless the fit-engine WRITE surface is on
   })
   default = {}
 }

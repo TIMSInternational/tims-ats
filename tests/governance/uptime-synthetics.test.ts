@@ -204,7 +204,7 @@ describe('synthetics.tf — uptime canaries', () => {
   });
 
   it('refuses the topic override together with enable_alarms, so the override path never creates a subscription', () => {
-    const alarm = SYN.slice(SYN.indexOf('resource "aws_cloudwatch_metric_alarm" "synthetics"'));
+    const alarm = block(SYN, 'resource "aws_cloudwatch_metric_alarm" "synthetics" {');
     expect(alarm).toMatch(/condition\s*=\s*!\(var\.synthetics_alarm_topic_arn != "" && var\.enable_alarms\)/);
   });
 

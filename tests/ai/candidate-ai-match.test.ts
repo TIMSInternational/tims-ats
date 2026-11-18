@@ -52,7 +52,7 @@ describe('candidateAiService.getRecommendations', () => {
 
     expect(candidateAiRepository.getOpenVacanciesForMatching).toHaveBeenCalledWith('org-1', 20);
     expect(matchCandidateAgent).toHaveBeenCalledWith('org-1', {
-      candidateProfile: { name: 'Ana Gómez', title: 'Dev', skills: ['ts', 'react'], experience: 5 },
+      candidateProfile: { title: 'Dev', skills: ['ts', 'react'], experience: 5 },
       vacancies: [
         { id: 'v1', title: 'Senior Backend Engineer' },
         { id: 'v2', title: 'Frontend Engineer' },
@@ -96,7 +96,7 @@ describe('candidateAiService.getRecommendations', () => {
     expect(matchCandidateAgent).toHaveBeenCalledWith(
       'org-1',
       expect.objectContaining({
-        candidateProfile: { name: 'Ana Gómez', title: undefined, skills: [], experience: undefined },
+        candidateProfile: { title: undefined, skills: [], experience: undefined },
       }),
     );
   });

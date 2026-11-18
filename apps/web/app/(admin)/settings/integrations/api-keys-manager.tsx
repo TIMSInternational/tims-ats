@@ -3,105 +3,119 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
+import { intlLocale } from '../../../../lib/format-utils';
+import { Button, ConfirmDialog, ErrorState, Skeleton } from '../../../../components';
+import { ApiKeyCreateModal } from './api-key-create-modal';
+import { ApiKeySecretDialog } from './api-key-secret-dialog';
 
-function fmtDate(d: string | Date | null | undefined): string {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+interface ApiKeyManagerProps {
+  /** The create dialog is opened from the page header's primary action. */
+  createOpen: boolean;
+  onCreateOpenChange: (open: boolean) => void;
 }
 
-export function ApiKeyManager() {
-  const { t } = useI18n();
+export function ApiKeyManager({ createOpen, onCreateOpenChange }: ApiKeyManagerProps) {
+  const { t, locale } = useI18n();
   const utils = trpc.useUtils();
   const list = trpc.integration.listApiKeys.useQuery();
-  const [showCreate, setShowCreate] = useState(false);
-  const [name, setName] = useState('');
-  const [environment, setEnvironment] = useState<'production' | 'staging' | 'development'>('production');
-  const [scopes, setScopes] = useState('assessment:read');
   const [rawKey, setRawKey] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; prefix: string } | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+
+  const envLabel: Record<string, string> = {
+    production: t.integrations.apiKeyEnvProduction,
+    staging: t.integrations.apiKeyEnvStaging,
+    development: t.integrations.apiKeyEnvDevelopment,
+  };
+  const dateFmt = new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: 'medium' });
 
   const create = trpc.integration.createApiKey.useMutation({
     onSuccess: (res) => {
       setRawKey(res.key);
-      setShowCreate(false);
-      setName('');
-      setScopes('assessment:read');
+      onCreateOpenChange(false);
       void utils.integration.listApiKeys.invalidate();
-      toast(t.integrations.apiKeyCreated, { type: 'success' });
     },
-    onError: () => toast(t.integrations.apiKeysErr, { type: 'error' }),
+    // Project rule: every mutation toasts its failure; the open dialog keeps its inline copy too.
+    onError: () => {
+      setCreateError(t.integrations.apiKeyCreateError);
+      toast(t.integrations.apiKeyCreateError, { type: 'error' });
+    },
   });
 
   const revoke = trpc.integration.revokeApiKey.useMutation({
     onSuccess: () => {
+      setRevokeTarget(null);
       void utils.integration.listApiKeys.invalidate();
       toast(t.integrations.apiKeyRevoked, { type: 'success' });
     },
-    onError: () => toast(t.integrations.apiKeysErr, { type: 'error' }),
+    onError: () => {
+      setRevokeError(t.integrations.apiKeyRevokeError);
+      toast(t.integrations.apiKeyRevokeError, { type: 'error' });
+    },
   });
 
-  function submitCreate() {
-    const parsed = scopes.split(',').map((s) => s.trim()).filter(Boolean);
-    if (parsed.length > 20) {
-      toast(t.integrations.apiKeysErr, { type: 'error' });
-      return;
-    }
-    create.mutate({ name: name.trim(), environment, scopes: parsed });
-  }
-
-  function copyKey() {
-    if (!rawKey) return;
-    navigator.clipboard.writeText(rawKey).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+  function closeCreate() {
+    setCreateError(null);
+    onCreateOpenChange(false);
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.integrations.apiKeys}</h3>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="text-[11px] font-medium text-white bg-[#1F114C] rounded-md px-2.5 py-1"
-        >
-          {t.integrations.newApiKey}
-        </button>
+    <section aria-labelledby="api-keys-title" className="flex flex-col rounded-xl bg-white p-5 shadow-card">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 id="api-keys-title" className="text-subheading font-semibold text-primary">
+          {t.integrations.apiKeys}
+        </h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="max-h-80 overflow-y-auto">
         {list.isLoading ? (
-          <div className="h-12 bg-gray-50 rounded animate-pulse" />
+          <div className="space-y-2" aria-busy="true">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
         ) : list.isError ? (
-          <p className="text-[12px] text-[#DD0C15]">{t.integrations.apiKeysErr}</p>
+          <ErrorState size="compact" title={t.integrations.apiKeysErr} onRetry={() => list.refetch()} />
         ) : !list.data || list.data.length === 0 ? (
-          <p className="text-[12px] text-[#8B8B8B]">{t.integrations.apiKeysEmpty}</p>
+          // The page header's "Nueva clave de API" is the one way in; no second copy in the card.
+          <p className="text-body text-secondary">{t.integrations.apiKeysEmpty}</p>
         ) : (
-          <table className="w-full text-[10px]">
+          <table className="w-full text-callout">
             <thead>
-              <tr className="text-[#8B8B8B] border-b border-[#EDEDED]">
-                <th className="text-left pb-1.5 font-medium">{t.integrations.colApiKey}</th>
-                <th className="text-left pb-1.5 font-medium">{t.integrations.colEnv}</th>
-                <th className="text-left pb-1.5 font-medium">{t.integrations.colCreated}</th>
-                <th className="text-right pb-1.5 font-medium">{t.integrations.apiKeyActions}</th>
+              <tr className="border-b border-border text-secondary">
+                <th scope="col" className="pb-1.5 text-left font-semibold">
+                  {t.integrations.colApiKey}
+                </th>
+                <th scope="col" className="pb-1.5 text-left font-semibold">
+                  {t.integrations.colEnv}
+                </th>
+                <th scope="col" className="pb-1.5 text-left font-semibold">
+                  {t.integrations.colCreated}
+                </th>
+                <th scope="col" className="pb-1.5 text-right font-semibold">
+                  <span className="sr-only">{t.integrations.apiKeyActions}</span>
+                </th>
               </tr>
             </thead>
-            <tbody className="text-[#333]">
+            <tbody className="text-primary">
               {list.data.map((k) => (
-                <tr key={k.id} className="border-b border-[#F6F6F6]">
-                  <td className="py-1.5 font-mono text-[9px]">{k.keyPrefix}…</td>
-                  <td className="py-1.5">{k.environment}</td>
-                  <td className="py-1.5 text-[#8B8B8B]">{fmtDate(k.createdAt)}</td>
-                  <td className="py-1.5 text-right">
-                    <button
+                <tr key={k.id} className="border-b border-border-subtle">
+                  <td className="py-2 font-mono">{k.keyPrefix}…</td>
+                  <td className="py-2">{envLabel[k.environment] ?? k.environment}</td>
+                  <td className="py-2 text-secondary">{k.createdAt ? dateFmt.format(new Date(k.createdAt)) : '—'}</td>
+                  <td className="py-2 text-right">
+                    <Button
+                      variant="destructive-secondary"
+                      size="sm"
                       onClick={() => {
-                        if (window.confirm(t.integrations.apiKeyRevokeConfirm)) revoke.mutate({ id: k.id });
+                        setRevokeError(null);
+                        setRevokeTarget({ id: k.id, prefix: k.keyPrefix });
                       }}
-                      className="text-[10px] text-[#DD0C15] font-medium"
                     >
                       {t.integrations.apiKeyRevoke}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -110,75 +124,33 @@ export function ApiKeyManager() {
         )}
       </div>
 
-      {showCreate && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-5 w-[360px] space-y-3">
-            <h4 className="text-[14px] font-semibold text-[#1F114C]">{t.integrations.newApiKey}</h4>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t.integrations.apiKeyName}
-              className="w-full border border-[#EDEDED] rounded-md px-2.5 py-1.5 text-[12px]"
-            />
-            <select
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value as typeof environment)}
-              className="w-full border border-[#EDEDED] rounded-md px-2.5 py-1.5 text-[12px]"
-            >
-              <option value="production">production</option>
-              <option value="staging">staging</option>
-              <option value="development">development</option>
-            </select>
-            <input
-              value={scopes}
-              onChange={(e) => setScopes(e.target.value)}
-              placeholder={t.integrations.apiKeyScopes}
-              className="w-full border border-[#EDEDED] rounded-md px-2.5 py-1.5 text-[12px] font-mono"
-            />
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                onClick={() => setShowCreate(false)}
-                className="text-[12px] text-[#8B8B8B] px-3 py-1.5"
-              >
-                {t.integrations.apiKeyCancel}
-              </button>
-              <button
-                onClick={submitCreate}
-                disabled={!name.trim() || create.isPending}
-                className="text-[12px] text-white bg-[#1F114C] rounded-md px-3 py-1.5 disabled:opacity-50"
-              >
-                {t.integrations.apiKeyCreate}
-              </button>
-            </div>
-          </div>
-        </div>
+      {createOpen && (
+        <ApiKeyCreateModal
+          pending={create.isPending}
+          error={createError}
+          onClose={closeCreate}
+          onSubmit={(input) => {
+            setCreateError(null);
+            create.mutate(input);
+          }}
+        />
       )}
 
-      {rawKey && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-5 w-[420px] space-y-3">
-            <h4 className="text-[14px] font-semibold text-[#1F114C]">{t.integrations.apiKeyCreated}</h4>
-            <p className="text-[11px] text-[#DD0C15]">{t.integrations.apiKeyCopyWarn}</p>
-            <code className="block bg-[#F6F6F6] rounded-md px-2.5 py-2 text-[10px] font-mono break-all">
-              {rawKey}
-            </code>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={copyKey}
-                className="text-[12px] text-[#1F114C] border border-[#1F114C] rounded-md px-3 py-1.5"
-              >
-                {copied ? t.integrations.apiKeyCopied : t.integrations.apiKeyCopy}
-              </button>
-              <button
-                onClick={() => setRawKey(null)}
-                className="text-[12px] text-white bg-[#1F114C] rounded-md px-3 py-1.5"
-              >
-                {t.integrations.apiKeyClose}
-              </button>
-            </div>
-          </div>
-        </div>
+      {rawKey && <ApiKeySecretDialog rawKey={rawKey} onClose={() => setRawKey(null)} />}
+
+      {revokeTarget && (
+        <ConfirmDialog
+          title={formatMessage(t.integrations.apiKeyRevokeTitle, { prefix: revokeTarget.prefix })}
+          description={t.integrations.apiKeyRevokeConfirm}
+          confirmLabel={t.integrations.apiKeyRevokeAction}
+          confirmingLabel={t.integrations.apiKeyRevoking}
+          destructive
+          loading={revoke.isPending}
+          error={revokeError}
+          onConfirm={() => revoke.mutate({ id: revokeTarget.id })}
+          onCancel={() => setRevokeTarget(null)}
+        />
       )}
-    </div>
+    </section>
   );
 }

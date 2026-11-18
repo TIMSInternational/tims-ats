@@ -75,14 +75,16 @@ test('platform owner creates the company', async () => {
   const form = page.locator('form').filter({ has: page.getByPlaceholder('constructora-bolivar') });
   await form.getByPlaceholder(/constructora bol[ií]var/i).fill(j.orgName);
   await form.getByPlaceholder('constructora-bolivar').fill(j.orgSlug);
-  await form.locator('select').selectOption('professional');
+  await form.getByLabel('Plan', { exact: true }).selectOption('professional');
+  // The country is required; its preset fills the time zone, currency and number locale.
+  await form.getByLabel(/^país/i).selectOption('CR');
   // #307: this field is the billing email only; the admin is invited separately (next test).
   await form.getByLabel('Email de Facturación').fill(j.admin.email);
   await form.getByRole('button', { name: 'Crear', exact: true }).click();
   await expect(form).toBeHidden();
 
   await page.getByPlaceholder(/buscar organizaci[oó]n/i).fill(j.orgSlug);
-  await expect(page.getByText(j.orgName).first()).toBeVisible();
+  await expect(page.getByText(j.orgName).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('platform owner invites the company admin; the invitation arrives by email', async () => {
@@ -106,16 +108,19 @@ test('company admin accepts the invitation, sets a password and can sign in with
 test('company admin invites the recruiter and the hiring leader from the team page', async () => {
   needs('tenantInvitations');
   // Written against #307's Equipo page (settings/users/invite-form.tsx on feat/tenant-team-invitations).
+  // Option labels come from the shared role map (`roles.*` in apps/web/lib/i18n/es.json), not the seeded,
+  // unaccented DB `roles.name`. `leader` is offered in the full launch scope the E2E stack runs and, since
+  // 2026-11-06, under NEXT_PUBLIC_LAUNCH_SCOPE=pilot too (only hrbp is in PILOT_HIDDEN_ROLE_SLUGS).
   const { page } = admin;
   await page.goto('/settings/users');
   for (const [who, role] of [
     [j.recruiter, 'Reclutador'],
-    [j.leader, 'Lider'],
+    [j.leader, 'Líder'],
   ] as const) {
-    await page.getByLabel('Email', { exact: true }).fill(who.email);
+    await page.getByLabel('Correo electrónico', { exact: true }).fill(who.email);
     await page.getByLabel('Rol', { exact: true }).selectOption({ label: role });
     await page.getByRole('button', { name: 'Enviar invitación' }).click();
-    await expect(page.getByText('Invitación enviada.').first()).toBeVisible();
+    await expect(page.getByText('Invitación enviada.').filter({ visible: true }).first()).toBeVisible();
   }
 });
 
@@ -152,7 +157,7 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   await main.getByRole('button', { name: 'Nueva unidad' }).first().click();
   const unit = page.getByRole('dialog', { name: 'Nueva unidad' });
   await unit.getByLabel('Nombre', { exact: true }).fill(UNIT);
-  await unit.getByRole('button', { name: 'Guardar' }).click();
+  await unit.getByRole('button', { name: 'Crear unidad' }).click();
   await expect(unit).toBeHidden();
 
   // Each business unit card is a <section aria-label={unit.name}>.
@@ -160,11 +165,13 @@ test('company admin sets up a business unit whose team is led by the hiring lead
   await unitCard.getByRole('button', { name: 'Nuevo equipo' }).click();
   const team = page.getByRole('dialog', { name: 'Nuevo equipo' });
   await team.getByLabel('Nombre', { exact: true }).fill(TEAM);
-  await team.getByRole('button', { name: 'Guardar' }).click();
+  await team.getByRole('button', { name: 'Crear equipo' }).click();
   await expect(team).toBeHidden();
 
   const teamRow = unitCard.getByRole('listitem').filter({ hasText: TEAM });
-  await teamRow.getByRole('button', { name: 'Asignar líder' }).click();
+  // Leader actions live in the team row's "Acciones de <team>" menu.
+  await teamRow.getByRole('button', { name: `Acciones de ${TEAM}` }).click();
+  await page.getByRole('menuitem', { name: 'Asignar líder…' }).click();
   const picker = page.getByRole('dialog', { name: 'Asignar líder' });
   await picker.getByPlaceholder('Buscar por nombre o email...').fill(j.leader.firstName);
   await picker
@@ -185,7 +192,7 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
 
   // Step 1 — basic info
   await wizard.getByPlaceholder('Ej: Senior Software Engineer').fill(title);
-  await wizard.getByPlaceholder('Bogotá, Colombia').fill('Medellín, Colombia');
+  await wizard.getByPlaceholder('Ciudad, país').fill('San José, Costa Rica');
   await wizard.getByRole('button', { name: 'Presencial' }).click();
   if (PENDING.orgStructure.merged) {
     // #310: the vacancy is placed in the team whose leader approves it.
@@ -202,23 +209,25 @@ test('recruiter creates a vacancy with the wizard (no AI)', async () => {
   await wizard.getByRole('button', { name: 'Siguiente' }).click();
 
   // Step 3 — compensation; approval required, not auto-published
-  await wizard.getByPlaceholder('8,000,000').fill('6500000');
-  await wizard.getByPlaceholder('14,000,000').fill('9000000');
+  await wizard.getByPlaceholder('850000').fill('650000');
+  await wizard.getByPlaceholder('1200000').fill('900000');
   await wizard.getByRole('button', { name: 'Crear vacante' }).click();
   await expect(wizard).toBeHidden();
 
-  await page.getByRole('link', { name: title }).first().click();
+  // Creating a vacancy opens it: a draft's next step ("Enviar para aprobación") lives on its page.
   await expect(page).toHaveURL(/\/recruitment\/vacancies\/[0-9a-f-]{36}$/);
+  await expect(page.getByText(title).filter({ visible: true }).first()).toBeVisible();
   const id = page.url().split('/').pop()!;
   j.vacancy = { id, title };
   saveJourney(j);
-  await expect(page.getByText('Borrador', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Borrador', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 /** Open the vacancy and submit it for approval to `approverName`. */
 async function submitForApproval(page: Page, approverName: string): Promise<void> {
   await page.goto(`/recruitment/vacancies/${j.vacancy!.id}`);
-  await page.getByRole('button', { name: 'Enviar para aprobación' }).click();
+  // The header CTA comes first; the approval card's link opens the same dialog.
+  await page.getByRole('button', { name: 'Enviar para aprobación' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Enviar para aprobación' });
   await dialog.getByPlaceholder('Buscar usuario...').fill(approverName.split(' ')[0]);
   await dialog
@@ -240,7 +249,7 @@ test('hiring leader approves the vacancy', async () => {
   await page.goto(`/recruitment/vacancies/${j.vacancy!.id}`);
   await expect(page.getByText('Aprobada', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
-  await expect(page.getByText('Aprobada', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Aprobada', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('company admin submits the vacancy for approval and approves it (main-only path)', async () => {
@@ -249,7 +258,7 @@ test('company admin submits the vacancy for approval and approves it (main-only 
   await submitForApproval(page, `${j.admin.firstName} ${j.admin.lastName}`);
   await expect(page.getByText('Aprobada', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Aprobar', exact: true }).click();
-  await expect(page.getByText('Aprobada', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Aprobada', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('recruiter publishes the approved vacancy to the careers site', async () => {
@@ -262,5 +271,5 @@ test('recruiter publishes the approved vacancy to the careers site', async () =>
   await dialog.locator('select').selectOption({ label: 'Sitio web' });
   await dialog.getByRole('button', { name: 'Agregar Canal' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Publicada', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Publicada', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });

@@ -1243,7 +1243,8 @@ const nineboxSurface: WriteSurface<NineBoxWriteResolved> = {
       rbacDenyStatus: 403,
       // Prove hr_admin's 403 is specifically NotMember (it passed the grant gate → the membership check
       // is what denied it) — self-substantiating the anchor + implicitly proving hr_admin's :update resolved.
-      denyBodyIncludes: { hr_admin: 'miembro del comite' },
+      // Accent-tolerant prefix: matches "comité" (current) and "comite" (an image deployed before the accent fix).
+      denyBodyIncludes: { hr_admin: 'miembro del comit' },
       // The no-org_id tenancy-quirk vector: an org-A session + an org-B EVALUATED user. RLS WITH CHECK
       // validates only the session org, so the in-org evaluated check is app-code — probe it (super IS a
       // member of voteA, so control reaches the evaluated-in-org check → EvaluatedNotFound 404).
@@ -1528,7 +1529,7 @@ const ORG_WRITE_NAME_MARKER = 'Parity Org Write Marker';
 //     exercises the whole path — gate, TenantScope transaction, the fail-closed audit INSERT, the
 //     response shape — and still writes an `org_activated` audit row, which is what the read-back
 //     asserts. The only thing it does not cover is the notify fan-out, which fires solely on
-//     suspend=true (organizations.ts:299); that stays uncovered here on purpose.
+//     suspend=true (organizations.ts:309); that stays uncovered here on purpose.
 //  2. `update` writes only `name`, never `slug`. Every other surface resolves org A BY SLUG
 //     (seed.ts orgIdBySlug), so renaming is inert for them while still being a real, readable-back
 //     column write.
@@ -1609,7 +1610,7 @@ const platformOrganizationsSurface: WriteSurface<PlatformOrganizationsWriteResol
           if (!row) return 'org A not found on read-back';
           if (row.is_active !== true) return `is_active is ${JSON.stringify(row.is_active)}, expected true`;
           // The action name is the ONLY thing distinguishing activate from suspend — TS picks it from
-          // the flag (organizations.ts:313) and so must C#.
+          // the flag (organizations.ts:323) and so must C#.
           if (Number(row.audits) < 1) return 'no org_activated audit row attributed to the platform owner';
           return null;
         },
@@ -1666,9 +1667,9 @@ export interface PlatformOrganizationsCreateResolved extends WriteResolvedBase {
 //    surfaces.ts:206-210 already makes for the read side ("not Federico-gated but UNRUNNABLE BY ANYONE").
 //
 // THE ONE RESIDUAL FEDERICO SHOULD KNOW ABOUT, because it cannot be engineered away: the platform-owner
-// notify fan-out is UNCONDITIONAL in both stacks (organizations.ts:220 has no branch and no catch;
+// notify fan-out is UNCONDITIONAL in both stacks (organizations.ts:226 has no branch and no catch;
 // PlatformOwnerNotifier queries an unfiltered `WHERE is_platform_owner`). Every run therefore puts one
-// "Nueva organizacion creada: …" notification in every REAL platform owner's bell. The cleanup deletes
+// "Nueva organización creada: …" notification in every REAL platform owner's bell. The cleanup deletes
 // them on the next run; it cannot prevent them. This is the same cost the `organization` surface above
 // deliberately AVOIDED by sending `{ suspend: false }` — create has no equivalent lever. Judged worth it
 // against a domain that is otherwise unverifiable by anyone; veto by deleting this surface and replacing

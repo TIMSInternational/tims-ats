@@ -18,13 +18,12 @@ describe('pipelineRepository.getFunnelCounts', () => {
     // Prisma applies `distinct: ['applicationId']` server-side, so a real
     // response here already has one row per application (e.g. app-1 was
     // bounced out and moved back into the stage, but only counts once).
-    vi.mocked(tenantDb.stageMovement.findMany).mockResolvedValue(
-      [{ applicationId: 'app-1' }, { applicationId: 'app-2' }] as never,
-    );
+    vi.mocked(tenantDb.stageMovement.findMany).mockResolvedValue([
+      { applicationId: 'app-1' },
+      { applicationId: 'app-2' },
+    ] as never);
 
-    const [result] = await pipelineRepository.getFunnelCounts('vac-1', [
-      { id: 'stage-1' },
-    ]);
+    const [result] = await pipelineRepository.getFunnelCounts('vac-1', [{ id: 'stage-1' }]);
 
     expect(result.everReachedCount).toBe(2);
   });
@@ -42,5 +41,16 @@ describe('pipelineRepository.getFunnelCounts', () => {
         select: { applicationId: true },
       }),
     );
+  });
+
+  it("counts confirmed hires (status 'hired') in their stage, so the terminal stage is not zeroed by a hire", async () => {
+    vi.mocked(tenantDb.application.count).mockResolvedValue(1 as never);
+    vi.mocked(tenantDb.stageMovement.findMany).mockResolvedValue([] as never);
+
+    await pipelineRepository.getFunnelCounts('vac-1', [{ id: 'stage-contratado' }]);
+
+    expect(tenantDb.application.count).toHaveBeenCalledWith({
+      where: { vacancyId: 'vac-1', currentStageId: 'stage-contratado', status: { in: ['active', 'hired'] } },
+    });
   });
 });

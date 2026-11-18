@@ -1,7 +1,12 @@
 'use client';
 
+import { useId } from 'react';
 import { useMonitoringActionPlanAlerts } from '../../../lib/platform-api/monitoring';
 import { useI18n } from '../../../lib/i18n';
+import { pluralize } from '../../../lib/i18n/format';
+import { ErrorState } from '../../../components';
+import { CountBadge } from '../../../components/count-badge';
+import { StatusBadge } from '../../../components/status-badge';
 
 function daysUntil(d: string | Date): number {
   const diff = new Date(d).getTime() - Date.now();
@@ -9,74 +14,67 @@ function daysUntil(d: string | Date): number {
 }
 
 export function ActionPlanAlerts() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useMonitoringActionPlanAlerts();
   const items = q.data?.items ?? [];
+  const titleId = useId();
+  const total = q.data?.total ?? 0;
 
   return (
-    <div className="w-full md:w-[310px] shrink-0 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#EDEDED]">
-        <div className="flex items-center gap-2">
-          <svg
-            className="w-4 h-4 text-[#DD0C15]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-            />
-          </svg>
-          <span className="text-[13px] font-semibold text-[#333]">{t.monitoring.actionPlanAlerts}</span>
-        </div>
-        {q.data && q.data.total > 0 && (
-          <span className="text-[10px] bg-[#DD0C15] text-white px-1.5 py-0.5 rounded-full font-bold">
-            {q.data.total}
-          </span>
-        )}
+    <section aria-labelledby={titleId} className="flex flex-col rounded-xl bg-white shadow-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <h2 id={titleId} className="text-subheading font-semibold text-brand">
+          {t.monitoring.actionPlanAlerts}
+          {total > 0 && <span className="sr-only"> ({total})</span>}
+        </h2>
+        <CountBadge count={total} />
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      <div className="max-h-96 space-y-2 overflow-y-auto p-3">
         {q.isLoading ? (
-          <div className="h-20 bg-gray-50 rounded animate-pulse m-1" />
+          <div className="h-20 animate-pulse rounded bg-surface motion-reduce:animate-none" aria-busy="true">
+            <span className="sr-only">{t.common.loadingContent}</span>
+          </div>
         ) : q.isError ? (
-          <p className="text-[12px] text-[#DD0C15] p-2">{t.monitoring.actionPlanAlertsErr}</p>
+          <ErrorState
+            size="compact"
+            title={t.monitoring.actionPlanAlertsErr}
+            onRetry={() => q.refetch()}
+            error={q.error}
+          />
         ) : items.length === 0 ? (
-          <p className="text-[12px] text-[#8B8B8B] p-2">{t.monitoring.noActionPlanAlerts}</p>
+          <p className="px-1 py-2 text-callout text-secondary">{t.monitoring.noActionPlanAlerts}</p>
         ) : (
-          items.map((a) => {
-            const days = daysUntil(a.dueDate ?? new Date());
-            const overdue = days < 0;
-            const responsibleName = `${a.responsible.firstName} ${a.responsible.lastName}`;
-            return (
-              <div
-                key={a.id}
-                className={`border rounded-lg p-3 ${overdue ? 'border-red-200 bg-red-50/50' : 'border-amber-200 bg-amber-50/50'}`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className={`text-[9px] font-bold text-white px-1.5 py-0.5 rounded uppercase ${overdue ? 'bg-[#DD0C15]' : 'bg-amber-500'}`}
-                  >
-                    {overdue ? t.monitoring.actionPlanOverdue : t.monitoring.actionPlanDueSoon}
-                  </span>
-                  {a.area && <span className="text-[9px] bg-[#1F114C] text-white px-1.5 py-0.5 rounded">{a.area}</span>}
-                </div>
-                <p className="text-[11px] text-[#333] font-medium leading-tight">{a.title}</p>
-                <p className="text-[10px] text-[#585858] leading-tight mt-0.5">
-                  {t.monitoring.actionPlanResponsible}: {responsibleName}
-                </p>
-                <p className="text-[9px] text-[#8B8B8B] mt-1">
-                  {overdue
-                    ? `${t.monitoring.actionPlanOverdueBy} ${Math.abs(days)}d`
-                    : `${t.monitoring.actionPlanDueIn} ${days}d`}
-                </p>
-              </div>
-            );
-          })
+          <ul className="space-y-2">
+            {items.map((a) => {
+              const days = daysUntil(a.dueDate ?? new Date());
+              const overdue = days < 0;
+              const responsibleName = `${a.responsible.firstName} ${a.responsible.lastName}`;
+              return (
+                <li key={a.id} className="rounded-lg border border-border p-3">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <StatusBadge tone={overdue ? 'danger' : 'warning'}>
+                      {overdue ? t.monitoring.actionPlanOverdue : t.monitoring.actionPlanDueSoon}
+                    </StatusBadge>
+                    {a.area && (
+                      <StatusBadge tone="brand" icon="none">
+                        {a.area}
+                      </StatusBadge>
+                    )}
+                  </div>
+                  <p className="text-body font-medium text-primary">{a.title}</p>
+                  <p className="mt-0.5 text-callout text-secondary">
+                    {t.monitoring.actionPlanResponsible}: {responsibleName}
+                  </p>
+                  <p className="mt-1 text-caption text-muted">
+                    {overdue ? t.monitoring.actionPlanOverdueBy : t.monitoring.actionPlanDueIn}{' '}
+                    {pluralize(Math.abs(days), { one: t.monitoring.dayOne, other: t.monitoring.dayOther }, locale)}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
-    </div>
+    </section>
   );
 }

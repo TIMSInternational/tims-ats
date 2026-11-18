@@ -16,9 +16,9 @@ vi.mock('../../packages/api/src/access', () => ({
   requireOrgScope: vi.fn(),
 }));
 
-const planId = '33333333-3333-3333-3333-333333333333';
-const orgId = '11111111-1111-1111-1111-111111111111';
-const userId = '22222222-2222-2222-2222-222222222222';
+const planId = '33333333-3333-4333-8333-333333333333';
+const orgId = '11111111-1111-4111-8111-111111111111';
+const userId = '22222222-2222-4222-8222-222222222222';
 
 async function caller() {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');

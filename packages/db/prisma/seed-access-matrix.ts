@@ -98,7 +98,10 @@ export const MATRIX: Record<string, Entry[]> = {
   ],
 
   leader: [
-    { module: 'vacancy',      actions: ['read', 'create', 'approve'], scope: 'team' }, // +create: spec §2 "solicitar vacantes"
+    // +create: spec §2 "solicitar vacantes". +update (pilot 2026-11-06, owner decision): a leader sends the drafts
+    // of their own vacancies for approval and withdraws the request (vacancy.submitForApproval / withdrawApproval
+    // and the C# vacancy_approver picker are gated on vacancy:update). Team scope: led teams + assigned vacancies.
+    { module: 'vacancy',      actions: ['read', 'create', 'update', 'approve'], scope: 'team' },
     { module: 'candidate',    actions: ['read'],                      scope: 'team' }, // spec §2 "revisar candidatos finalistas"
     { module: 'pipeline',     actions: ['read', 'update'],            scope: 'team' },
     { module: 'interview',    actions: ['read', 'create', 'update'],  scope: 'team' },

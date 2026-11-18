@@ -125,8 +125,8 @@ export const notificationRouter = router({
     .input(z.object({
       emailEnabled: z.boolean().optional(),
       pushEnabled: z.boolean().optional(),
-      categories: z.record(z.boolean()).optional(),
-      modules: z.record(z.boolean()).optional(),
+      categories: z.record(z.string(), z.boolean()).optional(),
+      modules: z.record(z.string(), z.boolean()).optional(),
       quietHoursStart: z.string().max(10).nullable().optional(),
       quietHoursEnd: z.string().max(10).nullable().optional(),
     }))

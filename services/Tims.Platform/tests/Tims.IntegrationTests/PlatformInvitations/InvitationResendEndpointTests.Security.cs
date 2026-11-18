@@ -79,5 +79,6 @@ public sealed partial class InvitationResendEndpointTests
         public Task<InvitationResendSnapshot?> FindAsync(Guid id, CancellationToken ct) => inner.FindAsync(id, ct);
         public Task<bool> MarkSentAsync(InvitationResendSnapshot expected, DateTime sentAt, DateTime expiresAt, CancellationToken ct) =>
             Task.FromException<bool>(new OperationCanceledException("simulated uncertain commit"));
+        public Task<string?> FindTimeZoneAsync(Guid organizationId, CancellationToken ct) => inner.FindTimeZoneAsync(organizationId, ct);
     }
 }

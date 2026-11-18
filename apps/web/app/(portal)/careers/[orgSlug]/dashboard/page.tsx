@@ -6,6 +6,8 @@ import { candidatePortalService } from '@tims/api';
 import { PortalDashboardShell } from './dashboard-shell';
 import { DashboardVerifyEmail } from './dashboard-verify-email';
 import { findConsentWithdrawnAt } from './consent-status';
+import { orgSettingsTimeZone } from '../../../../../lib/candidate-format';
+import { candidatePrivacyContactEmail } from '../../../../../lib/candidate-privacy-contact';
 
 // Authenticated candidate landing. Server-resolves identity by (Supabase email) ×
 // (org from the route) → Candidate. No staff User / org-membership involved. The
@@ -23,7 +25,7 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
 
   const org = await db.organization.findUnique({
     where: { slug: orgSlug },
-    select: { id: true, name: true, isActive: true },
+    select: { id: true, name: true, isActive: true, settings: true },
   });
   if (!org || !org.isActive) notFound();
 
@@ -31,6 +33,16 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
   const consentWithdrawnAt = candidate ? await findConsentWithdrawnAt(org.id, supabaseUser.email) : null;
 
   const displayName = candidate ? `${candidate.firstName} ${candidate.lastName}`.trim() : supabaseUser.email;
+  // "Mis datos": what the candidate may correct. The email is the session identity, shown read-only.
+  const profile = candidate
+    ? {
+        firstName: candidate.firstName,
+        lastName: candidate.lastName,
+        email: supabaseUser.email,
+        phone: candidate.phone ?? null,
+        location: candidate.location ?? null,
+      }
+    : null;
 
   return (
     <PortalDashboardShell
@@ -39,6 +51,14 @@ export default async function PortalDashboardPage({ params }: { params: Promise<
       displayName={displayName}
       hasCandidate={candidate !== null}
       consentWithdrawnAt={consentWithdrawnAt}
+      // The organization's own zone. Interviews fall back per interview to their vacancy company's zone
+      // (candidateTimeZone), as the interview email does; everything else (offer dates included, like the
+      // signing page) falls back to UTC.
+      timeZone={orgSettingsTimeZone(org.settings)}
+      profile={profile}
+      // Only a real candidate of this org gets the contact, never any signed-in visitor. Only the configured candidate
+      // contact: never the billing email (owner decision 2026-11-11); none configured = the "no contact" text.
+      contactEmail={candidate ? candidatePrivacyContactEmail(org.settings) : null}
     />
   );
 }

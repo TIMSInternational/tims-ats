@@ -27,7 +27,7 @@ export const featureFlagRouter = router({
       z.object({
         id: z.string().uuid(),
         enabled: z.boolean().optional(),
-        payload: z.record(z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 20000, 'Payload demasiado grande').nullish(),
+        payload: z.record(z.string(), z.unknown()).refine((v) => JSON.stringify(v ?? {}).length <= 20000, 'Payload demasiado grande').nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {

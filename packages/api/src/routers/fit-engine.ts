@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { router, permissionProcedure } from '../trpc';
 import { assertScoped } from '../access';
 import { fitEngineService } from '../services/fit-engine.service';
-import { explainFit } from '@tims/ai';
+import { explainFit, fitScoreAsShown, hidesBelowMinimum } from '@tims/ai';
 
 const weightsSchema = z
   .object({
@@ -23,7 +23,7 @@ export const fitEngineRouter = router({
     .input(z.object({ vacancyId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return fitEngineService.getRankingForVacancy(ctx.user.organizationId, input.vacancyId);
+      return fitEngineService.getRankingForVacancy(ctx.user.organizationId, input.vacancyId, hidesBelowMinimum(ctx.access.scope));
     }),
 
   computeForVacancy: permissionProcedure('fit_engine', 'create')
@@ -37,7 +37,7 @@ export const fitEngineRouter = router({
     .input(z.object({ vacancyId: z.string().uuid(), hypotheticalWeights: weightsSchema }))
     .query(async ({ ctx, input }) => {
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
-      return fitEngineService.simulateWeights(ctx.user.organizationId, input.vacancyId, input.hypotheticalWeights);
+      return fitEngineService.simulateWeights(ctx.user.organizationId, input.vacancyId, input.hypotheticalWeights, hidesBelowMinimum(ctx.access.scope));
     }),
 
   upsertRoleFamilyWeightProfile: permissionProcedure('fit_engine', 'update')
@@ -53,7 +53,7 @@ export const fitEngineRouter = router({
       await assertScoped('vacancy', input.vacancyId, ctx.access, ctx.user.id, ctx.user.organizationId);
       const data = await fitEngineService.getFitScoreForExplain(ctx.user.organizationId, input.candidateId, input.vacancyId);
       if (!data) throw new TRPCError({ code: 'NOT_FOUND', message: 'No hay FIT score calculado para este candidato' });
-      const { result, model } = await explainFit(ctx.user.organizationId, data);
+      const { result, model } = await explainFit(ctx.user.organizationId, fitScoreAsShown(data, hidesBelowMinimum(ctx.access.scope)));
       return { narrative: result.narrative, model };
     }),
 });

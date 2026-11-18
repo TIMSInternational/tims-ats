@@ -11,6 +11,49 @@ import { scopeWhereFor, assertScoped, assertSubjectInScope, requireOrgScope } fr
 import { ownScopeTaskUpdateDecision, sentKeys } from '../services/onboarding-self-service';
 import { onboardingPlanRepository } from '../repositories/onboarding-plan.repository';
 import type { AccessContext } from '../access/types';
+import { orgSettingsTimeZone, UTC_TIME_ZONE } from '@tims/shared';
+import {
+  START_PHASES,
+  onboardingDayIn,
+  phaseForDay,
+  startDateRangeForPhase,
+  startOfDayIn,
+} from '../services/onboarding-calendar';
+
+/** The organization's zone (UTC when it has none) and the instant today starts there (B-23). */
+async function organizationCalendar(orgId: string): Promise<{ timeZone: string; today: Date }> {
+  const org = await db.organization.findFirst({ where: { id: orgId }, select: { settings: true } });
+  const timeZone = orgSettingsTimeZone(org?.settings ?? null) ?? UTC_TIME_ZONE;
+  return { timeZone, today: startOfDayIn(timeZone, new Date()) };
+}
+
+// A buddy must be able to open the plan (the buddy arm of the onboardingPlan scope only helps a holder of
+// onboarding:read) — otherwise HR is told "asignado" while the buddy gets FORBIDDEN on every screen.
+async function assertBuddyCanReadOnboarding(orgId: string, buddyId: string): Promise<void> {
+  const eligible = await db.user.count({
+    where: {
+      id: buddyId,
+      organizationId: orgId,
+      isActive: true,
+      userRoles: {
+        some: {
+          role: {
+            organizationId: orgId,
+            isActive: true,
+            rolePermissions: { some: { permission: { module: 'onboarding', action: 'read' } } },
+          },
+        },
+      },
+    },
+  });
+  if (eligible === 0) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message:
+        'Esta persona no tiene acceso a Onboarding, así que no podría ver el plan. Elige a otra persona (por ejemplo, un colaborador o su líder).',
+    });
+  }
+}
 
 // Verify every referenced user id belongs to the caller's org (prevents attaching
 // onboarding records to another tenant's users / leaking their names via includes).
@@ -21,7 +64,7 @@ async function assertUsersInOrg(orgId: string, userIds: (string | null | undefin
   if (count !== ids.length) {
     throw new TRPCError({
       code: 'NOT_FOUND',
-      message: 'Usuario referenciado no encontrado en esta organizacion',
+      message: 'Usuario referenciado no encontrado en esta organización',
     });
   }
 }
@@ -42,15 +85,22 @@ export const onboardingRouter = router({
         limit: z.number().min(1).max(100).default(25),
         status: z.enum(['active', 'completed', 'cancelled']).optional(),
         phase: z.string().max(100).optional(),
+        // The phase the start date gives today in the org zone (services/onboarding-calendar.ts). Applied
+        // before paging, so an older hire stays reachable from its tab; prefer it over the stored `phase`.
+        startPhase: z.enum(START_PHASES).optional(),
         search: z.string().max(200).optional(),
         // Self-service ("Mi Onboarding"): only plans where the caller IS the hire.
         // Applied on top of the scope fragment, so it can only narrow.
         mine: z.boolean().optional(),
+        // "Personas que acompañas": only plans where the caller is the BUDDY. Also only narrows.
+        asBuddy: z.boolean().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { cursor, limit, status, phase, search, mine } = input;
+      const { cursor, limit, status, phase, startPhase, search, mine, asBuddy } = input;
       const scopeWhere = (await scopeWhereFor('onboardingPlan', ctx.access, ctx.user.id)) as Prisma.OnboardingPlanWhereInput;
+      const calendar = await organizationCalendar(ctx.user.organizationId);
+      const startDate = startPhase ? startDateRangeForPhase(startPhase, calendar.today) : undefined;
 
       const where: Prisma.OnboardingPlanWhereInput = {
         AND: [
@@ -58,8 +108,10 @@ export const onboardingRouter = router({
           scopeWhere,
           {
             ...(mine ? { userId: ctx.user.id } : {}),
+            ...(asBuddy ? { buddyId: ctx.user.id } : {}),
             ...(status ? { status } : {}),
             ...(phase ? { phase } : {}),
+            ...(startDate ? { startDate } : {}),
             ...(search
               ? {
                   user: {
@@ -86,12 +138,21 @@ export const onboardingRouter = router({
             include: {
               user: { select: { id: true, firstName: true, lastName: true, avatar: true, jobTitle: true } },
               buddy: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-              tasks: { select: { id: true, title: true, completed: true, responsible: true, phase: true } },
+              tasks: {
+                select: { id: true, title: true, completed: true, responsible: true, phase: true, dueDate: true },
+                orderBy: [{ order: 'asc' }, { id: 'asc' }],
+              },
               checkIns: { select: { id: true, status: true, type: true, scheduledDate: true, completedAt: true } },
             },
           });
 
-      const { items: plans, nextCursor } = takeCursorPage(rows, limit);
+      const { items, nextCursor } = takeCursorPage(rows, limit);
+      // The day and phase each hire is in today, on the same calendar basis as the startPhase filter, so a
+      // plan's badge always matches the tab that lists it.
+      const plans = items.map((plan) => {
+        const currentDay = onboardingDayIn(calendar.timeZone, plan.startDate);
+        return { ...plan, currentDay, currentPhase: phaseForDay(currentDay) };
+      });
 
       return { plans, nextCursor };
     }),
@@ -145,6 +206,12 @@ export const onboardingRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Verify referenced users belong to the caller's org (no cross-tenant refs)
       await assertUsersInOrg(ctx.user.organizationId, [input.userId, input.buddyId]);
+      if (input.buddyId) {
+        if (input.buddyId === input.userId) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El compañero guía debe ser otra persona' });
+        }
+        await assertBuddyCanReadOnboarding(ctx.user.organizationId, input.buddyId);
+      }
 
       // Narrow scopes may only create onboarding plans for users inside their
       // subject set (the new hire must be in-scope; no row exists yet).
@@ -191,7 +258,18 @@ export const onboardingRouter = router({
       // Scope + IDOR probe: a narrow scope must not reach an out-of-scope plan by id.
       await assertScoped('onboardingPlan', id, ctx.access, ctx.user.id, ctx.user.organizationId);
 
-      if (data.buddyId) await assertUsersInOrg(ctx.user.organizationId, [data.buddyId]);
+      if (data.buddyId) {
+        await assertUsersInOrg(ctx.user.organizationId, [data.buddyId]);
+        // The new hire cannot be their own buddy.
+        const target = await db.onboardingPlan.findFirst({
+          where: { id, organizationId: ctx.user.organizationId },
+          select: { userId: true },
+        });
+        if (target?.userId === data.buddyId) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'El compañero guía debe ser otra persona' });
+        }
+        await assertBuddyCanReadOnboarding(ctx.user.organizationId, data.buddyId);
+      }
 
       const update = {
         ...data,
@@ -524,8 +602,9 @@ export const onboardingRouter = router({
     requireOrgScope(ctx.access);
 
     const orgId = ctx.user.organizationId;
+    const { today } = await organizationCalendar(orgId);
 
-    const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns] =
+    const [activePlans, completedPlans, atRiskPlans, totalTasks, completedTasks, pendingCheckIns, overdueTasks] =
       await Promise.all([
         db.onboardingPlan.count({
           where: { organizationId: orgId, status: 'active' },
@@ -547,8 +626,12 @@ export const onboardingRouter = router({
             organizationId: orgId,
             plan: { status: 'active' },
             status: 'pending',
-            scheduledDate: { lt: new Date() },
+            scheduledDate: { lt: today },
           },
+        }),
+        // B-23: tasks of active plans whose due day has passed and that nobody completed.
+        db.onboardingTask.count({
+          where: { organizationId: orgId, completed: false, dueDate: { lt: today }, plan: { status: 'active' } },
         }),
       ]);
 
@@ -565,6 +648,7 @@ export const onboardingRouter = router({
       completedTasks,
       taskCompletionRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
       overdueCheckIns: pendingCheckIns,
+      overdueTasks,
       averageRiskScore: avgRisk._avg.riskScore ?? 0,
     };
   }),

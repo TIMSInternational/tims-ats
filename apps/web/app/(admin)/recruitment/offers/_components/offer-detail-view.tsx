@@ -4,19 +4,30 @@ import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { describeOfferActionError } from '../../../../../lib/offer-action-error';
 import { useI18n } from '../../../../../lib/i18n/index';
-import { Skeleton } from '../../../../../components';
+import { Skeleton, EmptyState, ErrorState } from '../../../../../components';
+import { Button } from '../../../../../components/button';
 import { ApprovalChain } from './approval-chain';
 import { OfferTimeline } from './offer-timeline';
 import { OfferValidations } from './offer-validations';
 import { OfferLetterModal } from './offer-letter-modal';
 import { HireConfirmationModal } from './hire-confirmation-modal';
+import { HireAccessNotice, type HireAccess } from './hire-access-notice';
 import { SigningLinkModal } from './signing-link-modal';
 import { OfferApprovalActions } from './offer-approval-actions';
-import { OFFER_STATUS_LABEL } from './offer-detail-view.helpers';
+import { offerStatusBadge } from './offer-detail-view.helpers';
 import { CandidateHeader, OfferCard } from './offer-detail-view.parts';
-import { useState } from 'react';
+import { offerDetailModel } from './offer-detail-model';
+import { OfferManageActions } from './offer-manage-actions';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCan } from '../../../../../lib/permissions';
+import { invalidateAfterHire } from './invalidate-after-hire';
+
+const BACK_ICON = (
+  <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M15.75 19.5L8.25 12l7.5-7.5" />
+  </svg>
+);
 
 interface OfferDetailViewProps {
   offerId: string;
@@ -28,26 +39,45 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
   const router = useRouter();
   const can = useCan();
   const utils = trpc.useUtils();
-  const offer = trpc.offer.getById.useQuery({ id: offerId });
+  const offer = trpc.offer.getById.useQuery(
+    { id: offerId },
+    {
+      // The candidate accepts in another session. Refresh when staff return to this offer,
+      // while it is awaiting a decision, or when the window regains focus.
+      refetchOnMount: 'always',
+      refetchInterval: (query) => (query.state.data?.status === 'sent' ? 30_000 : false),
+      refetchOnWindowFocus: (query) => (query.state.data?.status === 'sent' ? 'always' : false),
+    },
+  );
   const [showLetterModal, setShowLetterModal] = useState(false);
   const [showSigningModal, setShowSigningModal] = useState(false);
   const [signingUrl, setSigningUrl] = useState('');
   const [emailDeliveryAccepted, setEmailDeliveryAccepted] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [showHireConfirmation, setShowHireConfirmation] = useState(false);
+  // Stable dialog callbacks: Modal re-runs its focus effect when onClose changes identity, and this view
+  // re-renders on every refetch (every 30 s while an offer is sent).
+  const closeSigningModal = useCallback(() => setShowSigningModal(false), []);
+  const closeHireConfirmation = useCallback(() => setShowHireConfirmation(false), []);
+  // What the hire sent the new employee (invitation / set-password email / nothing) — shown until leaving.
+  const [hireAccess, setHireAccess] = useState<HireAccess | null>(null);
 
   const convertToEmployee = trpc.offer.convertToEmployee.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (hired) => {
       setShowHireConfirmation(false);
+      setHireAccess(hired.access);
       toast(t.offers.hiringAuthorized, { type: 'success' });
-      await Promise.all([
-        utils.offer.getById.invalidate({ id: offerId }),
-        utils.offer.list.invalidate(),
-        utils.onboarding.list.invalidate(),
-        utils.onboarding.getDashboardKpis.invalidate(),
-      ]);
+      await invalidateAfterHire(utils, offerId);
     },
-    onError: (error) => toast(error.message, { type: 'error' }),
+    // B-21: hire errors go through the same mapping as every other offer action (no raw server text).
+    onError: (error) =>
+      toast(
+        describeOfferActionError(error, {
+          forbidden: t.offers.errorForbiddenAction,
+          generic: t.offers.errorOfferAction,
+        }),
+        { type: 'error' },
+      ),
   });
   const [signingError, setSigningError] = useState<string | null>(null);
 
@@ -61,7 +91,10 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
       offer.refetch();
     },
     onError: (err) => {
-      const message = describeOfferActionError(err, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction });
+      const message = describeOfferActionError(err, {
+        forbidden: t.offers.errorForbiddenAction,
+        generic: t.offers.errorOfferAction,
+      });
       setSigningError(message);
       toast(message, { type: 'error' });
     },
@@ -69,7 +102,8 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
 
   if (offer.isLoading) {
     return (
-      <div className="space-y-4 animate-pulse">
+      <div className="space-y-4" aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-24 w-full rounded-xl" />
         <div className="flex flex-col md:flex-row gap-6">
@@ -80,48 +114,79 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
     );
   }
 
-  if (offer.error || !offer.data) {
+  // A missing or foreign offer is "not found"; any other failure (network, server) can be retried
+  // instead of being told the offer does not exist (writing.md › Best practices).
+  const errorCode = offer.error?.data?.code;
+  const isMissing = errorCode === 'NOT_FOUND' || errorCode === 'FORBIDDEN' || errorCode === 'BAD_REQUEST';
+  if (offer.error && !isMissing && !offer.data) {
+    return <ErrorState error={offer.error} onRetry={() => void offer.refetch()} />;
+  }
+  if (isMissing || !offer.data) {
     return (
-      <div className="text-center py-16">
-        <p className="text-[#8B8B8B] text-sm">{t.offers.notFound}</p>
-        <button onClick={onBack} className="mt-3 text-[13px] text-[#1F114C] hover:underline">{t.offers.backToList}</button>
-      </div>
+      <EmptyState
+        title={t.offers.notFound}
+        description={t.offers.notFoundDesc}
+        action={{ label: t.offers.backToList, onClick: onBack, variant: 'secondary' }}
+      />
     );
   }
 
   const o = offer.data;
-  const statusInfo = OFFER_STATUS_LABEL[o.status] ?? OFFER_STATUS_LABEL.draft;
   const validations = o.validations ?? [];
-  const legalChecks = (o.legalChecks ?? []) as Array<{ id: string; checkName: string; completed: boolean; completedAt: Date | string | null; completedByUser: { id: string; firstName: string; lastName: string } | null }>;
+  const legalChecks = (o.legalChecks ?? []) as Array<{
+    id: string;
+    checkName: string;
+    completed: boolean;
+    completedAt: Date | string | null;
+    completedByUser: { id: string; firstName: string; lastName: string } | null;
+  }>;
   const completedValidations = validations.filter((v) => v.status === 'passed' || v.status === 'waived').length;
   const totalValidations = validations.length;
   const progressPct = totalValidations > 0 ? (completedValidations / totalValidations) * 100 : 0;
-  const blockingValidationOpen = validations.some((v) => v.isBlocking && v.status !== 'passed' && v.status !== 'waived');
+  const blockingValidationOpen = validations.some(
+    (v) => v.isBlocking && v.status !== 'passed' && v.status !== 'waived',
+  );
   const legalCheckOpen = legalChecks.some((check) => !check.completed);
-  const canAuthorize = o.status === 'accepted' && !blockingValidationOpen && !legalCheckOpen && can('offer', 'approve');
-  const authorizationReason = blockingValidationOpen
-    ? t.offers.hireBlockedValidations
-    : legalCheckOpen ? t.offers.hireBlockedLegal : undefined;
+  const model = offerDetailModel(
+    {
+      status: o.status,
+      expiresAt: o.expiresAt,
+      validationsTotal: totalValidations,
+      legalChecksTotal: legalChecks.length,
+      blockingValidationOpen,
+      legalCheckOpen,
+      vacancyHires: o.vacancy._count?.offers,
+      vacancyPositions: o.vacancy.positions,
+      applicationStatus: o.application?.status ?? null,
+    },
+    { canCreate: can('offer', 'create'), canUpdate: can('offer', 'update'), canApprove: can('offer', 'approve') },
+    t.offers,
+  );
+  const statusInfo = offerStatusBadge(model.displayStatus, t.offers);
+  const refetchOffer = () => {
+    void offer.refetch();
+  };
   const benefits = o.benefits as Record<string, string> | null;
   const benefitList = benefits ? Object.values(benefits) : [];
   const terms = o.terms as Record<string, string> | null;
 
   return (
     <div className="space-y-6">
-      <button onClick={onBack} className="flex items-center gap-1.5 text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+      <Button variant="tertiary" size="sm" className="-ml-3" onClick={onBack} icon={BACK_ICON}>
         {t.offers.backToList}
-      </button>
+      </Button>
 
       <CandidateHeader
         offer={o}
         statusLabel={statusInfo.label}
+        statusTone={statusInfo.tone}
         completedValidations={completedValidations}
         totalValidations={totalValidations}
         progressPct={progressPct}
-        canAuthorize={canAuthorize}
-        authorizationReason={authorizationReason}
-        showHireAction={o.status === 'accepted' && can('offer', 'approve')}
+        showValidations={model.showValidations}
+        canAuthorize={model.hire.enabled}
+        authorizationReason={model.hire.reason}
+        showHireAction={model.hire.visible}
         isConverted={o.status === 'converted'}
         isAuthorizing={convertToEmployee.isPending}
         onAuthorize={() => setShowHireConfirmation(true)}
@@ -129,37 +194,63 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
         onViewLetter={() => setShowLetterModal(true)}
         onSendForSigning={() => generateSigningLink.mutate({ offerId })}
         isGeneratingLink={generateSigningLink.isPending}
-        // Re-sending a SENT offer re-emails the live bearer link, which the server allows only to offer:update.
-        canSendForSigning={o.status === 'approved' || (o.status === 'sent' && can('offer', 'update'))}
+        sendForSigning={model.sendForSigning}
+        manageActions={
+          <OfferManageActions
+            offer={{
+              id: o.id,
+              status: o.status,
+              candidateId: o.candidate.id,
+              applicationId: o.application?.id ?? null,
+              vacancy: o.vacancy,
+              salary: o.salary,
+              currency: o.currency,
+              startDate: o.startDate,
+              contractType: o.contractType,
+              terms: o.terms,
+              benefits: o.benefits,
+            }}
+            canEdit={model.canEdit}
+            canWithdraw={model.canWithdraw}
+            canCreateNew={model.canCreateNew}
+            onChanged={refetchOffer}
+          />
+        }
       />
+      {hireAccess && <HireAccessNotice access={hireAccess} loginUrl={`${window.location.origin}/login`} />}
       {signingError && (
-        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">{signingError}</p>
+        <p role="alert" className="rounded-lg bg-danger-bg px-4 py-2 text-callout text-danger">
+          {signingError}
+        </p>
       )}
 
       {/* Two columns */}
-      <div className="flex flex-col md:flex-row gap-6">
-        {/* LEFT: Offer details 55% */}
-        <div className="w-full md:flex-[55] space-y-4">
-          <OfferCard
-            offer={o}
-            statusInfo={statusInfo}
-            benefitList={benefitList}
-            terms={terms}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* LEFT: Offer details 55% (full width when the offer has no pre-employment checks, B-20) */}
+        <div className={`w-full space-y-4 ${model.showValidations ? 'lg:flex-[55]' : ''}`}>
+          {/* What THIS viewer can do (request, decide, withdraw) comes first; it renders nothing otherwise. */}
+          <OfferApprovalActions
+            offerId={offerId}
+            status={o.status}
+            approvals={o.approvals ?? []}
+            onUpdated={refetchOffer}
           />
+          <OfferCard offer={o} benefitList={benefitList} terms={terms} />
           <ApprovalChain approvals={o.approvals ?? []} />
-          <OfferApprovalActions offerId={offerId} status={o.status} approvals={o.approvals ?? []} onUpdated={() => { void offer.refetch(); }} />
           <OfferTimeline offer={o} />
         </div>
 
         {/* RIGHT: Validations 45% */}
-        <div className="w-full md:flex-[45]">
-          <OfferValidations
-            offerId={offerId}
-            validations={validations}
-            legalChecks={legalChecks}
-            readOnly={o.status === 'converted'}
-          />
-        </div>
+        {model.showValidations && (
+          <div className="w-full lg:flex-[45]">
+            <OfferValidations
+              offerId={offerId}
+              validations={validations}
+              legalChecks={legalChecks}
+              readOnly={o.status === 'converted'}
+            />
+          </div>
+        )}
       </div>
 
       {/* Offer Letter Modal */}
@@ -187,16 +278,18 @@ export function OfferDetailView({ offerId, onBack }: OfferDetailViewProps) {
           signingUrl={signingUrl}
           emailDeliveryAccepted={emailDeliveryAccepted}
           recipientEmail={recipientEmail}
-          onClose={() => setShowSigningModal(false)}
+          onClose={closeSigningModal}
         />
       )}
 
       {showHireConfirmation && (
         <HireConfirmationModal
           candidateName={`${o.candidate.firstName} ${o.candidate.lastName}`}
+          accessEmail={o.candidate.email}
+          startDate={o.startDate}
           initialJobTitle={o.vacancy.title}
           isPending={convertToEmployee.isPending}
-          onClose={() => setShowHireConfirmation(false)}
+          onClose={closeHireConfirmation}
           onConfirm={(jobTitle) => convertToEmployee.mutate({ offerId, jobTitle })}
         />
       )}

@@ -1,11 +1,23 @@
 'use client';
 
+import { readJobProfile } from '@tims/shared';
 import { useI18n } from '../../../../../lib/i18n';
+import { ProgressBar } from '../../../../../components';
 
-interface DiscRange { min: number; max: number }
-interface Competency { name: string; level: number }
-interface Kpi { name: string; target: string }
-interface Requirement { text: string; isRequired: boolean }
+const SUBHEAD = 'mb-2 text-callout font-semibold text-secondary';
+
+interface DiscRange {
+  min: number;
+  max: number;
+}
+interface Kpi {
+  name: string;
+  target: string;
+}
+interface Requirement {
+  text: string;
+  isRequired: boolean;
+}
 
 interface JobProfileCardProps {
   jobProfile: {
@@ -24,38 +36,46 @@ export function JobProfileCard({ jobProfile }: JobProfileCardProps) {
   const disc = jobProfile.discTargets as Record<string, DiscRange> | null;
   const pca = jobProfile.pcaExpected as Record<string, DiscRange> | null;
   const mil = jobProfile.milExpected as { minScore?: number } | null;
-  const competencies = (Array.isArray(jobProfile.competencies) ? jobProfile.competencies : []) as Competency[];
+  // Same reader as the interview scorecard: what is listed here is exactly what evaluators rate.
+  const competencies = readJobProfile(jobProfile).competencies;
   const kpis = (Array.isArray(jobProfile.kpis) ? jobProfile.kpis : []) as Kpi[];
   const requirements = (Array.isArray(jobProfile.requirements) ? jobProfile.requirements : []) as Requirement[];
 
   const discSource = pca ?? disc;
-  const discEntries = discSource ? [
-    { label: t.vacancies.dominance, key: 'dominance' },
-    { label: t.vacancies.influence, key: 'influence' },
-    { label: t.vacancies.steadiness, key: 'steadiness' },
-    { label: t.vacancies.compliance, key: 'compliance' },
-  ] : [];
+  const discEntries = discSource
+    ? [
+        { label: t.vacancies.dominance, key: 'dominance' },
+        { label: t.vacancies.influence, key: 'influence' },
+        { label: t.vacancies.steadiness, key: 'steadiness' },
+        { label: t.vacancies.compliance, key: 'compliance' },
+      ]
+    : [];
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-4">{t.vacancies.jobProfile}</h3>
+    <section
+      aria-labelledby="vacancy-job-profile-title"
+      className="rounded-xl border border-border bg-white p-5 shadow-card"
+    >
+      <h2 id="vacancy-job-profile-title" className="mb-4 text-heading font-semibold text-brand">
+        {t.vacancies.jobProfileTitle}
+      </h2>
 
       {/* DISC Targets */}
       {discSource && discEntries.length > 0 && (
         <div className="mb-4">
-          <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.pcaExpected}</p>
-          <div className="flex gap-2">
+          <h3 className={SUBHEAD}>{t.vacancies.pcaExpected}</h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {discEntries.map((entry) => {
               const range = (discSource as Record<string, DiscRange>)[entry.key];
               if (!range) return null;
               const avg = (range.min + range.max) / 2;
               return (
-                <div key={entry.key} className="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center">
-                  <p className="text-[10px] text-[#8B8B8B]">{entry.label}</p>
-                  <p className="text-[18px] font-bold text-[#1F114C]">{range.min}-{range.max}</p>
-                  <div className="w-full bg-[#EDEDED] rounded-full h-1.5 mt-1">
-                    <div className="h-1.5 bg-[#1F114C] rounded-full" style={{ width: `${avg}%` }} />
-                  </div>
+                <div key={entry.key} className="rounded-lg bg-surface p-3 text-center">
+                  <p className="text-caption text-secondary">{entry.label}</p>
+                  <p className="text-xl font-semibold tabular-nums text-brand">
+                    {range.min}–{range.max}
+                  </p>
+                  <ProgressBar value={avg} label={entry.label} hideLabel kind="meter" className="mt-1" />
                 </div>
               );
             })}
@@ -66,12 +86,18 @@ export function JobProfileCard({ jobProfile }: JobProfileCardProps) {
       {/* MIL Expected */}
       {mil?.minScore && (
         <div className="mb-4">
-          <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.milExpected}</p>
+          <h3 className={SUBHEAD}>{t.vacancies.milExpected}</h3>
           <div className="flex items-center gap-3">
-            <div className="flex-1 bg-[#F6F6F6] rounded-full h-3">
-              <div className="h-3 bg-[#5C4B99] rounded-full" style={{ width: `${mil.minScore}%` }} />
-            </div>
-            <span className="text-[13px] text-[#1F114C] font-medium w-16">{t.vacancies.minScore}: {mil.minScore}</span>
+            <ProgressBar
+              value={mil.minScore}
+              label={t.vacancies.milExpected}
+              hideLabel
+              kind="meter"
+              className="flex-1"
+            />
+            <span className="shrink-0 text-body font-medium tabular-nums text-brand">
+              {t.vacancies.minScore}: {mil.minScore}
+            </span>
           </div>
         </div>
       )}
@@ -79,51 +105,72 @@ export function JobProfileCard({ jobProfile }: JobProfileCardProps) {
       {/* Competencies */}
       {competencies.length > 0 && (
         <div className="mb-4">
-          <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.competencies}</p>
-          <div className="grid grid-cols-2 gap-2">
-            {competencies.map((c, i) => (
-              <div key={i} className="flex items-center justify-between bg-[#F6F6F6] rounded-lg px-3 py-2">
-                <span className="text-[12px] text-[#333]">{c.name}</span>
-                <div className="flex gap-0.5">
-                  {Array.from({ length: 5 }).map((_, j) => (
-                    <span key={j} className={`w-2 h-2 rounded-full ${j < c.level ? 'bg-[#1F114C]' : 'bg-[#EDEDED]'}`} />
-                  ))}
+          <h3 className={SUBHEAD}>{t.vacancies.competencies}</h3>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {competencies.map((c) => (
+              <div key={c.key} className="flex items-center justify-between gap-2 rounded-lg bg-surface px-3 py-2">
+                <div className="min-w-0">
+                  <span className="break-words text-body text-primary">{c.name}</span>
+                  {c.description && <p className="break-words text-caption text-secondary">{c.description}</p>}
                 </div>
+                {c.targetLevel !== null && (
+                  <div
+                    className="flex gap-0.5 shrink-0"
+                    role="img"
+                    aria-label={t.vacancies.competencyLevelBadge
+                      .replace('{n}', String(c.targetLevel))
+                      .replace('{max}', String(c.scaleMax))}
+                  >
+                    {Array.from({ length: c.scaleMax }).map((_, j) => (
+                      <span
+                        key={j}
+                        className={`size-2 rounded-full ${j < (c.targetLevel ?? 0) ? 'bg-brand' : 'bg-field-border'}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Requirements */}
+      {/* Requirements: two labelled lists, so required vs nice-to-have is never shown by a dot colour alone. */}
       {requirements.length > 0 && (
         <div className="mb-4">
-          <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.mandatoryReqs}</p>
-          <div className="space-y-1.5">
-            {requirements.map((r, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${r.isRequired ? 'bg-[#DD0C15]' : 'bg-[#8B8B8B]'}`} />
-                <span className="text-[12px] text-[#333]">{r.text}</span>
+          <h3 className={SUBHEAD}>{t.vacancies.mandatoryReqs}</h3>
+          {[
+            { key: 'required', label: t.vacancies.requiredReqs, items: requirements.filter((r) => r.isRequired) },
+            { key: 'desired', label: t.vacancies.desiredReqs, items: requirements.filter((r) => !r.isRequired) },
+          ]
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
+              <div key={group.key} className="mb-2 last:mb-0">
+                <h4 className="text-callout font-semibold text-secondary">{group.label}</h4>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-body text-primary">
+                  {group.items.map((r, i) => (
+                    <li key={i}>{r.text}</li>
+                  ))}
+                </ul>
               </div>
             ))}
-          </div>
         </div>
       )}
 
       {/* KPIs */}
       {kpis.length > 0 && (
         <div>
-          <p className="text-[12px] text-[#585858] font-medium mb-2">{t.vacancies.kpis}</p>
-          <div className="flex gap-3">
+          <h3 className={SUBHEAD}>{t.vacancies.kpis}</h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {kpis.map((kpi, i) => (
-              <div key={i} className="flex-1 bg-[#F6F6F6] rounded-lg p-2.5 text-center">
-                <p className="text-[10px] text-[#8B8B8B]">{kpi.name}</p>
-                <p className="text-[14px] font-bold text-[#1F114C]">{kpi.target}</p>
+              <div key={i} className="rounded-lg bg-surface p-2.5 text-center">
+                <p className="text-caption text-secondary">{kpi.name}</p>
+                <p className="text-subheading font-semibold text-brand">{kpi.target}</p>
               </div>
             ))}
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

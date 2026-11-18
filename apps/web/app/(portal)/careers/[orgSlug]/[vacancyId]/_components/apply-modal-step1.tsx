@@ -1,10 +1,10 @@
 'use client';
 
+import { useState } from 'react';
+import { Field } from '../../../../../../components/field';
+import { TextInput } from '../../../../../../components/text-input';
 import { useI18n } from '../../../../../../lib/i18n';
-
-const inputCls =
-  'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] disabled:opacity-50 disabled:bg-[#FAFAFA]';
-const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
+import { isValidApplyEmail } from '../_lib/apply-fields';
 
 interface ApplyModalStep1Props {
   firstName: string;
@@ -17,6 +17,10 @@ interface ApplyModalStep1Props {
   setPhone: (v: string) => void;
   location: string;
   setLocation: (v: string) => void;
+  /** The server rejected the email: show the field error even before the field is touched again. */
+  emailRejected?: boolean;
+  /** "Siguiente" is disabled: say which fields it waits for. */
+  showRequiredHint?: boolean;
 }
 
 export function ApplyModalStep1({
@@ -30,72 +34,84 @@ export function ApplyModalStep1({
   setPhone,
   location,
   setLocation,
+  emailRejected = false,
+  showRequiredHint = false,
 }: ApplyModalStep1Props) {
   const { t } = useI18n();
   const p = t.portal;
-
+  const [emailTouched, setEmailTouched] = useState(false);
+  const showEmailError = emailRejected || (emailTouched && email.trim().length > 0 && !isValidApplyEmail(email));
+  // Three of the five fields are required, so the two optional ones are the ones marked.
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{p.firstNameLabel}</label>
-          <input
-            type="text"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            maxLength={100}
-            className={inputCls}
-            placeholder="Maria"
-            autoFocus
-          />
-        </div>
-        <div>
-          <label className={labelCls}>{p.lastNameLabel}</label>
-          <input
-            type="text"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            maxLength={100}
-            className={inputCls}
-            placeholder={p.lastNamePlaceholder}
-          />
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={p.firstNameLabel}>
+          {(c) => (
+            <TextInput
+              {...c}
+              required
+              aria-required="true"
+              autoComplete="given-name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              maxLength={100}
+              placeholder={p.firstNamePlaceholder}
+              autoFocus
+            />
+          )}
+        </Field>
+        <Field label={p.lastNameLabel}>
+          {(c) => (
+            <TextInput
+              {...c}
+              required
+              aria-required="true"
+              autoComplete="family-name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              maxLength={100}
+              placeholder={p.lastNamePlaceholder}
+            />
+          )}
+        </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>{p.emailLabel}</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            maxLength={254}
-            className={inputCls}
-            placeholder="maria.lopez@gmail.com"
-          />
-        </div>
-        <div>
-          <label className={labelCls}>{p.phoneLabel}</label>
-          <input
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label={p.emailLabel} error={showEmailError ? p.emailInvalid : undefined}>
+          {(c) => (
+            <TextInput
+              {...c}
+              required
+              aria-required="true"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmailTouched(true)}
+              maxLength={254}
+              placeholder="maria.lopez@gmail.com"
+            />
+          )}
+        </Field>
+        <Field label={p.phoneLabel} optional>
+          <TextInput
             type="tel"
+            autoComplete="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             maxLength={30}
-            className={inputCls}
-            placeholder="+57 310 123 4567"
+            placeholder={p.phonePlaceholder}
           />
-        </div>
+        </Field>
       </div>
-      <div>
-        <label className={labelCls}>{p.locationLabel}</label>
-        <input
-          type="text"
+      <Field label={p.locationLabel} optional>
+        <TextInput
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           maxLength={200}
-          className={inputCls}
           placeholder={p.cityCountryPlaceholder}
         />
-      </div>
+      </Field>
+      {showRequiredHint && <p className="text-callout text-secondary">{p.step1RequiredHint}</p>}
     </div>
   );
 }

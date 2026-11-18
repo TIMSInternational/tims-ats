@@ -3,6 +3,8 @@
  * Pure functions: the caller passes the active locale and the i18n labels.
  */
 
+import { formatCandidateMoney, formatCandidateNumber } from '../../../../../lib/candidate-format';
+
 export type PortalLocale = 'ES' | 'EN';
 
 export interface PortalSalary {
@@ -18,8 +20,6 @@ export interface SalaryLabels {
   perMonth: string;
   perYear: string;
 }
-
-const NUMBER_LOCALE: Record<PortalLocale, string> = { ES: 'es-CO', EN: 'en-US' };
 
 function positiveNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
@@ -47,22 +47,44 @@ export function salaryPeriodLabel(period: string | undefined, labels: SalaryLabe
   return null;
 }
 
-/** Amount only, e.g. "COP 4.500.000 – 6.000.000" (es) or "COP 4,500,000 – 6,000,000" (en). */
+/**
+ * Amount only, with es-CR conventions: "₡4 500 000 – ₡6 000 000" for colones, "USD 90 000 – USD 120 000"
+ * for any other currency (never a bare "$"), plain digits when no currency is stored.
+ */
 export function formatSalaryAmount(salary: PortalSalary, locale: PortalLocale, labels: SalaryLabels): string {
-  const nf = new Intl.NumberFormat(NUMBER_LOCALE[locale], { maximumFractionDigits: 0 });
-  const prefix = salary.currency ? `${salary.currency} ` : '';
+  const fmt = (amount: number) =>
+    salary.currency ? formatCandidateMoney(amount, salary.currency, locale) : formatCandidateNumber(amount, locale);
   if (salary.min !== undefined && salary.max !== undefined) {
-    return `${prefix}${nf.format(salary.min)} – ${nf.format(salary.max)}`;
+    return `${fmt(salary.min)} – ${fmt(salary.max)}`;
   }
-  if (salary.min !== undefined) return `${labels.salaryFrom} ${prefix}${nf.format(salary.min)}`;
-  return `${labels.salaryUpTo} ${prefix}${nf.format(salary.max ?? 0)}`;
+  if (salary.min !== undefined) return `${labels.salaryFrom} ${fmt(salary.min)}`;
+  return `${labels.salaryUpTo} ${fmt(salary.max ?? 0)}`;
 }
 
-/** Amount plus period, e.g. "COP 4.500.000 – 6.000.000 / mes". */
+/** Amount plus period, e.g. "₡4 500 000 – ₡6 000 000 / mes". */
 export function formatPortalSalary(salary: PortalSalary, locale: PortalLocale, labels: SalaryLabels): string {
   const period = salaryPeriodLabel(salary.period, labels);
   const amount = formatSalaryAmount(salary, locale, labels);
   return period ? `${amount} ${period}` : amount;
+}
+
+/**
+ * The visible text of each item of a job-profile list. `requirements` are stored as `{ text }` and
+ * `competencies` as `{ name }` objects (packages/api job-profile schemas); older or seeded rows may hold
+ * plain strings. Anything else is dropped instead of being rendered as "[object Object]".
+ */
+export function profileItemLabels(raw: unknown, field: 'text' | 'name'): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item: unknown) => {
+      if (typeof item === 'string') return item.trim();
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        const value = (item as Record<string, unknown>)[field];
+        return typeof value === 'string' ? value.trim() : '';
+      }
+      return '';
+    })
+    .filter((label) => label.length > 0);
 }
 
 /** Maps a stored enum value to its label; free-form legacy values are shown as typed. */

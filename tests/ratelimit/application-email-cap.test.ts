@@ -1,30 +1,25 @@
 import { createHash } from 'node:crypto';
-import { resolve } from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+
+import { DYNAMODB_SDK, installFakeDynamo, stubSharedStoreEnv } from './fake-dynamodb';
 
 // #308 security fix: the unauthenticated apply form chooses the recipient of the
 // "application received" email, so the platform caps it at ONE per address per 24h.
-// Covers both the in-memory fallback (no Upstash env: local dev + tests) and the Upstash
-// path (a fake Ratelimit), including the fail-closed timeout / error behaviour.
+// Covers both the in-memory fallback (no shared store: local dev + tests) and the DynamoDB
+// path (an in-memory fake of the SDK), including the fail-closed timeout / error behaviour.
 
 const RATE_LIMIT = '../../packages/api/src/middleware/rate-limit';
-// pnpm hosts @upstash/* under packages/api only; mock them by that path so the ids match
-// what rate-limit.ts resolves.
-const UPSTASH_RATELIMIT = resolve(__dirname, '../../packages/api/node_modules/@upstash/ratelimit');
-const UPSTASH_REDIS = resolve(__dirname, '../../packages/api/node_modules/@upstash/redis');
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
-  vi.doUnmock(UPSTASH_RATELIMIT);
-  vi.doUnmock(UPSTASH_REDIS);
+  vi.doUnmock(DYNAMODB_SDK);
   vi.resetModules();
 });
 
 async function loadInMemory() {
   vi.resetModules();
-  vi.stubEnv('UPSTASH_REDIS_REST_URL', '');
-  vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '');
+  stubSharedStoreEnv('development', '', '');
   return import(RATE_LIMIT);
 }
 
@@ -45,58 +40,52 @@ describe('consumeApplicationEmailQuota — in-memory fallback', () => {
   });
 });
 
-describe('consumeApplicationEmailQuota — Upstash path', () => {
-  async function loadWithFakeUpstash(limit: (id: string) => Promise<{ success: boolean; reason?: string }>) {
+describe('consumeApplicationEmailQuota — shared store path', () => {
+  async function loadWithFakeDynamo(mode: 'ok' | 'hang' | 'error') {
     vi.resetModules();
-    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://fake.upstash.test');
-    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'fake-token');
-    const prefixes: string[] = [];
-    vi.doMock(UPSTASH_REDIS, () => ({ Redis: class {} }));
-    vi.doMock(UPSTASH_RATELIMIT, () => {
-      class Ratelimit {
-        constructor(opts: { prefix: string }) {
-          prefixes.push(opts.prefix);
-        }
-        limit(id: string) {
-          return limit(id);
-        }
-        static slidingWindow() {
-          return {};
-        }
-        static fixedWindow() {
-          return {};
-        }
-      }
-      return { Ratelimit };
-    });
+    stubSharedStoreEnv('production');
+    const fake = installFakeDynamo(mode);
     const mod = await import(RATE_LIMIT);
-    return { mod, prefixes };
+    return { mod, fake };
   }
 
-  it('keys the limiter on sha256(lowercased address), never the raw address', async () => {
-    const limit = vi.fn().mockResolvedValue({ success: true });
-    const { mod, prefixes } = await loadWithFakeUpstash(limit);
+  it('keys the claim on sha256(lowercased address), never the raw address', async () => {
+    const { mod, fake } = await loadWithFakeDynamo('ok');
 
     expect(await mod.consumeApplicationEmailQuota('Ana@Example.com')).toBe(true);
-    expect(prefixes).toContain('tims:ratelimit:application-email');
-    const key = limit.mock.calls[0]![0] as string;
-    expect(key).toBe(createHash('sha256').update('ana@example.com').digest('hex'));
-    expect(key).not.toContain('@');
+    const put = fake.calls.find((c) => c.op === 'PutItem')!;
+    const pk = put.input.Item!.pk.S!;
+    expect(pk).toBe(`ae#${createHash('sha256').update('ana@example.com').digest('hex')}`);
+    expect(pk).not.toContain('@');
   });
 
-  it('denies when the cap is hit, and fails closed on an Upstash timeout', async () => {
-    const limit = vi
-      .fn()
-      .mockResolvedValueOnce({ success: false })
-      .mockResolvedValueOnce({ success: true, reason: 'timeout' });
-    const { mod } = await loadWithFakeUpstash(limit);
+  it('allows one send per address per rolling 24h, independent per address', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'));
+    const { mod } = await loadWithFakeDynamo('ok');
 
+    expect(await mod.consumeApplicationEmailQuota('ana@example.com')).toBe(true);
+    expect(await mod.consumeApplicationEmailQuota(' ANA@Example.com ')).toBe(false);
+    expect(await mod.consumeApplicationEmailQuota('luis@example.com')).toBe(true);
+
+    vi.setSystemTime(new Date('2026-10-01T11:59:59Z'));
     expect(await mod.consumeApplicationEmailQuota('ana@example.com')).toBe(false);
-    expect(await mod.consumeApplicationEmailQuota('ana@example.com')).toBe(false);
+    // An expired claim TTL has not deleted yet must not block the next send.
+    vi.setSystemTime(new Date('2026-10-01T12:00:01Z'));
+    expect(await mod.consumeApplicationEmailQuota('ana@example.com')).toBe(true);
   });
 
-  it('propagates an Upstash error so the caller skips the email', async () => {
-    const { mod } = await loadWithFakeUpstash(() => Promise.reject(new Error('ECONNRESET')));
-    await expect(mod.consumeApplicationEmailQuota('ana@example.com')).rejects.toThrow('ECONNRESET');
+  it('fails closed (rejects, so the caller skips the email) on a store error', async () => {
+    const { mod } = await loadWithFakeDynamo('error');
+    await expect(mod.consumeApplicationEmailQuota('ana@example.com')).rejects.toThrow();
+  });
+
+  it('fails closed on a hanging store within the deadline', async () => {
+    vi.useFakeTimers();
+    const { mod } = await loadWithFakeDynamo('hang');
+    const p = mod.consumeApplicationEmailQuota('ana@example.com');
+    const assertion = expect(p).rejects.toMatchObject({ name: 'SharedLimiterTimeoutError' });
+    await vi.advanceTimersByTimeAsync(mod.SHARED_LIMIT_TIMEOUT_MS);
+    await assertion;
   });
 });

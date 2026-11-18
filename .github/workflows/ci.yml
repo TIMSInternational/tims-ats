@@ -216,8 +216,6 @@ jobs:
       - run: pnpm --filter @tims/db exec prisma generate --schema prisma/schema
       - name: Build
         run: pnpm --filter @tims/web build
-        env:
-          SKIP_ENV_VALIDATION: "true"
 
   # ========================================
   # Verification gate (#38)

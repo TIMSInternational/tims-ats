@@ -23,12 +23,14 @@ public sealed record CandidateJoinResult(string Outcome, DateTime? ScheduledAt =
 /// The interview resolved by the join-token hash, before any tenant context exists.
 /// <see cref="ApplicationClosed"/> is true when the interview's application was rejected or withdrawn (or no longer
 /// resolves in the interview's organization); <see cref="OrganizationInactive"/> when the organization is suspended
-/// (<c>is_active = false</c>) or soft-deleted (#329 item 5). Either revokes the link before its time window does.
+/// (<c>is_active = false</c>) or soft-deleted (#329 item 5). <see cref="ConsentWithdrawn"/> also covers a withdrawal
+/// recorded against another candidate row with the same normalized email in this organization (#346). Any of these
+/// states revokes the link before its time window does.
 /// </summary>
 public sealed record CandidateJoinInterview(Guid Id, Guid OrganizationId, string Type, string Status,
     DateTime ScheduledAt, int DurationMinutes, DateTime? CancelledAt, DateTime? TokenExpiresAt, string? MeetingUrl,
     string? CandidateFirstName, string? CandidateLastName, bool ApplicationClosed = false,
-    bool OrganizationInactive = false);
+    bool OrganizationInactive = false, bool ConsentWithdrawn = false);
 
 /// <summary>What the join audit records. Never the token, never the token hash.</summary>
 public sealed record CandidateJoinAudit(Guid InterviewId, Guid OrganizationId, string Outcome, string? IpAddress,

@@ -69,7 +69,7 @@ export const pipelineAnalyticsService = {
   // Next best action (Bedrock-backed via the 'pipeline-optimizer' agent).
   async getNextBestAction(orgId: string, applicationId: string) {
     const app = await pipelineRepository.getApplicationForAction(orgId, applicationId);
-    if (!app) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicacion no encontrada' });
+    if (!app) throw new TRPCError({ code: 'NOT_FOUND', message: 'Aplicación no encontrada' });
 
     const candidateName = `${app.candidate.firstName} ${app.candidate.lastName}`;
     const { result, model } = await suggestNextBestAction(orgId, {
