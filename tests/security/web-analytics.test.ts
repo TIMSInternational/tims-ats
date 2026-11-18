@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { track } = vi.hoisted(() => ({ track: vi.fn() }));
@@ -7,7 +7,11 @@ const { track } = vi.hoisted(() => ({ track: vi.fn() }));
 vi.mock('../../apps/web/node_modules/@vercel/analytics', () => ({ track }));
 
 import {
+  FUNNEL_MAX_RETRIES,
+  FUNNEL_RETRY_MS,
+  flushCareersFunnel,
   isWebAnalyticsEnabled,
+  MAX_PENDING_FUNNEL_STEPS,
   scrubAnalyticsEvent,
   scrubAnalyticsUrl,
   trackCareersFunnel,
@@ -20,6 +24,23 @@ const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 const ORIGIN = 'https://ats.example.com';
 const UUID = '0d6c3f4e-7a1b-4c2d-9e8f-1a2b3c4d5e6f';
 
+/** Every .ts/.tsx source file under apps/web, outside node_modules and build output. */
+function webSourceFiles(dir: string = resolve(ROOT, 'apps/web')): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (name === 'node_modules' || name === '.next' || name === 'public') continue;
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) out.push(...webSourceFiles(path));
+    else if (/\.tsx?$/.test(name)) out.push(path);
+  }
+  return out;
+}
+
+/** Stands in for the browser: `va` present means <Analytics/> has set up its queue. */
+function stubWindow(withQueue: boolean): void {
+  vi.stubGlobal('window', withQueue ? { va: vi.fn() } : {});
+}
+
 function directive(csp: string, name: string): string[] {
   return (csp.split('; ').find((d) => d.startsWith(`${name} `)) ?? '').split(' ');
 }
@@ -29,6 +50,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Drain anything a test left waiting (this also cancels a pending retry), then restore the real globals.
+  stubWindow(true);
+  flushCareersFunnel();
+  track.mockReset();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
@@ -39,11 +66,19 @@ describe('Web Analytics is off by default', () => {
     expect(isWebAnalyticsEnabled('true')).toBe(true);
   });
 
-  it('the root layout mounts the component only behind the flag, and nothing else imports the package', () => {
+  it('the root layout mounts the component only behind the flag, and it always passes the scrubber', () => {
     const layout = read('apps/web/app/layout.tsx');
     expect(layout).toMatch(/\{isWebAnalyticsEnabled\(\) && <WebAnalytics \/>\}/);
     const component = read('apps/web/components/web-analytics.tsx');
     expect(component).toMatch(/<Analytics beforeSend=\{scrubAnalyticsEvent\} \/>/);
+  });
+
+  it('nothing else imports the package', () => {
+    const importers = webSourceFiles()
+      .filter((path) => /from '@vercel\/analytics[^']*'/.test(readFileSync(path, 'utf8')))
+      .map((path) => relative(ROOT, path))
+      .sort();
+    expect(importers).toEqual(['apps/web/components/web-analytics.tsx', 'apps/web/lib/analytics/web-analytics.ts']);
   });
 
   it('the package is pinned to an exact version', () => {
@@ -90,20 +125,68 @@ describe('what a page view may report', () => {
 
 describe('careers funnel events', () => {
   it('send nothing while analytics is off', () => {
+    stubWindow(true);
     trackCareersFunnel('careers_view', 'acme', false);
     expect(track).not.toHaveBeenCalled();
   });
 
   it('carry only the public careers slug when on', () => {
+    stubWindow(true);
     trackCareersFunnel('application_submitted', 'acme', true);
     expect(track).toHaveBeenCalledWith('application_submitted', { org: 'acme' });
   });
 
   it('never throw into the candidate flow', () => {
+    stubWindow(true);
     track.mockImplementationOnce(() => {
       throw new Error('blocked');
     });
     expect(() => trackCareersFunnel('apply_started', 'acme', true)).not.toThrow();
+  });
+
+  it('wait for the analytics queue instead of being dropped, then go out in order', () => {
+    vi.useFakeTimers();
+    stubWindow(false);
+    trackCareersFunnel('careers_view', 'acme', true);
+    trackCareersFunnel('apply_started', 'acme', true);
+    vi.advanceTimersByTime(FUNNEL_RETRY_MS * 3);
+    expect(track).not.toHaveBeenCalled();
+
+    stubWindow(true);
+    vi.advanceTimersByTime(FUNNEL_RETRY_MS);
+    expect(track.mock.calls).toEqual([
+      ['careers_view', { org: 'acme' }],
+      ['apply_started', { org: 'acme' }],
+    ]);
+  });
+
+  it('go out as soon as <WebAnalytics/> flushes, without waiting for the retry', () => {
+    vi.useFakeTimers();
+    stubWindow(false);
+    trackCareersFunnel('careers_view', 'acme', true);
+    stubWindow(true);
+    flushCareersFunnel();
+    expect(track).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(FUNNEL_RETRY_MS * 5);
+    expect(track).toHaveBeenCalledTimes(1);
+  });
+
+  it('are bounded while waiting, and dropped if analytics never starts', () => {
+    vi.useFakeTimers();
+    stubWindow(false);
+    for (let i = 0; i < MAX_PENDING_FUNNEL_STEPS + 5; i++) trackCareersFunnel('careers_view', `org-${i}`, true);
+    stubWindow(true);
+    flushCareersFunnel();
+    expect(track).toHaveBeenCalledTimes(MAX_PENDING_FUNNEL_STEPS);
+
+    track.mockReset();
+    stubWindow(false);
+    trackCareersFunnel('careers_view', 'acme', true);
+    vi.advanceTimersByTime(FUNNEL_RETRY_MS * (FUNNEL_MAX_RETRIES + 2));
+    stubWindow(true);
+    flushCareersFunnel();
+    vi.advanceTimersByTime(FUNNEL_RETRY_MS * 5);
+    expect(track).not.toHaveBeenCalled();
   });
 
   it('are wired at the three funnel steps with nothing but the slug (no candidate data)', () => {
