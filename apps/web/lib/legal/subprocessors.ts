@@ -219,21 +219,42 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     vendor: 'Sentry',
     service: 'Sentry',
     purpose: {
-      es: 'Monitoreo de errores de la aplicación web.',
-      en: 'Error monitoring for the web application.',
+      es: 'Monitoreo de errores de la aplicación web y de la API de la plataforma.',
+      en: 'Error monitoring for the web application and the platform API.',
     },
     dataCategories: {
       es: 'Reportes de error (mensaje de error, traza, URL de la solicitud, navegador y dispositivo). Los errores del servidor incluyen además los identificadores internos del usuario que inició sesión y de su organización. El envío de PII por defecto está desactivado, y antes del envío se eliminan las credenciales que viajan en enlaces: los tokens de enlace para firmar ofertas, para unirse a entrevistas y de entrevistas con IA, y los códigos de invitación, de restablecimiento de contraseña y de inicio de sesión.',
       en: 'Error reports (error message, stack trace, request URL, browser and device). Server errors also carry the internal identifiers of the signed-in user and of their organization. Default PII sending is disabled, and credentials carried in links are scrubbed before sending: offer-signing, interview-join and AI-interview link tokens, and invitation, password-reset and sign-in codes.',
     },
     condition: 'configured',
-    activatedBy: ['NEXT_PUBLIC_SENTRY_DSN', 'SENTRY_DSN'],
+    activatedBy: ['NEXT_PUBLIC_SENTRY_DSN', 'SENTRY_DSN', 'Sentry__Dsn'],
     evidence: [
       { file: 'apps/web/instrumentation-client.ts', contains: 'sendDefaultPii: false' },
       { file: 'apps/web/lib/sentry-redact.ts', contains: 'export function redactSentryEvent' },
       { file: 'apps/web/sentry.server.config.ts', contains: 'beforeSend: (event) => redactSentryEvent(event)' },
       { file: 'apps/web/app/api/trpc/[trpc]/route.ts', contains: 'extra: base' },
       { file: 'apps/web/package.json', contains: '@sentry/nextjs' },
+      { file: 'services/Tims.Platform/src/Tims.Api/ErrorReporting/ErrorReportingExtensions.cs', contains: 'options.SendDefaultPii = false;' },
+      { file: 'services/Tims.Platform/src/Tims.Api/Tims.Api.csproj', contains: 'Sentry.AspNetCore' },
+    ],
+  },
+  {
+    id: 'vercel-web-analytics',
+    vendor: 'Vercel Inc.',
+    service: 'Vercel Web Analytics',
+    purpose: {
+      es: 'Medición de visitas sin cookies y de los pasos del proceso de postulación en los portales de empleo.',
+      en: 'Cookieless measurement of visits and of the application steps on the careers portals.',
+    },
+    dataCategories: {
+      es: 'Páginas visitadas (origen y ruta, sin parámetros ni fragmentos y con los identificadores reemplazados), página de referencia, navegador, dispositivo y país aproximado; eventos del proceso de postulación con el identificador público del portal de la organización. No se envían páginas cuyo enlace es una credencial, ni datos de candidatos, correos o identificadores.',
+      en: 'Pages visited (origin and path, without query strings or fragments and with identifiers replaced), referring page, browser, device and approximate country; application-step events carrying the organization\'s public careers slug. Pages whose link is a credential, candidate data, emails and identifiers are never sent.',
+    },
+    condition: 'configured',
+    activatedBy: ['NEXT_PUBLIC_WEB_ANALYTICS_ENABLED'],
+    evidence: [
+      { file: 'apps/web/package.json', contains: '@vercel/analytics' },
+      { file: 'apps/web/lib/analytics/web-analytics.ts', contains: 'export function scrubAnalyticsEvent' },
     ],
   },
   {
