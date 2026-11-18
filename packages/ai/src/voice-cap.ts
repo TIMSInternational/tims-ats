@@ -1,6 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { tenantDb, runWithTenant } from '@tims/db';
 import { logger } from '@tims/shared';
+import { assertAiEnabled } from './kill-switch';
 
 // ---------------------------------------------------------------------------
 // AI voice interview — monthly spend cap per organization.
@@ -19,6 +20,10 @@ import { logger } from '@tims/shared';
 // result into a refusal (TRPCError TOO_MANY_REQUESTS `ai_voice_cap_reached`).
 // Unset/anything else keeps today's meter-and-bill behaviour: the session
 // proceeds and an over-cap warning is logged. Read per call.
+//
+// The global AI kill switch (kill-switch.ts) is checked first: with AI_KILL_SWITCH
+// on, a new voice session is refused with `ai_disabled` before any database read,
+// whatever the cap or the enforcement flag says.
 //
 // Intended caller: the voice-session start procedure, before it requests the
 // ElevenLabs signed URL (a refusal there leaves the session pending, so the
@@ -78,10 +83,12 @@ export async function checkVoiceSessionCap(orgId: string, now: Date = new Date()
 }
 
 /**
- * Gate for starting a NEW voice session. Over the cap: always logs a structured warning; throws
- * only when enforcement is on. Returns the status so the caller can surface or meter it.
+ * Gate for starting a NEW voice session. Refuses first with `ai_disabled` while the global AI kill
+ * switch is on. Over the cap: always logs a structured warning; throws only when enforcement is on.
+ * Returns the status so the caller can surface or meter it.
  */
 export async function assertVoiceSessionWithinCap(orgId: string, now: Date = new Date()): Promise<VoiceCapStatus> {
+  assertAiEnabled();
   const status = await checkVoiceSessionCap(orgId, now);
   if (!status.overCap) return status;
   logger.warn(

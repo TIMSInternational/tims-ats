@@ -51,7 +51,8 @@ Request → Budget Check → Cache Lookup → PII Strip → Bedrock Call → Out
 > **Implemented today (2026-06-05), in-process in `packages/ai`** — the microservice
 > above is the scale-target, not yet built. Every agent now goes through
 > ONE gated door, `invokeAgent` (`packages/ai/src/invoke.ts`):
-> `budget (fail-closed) → cache (org-scoped, per-agent TTL) → PII (input sanitize/wrap + Bedrock Guardrails) → bedrockGenerate (circuit-broken) → Zod-validate → usage log → cache store`.
+> `kill switch (AI_KILL_SWITCH, fail-closed) → budget (fail-closed) → cache (org-scoped, per-agent TTL) → PII (input sanitize/wrap + Bedrock Guardrails) → bedrockGenerate (circuit-broken) → Zod-validate → usage log → cache store`.
+> `bedrockGenerate` checks the kill switch again, outside the circuit breaker.
 > Raw Bedrock access lives ONLY in `packages/ai/src/client.ts` (`bedrockGenerate`);
 > no router/service may import `@ai-sdk` or call Bedrock directly — enforced by a
 > CI grep-gate + Vitest test. Budget failures throw; a malformed model response

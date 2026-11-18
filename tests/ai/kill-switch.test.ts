@@ -214,7 +214,8 @@ describe('coverage guard — the entry-point table is the full set of model-call
     const agentsDir = join(ROOT, 'packages', 'ai', 'src', 'agents');
     const callers = readdirSync(agentsDir)
       .filter((f) => f.endsWith('.ts'))
-      .filter((f) => /\binvokeAgent\(/.test(readFileSync(join(agentsDir, f), 'utf8')))
+      // `invokeAgent(` or a generic call `invokeAgent<In, Out>(`.
+      .filter((f) => /\binvokeAgent\s*[<(]/.test(readFileSync(join(agentsDir, f), 'utf8')))
       .map((f) => f.replace(/\.ts$/, ''))
       .sort();
     expect(callers.length).toBeGreaterThanOrEqual(13);
@@ -230,9 +231,7 @@ describe('coverage guard — the entry-point table is the full set of model-call
     const files = readdirSync(join(ROOT, 'packages', 'ai', 'src'), { recursive: true, encoding: 'utf8' })
       .filter((f) => f.endsWith('.ts'))
       .filter((f) =>
-        /from\s+['"](?:ai|@ai-sdk\/[\w-]+)['"]/.test(
-          readFileSync(join(ROOT, 'packages', 'ai', 'src', f), 'utf8'),
-        ),
+        /from\s+['"](?:ai|@ai-sdk\/[\w-]+)['"]/.test(readFileSync(join(ROOT, 'packages', 'ai', 'src', f), 'utf8')),
       );
     expect(files).toEqual(['client.ts']);
   });

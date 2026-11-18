@@ -18,6 +18,10 @@ import { TRPCError } from '@trpc/server';
 // Enforced at both doors: `invokeAgent` (before any catalog, budget or cache read,
 // so a stopped platform performs no AI-related database work at all) and the raw
 // `bedrockGenerate` (so nothing that reaches the model client can bypass it).
+//
+// Scope: Bedrock calls made through this package. The AI voice interview runs on
+// ElevenLabs, not through `invokeAgent`; its session-start gate
+// (`assertVoiceSessionWithinCap` in voice-cap.ts) checks this switch as well.
 // The refusal is a TRPCError SERVICE_UNAVAILABLE — the same error family the
 // gated path already throws on budget exhaustion — carrying a stable machine code
 // that apps/web localizes wherever an error toast is shown.

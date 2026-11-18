@@ -17,9 +17,14 @@ function currentMessages() {
   }
 }
 
+/** True when a server error carries the `ai_disabled` code of the @tims/ai kill switch. */
+export function isAiDisabledCode(message: string): boolean {
+  return message.trim() === AI_DISABLED;
+}
+
 /** The translated message for a known error code, or the input unchanged. */
 export function localizeKnownErrorCode(message: string): string {
-  if (message.trim() === AI_DISABLED) return currentMessages().common.aiDisabled;
+  if (isAiDisabledCode(message)) return currentMessages().common.aiDisabled;
   const match = CONSENT_WITHDRAWN.exec(message.trim());
   if (!match) return message;
   const m = currentMessages().consentGuard;

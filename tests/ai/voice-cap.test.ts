@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TRPCError } from '@trpc/server';
 
 // The voice-interview monthly cap (packages/ai/src/voice-cap.ts): meter-and-bill by default,
-// a hard refusal only when AI_VOICE_HARD_CAP_ENABLED is exactly 'true'.
+// a hard refusal only when AI_VOICE_HARD_CAP_ENABLED is exactly 'true'. The global AI kill switch
+// (AI_KILL_SWITCH) refuses a new session before the cap is even read.
 
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -29,6 +30,7 @@ import {
   evaluateVoiceCap,
   isVoiceHardCapEnabled,
 } from '../../packages/ai/src/voice-cap';
+import { AI_DISABLED, AI_KILL_SWITCH_ENV } from '../../packages/ai/src/kill-switch';
 
 const ORG = '00000000-0000-0000-0000-0000000000b2';
 const NOW = new Date(2026, 10, 18, 15, 30); // 18 Nov 2026, local time
@@ -41,11 +43,13 @@ function spend(costUsd: number | null, monthlyBudget?: number | null) {
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env[AI_VOICE_HARD_CAP_ENV];
+  delete process.env[AI_KILL_SWITCH_ENV];
   mocks.runWithTenant.mockImplementation((_orgId: string, fn: () => unknown) => fn());
 });
 
 afterEach(() => {
   delete process.env[AI_VOICE_HARD_CAP_ENV];
+  delete process.env[AI_KILL_SWITCH_ENV];
 });
 
 describe('isVoiceHardCapEnabled — opt-in, exact "true" only', () => {
@@ -134,5 +138,32 @@ describe('assertVoiceSessionWithinCap — the gate for a NEW session', () => {
     process.env[AI_VOICE_HARD_CAP_ENV] = 'TRUE';
     spend(100, 25);
     await expect(assertVoiceSessionWithinCap(ORG, NOW)).resolves.toMatchObject({ overCap: true, enforced: false });
+  });
+});
+
+describe('assertVoiceSessionWithinCap — the global AI kill switch', () => {
+  it('switch ON: refuses with SERVICE_UNAVAILABLE ai_disabled before any read, even under the cap', async () => {
+    process.env[AI_KILL_SWITCH_ENV] = 'true';
+    spend(0, 25);
+    const error = await assertVoiceSessionWithinCap(ORG, NOW).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TRPCError);
+    expect(error).toMatchObject({ code: 'SERVICE_UNAVAILABLE', message: AI_DISABLED });
+    expect(mocks.runWithTenant).not.toHaveBeenCalled();
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.aggregate).not.toHaveBeenCalled();
+  });
+
+  it('switch ON wins over the soft-cap path (enforcement off, over the cap)', async () => {
+    process.env[AI_KILL_SWITCH_ENV] = 'yes';
+    spend(100, 25);
+    await expect(assertVoiceSessionWithinCap(ORG, NOW)).rejects.toMatchObject({ message: AI_DISABLED });
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+
+  it('switch OFF: the cap check runs as before', async () => {
+    process.env[AI_KILL_SWITCH_ENV] = 'false';
+    spend(5, 25);
+    await expect(assertVoiceSessionWithinCap(ORG, NOW)).resolves.toMatchObject({ overCap: false });
+    expect(mocks.aggregate).toHaveBeenCalledTimes(1);
   });
 });

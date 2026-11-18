@@ -9,7 +9,7 @@ import { assertAiEnabled } from './kill-switch';
 //
 // `bedrockGenerate` is the raw model call. It is intentionally NOT the gated
 // entry point: every agent goes through the gated `invokeAgent` in invoke.ts
-// (budget → cache → PII → bedrockGenerate → validate → log). Routers/services
+// (kill switch → budget → cache → PII → bedrockGenerate → validate → log). Routers/services
 // must never import this directly — a CI grep-gate enforces that (rule #2).
 //
 // The call is wrapped in `bedrockCircuit` (5 failures → open 30s) and, when a
