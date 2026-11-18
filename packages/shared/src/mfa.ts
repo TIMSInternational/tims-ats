@@ -30,6 +30,8 @@ export function isMfaSatisfied(currentLevel: Aal): boolean {
 // space-) separated list of tenant staff role slugs, e.g. `hr_admin,hrbp`. Set it to the
 // SAME value as the platform service's Platform__MfaExtraPrivilegedRoles (C# MfaGate) —
 // a session refused by one stack and served by the other is the hole #173 closed.
+// `none` (like any value with no known slug) adds nothing: it is the value to use where an
+// environment tool cannot store an empty string.
 export const MFA_EXTRA_PRIVILEGED_ROLES_ENV = 'MFA_EXTRA_PRIVILEGED_ROLES';
 
 // The only slugs the variable can add. super_admin / platform_owner are always privileged;

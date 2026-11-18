@@ -16,6 +16,7 @@ import {
   isMfaPrivileged,
   MFA_EXTRA_PRIVILEGED_ROLES_ENV,
   MFA_EXTRA_PRIVILEGED_ROLE_CHOICES,
+  parseMfaExtraPrivilegedRoles,
 } from '@tims/shared';
 import { ASSIGNABLE_STAFF_ROLES } from '@tims/shared';
 import { isMfaRequiredFor } from '../../apps/web/app/mfa/mfa-requirement';
@@ -50,6 +51,14 @@ describe('isMfaPrivileged reads MFA_EXTRA_PRIVILEGED_ROLES per call', () => {
     expect(isMfaPrivileged({ roles: ['hr_admin'], isPlatformOwner: false })).toBe(true);
     vi.stubEnv(MFA_EXTRA_PRIVILEGED_ROLES_ENV, '');
     expect(isMfaPrivileged({ roles: ['hr_admin'], isPlatformOwner: false })).toBe(false);
+  });
+
+  it('rollback where an empty value cannot be stored: `none` adds nothing (both stacks ignore unknown slugs)', () => {
+    expect(parseMfaExtraPrivilegedRoles('none')).toEqual([]);
+    expect(parseMfaExtraPrivilegedRoles('NONE')).toEqual([]);
+    vi.stubEnv(MFA_EXTRA_PRIVILEGED_ROLES_ENV, 'none');
+    expect(isMfaPrivileged({ roles: ['hr_admin'], isPlatformOwner: false })).toBe(false);
+    expect(isMfaPrivileged({ roles: ['super_admin'], isPlatformOwner: false })).toBe(true);
   });
 
   it('an explicit extraRoles argument overrides the environment', () => {

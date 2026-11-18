@@ -60,8 +60,9 @@ const baseEnvSchema = z.object({
 
   // Global AI kill switch, read per call by packages/ai/src/kill-switch.ts (listed here for
   // discoverability; nothing reads it from this object). Unset, '', 'false', '0', 'off' or 'no' = AI
-  // runs; ANY other value refuses every model call with `ai_disabled`. A stop control fails closed,
-  // so this is deliberately not an enum: a typo must stop AI, never fail env validation.
+  // runs; ANY other value refuses every Bedrock call made through @tims/ai with `ai_disabled`. A stop
+  // control fails closed, so this is deliberately not an enum: a mistyped value stops AI instead of
+  // failing env validation (only a value longer than 256 characters fails it).
   AI_KILL_SWITCH: z.string().max(256).optional(),
 
   // Cloudflare Turnstile (CAPTCHA on public apply form — optional; enforced only
@@ -96,9 +97,10 @@ const baseEnvSchema = z.object({
   // any admin route. Default off so a fresh deploy can never lock admins out.
   MFA_ENFORCED: z.enum(['true', 'false']).optional(),
   // Extra tenant roles that must step up too, e.g. 'hr_admin,hrbp' (read per call by
-  // packages/shared/src/mfa.ts isMfaPrivileged; listed here for discoverability). Unset = only
-  // platform owners + super_admins. Unknown slugs are ignored, so it is not an enum: a typo must
-  // never fail env validation or lock anyone out. Keep it equal to Platform__MfaExtraPrivilegedRoles.
+  // packages/shared/src/mfa.ts isMfaPrivileged; listed here for discoverability). Unset, '' or
+  // 'none' = only platform owners + super_admins. Unknown slugs are ignored, so it is not an enum: a
+  // mistyped slug adds nothing and locks nobody out (only a value longer than 512 characters fails
+  // env validation). Keep it equal to Platform__MfaExtraPrivilegedRoles.
   MFA_EXTRA_PRIVILEGED_ROLES: z.string().max(512).optional(),
 
   // §8 Q0b slice 2 (#172). Route the alert cron's `active_surveys` and
