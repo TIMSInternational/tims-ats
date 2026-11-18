@@ -120,6 +120,9 @@ const baseEnvSchema = z.object({
   SELF_SERVE_SIGNUP_ENABLED: z.string().max(16).optional(),
   // Video interviews (Daily.co). Only the exact string 'true' shows the 'video' type in scheduling.
   NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED: z.string().max(16).optional(),
+  // Careers search surfaces (lib/careers-seo.ts): sitemap entries, robots.txt sitemap line, JobPosting data.
+  // Only the exact string 'true' enables; anything else = off.
+  CAREERS_SEO_ENABLED: z.string().max(16).optional(),
 
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

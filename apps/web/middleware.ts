@@ -34,8 +34,9 @@ const PUBLIC_PATHS = [
   // this must never bounce to staff /login — regardless of which host serves it.
   '/offers/sign',
   '/logout',
-  // Crawler policy (app/robots.ts). Must be reachable without a session.
+  // Crawler policy (app/robots.ts) and the careers sitemap (app/sitemap.ts). Must be reachable without a session.
   '/robots.txt',
+  '/sitemap.xml',
 ];
 
 const IS_PROD = process.env.NODE_ENV === 'production';
