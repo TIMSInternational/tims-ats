@@ -356,12 +356,15 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           TAG: ${{ steps.sha.outputs.short }}
+          TARGET_SHA: ${{ needs.decide.outputs.sha }}
         run: |
           set -euo pipefail
           # Tagged with the commit SHA on purpose, never a floating tag. check-deploy-freshness.sh
           # maps the running image tag back to a commit to compute drift; a `:latest` or `:main` tag
           # would make the running image unattributable and turn that gate into a no-op.
+          # SOURCE_COMMIT is baked into the image as the error-reporting release (Dockerfile).
           docker build --platform linux/amd64 \
+            --build-arg SOURCE_COMMIT="$TARGET_SHA" \
             -f src/Tims.Api/Dockerfile \
             -t "$REGISTRY/$ECR_REPO:$TAG" .
           docker push "$REGISTRY/$ECR_REPO:$TAG"
