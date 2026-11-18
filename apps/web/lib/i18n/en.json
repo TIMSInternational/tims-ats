@@ -7056,5 +7056,37 @@
     "bandHigh": "High",
     "bandMedium": "Medium",
     "bandLow": "Low"
+  },
+  "portalLey8968Consent": {
+    "prefix": "I freely, expressly and knowingly authorize",
+    "middle": "to collect and process my personal data, including my resume, in order to manage my participation in its recruitment and selection processes (including its storage on servers located outside Costa Rica and the use of automated tools to organize the information in my resume), in accordance with its",
+    "policyLink": "privacy notice for candidates",
+    "suffix": ", under Costa Rica's Law No. 8968. I understand I can access, correct or delete my data and revoke this authorization at any time."
+  },
+  "portalPrivacyLey8968": {
+    "title": "Privacy notice for candidates",
+    "subtitle": "Protection of individuals with regard to the processing of their personal data (Law No. 8968)",
+    "controllerHeading": "Database controller",
+    "controllerBody": "is the controller of the database and of the processing of the personal data you provide when applying to its openings. The technology platform it uses to manage its recruitment processes acts solely as a data processor, on the organization's behalf and under its instructions.",
+    "dataHeading": "Data we process",
+    "dataBody": "Identification and contact data (name, email, phone, location), professional information (title, company, years of experience, LinkedIn profile), your cover message and, if you attach it, your resume. We do not ask for sensitive data; please do not include it in your resume.",
+    "purposeHeading": "Purpose",
+    "purposeBody": "Managing your participation in the organization's recruitment and selection processes: assessing your profile, coordinating interviews, contacting you about the process and, if your application is selected, starting your onboarding. Your data is not used for any other purpose and is never sold to third parties.",
+    "aiHeading": "Use of automated tools",
+    "aiBody": "We use an artificial intelligence service to extract and organize the information in your resume [PENDIENTE: confirm wording — proposed: and to support the selection team with a preliminary assessment of how your profile fits the opening]. Decisions about your application are made by people on the selection team; no decision is based solely on automated processing.",
+    "transferHeading": "Where your data is stored",
+    "transferBody": "Your data is stored and processed on servers of technology providers located in the United States (cloud, database and email services), which act on the organization's behalf under confidentiality and security obligations.",
+    "retentionHeading": "Retention period",
+    "retentionBody": "We keep your application for [PENDIENTE: retention period, shared by every organization that uses this portal] from the close of the selection process, unless you request its deletion earlier or a legal obligation requires us to keep it.",
+    "rightsHeading": "Your rights",
+    "rightsBody": "Under Law No. 8968 and its Regulations, you can access your data, request its correction or update, request its deletion and revoke the authorization you gave at any time, without retroactive effect. If you believe your rights were not respected, you can contact the Agency for the Protection of Inhabitants' Data (PRODHAB).",
+    "exerciseHeading": "How to exercise your rights",
+    "exerciseBody": "Write to {email} stating your name, the email you applied with and your request. We will respond within five business days at most. [PENDIENTE: confirm whether the organization will handle these requests at its candidate contact email or at a dedicated privacy mailbox]",
+    "exerciseBodyNoContact": "Contact the organization through its official channels stating your name, the email you applied with and your request. We will respond within five business days at most. [PENDIENTE: confirm whether the organization will handle these requests at its candidate contact email or at a dedicated privacy mailbox]",
+    "baseNotice": "This notice applies to applications submitted through this portal. The organization may have an institutional data protection policy that complements it."
+  },
+  "dataSubjectRequestsLey8968": {
+    "subtitle": "Personal data deletion requests submitted by data subjects under Costa Rica's Law No. 8968.",
+    "dueDateNote": "The due date adds 5 business days (Monday to Friday) to the date received, without excluding public holidays: this is the response time stated in the privacy notice for candidates. Confirm the applicable deadline before responding to the data subject."
   }
 }

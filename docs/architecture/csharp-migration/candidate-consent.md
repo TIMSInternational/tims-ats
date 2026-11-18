@@ -116,7 +116,35 @@ would be converted to the session time zone. `data_subject_requests.updated_at` 
 must be the staff member's `users.id`. `status` is a free `VARCHAR(20)` with no check constraint — type
 `completed` / `rejected` exactly. Keep `"status"` in the audit metadata equal to the value written.
 
+## Costa Rica variant (Ley N.° 8968) — off by default
+
+A second, versioned consent variant sits next to the country-neutral default. It is a **draft pending review by
+the data controller's counsel** and changes nothing until it is turned on:
+
+| Piece | Where | Default variant (today) | Ley 8968 variant |
+| --- | --- | --- | --- |
+| Consent sentence + version | `packages/shared/src/constants/application-consent.ts` (`APPLICATION_CONSENT_TEXTS`, `APPLICATION_CONSENT_VERSIONS`) | `portal.consentCheckbox*`, `portal-apply-2026-11-06` | `portalLey8968Consent.*`, `portal-apply-2026-11-cr` |
+| Candidate notice | `/careers/[orgSlug]/privacy` | `portalPrivacy.*` (country-neutral) | `portalPrivacyLey8968.*`: AI processing, US storage, retention, PRODHAB, the organization's `settings.candidateContactEmail` (never `billing_email`) |
+| Staff queue copy | `/settings/data-requests` | `dataSubjectRequests.subtitle/dueDateNote` | `dataSubjectRequestsLey8968.*` |
+| Staff deadline | C# `DataSubjectRequestDeadline` (list `dueAt`, in-app notification, admin email) | 15 business days on UTC−05:00, an estimate | 5 business days on Costa Rica time (UTC−06:00), the notice's stated response time |
+
+Switches (all off by default):
+
+- `LEY_8968_NOTICE_TEXT_FINAL` (code constant, `application-consent.ts`) — set to `true` only in the change that
+  replaces the draft with the approved text. A test fails while it disagrees with the `[PENDIENTE: …]` markers.
+- `NEXT_PUBLIC_LEY_8968_NOTICE_ENABLED=true` (web, build-time) — shows the variant, platform-wide, only once the
+  constant is `true`. The apply endpoint accepts one version at a time, so every organization's apply form switches
+  together; a form loaded before the redeploy is asked to reload.
+- `Platform__CandidateNoticeLey8968Enabled=true` (C#) — the staff deadline follows the notice. Set it together with
+  the web flag.
+
+Consents already recorded keep their version (`portal-apply-2026-11-06`); the default text is pinned by digest in
+`tests/portal/privacy-notice-ley-8968.test.tsx`. Once the Ley 8968 variant has been published, any change to its
+wording needs a new version id.
+
 ## Not done (follow-ups)
+
+- Per-organization consent variants (today the variant is platform-wide).
 
 - A resolution endpoint/UI for `data_subject_requests` (the queue is read-only; resolving is the SQL runbook above).
 - Holiday-aware `dueAt` (Colombian public holidays) for the queue.

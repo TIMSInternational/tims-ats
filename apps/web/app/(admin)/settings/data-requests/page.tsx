@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { ACTIVE_APPLICATION_CONSENT_VARIANT } from '@tims/shared';
 import { useI18n } from '../../../../lib/i18n';
 import { usePermissions } from '../../../../lib/permissions';
 import { EmptyState, PageHeader, Skeleton } from '../../../../components';
@@ -30,7 +31,13 @@ export default function DataRequestsPage() {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <PageHeader title={m.title} description={m.subtitle} />
+      {/* The Ley N.° 8968 wording follows the candidate notice's variant (off by default). */}
+      <PageHeader
+        title={m.title}
+        description={
+          ACTIVE_APPLICATION_CONSENT_VARIANT === 'ley8968' ? t.dataSubjectRequestsLey8968.subtitle : m.subtitle
+        }
+      />
       <section className="flex flex-1 flex-col overflow-y-auto px-4 py-5 md:px-6 md:py-6">{body}</section>
     </div>
   );
