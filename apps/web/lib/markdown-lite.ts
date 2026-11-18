@@ -4,8 +4,8 @@
  * It produces a plain data tree — never HTML — which `MarkdownText` renders as React elements,
  * so any markup embedded in the source (`<script>`, `<img onerror>`) stays literal text.
  *
- * Supported: `#`/`##`/`###` headings, `-`/`*`/`•` bullet lists, `1.` ordered lists (numbered from their first
- * item, as CommonMark does, so a list that resumes after a paragraph at `7.` keeps its number),
+ * Supported: `#`/`##`/`###` headings, `-`/`*`/`•` bullet lists, `1.` ordered lists (each records its first
+ * number as `start`; `MarkdownText` renders it only when the caller passes `keepListNumbers`),
  * paragraphs separated by blank lines, single line breaks inside a paragraph,
  * `**bold**` / `__bold__` and `*italic*`.
  */
@@ -98,7 +98,11 @@ export function parseMarkdownLite(source: string, maxLength: number = MARKDOWN_L
     const heading = HEADING.exec(line.trim());
     if (heading) {
       flush();
-      blocks.push({ type: 'heading', level: heading[1].length as 1 | 2 | 3, content: parseInline(stripClosingHashes(heading[2] ?? '')) });
+      blocks.push({
+        type: 'heading',
+        level: heading[1].length as 1 | 2 | 3,
+        content: parseInline(stripClosingHashes(heading[2] ?? '')),
+      });
       continue;
     }
     const bullet = BULLET.exec(line);
@@ -106,7 +110,9 @@ export function parseMarkdownLite(source: string, maxLength: number = MARKDOWN_L
     if (bullet || ordered) {
       const isOrdered = ordered !== null;
       if (open.paragraph || (open.list && open.list.ordered !== isOrdered)) flush();
-      const list = open.list ?? (ordered ? { ordered: true, items: [], start: Number(ordered[1]) } : { ordered: false, items: [] });
+      const list =
+        open.list ??
+        (ordered ? { ordered: true, items: [], start: Number(ordered[1]) } : { ordered: false, items: [] });
       const text = ordered ? ordered[2] : bullet ? bullet[1] : '';
       list.items.push(parseInline((text ?? '').trim()));
       open.list = list;

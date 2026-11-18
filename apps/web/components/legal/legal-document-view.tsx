@@ -75,6 +75,7 @@ export function LegalDocumentView({ slug, content }: LegalDocumentViewProps) {
         source={bodyWithoutTitle(doc.source)}
         headingBase={1}
         maxLength={LEGAL_MAX_CONTENT_CHARS}
+        keepListNumbers
         className="mt-4 space-y-3 text-body leading-relaxed text-secondary"
       />
       {slug === 'subprocessors' && <SubprocessorTable locale={lang} />}

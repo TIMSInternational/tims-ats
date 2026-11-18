@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MarkdownText } from '../../apps/web/components/markdown-text';
+import { LegalDocumentView } from '../../apps/web/components/legal/legal-document-view';
+import { I18nProvider } from '../../apps/web/lib/i18n';
 import { markdownToPlainText, parseMarkdownLite } from '../../apps/web/lib/markdown-lite';
 
 const DESCRIPTION = [
@@ -72,7 +74,9 @@ describe('parseMarkdownLite heading performance (ReDoS guard)', () => {
     expect(parseMarkdownLite('# Title #   ')).toEqual([heading(1, 'Title')]);
     expect(parseMarkdownLite('### a # b')).toEqual([heading(3, 'a # b')]);
     expect(parseMarkdownLite('# ##')).toEqual([heading(1, '#')]);
-    expect(parseMarkdownLite('#### four')).toEqual([{ type: 'paragraph', lines: [[{ type: 'text', text: '#### four' }]] }]);
+    expect(parseMarkdownLite('#### four')).toEqual([
+      { type: 'paragraph', lines: [[{ type: 'text', text: '#### four' }]] },
+    ]);
   });
 
   // Descriptions are capped at 5000 chars; each shape below took seconds to minutes with the
@@ -98,20 +102,39 @@ describe('parseMarkdownLite heading performance (ReDoS guard)', () => {
   });
 });
 
-describe('ordered lists keep their source numbering (legal clauses)', () => {
-  it('a list starts at its first number, and one resuming after a paragraph keeps its number', () => {
-    const source = '5. Liability\n6. Indemnity\n\nA paragraph between clauses.\n\n7. Termination';
+describe('ordered lists keep their source numbering only when asked (legal clauses)', () => {
+  const source = '5. Liability\n6. Indemnity\n\nA paragraph between clauses.\n\n7. Termination';
+
+  it('with keepListNumbers, a list starts at its first number, and one resuming after a paragraph keeps it', () => {
     const lists = parseMarkdownLite(source).filter((b) => b.type === 'list');
     expect(lists.map((b) => (b.type === 'list' ? b.start : null))).toEqual([5, 7]);
 
-    const { container } = render(<MarkdownText source={source} />);
+    const { container } = render(<MarkdownText source={source} keepListNumbers />);
     const ols = [...container.querySelectorAll('ol')];
     expect(ols.map((ol) => ol.getAttribute('start'))).toEqual(['5', '7']);
     expect(ols.map((ol) => ol.querySelectorAll('li').length)).toEqual([2, 1]);
   });
 
+  it('by default (job descriptions and every other caller) no list carries a start number', () => {
+    const { container } = render(<MarkdownText source={source} />);
+    const ols = [...container.querySelectorAll('ol')];
+    expect(ols).toHaveLength(2);
+    expect(ols.every((ol) => !ol.hasAttribute('start'))).toBe(true);
+  });
+
+  it('the legal document view opts in', async () => {
+    const doc = { source: '# Terms\n\n5. Liability\n\nText.\n\n6. Termination', title: 'Terms', isDraft: false };
+    const { container } = render(
+      <I18nProvider>
+        <LegalDocumentView slug="terms" content={{ es: doc, en: doc }} />
+      </I18nProvider>,
+    );
+    await screen.findByRole('heading', { level: 1, name: 'Terms' });
+    expect([...container.querySelectorAll('ol')].map((ol) => ol.getAttribute('start'))).toEqual(['5', '6']);
+  });
+
   it('a list numbered from 1 (or written "1. 1. 1.") renders as a plain ordered list', () => {
-    const { container } = render(<MarkdownText source={'1. One\n1. Two\n1. Three'} />);
+    const { container } = render(<MarkdownText source={'1. One\n1. Two\n1. Three'} keepListNumbers />);
     const ol = container.querySelector('ol');
     expect(ol?.hasAttribute('start')).toBe(false);
     expect(ol?.querySelectorAll('li')).toHaveLength(3);

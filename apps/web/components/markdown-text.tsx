@@ -14,6 +14,11 @@ interface MarkdownTextProps {
    * (the legal pages) pass their own, larger, explicitly enforced limit instead of being silently cut.
    */
   maxLength?: number;
+  /**
+   * Render each ordered list from its first source number (`<ol start>`), so a clause list that resumes after a
+   * paragraph at `7.` keeps its number. Off by default: every other caller keeps numbering each list from 1.
+   */
+  keepListNumbers?: boolean;
 }
 
 function renderInline(nodes: MdInline[], keyPrefix: string): ReactNode[] {
@@ -41,7 +46,13 @@ const HEADING_CLASS = {
  * Renders the small Markdown subset from `lib/markdown-lite` as React elements.
  * No HTML string is ever produced, so markup inside the source renders as literal text.
  */
-export function MarkdownText({ source, className, headingBase = 3, maxLength }: MarkdownTextProps) {
+export function MarkdownText({
+  source,
+  className,
+  headingBase = 3,
+  maxLength,
+  keepListNumbers = false,
+}: MarkdownTextProps) {
   const blocks = parseMarkdownLite(source, maxLength);
   return (
     <div className={className}>
@@ -60,7 +71,7 @@ export function MarkdownText({ source, className, headingBase = 3, maxLength }: 
           return (
             <ListTag
               key={key}
-              start={block.ordered && block.start !== 1 ? block.start : undefined}
+              start={keepListNumbers && block.ordered && block.start !== 1 ? block.start : undefined}
               className={`space-y-1 pl-5 ${block.ordered ? 'list-decimal' : 'list-disc'}`}
             >
               {block.items.map((item, itemIndex) => (
