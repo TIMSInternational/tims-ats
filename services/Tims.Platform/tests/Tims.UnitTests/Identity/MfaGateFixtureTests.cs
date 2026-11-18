@@ -27,6 +27,10 @@ public sealed class MfaGateFixtureTests
 
     public static IEnumerable<object[]> PrivilegedRows() => Rows("privileged");
 
+    public static IEnumerable<object[]> ExtraRolesParseRows() => Rows("extraRolesParse");
+
+    public static IEnumerable<object[]> PrivilegedWithExtraRows() => Rows("privilegedWithExtra");
+
     private static IEnumerable<object[]> Rows(string key)
     {
         var arr = Section(key);
@@ -72,6 +76,38 @@ public sealed class MfaGateFixtureTests
         _ = name;
     }
 
+    [Theory]
+    [MemberData(nameof(ExtraRolesParseRows))]
+    public void ParseExtraPrivilegedRoles_matches_golden(int index, string name)
+    {
+        var c = Section("extraRolesParse")[index]!;
+        var expected = c["expected"]!.AsArray().Select(r => r!.GetValue<string>()).ToArray();
+        Assert.Equal(expected, MfaGate.ParseExtraPrivilegedRoles(c["input"]?.GetValue<string>()));
+        _ = name;
+    }
+
+    [Theory]
+    [MemberData(nameof(PrivilegedWithExtraRows))]
+    public void IsPrivileged_with_extra_roles_matches_golden(int index, string name)
+    {
+        var c = Section("privilegedWithExtra")[index]!;
+        var roles = c["roles"]!.AsArray().Select(r => r!.GetValue<string>()).ToArray();
+        var extra = MfaGate.ParseExtraPrivilegedRoles(c["extraRoles"]?.GetValue<string>());
+        Assert.Equal(
+            c["expected"]!.GetValue<bool>(),
+            MfaGate.IsPrivileged(roles, c["isPlatformOwner"]!.GetValue<bool>(), extra));
+        _ = name;
+    }
+
+    [Fact]
+    public void Extra_roles_never_include_the_base_set_or_non_staff_principals()
+    {
+        Assert.DoesNotContain("super_admin", MfaGate.ExtraPrivilegedRoleChoices);
+        Assert.DoesNotContain("platform_owner", MfaGate.ExtraPrivilegedRoleChoices);
+        Assert.DoesNotContain("candidate", MfaGate.ExtraPrivilegedRoleChoices);
+        Assert.DoesNotContain("external", MfaGate.ExtraPrivilegedRoleChoices);
+    }
+
     [Fact]
     public void Fixture_sections_are_not_empty()
     {
@@ -80,6 +116,8 @@ public sealed class MfaGateFixtureTests
         Assert.True(Section("cases").Count >= 8);
         Assert.True(Section("enforcedFlag").Count >= 5);
         Assert.True(Section("privileged").Count >= 5);
+        Assert.True(Section("extraRolesParse").Count >= 5);
+        Assert.True(Section("privilegedWithExtra").Count >= 5);
     }
 
     [Fact]

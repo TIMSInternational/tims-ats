@@ -31,6 +31,7 @@ const CANDIDATE_SECTIONS: Record<string, unknown> = {
   portal,
   portalDashboard: es.portalDashboard,
   portalPrivacy: es.portalPrivacy,
+  portalPrivacyLey8968: es.portalPrivacyLey8968,
   'offers.sign*': offerSigning,
 };
 

@@ -16,6 +16,7 @@ import { enumLabel, formatPortalSalary, formatTimeAgo, parsePortalSalary, profil
 import { useI18n } from '../../../../../../lib/i18n';
 import { isPilotScope } from '../../../../../../lib/launch-scope';
 import { OrgLogo } from '../../../../../../components/org-logo';
+import { trackCareersFunnel } from '../../../../../../lib/analytics/web-analytics';
 
 interface JobDetailViewProps {
   orgSlug: string;
@@ -95,7 +96,10 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   const headerLogo = v.company?.name ? null : v.organization.logo;
   const remote = enumLabel(v.remotePolicy, p.remotePolicies);
   const pilot = isPilotScope();
-  const openApply = () => setShowApply(true);
+  const openApply = () => {
+    setShowApply(true);
+    trackCareersFunnel('apply_started', orgSlug);
+  };
   const sectionTitle = 'mb-3 text-heading font-semibold text-brand';
 
   return (

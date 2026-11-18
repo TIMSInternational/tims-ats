@@ -4,7 +4,7 @@
 #
 # OpenApiGenerateDocumentsOnBuild is turned OFF for the image build: the build-time emit
 # writes the contract into the repo's contracts/openapi (a dev/CI concern, outside the
-# container context). The RUNTIME /openapi endpoint (MapOpenApi) is unaffected.
+# container context). The RUNTIME /openapi endpoint (MapOpenApi) is mapped in Development only.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
@@ -23,6 +23,12 @@ RUN dotnet publish src/Tims.Api/Tims.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app/publish ./
+
+# The commit this image was built from, reported as the error-reporting release (read only when Sentry:Dsn
+# is set). deploy-platform-api.yml passes --build-arg SOURCE_COMMIT=<sha>; a build without it leaves the
+# value empty, which the SDK ignores (it then falls back to the assembly version).
+ARG SOURCE_COMMIT=""
+ENV SENTRY_RELEASE=${SOURCE_COMMIT}
 
 # Non-root runtime user (the aspnet image ships an `app` user).
 USER app

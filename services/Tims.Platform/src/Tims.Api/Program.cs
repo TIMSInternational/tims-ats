@@ -37,6 +37,7 @@ using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Engagement;
+using Tims.Api.ErrorReporting;
 using Tims.Api.FitEngine;
 using Tims.Api.Notification;
 using Tims.Api.People;
@@ -121,6 +122,9 @@ try
     var builder = WebApplication.CreateBuilder(args);
     builder.Services.AddPlatformEmail(builder.Configuration);
 
+    // --- Error reporting (Sentry): inert unless Sentry:Dsn is set; see ErrorReportingExtensions ----
+    builder.AddErrorReporting();
+
     // --- Structured JSON logging (Pino-parity), request/tenant correlation ids -------
     // NEVER logs request bodies / tokens / PII (rule: api-security.md §Observability).
     // preserveStaticLogger: true keeps each host's fully-configured Serilog instance INDEPENDENT of the
@@ -132,7 +136,8 @@ try
         (context, services, configuration) => configuration
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
-            .WriteTo.Console(new RenderedCompactJsonFormatter()),
+            .WriteTo.Console(new RenderedCompactJsonFormatter())
+            .WriteToErrorReporting(context.Configuration),
         preserveStaticLogger: true);
 
     // --- Config: bind + validate at startup (fail-fast), the Zod-env-gate analog ------
@@ -638,6 +643,11 @@ try
         builder.Services.AddScoped<IConsentWithdrawalPropagator, NoConsentWithdrawalPropagator>();
     }
 
+    // The staff deadline for data subject requests: the country-neutral estimate, or (CandidateNoticeLey8968Enabled,
+    // DEFAULT false) the response time the Ley N.° 8968 candidate notice states. One policy for the list, the in-app
+    // notification and the admin email.
+    builder.Services.AddSingleton(DataSubjectRequestDeadline.For(
+        builder.Configuration.GetValue<bool>("Platform:CandidateNoticeLey8968Enabled")));
     builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
     builder.Services.AddScoped<CandidateConsentUseCase>();
     // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the
@@ -1007,7 +1017,7 @@ try
         sp.GetRequiredService<InMemorySlidingWindowRateLimiter>(),
         sp.GetRequiredService<IHostEnvironment>()));
 
-    // --- OpenAPI (emitted to contracts/openapi at build; served at /openapi/v1.json) --
+    // --- OpenAPI (emitted to contracts/openapi at build; served at /openapi/v1.json in Development only) --
     builder.Services.AddOpenApi(options =>
     {
         // Keep the SubmitValidationBody request schema faithful to the Zod contract: `notes` is OPTIONAL
@@ -1325,7 +1335,13 @@ try
         options.EnrichDiagnosticContext = (diagnostic, httpContext) =>
             diagnostic.Set("TraceId", Activity.Current?.TraceId.ToString()));
 
-    app.MapOpenApi();
+    // The OpenAPI document is served only in Development. The committed contract (contracts/openapi,
+    // which apps/web generates its client types from) is written at BUILD time by GetDocument.Insider
+    // through the AddOpenApi registration above, so it does not depend on this runtime endpoint.
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+    }
 
     // Liveness: process is up and the pipeline responds. Runs no dependency checks.
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions

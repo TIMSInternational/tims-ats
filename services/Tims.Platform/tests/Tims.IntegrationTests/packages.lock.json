@@ -848,6 +848,39 @@
         "resolved": "3.0.17",
         "contentHash": "68slEMyRTUNLc75DruEDsEohFmFfNwkHLLtwQ46bobF+8Tl+UXMKM1kM87ihhKy6JdAqy1RrvAfvBWeLmcY9Gg=="
       },
+      "Sentry": {
+        "type": "Transitive",
+        "resolved": "7.0.1",
+        "contentHash": "4hyExeUWArJdiO6VlmwCUHgWPosvasauNpgB6pVP7swuwyahWHRqgWHKwj3t5h18wFezIMte6BmI4dqEzl1TYw=="
+      },
+      "Sentry.AspNetCore": {
+        "type": "Transitive",
+        "resolved": "7.0.1",
+        "contentHash": "FxYSrr9HileJYWR0hWCX3rOdIBYwJpcngOT1oK+TcNenh5Z8m2Sp6kPMUxlminLhnnU4XlTP6RGKEmlfw3AS7Q==",
+        "dependencies": {
+          "Sentry.Extensions.Logging": "7.0.1"
+        }
+      },
+      "Sentry.Extensions.Logging": {
+        "type": "Transitive",
+        "resolved": "7.0.1",
+        "contentHash": "id2zlzODGIjoU3jqwl/TJ1awJGvAXyI280FdmIMMsPu5lpEN2PbMzBjujDbu8tsLHmDu+sLHDCPbIy8AdGXJOA==",
+        "dependencies": {
+          "Microsoft.Extensions.Configuration.Binder": "10.0.0",
+          "Microsoft.Extensions.Http": "10.0.0",
+          "Microsoft.Extensions.Logging.Configuration": "10.0.0",
+          "Sentry": "7.0.1"
+        }
+      },
+      "Sentry.Serilog": {
+        "type": "Transitive",
+        "resolved": "7.0.1",
+        "contentHash": "/Z2fbJCPTiweIEb+5dOkrklDZXZZsWj2xp6I+R+nCWylvYiUa1mVprFFPhpslpdYtn/gXVNU/1H1sRFVWS4Dmg==",
+        "dependencies": {
+          "Sentry": "7.0.1",
+          "Serilog": "2.10.0"
+        }
+      },
       "Serilog": {
         "type": "Transitive",
         "resolved": "4.3.0",
@@ -1061,6 +1094,8 @@
           "OpenTelemetry.Exporter.OpenTelemetryProtocol": "[1.16.0, )",
           "OpenTelemetry.Extensions.Hosting": "[1.16.0, )",
           "OpenTelemetry.Instrumentation.AspNetCore": "[1.16.0, )",
+          "Sentry.AspNetCore": "[7.0.1, )",
+          "Sentry.Serilog": "[7.0.1, )",
           "Serilog.AspNetCore": "[10.0.0, )",
           "Serilog.Formatting.Compact": "[3.0.0, )",
           "StackExchange.Redis": "[3.0.17, )",

@@ -136,7 +136,8 @@ export function classifyConsentError(error: unknown): ConsentErrorKind {
 }
 
 // #312/#313 — the staff work queue of data-subject (deletion) requests. dueAt is computed server-side as
-// createdAt + 15 business days (Mon–Fri, Colombian holidays NOT excluded), so it may precede the legal deadline.
+// createdAt + 15 business days (Mon–Fri, Colombian holidays NOT excluded), so it may precede the legal deadline;
+// with Platform__CandidateNoticeLey8968Enabled (off by default) it is + 5 business days on Costa Rica's calendar.
 export const DATA_SUBJECT_REQUEST_STATUSES = ['pending', 'completed', 'rejected'] as const;
 export type DataSubjectRequestStatus = (typeof DATA_SUBJECT_REQUEST_STATUSES)[number];
 

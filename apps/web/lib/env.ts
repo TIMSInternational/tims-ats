@@ -58,6 +58,13 @@ const baseEnvSchema = z.object({
   AI_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
   PERMISSION_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
 
+  // Global AI kill switch, read per call by packages/ai/src/kill-switch.ts (listed here for
+  // discoverability; nothing reads it from this object). Unset, '', 'false', '0', 'off' or 'no' = AI
+  // runs; ANY other value refuses every Bedrock call made through @tims/ai with `ai_disabled`. A stop
+  // control fails closed, so this is deliberately not an enum: a mistyped value stops AI instead of
+  // failing env validation (only a value longer than 256 characters fails it).
+  AI_KILL_SWITCH: z.string().max(256).optional(),
+
   // Cloudflare Turnstile (CAPTCHA on public apply form — optional; enforced only
   // when both keys are set)
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
@@ -89,6 +96,12 @@ const baseEnvSchema = z.object({
   // step up to a verified TOTP factor (Supabase Auth MFA, aal2) before reaching
   // any admin route. Default off so a fresh deploy can never lock admins out.
   MFA_ENFORCED: z.enum(['true', 'false']).optional(),
+  // Extra tenant roles that must step up too, e.g. 'hr_admin,hrbp' (read per call by
+  // packages/shared/src/mfa.ts isMfaPrivileged; listed here for discoverability). Unset, '' or
+  // 'none' = only platform owners + super_admins. Unknown slugs are ignored, so it is not an enum: a
+  // mistyped slug adds nothing and locks nobody out (only a value longer than 512 characters fails
+  // env validation). Keep it equal to Platform__MfaExtraPrivilegedRoles.
+  MFA_EXTRA_PRIVILEGED_ROLES: z.string().max(512).optional(),
 
   // §8 Q0b slice 2 (#172). Route the alert cron's `active_surveys` and
   // `pending_salary_adjustments` reads to the C# platform service instead of Prisma —
@@ -120,6 +133,20 @@ const baseEnvSchema = z.object({
   SELF_SERVE_SIGNUP_ENABLED: z.string().max(16).optional(),
   // Video interviews (Daily.co). Only the exact string 'true' shows the 'video' type in scheduling.
   NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED: z.string().max(16).optional(),
+  // Careers search surfaces (lib/careers-seo.ts): sitemap entries, robots.txt sitemap line, JobPosting data.
+  // Only the exact string 'true' enables; anything else = off.
+  CAREERS_SEO_ENABLED: z.string().max(16).optional(),
+  // Comma-separated slugs of the organizations whose careers boards may be listed (opt-in per organization).
+  // Unset = none. Entries that are not a valid organization slug are ignored; at most 100 are read.
+  CAREERS_SEO_ORG_SLUGS: z.string().max(6000).optional(),
+  // Cookieless Vercel Web Analytics + careers funnel events (lib/analytics/web-analytics.ts). Only 'true' enables.
+  NEXT_PUBLIC_WEB_ANALYTICS_ENABLED: z.string().max(16).optional(),
+  // Extra candidate-facing 404 actions (components/candidate-not-found-actions.tsx). Only 'true' enables.
+  NEXT_PUBLIC_CANDIDATE_404_LINKS_ENABLED: z.string().max(16).optional(),
+  // Costa Rica (Ley N.° 8968) consent sentence + candidate notice (@tims/shared application-consent.ts).
+  // Only the exact string 'true' turns it on, and only once the approved text is merged
+  // (LEY_8968_NOTICE_TEXT_FINAL); unset = the country-neutral default. Build-time: needs a redeploy.
+  NEXT_PUBLIC_LEY_8968_NOTICE_ENABLED: z.string().max(16).optional(),
 
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

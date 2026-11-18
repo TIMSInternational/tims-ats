@@ -82,6 +82,85 @@ memory. Because this module has never been applied, the live alarms are created 
 `docs/runbooks/production-rollback-and-alerting.md` §4, including the **SNS email confirmation click**.
 Until that click, no alarm is delivered.
 
+## Uptime checks (`synthetics.tf`, opt-in)
+
+`enable_synthetics = true` creates three CloudWatch Synthetics canaries that run every 5 minutes from
+outside, one per production surface: a web app page that renders without sign-in (`synthetics_web_url`,
+e.g. its `/login`), the suite's public site (`synthetics_suite_url`, on its canonical `www` host) and the
+C# API's `/ready` (readiness: database, rate-limit store and, when configured, the relay-nonce bridge)
+under `synthetics_api_base_url`. A run passes only on a 2xx answer; the canary does not follow redirects,
+so give it the final URL. Each canary has an alarm (`tims-platform-api-uptime-<web|suite|ready>`) that
+fires after two failed runs in a row, or when the canary stops reporting (missing data is breaching), and
+publishes to the platform alarms SNS topic. Right after the apply, before the first runs report, an alarm
+may go to ALARM once and back to OK.
+
+There is no `/health` canary: `/health` runs no checks, so an outage that fails it also fails `/ready`,
+and App Runner already probes `/health` every 10 seconds. A second canary would page twice for one outage.
+
+- **URLs are not committed.** All three URL variables default to `""`; put the real values in
+  `terraform.tfvars` (git-ignored) or pass `-var`. An apply that enables the canaries without https
+  URLs is refused by a precondition.
+- **Topic.** By default the alarms use the topic `alarms.tf` creates (needs `enable_alarms = true`).
+  While the live topic is the one `scripts/ops/create-alarms.sh` made, set
+  `synthetics_alarm_topic_arn` to it instead of letting Terraform create a second one.
+- **Recipients.** With the default topic, the alarms depend on `aws_sns_topic_subscription.alarm_email`,
+  so a `-target` apply on the alarms also creates the email subscription; nothing is delivered until
+  the recipient clicks the AWS confirmation link. `synthetics_alarm_topic_arn` requires
+  `enable_alarms = false` (a precondition refuses both together), so with it set Terraform creates no
+  topic and no subscription: before relying on the canaries, check that the existing topic has a
+  **Confirmed** subscriber (`aws sns list-subscriptions-by-topic --topic-arn <arn>`; a
+  `PendingConfirmation` ARN or an empty list means the alarms page no one). Do not put any endpoint from
+  that list in `alarm_extra_recipients` (see below).
+- **Runtime** is pinned (`local.synthetics_runtime_version`); upgrading it is a reviewed change.
+  AWS deprecates Synthetics runtimes on a schedule — check the runtime list before each upgrade.
+- **Artifacts** go to a private, SSE-S3-encrypted bucket with all Block Public Access flags, TLS-only
+  access and a `synthetics_artifact_retention_days` (default 14) expiry. Request/response headers and
+  bodies are not captured.
+- **Role** can write only to that bucket prefix, only to its canaries' own log groups, and only into
+  the `CloudWatchSynthetics` metric namespace (`s3:ListAllMyBuckets` cannot be scoped and is required
+  by the runtime). It cannot create log groups (see below).
+- **Logs.** Each canary runs as a Lambda function `cwsyn-<canary>-<id>`. Terraform creates its log group
+  (`/aws/lambda/<function>`, from the canary's engine ARN) with `log_retention_days` (default 90), because
+  the Synthetics API has no retention setting and a group the function creates itself never expires. The
+  role has no `logs:CreateLogGroup`, so the first run cannot create the group first and fail the apply;
+  at worst that run's log lines are dropped.
+- Because the rest of this module has never been applied, apply the uptime resources with `-target`
+  on their own (see the owner apply procedure for the PR), not with a full `terraform apply`.
+- `tests/governance/uptime-synthetics.test.ts` pins all of the above and runs the canary script
+  against stubbed Synthetics modules. `tests/uptime.tftest.hcl` (here) exercises the enabled path with the
+  AWS provider mocked — no AWS call, no credentials: `terraform init -backend=false && terraform test`.
+
+## Extra alert recipients (`alarm_extra_recipients`)
+
+A list of email addresses and/or E.164 phone numbers (default empty), each subscribed to the topic the
+alarms publish to: the `alarms.tf` topic with `enable_alarms = true`, or `synthetics_alarm_topic_arn`. An
+entry starting with `+` is an SMS subscription; anything else is email. Every alarm on that topic reaches
+them (App Runner alarms and uptime alarms alike).
+
+- Each **email** delivers nothing until its "AWS Notification - Subscription Confirmation" link is clicked.
+- **SMS** needs no confirmation, but while the account's SNS SMS sandbox is on
+  (`aws sns get-sms-sandbox-account-status`), only numbers verified in the sandbox receive messages. Some
+  destination countries also need an origination identity. Send a test alarm and confirm it arrives.
+- The subscriptions are in the uptime alarms' dependency closure, so the targeted uptime apply creates
+  them. To add recipients on their own: `-target=aws_sns_topic_subscription.alarm_extra`.
+- **Never list an address that is already subscribed to the topic.** SNS answers a repeat subscribe with the
+  existing subscription, so Terraform would take it over, and removing the entry or a `terraform destroy`
+  would unsubscribe it. A precondition refuses `alarm_email` (case-insensitively, on both topic paths), but
+  Terraform cannot see the other subscribers of an externally managed topic: with
+  `synthetics_alarm_topic_arn`, run `aws sns list-subscriptions-by-topic --topic-arn <arn>` first and leave
+  out every endpoint it lists.
+
+## Log retention, S3 versioning, ECR tags — what this module covers
+
+- **Log retention:** this module creates only the canaries' log groups (90 days, above). The App Runner
+  service's own log groups (`/aws/apprunner/<service>/<id>/application` and `/service`) are created by
+  App Runner, not declared here; set their retention out of band.
+- **ECR:** the repository is declared `IMMUTABLE`. That is safe with the deploy workflow, which pushes only
+  commit-SHA tags, never a floating tag, and reuses an existing tag instead of pushing it again. A
+  repository created out of band does not get this setting from the module until it is imported.
+- **S3:** the only bucket declared here is the canary artifacts bucket (expiring run artifacts, not
+  versioned on purpose). The application buckets, including the CV uploads bucket, are not in this module.
+
 ## Notes
 
 - **Secrets are never in TF state or code** — only empty containers + an ignored placeholder version.

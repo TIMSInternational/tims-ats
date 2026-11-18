@@ -77,6 +77,11 @@ feature_flags = {
 # a session refused by one stack and served by the other is the hole #173 exists to close.
 mfa_enforced = ""
 
+# Extra tenant roles that must step up once mfa_enforced is "true" (e.g. "hr_admin,hrbp"). "" or "none"
+# keeps only platform owners + super_admin. Unknown slugs are ignored. Same value as the web app's
+# MFA_EXTRA_PRIVILEGED_ROLES.
+mfa_extra_privileged_roles = ""
+
 # ⚠️ Enabling alert_metrics_cron_read requires the secret to be populated FIRST:
 #   aws secretsmanager put-secret-value \
 #     --secret-id tims-platform-api/Platform__AlertMetricsCronSecret \
@@ -88,3 +93,24 @@ mfa_enforced = ""
 
 # Set true only before the billing WRITE cutover (creates + wires Stripe secret containers).
 manage_stripe_secrets = false
+
+# --- External uptime checks (synthetics.tf) — opt-in -------------------------------------------------
+# Real URLs go in terraform.tfvars (git-ignored), never in this example. All three must be https and
+# answer 2xx without a redirect.
+enable_synthetics       = false
+synthetics_web_url      = "" # web app page that renders without sign-in, e.g. "https://<web-host>/login"
+synthetics_suite_url    = "" # suite public site on its canonical (www) host, e.g. "https://<www-host>/"
+synthetics_api_base_url = "" # e.g. the service_url output: "https://<id>.<region>.awsapprunner.com"
+# Point the uptime alarms at the EXISTING platform alarms topic while that topic is managed by
+# scripts/ops/create-alarms.sh rather than by this module. Empty => the alarms.tf topic (enable_alarms).
+synthetics_alarm_topic_arn = ""
+
+# Retention for the log groups this module creates (the canaries' Lambda logs). 90 is the default.
+# log_retention_days = 90
+
+# --- Extra alert recipients (alarms.tf) -----------------------------------------------------------------
+# Subscribed to the alarm topic in use (enable_alarms, or synthetics_alarm_topic_arn). Emails must click the
+# AWS confirmation link; SMS numbers (E.164) only receive messages once verified in, or moved out of, the
+# account's SNS SMS sandbox. Real values go in terraform.tfvars, never here. Never list an endpoint that is
+# already subscribed to the topic (alarm_email included): Terraform would take that subscription over.
+alarm_extra_recipients = [] # e.g. ["oncall@example.com", "+15555550100"]

@@ -2,8 +2,9 @@
 
 import { usePathname } from 'next/navigation';
 import { I18nProvider, useI18n } from '../lib/i18n';
-import { careersNotFoundTarget } from '../lib/careers-not-found';
+import { careersNotFoundTarget, isCandidate404LinksEnabled } from '../lib/careers-not-found';
 import { Button } from '../components/button';
+import { CandidateNotFoundActions } from '../components/candidate-not-found-actions';
 
 function NotFoundContent() {
   const { t } = useI18n();
@@ -18,7 +19,9 @@ function NotFoundContent() {
       <p className="mt-2 max-w-sm text-subheading text-secondary">
         {careers ? t.notFound.careersMessage : t.notFound.message}
       </p>
-      {careers ? (
+      {careers && isCandidate404LinksEnabled() ? (
+        <CandidateNotFoundActions boardHref={careers.href} />
+      ) : careers ? (
         careers.href && (
           <Button href={careers.href} size="lg" className="mt-6">
             {t.notFound.backToVacancies}
