@@ -14,11 +14,12 @@ namespace Tims.Api.ErrorReporting;
 /// client-identification ones below is dropped, so Authorization, Cookie, API keys, the relay attribution
 /// header, cron/webhook signatures, forwarded client IPs — and any credential header added later — never
 /// leave the process. Request bodies, query strings and cookies are dropped outright; the URL keeps only
-/// scheme, host and path (every route parameter in this API is a GUID, never a credential).
+/// scheme, host and path (route parameters in this API are record ids or permission names, never credentials).
 /// </para>
 /// <para>
-/// Fail-closed: if scrubbing itself throws, the payload is DROPPED (null), never sent unscrubbed. The SDK's
-/// own handling of a throwing callback is to log it and send the original payload, which is the opposite.
+/// Fail-closed: if scrubbing itself throws, the payload is DROPPED (null), never sent unscrubbed. Sentry 7.x
+/// also drops an event or transaction whose callback throws; catching here keeps the guarantee independent of
+/// that SDK detail.
 /// </para>
 /// </remarks>
 public static partial class SentryPayloadScrubber
