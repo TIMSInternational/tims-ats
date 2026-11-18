@@ -133,6 +133,16 @@ const baseEnvSchema = z.object({
   SELF_SERVE_SIGNUP_ENABLED: z.string().max(16).optional(),
   // Video interviews (Daily.co). Only the exact string 'true' shows the 'video' type in scheduling.
   NEXT_PUBLIC_INTERVIEW_VIDEO_ENABLED: z.string().max(16).optional(),
+  // Careers search surfaces (lib/careers-seo.ts): sitemap entries, robots.txt sitemap line, JobPosting data.
+  // Only the exact string 'true' enables; anything else = off.
+  CAREERS_SEO_ENABLED: z.string().max(16).optional(),
+  // Comma-separated slugs of the organizations whose careers boards may be listed (opt-in per organization).
+  // Unset = none. Entries that are not a valid organization slug are ignored; at most 100 are read.
+  CAREERS_SEO_ORG_SLUGS: z.string().max(6000).optional(),
+  // Cookieless Vercel Web Analytics + careers funnel events (lib/analytics/web-analytics.ts). Only 'true' enables.
+  NEXT_PUBLIC_WEB_ANALYTICS_ENABLED: z.string().max(16).optional(),
+  // Extra candidate-facing 404 actions (components/candidate-not-found-actions.tsx). Only 'true' enables.
+  NEXT_PUBLIC_CANDIDATE_404_LINKS_ENABLED: z.string().max(16).optional(),
 
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

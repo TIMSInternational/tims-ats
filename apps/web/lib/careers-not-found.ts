@@ -23,3 +23,19 @@ export function careersNotFoundTarget(pathname: string | null | undefined): { hr
   const lower = lowerSlug(slug);
   return { href: lower ? `/careers/${encodeURIComponent(lower)}` : null };
 }
+
+/** The candidate portal under a board: its dashboard, which sends a signed-out candidate to the portal login. */
+export function candidatePortalHref(boardHref: string): string {
+  return `${boardHref}/dashboard`;
+}
+
+/**
+ * The extra candidate-facing 404 actions (a link to the candidate portal under a board, "go back" where no board
+ * exists). Only the exact string 'true' turns them on; otherwise the 404 pages are unchanged. Must stay a literal
+ * reference so Next inlines it into the client bundle.
+ */
+export function isCandidate404LinksEnabled(
+  raw: string | undefined = process.env.NEXT_PUBLIC_CANDIDATE_404_LINKS_ENABLED,
+): boolean {
+  return raw === 'true';
+}

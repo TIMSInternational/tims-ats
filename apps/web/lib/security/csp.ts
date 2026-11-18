@@ -20,6 +20,26 @@ export interface CspOrigins {
    * timssuite.com does.
    */
   assessmentProviderFrame?: string;
+  /**
+   * The origin @vercel/analytics loads its script from outside a production build, from
+   * `webAnalyticsScriptOrigin`, or '' (the default). Added to `script-src` only.
+   */
+  webAnalyticsScript?: string;
+}
+
+/**
+ * Where @vercel/analytics loads its (debug) script when the build is not a production one. A production build
+ * loads it from this app's own origin (`/_vercel/insights/script.js`) and sends its beacons there too, which
+ * `script-src 'self'` and `connect-src 'self'` already allow, so production needs no extra source.
+ */
+export const WEB_ANALYTICS_DEBUG_SCRIPT_ORIGIN = 'https://va.vercel-scripts.com';
+
+/**
+ * The script-src origin Vercel Web Analytics needs: the debug script host only when analytics is turned on
+ * (NEXT_PUBLIC_WEB_ANALYTICS_ENABLED is exactly 'true') in a non-production build; '' otherwise.
+ */
+export function webAnalyticsScriptOrigin(enabled: string | undefined, isProd: boolean): string {
+  return enabled === 'true' && !isProd ? WEB_ANALYTICS_DEBUG_SCRIPT_ORIGIN : '';
 }
 
 /**
@@ -155,6 +175,7 @@ export function buildCsp(nonce: string, pathname: string, origins: CspOrigins, i
     isProd ? `'nonce-${nonce}'` : "'unsafe-inline' 'unsafe-eval'",
     'https://challenges.cloudflare.com',
     daily ? DAILY_SCRIPT_SRC : '',
+    origins.webAnalyticsScript ?? '',
   ]
     .filter(Boolean)
     .join(' ');

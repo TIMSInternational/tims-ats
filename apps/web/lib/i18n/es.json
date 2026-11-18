@@ -19,7 +19,9 @@
     "careersMessage": "La página que busca no existe o ya no está disponible.",
     "careersPortalNotFound": "No encontramos este portal de empleo. Revise el enlace que recibió.",
     "backToVacancies": "Ver vacantes",
-    "backToDashboard": "Volver al dashboard"
+    "backToDashboard": "Volver al dashboard",
+    "candidatePortal": "Mis postulaciones",
+    "goBack": "Volver a la página anterior"
   },
   "roles": {
     "platform_owner": "Dueño de plataforma",
