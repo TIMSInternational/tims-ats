@@ -21,6 +21,8 @@
 --     -f packages/db/prisma/manual/2026-07-17-audit-logs-immutable.sql
 -- VERIFY: UPDATE/DELETE/TRUNCATE audit_logs should raise "audit_logs is append-only: ...".
 -- NOTE: re-run after any Prisma migration that RECREATES audit_logs.
+-- 2026-10-12: the guard now carries SET search_path = '' (see 2026-10-12-pin-function-search-path.sql). A
+-- re-run of this file therefore KEEPS the pin; before that change a re-run would have reset it.
 REVOKE UPDATE, DELETE, TRUNCATE ON "audit_logs" FROM PUBLIC;
 REVOKE UPDATE, DELETE, TRUNCATE ON "audit_logs" FROM app_tenant;
 CREATE OR REPLACE FUNCTION tims_append_only_guard() RETURNS trigger AS $$
@@ -28,7 +30,7 @@ BEGIN
     RAISE EXCEPTION '% is append-only: % is not permitted', TG_TABLE_NAME, TG_OP
         USING ERRCODE = 'insufficient_privilege';
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 DROP TRIGGER IF EXISTS "audit_logs_append_only" ON "audit_logs";
 CREATE TRIGGER "audit_logs_append_only"
     BEFORE UPDATE OR DELETE ON "audit_logs"
