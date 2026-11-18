@@ -58,6 +58,12 @@ const baseEnvSchema = z.object({
   AI_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
   PERMISSION_CACHE_UPSTASH_ENABLED: z.string().max(16).optional(),
 
+  // Global AI kill switch, read per call by packages/ai/src/kill-switch.ts (listed here for
+  // discoverability; nothing reads it from this object). Unset, '', 'false', '0', 'off' or 'no' = AI
+  // runs; ANY other value refuses every model call with `ai_disabled`. A stop control fails closed,
+  // so this is deliberately not an enum: a typo must stop AI, never fail env validation.
+  AI_KILL_SWITCH: z.string().max(256).optional(),
+
   // Cloudflare Turnstile (CAPTCHA on public apply form — optional; enforced only
   // when both keys are set)
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),

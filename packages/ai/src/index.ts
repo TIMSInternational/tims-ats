@@ -1,6 +1,7 @@
 export { invokeAgent } from './invoke';
 export type { InvokeAgentParams, InvokeAgentResult } from './invoke';
 export { calculateCost } from './client';
+export { AI_DISABLED, AI_KILL_SWITCH_ENV, isAiKillSwitchOn } from './kill-switch';
 export { bedrockCircuit, CircuitBreaker } from './circuit';
 export { checkBudget } from './budget';
 export { getCached, setCached, cacheKey } from './cache';

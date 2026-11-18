@@ -2,6 +2,7 @@ import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { generateText } from 'ai';
 import { bedrockCircuit } from './circuit';
 import { bedrockGuardrailOptions } from './pii';
+import { assertAiEnabled } from './kill-switch';
 
 // ---------------------------------------------------------------------------
 // Bedrock client — the ONLY place that calls AWS Bedrock.
@@ -72,6 +73,9 @@ export async function bedrockGenerate(
   userMessage: string,
   maxTokens: number = 2048,
 ): Promise<InvokeResult> {
+  // Second line of the global kill switch (the first is in invokeAgent). Checked OUTSIDE the
+  // circuit breaker so a deliberate stop is never counted as a Bedrock failure.
+  assertAiEnabled();
   const guardrail = bedrockGuardrailOptions();
   const start = Date.now();
 
