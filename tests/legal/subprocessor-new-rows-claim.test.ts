@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SUBPROCESSORS } from '../../apps/web/lib/legal/subprocessors';
+import en from '../../apps/web/lib/i18n/en.json';
+import es from '../../apps/web/lib/i18n/es.json';
 
 // Each claim in these rows' code-owned text is tied to the code that makes it true, so the text cannot drift
 // from what the platform sends (the same pattern as the Sentry and Supabase claim tests).
@@ -13,7 +15,7 @@ const row = (id: string) => {
   return found;
 };
 
-describe('TIMS Assessments row — what the ATS sends to the assessment service', () => {
+describe('TIMS Assessments row — what the assessment service receives', () => {
   const client = read('services/Tims.Platform/src/Tims.Infrastructure/Assessments/Providers/TimsAssessmentsClient.cs');
   const tims = row('tims-assessments');
 
@@ -47,6 +49,62 @@ describe('TIMS Assessments row — what the ATS sends to the assessment service'
     expect(tims.dataCategories.es).toMatch(/nombre, apellidos, correo electrónico e idioma preferido del candidato/);
     expect(tims.dataCategories.es).toMatch(/declaración de rango de edad/);
     expect(tims.dataCategories.es).toMatch(/configuración de supervisión/);
+  });
+
+  it('names what the hosted player collects in the browser: alerts, the optional voice recording, identity photos', () => {
+    // The hosted player runs in a frame granted the camera and the microphone.
+    expect(read('apps/web/app/(portal)/careers/[orgSlug]/dashboard/provider-assessment-frame.tsx')).toContain(
+      "'camera; microphone; fullscreen; autoplay'",
+    );
+    // Voice and biometric are consent purposes of the assessment contract.
+    const vocabulary = read('services/Tims.Platform/src/Tims.Domain/Assessments/Providers/ProviderVocabulary.cs');
+    expect(vocabulary).toContain('public const string Voice = "voice";');
+    expect(vocabulary).toContain('public const string Biometric = "biometric";');
+
+    // Security alerts: what they are, and that they are recorded even with alert control off.
+    expect(en.assessmentSecurity.antiCheatHelp).toMatch(
+      /switching tabs, leaving the window or connecting another screen/,
+    );
+    expect(en.assessmentSecurity.antiCheatOffHint).toMatch(/alerts are recorded/);
+    expect(tims.dataCategories.en).toMatch(
+      /security alerts recorded during the test \(for example switching tabs, leaving the window or connecting another screen\)/,
+    );
+    expect(es.assessmentSecurity.antiCheatHelp).toMatch(
+      /cambiar de pestaña, salir de la ventana o conectar otra pantalla/,
+    );
+    expect(tims.dataCategories.es).toMatch(
+      /alertas de seguridad registradas durante la prueba \(por ejemplo, cambiar de pestaña, salir de la ventana o conectar otra pantalla\)/,
+    );
+
+    // The voice recording of the English speaking section is an optional consent the candidate may decline.
+    expect(read('apps/web/lib/platform-api/assessment-provider-portal.ts')).toMatch(
+      /OPTIONAL purposes not decided yet \(English speaking: voice, ai_scoring\)/,
+    );
+    expect(en.assessmentConsentNotice.providerConsents).toMatch(/voice recording of the English speaking section/);
+    expect(tims.dataCategories.en).toMatch(
+      /with the candidate's optional voice consent, the voice recording of the English speaking section/,
+    );
+    expect(es.assessmentConsentNotice.providerConsents).toMatch(/grabación de voz de la sección oral de inglés/);
+    expect(tims.dataCategories.es).toMatch(
+      /con el consentimiento opcional de voz del candidato, la grabación de voz de la sección oral de inglés/,
+    );
+
+    // The identity check takes camera photos, and is sent only while the platform allows it.
+    expect(en.assessmentSecurity.identityHelp).toMatch(
+      /takes a photo of the candidate at the start and compares it with periodic photos during the test/,
+    );
+    expect(read('services/Tims.Platform/src/Tims.Domain/Assessments/Providers/ProviderProctoring.cs')).toContain(
+      'identityCheckAllowed ? settings : settings with { IdentityCheck = false }',
+    );
+    expect(read('services/Tims.Platform/src/Tims.Api/Configuration/PlatformOptions.cs')).toContain(
+      'public bool AssessmentIdentityCheckEnabled { get; init; }',
+    );
+    expect(tims.dataCategories.en).toMatch(
+      /only if the identity check is turned on for the organization's tests, photos of the candidate taken with the camera at the start and periodically during the test to verify their identity \(biometric data\)/,
+    );
+    expect(tims.dataCategories.es).toMatch(
+      /solo si se activa la verificación de identidad para las pruebas de la organización, fotos del candidato tomadas con la cámara al empezar y periódicamente durante la prueba para verificar su identidad \(datos biométricos\)/,
+    );
   });
 
   it('says results feed the FIT score only because the API wires them into it', () => {

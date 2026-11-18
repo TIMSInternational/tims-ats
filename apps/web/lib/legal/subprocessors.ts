@@ -281,8 +281,8 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
       en: 'Delivery and scoring of the assessments the organization assigns to a candidate (for example LIA, TIMS Personality, English and PCA); their results feed the FIT score.',
     },
     dataCategories: {
-      es: 'Nombre de la organización; nombre, apellidos, correo electrónico e idioma preferido del candidato y una referencia interna; la vacante a la que se vincula la evaluación y la razón por la que se relaciona con el puesto; ajustes de tiempo o de accesibilidad y una declaración de rango de edad; la configuración de supervisión de la prueba; los consentimientos del candidato para las evaluaciones; respuestas y resultados de las evaluaciones.',
-      en: "Organization name; the candidate's given and family name, email address, preferred language and an internal reference; the vacancy the assessment is linked to and why it relates to the position; time or accessibility accommodations and an age-band attestation; the test's proctoring settings; the candidate's assessment consents; assessment answers and results.",
+      es: 'Nombre de la organización; nombre, apellidos, correo electrónico e idioma preferido del candidato y una referencia interna; la vacante a la que se vincula la evaluación y la razón por la que se relaciona con el puesto; ajustes de tiempo o de accesibilidad y una declaración de rango de edad; la configuración de supervisión de la prueba; los consentimientos del candidato para las evaluaciones; respuestas y resultados de las evaluaciones. Recopilados por el servicio directamente en el navegador del candidato mientras la prueba se ejecuta en su reproductor: alertas de seguridad registradas durante la prueba (por ejemplo, cambiar de pestaña, salir de la ventana o conectar otra pantalla); con el consentimiento opcional de voz del candidato, la grabación de voz de la sección oral de inglés; y, solo si se activa la verificación de identidad para las pruebas de la organización, fotos del candidato tomadas con la cámara al empezar y periódicamente durante la prueba para verificar su identidad (datos biométricos).',
+      en: "Organization name; the candidate's given and family name, email address, preferred language and an internal reference; the vacancy the assessment is linked to and why it relates to the position; time or accessibility accommodations and an age-band attestation; the test's proctoring settings; the candidate's assessment consents; assessment answers and results. Collected by the service directly in the candidate's browser while the test runs in its player: security alerts recorded during the test (for example switching tabs, leaving the window or connecting another screen); with the candidate's optional voice consent, the voice recording of the English speaking section; and, only if the identity check is turned on for the organization's tests, photos of the candidate taken with the camera at the start and periodically during the test to verify their identity (biometric data).",
     },
     condition: 'customer-enabled',
     evidence: [
@@ -295,6 +295,18 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
         contains: '["display_name"] = request.DisplayName',
       },
       { file: 'services/Tims.Platform/src/Tims.Api/Program.cs', contains: 'var providerResultsFeedFit' },
+      {
+        file: 'services/Tims.Platform/src/Tims.Domain/Assessments/Providers/ProviderVocabulary.cs',
+        contains: 'public const string Voice = "voice";',
+      },
+      {
+        file: 'services/Tims.Platform/src/Tims.Domain/Assessments/Providers/ProviderProctoring.cs',
+        contains: '(camera face checks; requires the <c>biometric</c> consent and the hosted player)',
+      },
+      {
+        file: 'apps/web/app/(portal)/careers/[orgSlug]/dashboard/provider-assessment-frame.tsx',
+        contains: "'camera; microphone; fullscreen; autoplay'",
+      },
     ],
   },
   {
