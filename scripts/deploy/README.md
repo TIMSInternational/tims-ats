@@ -158,7 +158,7 @@ After each file, the script prints its verification step:
 7. Populate the Secrets Manager values out-of-band (`terraform output
 secret_arns` + `aws secretsmanager put-secret-value`) — see
    `deploy/terraform/README.md`.
-8. Runbook §5 — smoke gate (`/health`, `/ready`, `/openapi/v1.json`, a staff-JWT
+8. Runbook §5 — smoke gate (`/health`, `/ready`, `/openapi/v1.json` → 404, a staff-JWT
    `/whoami`). Not scripted here (needs a minted Supabase JWT); still manual
    per the runbook.
 9. Runbook §6 — per-surface cutover (FE-rewiring PRs + flag flips): use

@@ -1012,7 +1012,7 @@ try
         sp.GetRequiredService<InMemorySlidingWindowRateLimiter>(),
         sp.GetRequiredService<IHostEnvironment>()));
 
-    // --- OpenAPI (emitted to contracts/openapi at build; served at /openapi/v1.json) --
+    // --- OpenAPI (emitted to contracts/openapi at build; served at /openapi/v1.json in Development only) --
     builder.Services.AddOpenApi(options =>
     {
         // Keep the SubmitValidationBody request schema faithful to the Zod contract: `notes` is OPTIONAL
@@ -1330,7 +1330,13 @@ try
         options.EnrichDiagnosticContext = (diagnostic, httpContext) =>
             diagnostic.Set("TraceId", Activity.Current?.TraceId.ToString()));
 
-    app.MapOpenApi();
+    // The OpenAPI document is served only in Development. The committed contract (contracts/openapi,
+    // which apps/web generates its client types from) is written at BUILD time by GetDocument.Insider
+    // through the AddOpenApi registration above, so it does not depend on this runtime endpoint.
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+    }
 
     // Liveness: process is up and the pipeline responds. Runs no dependency checks.
     app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
