@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { isMfaEnforced, isMfaGateBlocking, isMfaPrivileged, MFA_REQUIRED } from '@tims/shared';
+import {
+  isMfaEnforced,
+  isMfaGateBlocking,
+  isMfaPrivileged,
+  parseMfaExtraPrivilegedRoles,
+  MFA_REQUIRED,
+} from '@tims/shared';
 
 /**
  * #173 — the MFA step-up gate, pinned to the goldens the C# port also asserts
@@ -35,6 +41,14 @@ interface PrivilegedCase {
   isPlatformOwner: boolean;
   expected: boolean;
 }
+interface ExtraRolesParseCase {
+  name: string;
+  input: string | null;
+  expected: string[];
+}
+interface PrivilegedWithExtraCase extends PrivilegedCase {
+  extraRoles: string | null;
+}
 
 const fixture = JSON.parse(
   readFileSync(join(__dirname, '..', '..', 'contracts', 'mfa-fixtures', 'cases.json'), 'utf8'),
@@ -42,6 +56,8 @@ const fixture = JSON.parse(
   cases: BlockingCase[];
   enforcedFlag: FlagCase[];
   privileged: PrivilegedCase[];
+  extraRolesParse: ExtraRolesParseCase[];
+  privilegedWithExtra: PrivilegedWithExtraCase[];
 };
 
 describe('MFA gate — cross-stack goldens', () => {
@@ -49,6 +65,8 @@ describe('MFA gate — cross-stack goldens', () => {
     expect(fixture.cases.length).toBeGreaterThanOrEqual(8);
     expect(fixture.enforcedFlag.length).toBeGreaterThanOrEqual(5);
     expect(fixture.privileged.length).toBeGreaterThanOrEqual(5);
+    expect(fixture.extraRolesParse.length).toBeGreaterThanOrEqual(5);
+    expect(fixture.privilegedWithExtra.length).toBeGreaterThanOrEqual(5);
   });
 
   for (const c of fixture.cases) {
@@ -72,6 +90,24 @@ describe('MFA gate — cross-stack goldens', () => {
   for (const c of fixture.privileged) {
     it(`isMfaPrivileged: ${c.name}`, () => {
       expect(isMfaPrivileged({ roles: c.roles, isPlatformOwner: c.isPlatformOwner })).toBe(c.expected);
+    });
+  }
+
+  for (const c of fixture.extraRolesParse) {
+    it(`parseMfaExtraPrivilegedRoles: ${c.name}`, () => {
+      expect(parseMfaExtraPrivilegedRoles(c.input)).toEqual(c.expected);
+    });
+  }
+
+  for (const c of fixture.privilegedWithExtra) {
+    it(`isMfaPrivileged with extra roles: ${c.name}`, () => {
+      expect(
+        isMfaPrivileged({
+          roles: c.roles,
+          isPlatformOwner: c.isPlatformOwner,
+          extraRoles: parseMfaExtraPrivilegedRoles(c.extraRoles),
+        }),
+      ).toBe(c.expected);
     });
   }
 

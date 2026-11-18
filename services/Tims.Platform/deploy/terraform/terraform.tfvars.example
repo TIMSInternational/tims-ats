@@ -77,6 +77,11 @@ feature_flags = {
 # a session refused by one stack and served by the other is the hole #173 exists to close.
 mfa_enforced = ""
 
+# Extra tenant roles that must step up once mfa_enforced is "true" (e.g. "hr_admin,hrbp"). "" or "none"
+# keeps only platform owners + super_admin. Unknown slugs are ignored. Same value as the web app's
+# MFA_EXTRA_PRIVILEGED_ROLES.
+mfa_extra_privileged_roles = ""
+
 # ⚠️ Enabling alert_metrics_cron_read requires the secret to be populated FIRST:
 #   aws secretsmanager put-secret-value \
 #     --secret-id tims-platform-api/Platform__AlertMetricsCronSecret \

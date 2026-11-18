@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
+import { isAiDisabledCode } from '../../../../lib/known-error-codes';
 import { Modal } from '../../../../components';
 import { Button } from '../../../../components/button';
 import { FIELD_ERROR_CLASSES, FIELD_LABEL_CLASSES, inputClasses } from '../../../../components/field-styles';
@@ -65,7 +66,9 @@ export function AiScreenModal({ interviewId, onClose }: AiScreenModalProps) {
             {t.interviews.startAiScreen}
           </Button>
           {create.isError && (
-            <p role="alert" className={FIELD_ERROR_CLASSES}>{create.error.message}</p>
+            <p role="alert" className={FIELD_ERROR_CLASSES}>
+              {isAiDisabledCode(create.error.message) ? t.common.aiDisabled : create.error.message}
+            </p>
           )}
         </div>
       ) : (

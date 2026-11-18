@@ -136,6 +136,12 @@ variable "mfa_enforced" {
   default     = ""
 }
 
+variable "mfa_extra_privileged_roles" {
+  description = "Platform:MfaExtraPrivilegedRoles. Comma-separated tenant staff role slugs (hr_admin, hrbp, recruiter, leader, committee, employee) that must step up to MFA in addition to platform owners and super_admin, once mfa_enforced is \"true\". Unknown slugs are ignored; an empty default (or \"none\") leaves the base set unchanged. Set it to the SAME value as the web app's MFA_EXTRA_PRIVILEGED_ROLES."
+  type        = string
+  default     = ""
+}
+
 variable "manage_stripe_secrets" {
   description = "Create Secrets Manager containers + wire Stripe:SecretKey/WebhookSecret into the service. Only needed before the billing WRITE cutover."
   type        = bool

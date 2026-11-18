@@ -70,7 +70,10 @@ public sealed class MfaStepUpMiddleware(RequestDelegate next)
             || tenant.ImpersonatedBy is not null;
         if (!MfaGate.IsBlocking(
                 enforced: true,
-                isPrivileged: MfaGate.IsPrivileged(tenant.Roles, isPlatformOwner),
+                isPrivileged: MfaGate.IsPrivileged(
+                    tenant.Roles,
+                    isPlatformOwner,
+                    MfaGate.ParseExtraPrivilegedRoles(platformOptions.Value.MfaExtraPrivilegedRoles)),
                 currentLevel: context.User.FindFirstValue("aal")))
         {
             await _next(context).ConfigureAwait(false);
