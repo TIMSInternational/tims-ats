@@ -27,3 +27,8 @@ output "active_feature_flags" {
   description = "Names of feature_flags currently set to true (i.e. which Platform:*Enabled surfaces THIS apply would turn on). Empty on a first/dark deploy. Diff this against known prod reality (e.g. team_intel_read, confirmed live out-of-band as of 2026-07-27 — see main.tf's top-of-file NOTICE) before every apply to catch drift between this module's state and what's actually flipped in the real service."
   value       = sort([for k, v in var.feature_flags : k if v])
 }
+
+output "synthetics_canary_names" {
+  description = "CloudWatch Synthetics uptime canaries (empty unless enable_synthetics)."
+  value       = { for k, c in aws_synthetics_canary.uptime : k => c.name }
+}

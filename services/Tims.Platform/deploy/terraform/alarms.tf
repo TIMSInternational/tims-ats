@@ -81,6 +81,45 @@ resource "aws_sns_topic_subscription" "alarm_email" {
   endpoint  = var.alarm_email
 }
 
+# --- Extra alert recipients (var.alarm_extra_recipients, default none) ---------------------------------
+# More inboxes and/or SMS numbers on the SAME topic every alarm publishes to, so a single inbox is not the
+# only path to a person. Subscribed to whichever topic is in use: the one above (enable_alarms) or the
+# externally managed one (synthetics_alarm_topic_arn; see synthetics.tf). The for_each condition reads
+# variables only, so it is known at plan time. An entry starting with "+" is an E.164 number (sms);
+# anything else is an email address (email, which delivers nothing until its confirmation link is clicked).
+locals {
+  alarm_extra_recipients = {
+    for r in var.alarm_extra_recipients : r => (startswith(r, "+") ? "sms" : "email")
+  }
+}
+
+resource "aws_sns_topic_subscription" "alarm_extra" {
+  for_each = (var.enable_alarms || var.synthetics_alarm_topic_arn != "") ? local.alarm_extra_recipients : {}
+
+  topic_arn = local.synthetics_alarm_topic_arn
+  protocol  = each.value
+  endpoint  = each.key
+
+  lifecycle {
+    # Same rule as the uptime alarms: the override names an externally managed topic, so it cannot be
+    # combined with the topic this module creates (the recipients would land on a topic no alarm uses).
+    precondition {
+      condition     = !(var.synthetics_alarm_topic_arn != "" && var.enable_alarms)
+      error_message = "synthetics_alarm_topic_arn is for an externally managed topic: set enable_alarms = false with it, or unset it to use the topic alarms.tf creates."
+    }
+    # SNS returns the EXISTING subscription when an endpoint already on the topic subscribes again, so
+    # Terraform would then own a subscription it did not create, and dropping the entry (or a destroy)
+    # would unsubscribe it. alarm_email is on the topic on both paths: alarms.tf subscribes it with
+    # enable_alarms, and the externally managed topic is normally subscribed to the same inbox by
+    # scripts/ops/create-alarms.sh. So the guard applies on both paths, case-insensitively. Other endpoints
+    # already on an external topic are not visible from here: check the topic's subscriptions first (README).
+    precondition {
+      condition     = !contains([for r in var.alarm_extra_recipients : lower(r)], lower(var.alarm_email))
+      error_message = "alarm_extra_recipients must not repeat alarm_email: it is already subscribed to the alarm topic, and Terraform would take that subscription over."
+    }
+  }
+}
+
 resource "aws_cloudwatch_metric_alarm" "simple" {
   for_each = var.enable_alarms ? local.simple_alarms : {}
 

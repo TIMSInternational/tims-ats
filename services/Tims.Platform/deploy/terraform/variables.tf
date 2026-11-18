@@ -173,6 +173,27 @@ variable "alarm_email" {
   }
 }
 
+variable "alarm_extra_recipients" {
+  description = "Extra alert recipients subscribed to the alarm SNS topic, besides alarm_email: email addresses and/or E.164 phone numbers for SMS (e.g. \"+15555550100\"). Default none. Each email delivers nothing until its AWS confirmation link is clicked. SMS needs no confirmation, but while the account's SNS SMS sandbox is on, only numbers verified in that sandbox receive anything. Used when enable_alarms = true or synthetics_alarm_topic_arn is set."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for r in var.alarm_extra_recipients :
+      can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", r)) || can(regex("^\\+[1-9][0-9]{7,14}$", r))
+    ])
+    error_message = "Each alarm_extra_recipients entry must be an email address or an E.164 phone number (+ then 8-15 digits, no spaces)."
+  }
+
+  # Case-insensitive, like the repeat-of-alarm_email guard in alarms.tf: two spellings of one address
+  # would be two Terraform resources over a single SNS subscription.
+  validation {
+    condition     = length(distinct([for r in var.alarm_extra_recipients : lower(r)])) == length(var.alarm_extra_recipients)
+    error_message = "The alarm_extra_recipients entries must be unique (case-insensitive)."
+  }
+}
+
 variable "alarm_5xx_count_threshold" {
   description = "5xx responses per 5 minutes that page."
   type        = number
@@ -201,4 +222,85 @@ variable "alarm_memory_percent" {
   description = "Average memory utilization (%) that pages when sustained for 15 minutes."
   type        = number
   default     = 85
+}
+
+# --- External uptime checks (synthetics.tf) — opt-in -------------------------------------------------
+# The URLs have NO usable default on purpose: no production hostname is committed to this repository.
+# Supply them in terraform.tfvars (git-ignored) or with -var. An apply with enable_synthetics = true and
+# an empty or non-https URL is refused by a precondition in synthetics.tf.
+
+variable "enable_synthetics" {
+  description = "Create the three CloudWatch Synthetics uptime canaries (web app public page, suite public site, API /ready), their artifacts bucket, execution role, log groups and alarms. Off by default."
+  type        = bool
+  default     = false
+}
+
+variable "synthetics_web_url" {
+  description = "Full https URL of a web app page that renders without sign-in, e.g. the staff sign-in page https://<web-host>/login. Must answer 2xx directly — the canary does not follow redirects. Required when enable_synthetics."
+  type        = string
+  default     = ""
+}
+
+variable "synthetics_suite_url" {
+  description = "Full https URL of the suite's public site, e.g. https://<www-host>/ (the canonical host: an apex that redirects to www fails the check). Must answer 2xx directly. Required when enable_synthetics."
+  type        = string
+  default     = ""
+}
+
+variable "synthetics_api_base_url" {
+  description = "https base URL of the C# API (the service_url output, or its custom domain). The canary appends /ready. Required when enable_synthetics."
+  type        = string
+  default     = ""
+}
+
+variable "synthetics_alarm_topic_arn" {
+  description = "SNS topic ARN for the uptime alarms and for alarm_extra_recipients. Empty => the topic alarms.tf creates (requires enable_alarms = true). Set it to the existing out-of-band platform alarms topic while this module is not the owner of that topic."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.synthetics_alarm_topic_arn == "" || can(regex("^arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+$", var.synthetics_alarm_topic_arn))
+    error_message = "The synthetics_alarm_topic_arn value must be empty or an SNS topic ARN."
+  }
+}
+
+variable "synthetics_name_prefix" {
+  description = "Prefix for canary names, the canary IAM role and its log-group scope. Canary names are <prefix>-web|-suite|-ready and must stay <= 21 chars."
+  type        = string
+  default     = "tims-uptime"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9_-]{0,13}$", var.synthetics_name_prefix))
+    error_message = "The synthetics_name_prefix value must be 1-14 chars of [a-z0-9_-] so that every <prefix>-<target> canary name fits the 21-char limit."
+  }
+}
+
+variable "synthetics_artifacts_bucket_name" {
+  description = "Override for the canary artifacts bucket name. Empty => <service_name>-synthetics-<account id>."
+  type        = string
+  default     = ""
+}
+
+variable "synthetics_artifact_retention_days" {
+  description = "Days canary run artifacts are kept (S3 lifecycle expiry and the canary's own success/failure retention)."
+  type        = number
+  default     = 14
+
+  validation {
+    condition     = var.synthetics_artifact_retention_days >= 1 && var.synthetics_artifact_retention_days <= 30
+    error_message = "The synthetics_artifact_retention_days value must be between 1 and 30."
+  }
+}
+
+# --- Log retention (log groups this module creates) ----------------------------------------------------
+
+variable "log_retention_days" {
+  description = "Retention in days for the CloudWatch log groups this module creates (today: the uptime canaries' Lambda log groups). Must be a value CloudWatch Logs accepts."
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
+    error_message = "The log_retention_days value must be one CloudWatch Logs accepts (1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, ...)."
+  }
 }
