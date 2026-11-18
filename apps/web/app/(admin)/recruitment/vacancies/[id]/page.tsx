@@ -16,6 +16,7 @@ import { ApprovalChain } from './approval-chain';
 import { FitRanking } from './fit-ranking';
 import { RoleFamilyCard } from './role-family-card';
 import { FitRequirementsCard } from './fit-requirements-card';
+import { VacancyAssessmentsCard } from './vacancy-assessments-card';
 import { SubmitForApprovalCta } from './submit-for-approval-cta';
 import { VacancyLifecycleActions } from './vacancy-lifecycle-actions';
 import { vacancyStatusMap } from '../vacancy-status';
@@ -124,6 +125,7 @@ export default function VacancyDetailPage({ params }: { params: Promise<{ id: st
             <SlaCard vacancy={v} />
             <RoleFamilyCard vacancyId={id} roleFamily={v.roleFamily ?? null} />
             <FitRequirementsCard vacancyId={id} fitRequirements={v.jobProfile?.fitRequirements ?? null} />
+            <VacancyAssessmentsCard vacancyId={id} />
             {(v.approvals.length > 0 || v.status === 'draft') && (
               <ApprovalChain vacancyId={id} vacancyStatus={v.status} approvals={v.approvals} />
             )}

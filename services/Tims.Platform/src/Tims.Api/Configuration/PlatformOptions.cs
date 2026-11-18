@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Tims.Application.Assessments.Providers;
 
 namespace Tims.Api.Configuration;
 
@@ -429,6 +430,48 @@ public sealed class PlatformOptions
     public bool AssessmentTypeWriteEnabled { get; init; }
 
     /// <summary>
+    /// AS-5: when true, the TIMS Assessments provider connector is mapped — POST /assessments/provider-assignments
+    /// (assessment:create + vacancy scope), POST /assessments/provider-assignments/{id}/cancel (assessment:update +
+    /// vacancy scope), POST /portal/assessment-attempts/{id}/launch (the candidate, by confirmed
+    /// email), POST /webhooks/tims-assessments (signature-verified, anonymous),
+    /// POST /platform/assessment-providers/bindings and the D15 DSAR export and erasure under
+    /// /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId} (platform owner). It also
+    /// registers the #312 withdrawal cascade to the provider, and composes the provider's stored results into FIT v2's
+    /// result source (read only when <see cref="FitEngineV2Enabled"/> is on). Every instrument is a REMOTE provider behind the
+    /// TIMS Assessments API v1; the ATS holds no items, keys, timing or scoring. Needs the four EF-owned tables of
+    /// migration 20261107232524_assessment_providers (NOT applied by this change) and the AssessmentProviders:* client
+    /// credentials and webhook secret; without them every call answers provider_unconfigured. DEFAULT false (dark) —
+    /// enable with <c>Platform__AssessmentProvidersEnabled=true</c>.
+    /// </summary>
+    public bool AssessmentProvidersEnabled { get; init; }
+
+    /// <summary>
+    /// Proctoring parity (owner decision 2026-11-11): whether HR may turn on the IDENTITY CHECK (camera face checks) in
+    /// the org's assessment security settings, and whether a stored identity-check setting is sent with new
+    /// assignments. DEFAULT false, and it must stay false until TIMS approves a <c>biometric</c> consent text that
+    /// describes the face checks: the approved text (<c>2026-11-09-biometric-v1</c>) tells the candidate that no
+    /// assessment uses the camera, so turning the check on under it would make that text false. Lockdown and
+    /// anti-cheat do not depend on it. Enable with <c>Platform__AssessmentIdentityCheckEnabled=true</c>.
+    /// </summary>
+    public bool AssessmentIdentityCheckEnabled { get; init; }
+
+    /// <summary>
+    /// The erasure sweep (Codex r13 P1): how many days pass before the sweep asks the provider (<c>getSubject</c>) again
+    /// whether a subject that still holds stored results was erased, so a lost <c>subject.erased</c> never leaves the
+    /// scores with staff and FIT. Runs in the D17 poller's scheduled job (only when
+    /// <see cref="AssessmentProvidersEnabled"/> is on). DEFAULT 7 (<c>Platform__AssessmentProviderErasureCheckIntervalDays</c>).
+    /// </summary>
+    [Range(1, 365)]
+    public int AssessmentProviderErasureCheckIntervalDays { get; init; } = ProviderErasureSweepSettings.DefaultCheckIntervalDays;
+
+    /// <summary>
+    /// The erasure sweep: the most subjects one run (one poller tick) asks about, least recently attempted first. DEFAULT 200
+    /// (<c>Platform__AssessmentProviderErasureCheckMaxSubjects</c>).
+    /// </summary>
+    [Range(1, 10_000)]
+    public int AssessmentProviderErasureCheckMaxSubjects { get; init; } = ProviderErasureSweepSettings.DefaultMaxSubjectsPerRun;
+
+    /// <summary>
     /// Phase-5 Slice 16 (efcoreStranglerWrite): when true, the C# engagement WRITE surface is mapped and live — the
     /// 5 writes <c>POST /engagement/surveys</c> (createSurvey), <c>POST /engagement/surveys/{id}/activate</c>
     /// (activateSurvey), <c>POST /engagement/surveys/{id}/responses</c> (submitSurveyResponse), <c>POST
@@ -483,6 +526,29 @@ public sealed class PlatformOptions
     /// entry is honest while an unqualified one-active-writer claim would not be.
     /// </summary>
     public bool FitEngineWriteEnabled { get; init; }
+
+    /// <summary>
+    /// FIT v2 (per-instrument fit). When true, <c>POST /fit-engine/vacancies/{id}/compute</c> scores a vacancy whose
+    /// <c>job_profiles.fit_requirements</c> carries an <c>assessments</c> array per instrument
+    /// (<c>Tims.Domain.FitEngine.FitV2Kernels</c>): scored instruments split the profile's assessment weight, gates
+    /// are shown as met / not met / unknown and never reject, advisory instruments are never scored, needs-review
+    /// results are excluded, and a scored English result verifies the languages dimension. A vacancy WITHOUT an
+    /// <c>assessments</c> array keeps the v1 computation byte-for-byte, so turning this on changes nothing until HR
+    /// configures a vacancy. INERT unless <see cref="FitEngineWriteEnabled"/> is also on (it maps the route).
+    /// DEFAULT false (dark) — enable with <c>Platform__FitEngineV2Enabled=true</c>. Turning it off again only
+    /// affects the next compute: stored v2 rows keep their extra keys, which every v1 reader ignores.
+    /// </summary>
+    public bool FitEngineV2Enabled { get; init; }
+
+    /// <summary>
+    /// FIT v2, owner default D20 (2026-11-08): whether a SCORED LIA entry feeds the assessment number. DEFAULT false
+    /// while TIMS has not confirmed the LIA norms (norm population, Working Memory ceiling, global-percentile formula —
+    /// assessment-platform design §6.3): LIA is then a minimum threshold only, evaluated as a gate on the vacancy's
+    /// minimum (met / not met, never a number, never a rejection) and the requirements writer reports
+    /// <c>lia_threshold_only</c>. The stored configuration is unchanged, so turning this on (env
+    /// <c>Platform__FitEngineLiaScoredEnabled=true</c>) restores the scored curve at the next compute.
+    /// </summary>
+    public bool FitEngineLiaScoredEnabled { get; init; }
 
     /// <summary>
     /// Phase-5 Slice 25 / #98 (efcoreReadOnly on notifications + notification_preferences — reads only): when

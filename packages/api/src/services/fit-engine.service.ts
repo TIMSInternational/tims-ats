@@ -1,4 +1,5 @@
 import type { Prisma } from '@tims/db';
+import { fitScoreAsShown, redactFitBreakdownBelowMinimum } from '@tims/ai';
 import { fitEngineRepository } from '../repositories/fit-engine.repository';
 import { candidateConsentRepository } from '../repositories/candidate-consent.repository';
 
@@ -179,6 +180,9 @@ async function resolveWeightProfile(orgId: string, roleFamily: string | null): P
   return created.weights as Record<FitDimension, number>;
 }
 
+/** Ordinal candidate-id order: the D6 tie-breaker for a narrow reader's sorted lists (the C# twin uses the same). */
+const byId = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 export const fitEngineService = {
   async computeFitScore(orgId: string, candidateId: string, vacancyId: string, opts?: { llmJudgment?: LlmJudgment }) {
     const [candidate, vacancy, assessmentScore, interviewScore] = await Promise.all([
@@ -218,25 +222,38 @@ export const fitEngineService = {
     return { fitScoreId: saved.id, overallScore, breakdown, weights, isPartial };
   },
 
-  async getRankingForVacancy(orgId: string, vacancyId: string) {
+  // hideBelowMinimum: owner default D6 (@tims/ai fit-visibility), as the C# ranking does for a narrow-scoped reader.
+  async getRankingForVacancy(orgId: string, vacancyId: string, hideBelowMinimum = false) {
     const rows = await fitEngineRepository.getFitScoresForVacancy(orgId, vacancyId);
-    return rows.map((r) => ({
-      fitScoreId: r.id,
-      candidateId: r.candidate.id,
-      firstName: r.candidate.firstName,
-      lastName: r.candidate.lastName,
-      overallScore: r.overallScore,
-      breakdown: r.breakdown as unknown as FitBreakdown,
-      isPartial: r.isPartial,
-      calculatedAt: r.calculatedAt,
-    }));
+    const ranking = rows.map((r) => {
+      const shown = fitScoreAsShown(r, hideBelowMinimum);
+      return {
+        fitScoreId: r.id,
+        candidateId: r.candidate.id,
+        firstName: r.candidate.firstName,
+        lastName: r.candidate.lastName,
+        overallScore: shown.overallScore,
+        breakdown: shown.breakdown as unknown as FitBreakdown,
+        isPartial: shown.isPartial,
+        calculatedAt: r.calculatedAt,
+      };
+    });
+    // D6: ties broken by candidate id, never by the fetch order (the STORED overall's, which would leak the hidden level).
+    return hideBelowMinimum
+      ? ranking.sort((a, b) => b.overallScore - a.overallScore || byId(a.candidateId, b.candidateId))
+      : ranking;
   },
 
-  async simulateWeights(orgId: string, vacancyId: string, hypotheticalWeights: Record<FitDimension, number>) {
+  async simulateWeights(
+    orgId: string,
+    vacancyId: string,
+    hypotheticalWeights: Record<FitDimension, number>,
+    hideBelowMinimum = false,
+  ) {
     const rows = await fitEngineRepository.getFitScoresForVacancy(orgId, vacancyId);
     return rows
       .map((r) => {
-        const breakdown = r.breakdown as unknown as FitBreakdown;
+        const breakdown = (hideBelowMinimum ? redactFitBreakdownBelowMinimum(r.breakdown).breakdown : r.breakdown) as unknown as FitBreakdown;
         const rawScores: Record<FitDimension, number | null> = {
           assessment: breakdown.assessment,
           interview: breakdown.interview,
@@ -253,7 +270,9 @@ export const fitEngineService = {
           isPartial,
         };
       })
-      .sort((a, b) => b.simulatedScore - a.simulatedScore);
+      .sort(
+        (a, b) => b.simulatedScore - a.simulatedScore || (hideBelowMinimum ? byId(a.candidateId, b.candidateId) : 0),
+      );
   },
 
   async upsertWeightProfile(orgId: string, name: string, weights: Record<FitDimension, number>) {
@@ -272,6 +291,7 @@ export const fitEngineService = {
     return {
       overallScore: row.overallScore,
       breakdown: row.breakdown as unknown as FitBreakdown,
+      weights: row.weights,
       candidateName: `${row.candidate.firstName} ${row.candidate.lastName}`,
       vacancyTitle: row.vacancy.title,
     };

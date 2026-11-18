@@ -42,6 +42,11 @@ vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/assessment-resul
   return { AssessmentResults: () => createElement('div', { 'data-testid': 'AssessmentResults' }) };
 });
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/fit-breakdown', () => stub('FitBreakdown'));
+// FIT v2's C# fit-scores read (a react-query hook) is off with the flag off: the page keeps candidate.getById's rows.
+vi.mock('../../apps/web/lib/platform-api/fit-engine-reads', () => ({
+  useCandidateFitScoresViaCsharp: () => ({ data: undefined }),
+  withCandidatePageFitScores: <T,>(candidate: T) => candidate,
+}));
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/stage-timeline', () => stub('StageTimeline'));
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/documents-card', () => stub('DocumentsCard'));
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/tags-card', () => stub('TagsCard'));

@@ -4723,6 +4723,812 @@
         }
       }
     },
+    "/assessments/provider-assignments": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderAssign",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderAssignBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAssignResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAssignResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/assessments/provider-assignments/{attemptId}/cancel": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderCancel",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAssignItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/assessment-providers/bindings": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderBind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderBindingBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderBindingView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/portal/assessment-attempts/{attemptId}/launch": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderLaunch",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderLaunchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderLaunchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
+          },
+          "410": {
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          },
+          "502": {
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/webhooks/tims-assessments": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderWebhook",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/portal/assessment-attempts": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderPortalAttempts",
+        "parameters": [
+          {
+            "name": "organizationSlug",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalAttemptsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/portal/assessment-attempts/{attemptId}/consent-templates": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderPortalConsentTemplates",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalConsentTemplatesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderSubjectExport",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSubjectExport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderSubjectErasure",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderErasureView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderErasureView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/assessment-providers/organizations/{organizationId}/binding": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderBindingState",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderBindingStateView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/platform/assessment-providers/organizations/{organizationId}/binding/unbind": {
+      "post": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderUnbind",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderUnbindBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderUnbindView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderUnbindBlockedView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assessments/provider-catalog": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderStaffCatalog",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffCatalog"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/assessments/provider-attempts": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderStaffAttempts",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffCandidateAttemptList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/assessments/provider-attempts/{attemptId}/reports": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderStaffReports",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderReportList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/assessments/provider-attempts/{attemptId}/report": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderStaffReport",
+        "parameters": [
+          {
+            "name": "attemptId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "503": {
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/assessments/provider-settings/proctoring": {
+      "get": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderProctoringSettingsGet",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProctoringSettingsView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "AssessmentProviders"
+        ],
+        "operationId": "AssessmentProviderProctoringSettingsPut",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProctoringSettingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProctoringSettingsView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/tenant/data-subject-requests": {
       "get": {
         "tags": [
@@ -5931,6 +6737,82 @@
         }
       }
     },
+    "/fit-engine/scores/review-state": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineGetReviewStates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitReviewStateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitReviewStateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/fit-engine/candidates/{candidateId}/fit-scores": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineGetCandidateFitScores",
+        "parameters": [
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateFitScoresResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
     "/fit-engine/vacancies/{vacancyId}/compute": {
       "post": {
         "tags": [
@@ -5967,6 +6849,279 @@
           },
           "404": {
             "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/fit-engine/vacancies/{vacancyId}/requirements": {
+      "put": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineUpdateFitRequirements",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitRequirementsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitRequirementsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitRequirementsError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/fit-engine/vacancies/{vacancyId}/requirements/assessments": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineGetAssessmentRequirements",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitAssessmentRequirementsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineReplaceAssessmentRequirements",
+        "parameters": [
+          {
+            "name": "vacancyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitAssessmentRequirementsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitAssessmentRequirementsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitRequirementsError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitAssessmentRequirementsConflict"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fit-engine/assignments/{assignmentId}/essays": {
+      "get": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineListPendingEssays",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingEssaysResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/fit-engine/assignments/{assignmentId}/essays/{questionId}/grade": {
+      "post": {
+        "tags": [
+          "Tims.Api"
+        ],
+        "operationId": "FitEngineGradeEssay",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeEssayBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EssayGradedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict"
           }
         }
       }
@@ -8891,6 +10046,26 @@
           }
         }
       },
+      "AntiCheatPolicy": {
+        "required": [
+          "threshold",
+          "consequence"
+        ],
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "consequence": {
+            "type": "string"
+          }
+        }
+      },
       "ApproveAdjustmentBody": {
         "required": [
           "approved"
@@ -10199,6 +11374,63 @@
           }
         }
       },
+      "CandidateFitScoreRow": {
+        "required": [
+          "fitScoreId",
+          "vacancyId",
+          "overallScore",
+          "breakdown",
+          "isPartial",
+          "calculatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "fitScoreId": {
+            "type": "string"
+          },
+          "vacancyId": {
+            "type": "string"
+          },
+          "overallScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "breakdown": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "isPartial": {
+            "type": "boolean"
+          },
+          "calculatedAt": {
+            "format": "date-time"
+          }
+        }
+      },
+      "CandidateFitScoresResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CandidateFitScoreRow"
+            }
+          }
+        }
+      },
       "CandidateJoinResult": {
         "required": [
           "outcome"
@@ -10657,6 +11889,54 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "ConsentTextBlock": {
+        "required": [
+          "type",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "ordered": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "items": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "tone": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -11738,6 +13018,96 @@
           }
         }
       },
+      "DiscFactors": {
+        "required": [
+          "d",
+          "i",
+          "s",
+          "c"
+        ],
+        "type": "object",
+        "properties": {
+          "d": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "i": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "s": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "c": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "DiscGraphScore": {
+        "required": [
+          "graph",
+          "d",
+          "i",
+          "s",
+          "c"
+        ],
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string"
+          },
+          "d": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "i": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "s": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "c": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "EmployeeDetailEvaluation": {
         "required": [
           "id",
@@ -11962,6 +13332,76 @@
           }
         }
       },
+      "EnglishProfile": {
+        "required": [
+          "overallCefr",
+          "overallScorePct",
+          "skills"
+        ],
+        "type": "object",
+        "properties": {
+          "overallCefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "overallScorePct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnglishSkillScore"
+            }
+          }
+        }
+      },
+      "EnglishSkillScore": {
+        "required": [
+          "skill",
+          "assessed",
+          "cefr",
+          "scorePct",
+          "notAssessedReason"
+        ],
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string"
+          },
+          "assessed": {
+            "type": "boolean"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scorePct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "notAssessedReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "EnpsResult": {
         "required": [
           "enps",
@@ -12024,6 +13464,32 @@
           },
           "period": {
             "type": "string"
+          }
+        }
+      },
+      "EssayGradedResponse": {
+        "required": [
+          "remainingPending",
+          "normalizedScore"
+        ],
+        "type": "object",
+        "properties": {
+          "remainingPending": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "normalizedScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -12484,6 +13950,280 @@
           }
         }
       },
+      "FitAssessmentMinimumBody": {
+        "required": [
+          "globalPercentile",
+          "cefr",
+          "level",
+          "score"
+        ],
+        "type": "object",
+        "properties": {
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "jobFit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "FitAssessmentMinimumDto": {
+        "required": [
+          "globalPercentile",
+          "cefr",
+          "level",
+          "score",
+          "jobFit"
+        ],
+        "type": "object",
+        "properties": {
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "jobFit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "FitAssessmentRequirementBody": {
+        "required": [
+          "instrument",
+          "use",
+          "min",
+          "weight",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "instrument": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "use": {
+            "maxLength": 16,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "min": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitAssessmentMinimumBody"
+              }
+            ]
+          },
+          "weight": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "reason": {
+            "maxLength": 500,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobCode": {
+            "maxLength": 30,
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FitAssessmentRequirementDto": {
+        "required": [
+          "instrument",
+          "use",
+          "min",
+          "weight",
+          "reason",
+          "jobCode"
+        ],
+        "type": "object",
+        "properties": {
+          "instrument": {
+            "type": "string"
+          },
+          "use": {
+            "type": "string"
+          },
+          "min": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitAssessmentMinimumDto"
+              }
+            ]
+          },
+          "weight": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "FitAssessmentRequirementsBody": {
+        "required": [
+          "assessments",
+          "expectedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "assessments": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitAssessmentRequirementBody"
+            }
+          },
+          "expectedVersion": {
+            "maxLength": 32,
+            "minLength": 32,
+            "type": "string"
+          }
+        }
+      },
+      "FitAssessmentRequirementsConflict": {
+        "required": [
+          "error",
+          "current"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/FitAssessmentRequirementsResponse"
+          }
+        }
+      },
+      "FitAssessmentRequirementsResponse": {
+        "required": [
+          "assessments",
+          "version",
+          "issues"
+        ],
+        "type": "object",
+        "properties": {
+          "assessments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitAssessmentRequirementDto"
+            }
+          },
+          "version": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitRequirementIssueDto"
+            }
+          }
+        }
+      },
       "FitRankingRow": {
         "required": [
           "fitScoreId",
@@ -12532,6 +14272,174 @@
           },
           "calculatedAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "FitRequirementIssueDto": {
+        "required": [
+          "index",
+          "instrument",
+          "code",
+          "dropped"
+        ],
+        "type": "object",
+        "properties": {
+          "index": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "instrument": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "dropped": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FitRequirementsBody": {
+        "required": [
+          "minYearsExperience",
+          "requiredEducationLevel",
+          "requiredLanguages",
+          "assessments"
+        ],
+        "type": "object",
+        "properties": {
+          "minYearsExperience": {
+            "maximum": 60,
+            "minimum": 0,
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "requiredEducationLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requiredLanguages": {
+            "maxItems": 20,
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "assessments": {
+            "maxItems": 64,
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/FitAssessmentRequirementBody"
+            }
+          }
+        }
+      },
+      "FitRequirementsError": {
+        "required": [
+          "error",
+          "issues"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitRequirementIssueDto"
+            }
+          }
+        }
+      },
+      "FitRequirementsResponse": {
+        "required": [
+          "fitRequirements",
+          "issues"
+        ],
+        "type": "object",
+        "properties": {
+          "fitRequirements": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonNode"
+              }
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitRequirementIssueDto"
+            }
+          }
+        }
+      },
+      "FitReviewStateBody": {
+        "required": [
+          "fitScoreIds"
+        ],
+        "type": "object",
+        "properties": {
+          "fitScoreIds": {
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "FitReviewStateResponse": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FitReviewStateRow"
+            }
+          }
+        }
+      },
+      "FitReviewStateRow": {
+        "required": [
+          "fitScoreId",
+          "reviewPending"
+        ],
+        "type": "object",
+        "properties": {
+          "fitScoreId": {
+            "type": "string"
+          },
+          "reviewPending": {
+            "type": "boolean"
           }
         }
       },
@@ -12773,6 +14681,22 @@
           },
           "suppressed": {
             "type": "boolean"
+          }
+        }
+      },
+      "GradeEssayBody": {
+        "required": [
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "points": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
           }
         }
       },
@@ -13325,6 +15249,103 @@
           }
         }
       },
+      "ItciaCategoryScore": {
+        "required": [
+          "category",
+          "score",
+          "coverage",
+          "provisional"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "coverage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "provisional": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ItciaProfile": {
+        "required": [
+          "globalLevel",
+          "globalLevelCode",
+          "coreScore",
+          "completion",
+          "categories",
+          "riskFlags",
+          "recommendedAutonomyLevel"
+        ],
+        "type": "object",
+        "properties": {
+          "globalLevel": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "globalLevelCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "coreScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "completion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItciaCategoryScore"
+            }
+          },
+          "riskFlags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recommendedAutonomyLevel": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "JoinBody": {
         "required": [
           "token"
@@ -13338,6 +15359,7 @@
           }
         }
       },
+      "JsonElement": { },
       "JsonNode": { },
       "JsonObject": {
         "type": "object"
@@ -13561,6 +15583,79 @@
           },
           "suppressed": {
             "type": "boolean"
+          }
+        }
+      },
+      "LiaProfile": {
+        "required": [
+          "globalPercentile",
+          "globalLevel",
+          "normStatus",
+          "subtests"
+        ],
+        "type": "object",
+        "properties": {
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "globalLevel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "normStatus": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "subtests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LiaSubtestScore"
+            }
+          }
+        }
+      },
+      "LiaSubtestScore": {
+        "required": [
+          "subtest",
+          "percentile",
+          "level",
+          "completion"
+        ],
+        "type": "object",
+        "properties": {
+          "subtest": {
+            "type": "string"
+          },
+          "percentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "level": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completion": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -13822,6 +15917,86 @@
           },
           "currency": {
             "type": "string"
+          }
+        }
+      },
+      "MiIntelligenceScore": {
+        "required": [
+          "intelligence",
+          "sumScore",
+          "band",
+          "bandCode",
+          "answered"
+        ],
+        "type": "object",
+        "properties": {
+          "intelligence": {
+            "type": "string"
+          },
+          "sumScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "band": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "bandCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "answered": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "MiProfile": {
+        "required": [
+          "allComplete",
+          "intelligences",
+          "dominant",
+          "tied",
+          "noDifferentiation"
+        ],
+        "type": "object",
+        "properties": {
+          "allComplete": {
+            "type": "boolean"
+          },
+          "intelligences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MiIntelligenceScore"
+            }
+          },
+          "dominant": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tied": {
+            "type": "boolean"
+          },
+          "noDifferentiation": {
+            "type": "boolean"
           }
         }
       },
@@ -14577,6 +16752,155 @@
           }
         }
       },
+      "PcaCompetencyScore": {
+        "required": [
+          "code",
+          "name",
+          "level",
+          "scaleMax"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scaleMax": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PcaJobFit": {
+        "required": [
+          "jobCode",
+          "status",
+          "fit",
+          "jobProfile"
+        ],
+        "type": "object",
+        "properties": {
+          "jobCode": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "fit": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "jobProfile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DiscFactors"
+              }
+            ]
+          }
+        }
+      },
+      "PcaProfile": {
+        "required": [
+          "primaryGraph",
+          "graphs",
+          "competencies"
+        ],
+        "type": "object",
+        "properties": {
+          "primaryGraph": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "graphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscGraphScore"
+            }
+          },
+          "competencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PcaCompetencyScore"
+            }
+          },
+          "jobFit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PcaJobFit"
+              }
+            ]
+          }
+        }
+      },
+      "PendingEssay": {
+        "required": [
+          "questionId",
+          "prompt",
+          "answer",
+          "maxPoints"
+        ],
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "maxPoints": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "PendingEssaysResponse": {
+        "required": [
+          "essays"
+        ],
+        "type": "object",
+        "properties": {
+          "essays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingEssay"
+            }
+          }
+        }
+      },
       "PendingSurveyRow": {
         "required": [
           "id",
@@ -14601,6 +16925,84 @@
           },
           "endsAt": {
             "format": "date-time"
+          }
+        }
+      },
+      "PersonalityDimensionScore": {
+        "required": [
+          "dimension",
+          "firstPole",
+          "secondPole",
+          "firstCount",
+          "secondCount",
+          "preferredPole",
+          "clarityPct",
+          "balanced"
+        ],
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string"
+          },
+          "firstPole": {
+            "type": "string"
+          },
+          "secondPole": {
+            "type": "string"
+          },
+          "firstCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "secondCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "preferredPole": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clarityPct": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "balanced": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PersonalityProfile": {
+        "required": [
+          "variant",
+          "dimensions"
+        ],
+        "type": "object",
+        "properties": {
+          "variant": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonalityDimensionScore"
+            }
           }
         }
       },
@@ -14681,6 +17083,96 @@
           }
         }
       },
+      "PortalAttemptsResponse": {
+        "required": [
+          "attempts"
+        ],
+        "type": "object",
+        "properties": {
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortalAttemptView"
+            }
+          }
+        }
+      },
+      "PortalAttemptView": {
+        "required": [
+          "attemptId",
+          "instrument",
+          "status",
+          "missingConsents",
+          "expiresAt",
+          "delivery",
+          "vacancyId",
+          "optionalConsents",
+          "locale"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "missingConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "delivery": {
+            "type": "string"
+          },
+          "vacancyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "optionalConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "locale": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalConsentTemplatesResponse": {
+        "required": [
+          "templates",
+          "optionalPurposes"
+        ],
+        "type": "object",
+        "properties": {
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderConsentTemplate"
+            }
+          },
+          "optionalPurposes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "PortalConsentWithdrawalBody": {
         "required": [
           "organizationSlug"
@@ -14701,6 +17193,80 @@
         "properties": {
           "received": {
             "type": "boolean"
+          }
+        }
+      },
+      "ProctoringAntiCheatBody": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "consequence": {
+            "type": "string"
+          }
+        }
+      },
+      "ProctoringSettingsBody": {
+        "type": "object",
+        "properties": {
+          "lockdown": {
+            "type": "boolean"
+          },
+          "antiCheat": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProctoringAntiCheatBody"
+              }
+            ]
+          },
+          "identityCheck": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProctoringSettingsView": {
+        "required": [
+          "lockdown",
+          "antiCheat",
+          "identityCheck",
+          "identityCheckAvailable",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "lockdown": {
+            "type": "boolean"
+          },
+          "antiCheat": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AntiCheatPolicy"
+              }
+            ]
+          },
+          "identityCheck": {
+            "type": "boolean"
+          },
+          "identityCheckAvailable": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -14731,6 +17297,882 @@
           },
           "suppressed": {
             "type": "boolean"
+          }
+        }
+      },
+      "ProviderAssignBody": {
+        "type": "object",
+        "properties": {
+          "candidateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vacancyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instruments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderAssignInstrumentBody"
+            }
+          },
+          "locale": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timeMultiplier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "aids": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "ageBand": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderAssignInstrumentBody": {
+        "type": "object",
+        "properties": {
+          "instrument": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProviderAssignItem": {
+        "required": [
+          "attemptId",
+          "instrument",
+          "state",
+          "instrumentVersion",
+          "requiredConsents",
+          "expiresAt",
+          "error",
+          "locale",
+          "timeMultiplier",
+          "aids"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "instrumentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requiredConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timeMultiplier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "aids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProviderAssignResponse": {
+        "required": [
+          "complete",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderAssignItem"
+            }
+          }
+        }
+      },
+      "ProviderBindingBody": {
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instruments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultLocale": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderBindingStateView": {
+        "required": [
+          "bound",
+          "active",
+          "providerTenantId",
+          "enabledInstruments",
+          "defaultLocale",
+          "updatedAt",
+          "openWork"
+        ],
+        "type": "object",
+        "properties": {
+          "bound": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "providerTenantId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "enabledInstruments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultLocale": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "openWork": {
+            "$ref": "#/components/schemas/ProviderOpenWorkView"
+          }
+        }
+      },
+      "ProviderBindingView": {
+        "required": [
+          "organizationId",
+          "providerTenantId",
+          "enabledInstruments",
+          "defaultLocale"
+        ],
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string"
+          },
+          "providerTenantId": {
+            "type": "string"
+          },
+          "enabledInstruments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultLocale": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderConsentTemplate": {
+        "required": [
+          "purpose",
+          "textVersion",
+          "locale",
+          "title",
+          "blocks",
+          "disclosures"
+        ],
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string"
+          },
+          "textVersion": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsentTextBlock"
+            }
+          },
+          "disclosures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProviderErasureView": {
+        "required": [
+          "subjects",
+          "requested"
+        ],
+        "type": "object",
+        "properties": {
+          "subjects": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "requested": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ProviderExportAttempt": {
+        "required": [
+          "attemptId",
+          "vacancyId",
+          "instrument",
+          "state",
+          "locale",
+          "timeMultiplier",
+          "aids",
+          "instrumentVersion",
+          "contentVersion",
+          "expiresAt",
+          "startedAt",
+          "completedAt",
+          "createdAt",
+          "withdrawalState",
+          "erasureRequestedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vacancyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "timeMultiplier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "aids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "instrumentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "contentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "withdrawalState": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "erasureRequestedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ProviderExportResult": {
+        "required": [
+          "attemptId",
+          "resultId",
+          "revision",
+          "instrument",
+          "instrumentVersion",
+          "validityStatus",
+          "validityReasons",
+          "completion",
+          "globalPercentile",
+          "cefr",
+          "level",
+          "scoresJson",
+          "completedAt",
+          "scoredAt"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resultId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "instrumentVersion": {
+            "type": "string"
+          },
+          "validityStatus": {
+            "type": "string"
+          },
+          "validityReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "completion": {
+            "type": "string"
+          },
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "scoresJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scoredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProviderHeldSubjectExport": {
+        "required": [
+          "subjectId",
+          "status",
+          "export"
+        ],
+        "type": "object",
+        "properties": {
+          "subjectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "export": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          }
+        }
+      },
+      "ProviderLaunchBody": {
+        "type": "object",
+        "properties": {
+          "consents": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ProviderLaunchConsentBody"
+            }
+          },
+          "embedded": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "declinedConsents": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "notice": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderLaunchNoticeBody"
+              }
+            ]
+          }
+        }
+      },
+      "ProviderLaunchConsentBody": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string"
+          },
+          "textVersion": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderLaunchNoticeBody": {
+        "type": "object",
+        "properties": {
+          "textVersion": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        }
+      },
+      "ProviderLaunchResponse": {
+        "required": [
+          "delivery",
+          "expiresAt",
+          "hostedUrl",
+          "frameAncestors"
+        ],
+        "type": "object",
+        "properties": {
+          "delivery": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hostedUrl": {
+            "type": "string"
+          },
+          "frameAncestors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProviderOpenWorkView": {
+        "required": [
+          "cancellable",
+          "awaitingResult",
+          "pendingWithdrawals",
+          "cancelPending",
+          "createsInFlight"
+        ],
+        "type": "object",
+        "properties": {
+          "cancellable": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "awaitingResult": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pendingWithdrawals": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "cancelPending": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createsInFlight": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ProviderReportList": {
+        "required": [
+          "reports"
+        ],
+        "type": "object",
+        "properties": {
+          "reports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderReportOption"
+            }
+          }
+        }
+      },
+      "ProviderReportOption": {
+        "required": [
+          "variant",
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "variant": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProviderResultProfile": {
+        "type": "object",
+        "properties": {
+          "lia": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LiaProfile"
+              }
+            ]
+          },
+          "english": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EnglishProfile"
+              }
+            ]
+          },
+          "personality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonalityProfile"
+              }
+            ]
+          },
+          "pca": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PcaProfile"
+              }
+            ]
+          },
+          "itcia": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ItciaProfile"
+              }
+            ]
+          },
+          "mi": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MiProfile"
+              }
+            ]
+          }
+        }
+      },
+      "ProviderSubjectExport": {
+        "required": [
+          "attempts",
+          "results"
+        ],
+        "type": "object",
+        "properties": {
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderExportAttempt"
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderExportResult"
+            }
+          },
+          "providerExports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderHeldSubjectExport"
+            }
+          }
+        }
+      },
+      "ProviderUnbindBlockedView": {
+        "required": [
+          "error",
+          "openWork",
+          "cancelled",
+          "cancelFailed"
+        ],
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "openWork": {
+            "$ref": "#/components/schemas/ProviderOpenWorkView"
+          },
+          "cancelled": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "cancelFailed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ProviderUnbindBody": {
+        "type": "object",
+        "properties": {
+          "cancelOpenAttempts": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "ProviderUnbindView": {
+        "required": [
+          "unbound",
+          "openWork",
+          "cancelled",
+          "cancelFailed"
+        ],
+        "type": "object",
+        "properties": {
+          "unbound": {
+            "type": "boolean"
+          },
+          "openWork": {
+            "$ref": "#/components/schemas/ProviderOpenWorkView"
+          },
+          "cancelled": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "cancelFailed": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -15579,6 +19021,100 @@
           }
         }
       },
+      "StaffCandidateAttemptList": {
+        "required": [
+          "consentWithdrawn",
+          "attempts"
+        ],
+        "type": "object",
+        "properties": {
+          "consentWithdrawn": {
+            "type": "boolean"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffProviderAttempt"
+            }
+          }
+        }
+      },
+      "StaffCatalog": {
+        "required": [
+          "connected",
+          "instruments"
+        ],
+        "type": "object",
+        "properties": {
+          "connected": {
+            "type": "boolean"
+          },
+          "instruments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffCatalogInstrument"
+            }
+          }
+        }
+      },
+      "StaffCatalogInstrument": {
+        "required": [
+          "instrument",
+          "delivery",
+          "locales",
+          "requiredConsents",
+          "versions",
+          "pinnedVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "instrument": {
+            "type": "string"
+          },
+          "delivery": {
+            "type": "string"
+          },
+          "locales": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiredConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffCatalogVersion"
+            }
+          },
+          "pinnedVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "StaffCatalogVersion": {
+        "required": [
+          "instrumentVersion",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "instrumentVersion": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "StaffConsentWithdrawalBody": {
         "required": [
           "channel"
@@ -15601,6 +19137,209 @@
               "null",
               "boolean"
             ]
+          }
+        }
+      },
+      "StaffProviderAttempt": {
+        "required": [
+          "attemptId",
+          "vacancyId",
+          "instrument",
+          "status",
+          "instrumentVersion",
+          "missingConsents",
+          "expiresAt",
+          "createdAt",
+          "completedAt",
+          "lastErrorCode",
+          "timeMultiplier",
+          "aids",
+          "countsIn",
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vacancyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "instrumentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "missingConsents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastErrorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timeMultiplier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "aids": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "countsIn": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StaffProviderResult"
+              }
+            ]
+          },
+          "speakingNotAssessed": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "proctoringOutcome": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "StaffProviderResult": {
+        "required": [
+          "validity",
+          "validityReasons",
+          "requiresHumanReview",
+          "reviewPending",
+          "minimum",
+          "globalPercentile",
+          "cefr",
+          "level",
+          "instrumentVersion",
+          "normVersion",
+          "completedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "validity": {
+            "type": "string"
+          },
+          "validityReasons": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiresHumanReview": {
+            "type": "boolean"
+          },
+          "reviewPending": {
+            "type": "boolean"
+          },
+          "minimum": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "globalPercentile": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "cefr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "level": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "instrumentVersion": {
+            "type": "string"
+          },
+          "normVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedAt": {
+            "type": "string"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderResultProfile"
+              }
+            ]
+          },
+          "reportsAvailable": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -18235,6 +21974,9 @@
     },
     {
       "name": "PlatformDashboard"
+    },
+    {
+      "name": "AssessmentProviders"
     }
   ]
 }

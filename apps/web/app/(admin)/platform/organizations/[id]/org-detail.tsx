@@ -47,8 +47,10 @@ import { FeaturesSection } from './sections/features-section';
 import { AiSection } from './sections/ai-section';
 import { ActivitySection } from './sections/activity-section';
 import { EntitlementsSection } from './sections/entitlements-section';
+import { AssessmentProviderSection } from './sections/assessment-provider-section';
+import { isProviderAssessmentsStaffEnabled } from '../../../../../lib/platform-api/assessment-providers-staff';
 
-const TAB_KEYS = ['overview', 'users', 'billing', 'features', 'ai', 'activity', 'entitlements'] as const;
+const TAB_KEYS = ['overview', 'users', 'billing', 'features', 'ai', 'activity', 'entitlements', 'assessments'] as const;
 
 type TabKey = (typeof TAB_KEYS)[number];
 
@@ -56,8 +58,10 @@ type TabKey = (typeof TAB_KEYS)[number];
 // /platform/feature-flags page (platform-owner spec-46 / ideal-84), so the pilot does not offer it.
 const PILOT_HIDDEN_TABS: readonly TabKey[] = ['features'];
 
+// The TIMS Assessments tab (round 12: bind, state, safe unbind, DSAR) exists only with the provider connector on.
 function visibleTabKeys(): readonly TabKey[] {
-  return isPilotScope() ? TAB_KEYS.filter((key) => !PILOT_HIDDEN_TABS.includes(key)) : TAB_KEYS;
+  const keys = isProviderAssessmentsStaffEnabled() ? TAB_KEYS : TAB_KEYS.filter((key) => key !== 'assessments');
+  return isPilotScope() ? keys.filter((key) => !PILOT_HIDDEN_TABS.includes(key)) : keys;
 }
 
 export function OrgDetail({ id }: { id: string }) {
@@ -74,6 +78,7 @@ export function OrgDetail({ id }: { id: string }) {
       { key: 'ai', label: t.organizations.tabAi },
       { key: 'activity', label: t.organizations.tabActivity },
       { key: 'entitlements', label: t.entitlementsAdmin.tabLabel },
+      { key: 'assessments', label: t.providerAdmin.tabLabel },
     ] as const
   ).filter((tab) => tabKeys.includes(tab.key));
   const [activeTab, setActiveTab] = useState<TabKey>(tabKeys.includes(initialTab) ? initialTab : 'overview');
@@ -222,6 +227,9 @@ export function OrgDetail({ id }: { id: string }) {
         {activeTab === 'ai' && <AiSection organizationId={id} />}
         {activeTab === 'activity' && <ActivitySection organizationId={id} />}
         {activeTab === 'entitlements' && <EntitlementsSection orgId={id} />}
+        {activeTab === 'assessments' && tabKeys.includes('assessments') && (
+          <AssessmentProviderSection organizationId={id} organizationName={org.name} />
+        )}
       </div>
 
       {/* Edit modal */}

@@ -64,8 +64,10 @@ public static class FitEngineReadEndpoints
                     return notFound;
                 }
 
+                // Owner default D6: a narrow-scoped reader sees "below minimum", never the level behind it.
                 var rows = await useCase.GetRankingForVacancyAsync(
-                    Guid.Parse(gate.Context!.OrganizationId), vacancyId, cancellationToken);
+                    Guid.Parse(gate.Context!.OrganizationId), vacancyId,
+                    FitV2Visibility.HidesBelowMinimum(gate.Scope!.Value), cancellationToken);
                 return Results.Ok(rows);
             })
             .RequireAuthorization()
@@ -114,7 +116,8 @@ public static class FitEngineReadEndpoints
                 }
 
                 var rows = await useCase.SimulateWeightsAsync(
-                    Guid.Parse(gate.Context!.OrganizationId), vacancyId, weights, cancellationToken);
+                    Guid.Parse(gate.Context!.OrganizationId), vacancyId, weights,
+                    FitV2Visibility.HidesBelowMinimum(gate.Scope!.Value), cancellationToken);
                 return Results.Ok(rows);
             })
             .RequireAuthorization()

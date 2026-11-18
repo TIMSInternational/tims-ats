@@ -3,6 +3,8 @@
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { RadarChart, Skeleton } from '../../../../../components';
+import { isFitEngineV2Enabled } from '../../../../../lib/platform-api/fit-engine';
+import { useFitRankingViaCsharp } from '../../../../../lib/platform-api/fit-engine-reads';
 
 export function CandidateFitPanel({
   candidateId,
@@ -14,11 +16,17 @@ export function CandidateFitPanel({
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const ranking = trpc.fitEngine.getRankingForVacancy.useQuery({ vacancyId });
+  // FIT v2: the row comes from the C# ranking under the flag (D6 for a team leader); the narrative stays on tRPC (its
+  // Bedrock pipeline has no C# plane), which builds it from the same D6 view.
+  const viaCsharp = isFitEngineV2Enabled();
+  const trpcRanking = trpc.fitEngine.getRankingForVacancy.useQuery({ vacancyId }, { enabled: !viaCsharp });
+  const csharpRanking = useFitRankingViaCsharp(vacancyId);
   const narrative = trpc.fitEngine.explainFit.useQuery({ candidateId, vacancyId });
 
-  const entry = (ranking.data ?? []).find((r) => r.candidateId === candidateId);
-  const breakdown = entry?.breakdown;
+  const rows: ReadonlyArray<{ candidateId: string; firstName: string; lastName: string; breakdown: unknown }> =
+    (viaCsharp ? csharpRanking.data : trpcRanking.data) ?? [];
+  const entry = rows.find((r) => r.candidateId === candidateId);
+  const breakdown = entry?.breakdown as Partial<Record<string, number | null>> | null | undefined;
 
   const dimensions = [
     { label: t.candidates.fitDimensionAssessment, score: breakdown?.assessment ?? null },

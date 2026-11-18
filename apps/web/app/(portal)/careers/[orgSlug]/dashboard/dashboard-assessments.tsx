@@ -14,13 +14,16 @@ function isExpired(expiresAt: Date | null): boolean {
 // the signed-in candidate's assessment assignments and links a startable one into
 // the Slice 3 player. Data comes from candidatePortal.getMyAssessments, scoped
 // server-side to this candidate; orgSlug is the only input.
-export function DashboardAssessments({ orgSlug }: { orgSlug: string }) {
+// `hideWhenEmpty`: the TIMS "Online assessments" section is on, so an empty list of the company's own quizzes is noise
+// above it (the candidate saw "no assessments yet" right over four TIMS tests).
+export function DashboardAssessments({ orgSlug, hideWhenEmpty = false }: { orgSlug: string; hideWhenEmpty?: boolean }) {
   const { t } = useI18n();
   const { data, isLoading, isError } = trpc.candidatePortal.getMyAssessments.useQuery({ orgSlug });
 
   const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.assessments}</h2>;
 
   if (isLoading) {
+    if (hideWhenEmpty) return null;
     return (
       <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
         {header}
@@ -38,6 +41,7 @@ export function DashboardAssessments({ orgSlug }: { orgSlug: string }) {
   }
 
   const assignments = data ?? [];
+  if (hideWhenEmpty && assignments.length === 0) return null;
 
   const statusLabel = (status: string, expired: boolean) => {
     if (expired) return t.portalDashboard.assessStatusExpired;

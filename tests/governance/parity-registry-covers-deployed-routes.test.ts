@@ -394,6 +394,32 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
   },
   {
     reason:
+      'FIT v2 (PR #427, 2026-11-08) — four C#-ONLY routes with no tRPC twin, landed DARK: the fit_requirements ' +
+      'writer (mapped only with FitEngineWriteEnabled AND FitEngineV2Enabled), the review-state read for list ' +
+      'views (FitEngineReadEnabled), and the two essay-grading routes (owner default D5; FitEngineV2Enabled). ' +
+      'A by-role parity comparison needs a TS procedure to compare against, and none exists or will (survival ' +
+      'rule). They are pinned instead by Tims.IntegrationTests FitRequirementsWriterTests, FitReviewStateTests ' +
+      'and EssayGradingTests (authorization, scope, tenant isolation, atomicity). Registering them C#-only needs ' +
+      'the same fixture-first work as the fit-engine group above (fit_engine/vacancy/assessment grants, seeded ' +
+      'fit_scores rows and a graded-assignment fixture), tracked with it. Release slice "fit" adds a fifth: the ' +
+      "candidate page's fit-scores read (FitEngineReadEnabled; D6-redacted for a narrow reader), whose TS " +
+      'counterpart is a field of candidate.getById rather than a procedure, pinned by Tims.IntegrationTests ' +
+      'FitV2IntegrityTests (authorization, vacancy scope, D6 redaction, flag off). Release slice "atsux" adds the ' +
+      "vacancy assessments editor's read and conditional replace of assessments[] (same flags as the writer), " +
+      'pinned by Tims.IntegrationTests FitAssessmentRequirementsEndpointTests (vacancy:read/update, vacancy scope, ' +
+      'the version check, one winner under concurrency, the strict body, flags off).',
+    routes: [
+      'PUT /fit-engine/vacancies/{vacancyId}/requirements',
+      'GET /fit-engine/vacancies/{vacancyId}/requirements/assessments',
+      'PUT /fit-engine/vacancies/{vacancyId}/requirements/assessments',
+      'GET /fit-engine/candidates/{candidateId}/fit-scores',
+      'POST /fit-engine/scores/review-state',
+      'GET /fit-engine/assignments/{assignmentId}/essays',
+      'POST /fit-engine/assignments/{assignmentId}/essays/{questionId}/grade',
+    ],
+  },
+  {
+    reason:
       'DEPLOYED HONEST 501 STUBS — the two team-intel AI reads (TeamIntelReadEndpoints.cs: gate → team IDOR ' +
       'probe → 501 "AI agent pending"). NO role receives a 200 from them, and the harness contract cannot express ' +
       'that: `expectedByRole` admits only 200|403, checks/parity.ts fails a C#-only endpoint on any non-200, ' +
@@ -523,6 +549,62 @@ const UNREGISTERED_ALLOWLIST: AllowGroup[] = [
       'POST /tenant-invitations/{id}/revoke',
     ],
   },
+  {
+    reason:
+      'AS-5 TIMS ASSESSMENTS PROVIDER CONNECTOR LANDED DARK (Platform:AssessmentProvidersEnabled). Every route depends ' +
+      'on a REMOTE provider (the headless TIMS Assessments API v1) that does not exist yet, so a live probe would ' +
+      'measure the provider, not tenant isolation. The five routes are also four different principals the by-role ' +
+      'harness cannot express together: the staff assign and cancel need a vacancy that lists the instrument plus a ' +
+      'provider binding; the binding is platform-owner only; the launch is authorized by a CONFIRMED candidate email, ' +
+      'not a role; the webhook is anonymous and authenticated only by its HMAC signature. Covered instead by ' +
+      'Tims.IntegrationTests Assessments/ProviderEndpointTests (the real host over real Postgres with a fake provider: ' +
+      'the dark flag, 401/403, the narrow-scope and cross-org vacancy 404 on assign and cancel, the platform-owner gate on ' +
+      'bindings, the launch identity checks sub == confirmed identity, unconfirmed email, autoconfirm fail-closed, ' +
+      'and the webhook body cap), Tims.IntegrationTests Assessments (two-tenant RLS on the four tables, the attempt-lock ' +
+      'interleavings, the erasure tombstone, the typed client over a fake HTTP handler) and Tims.UnitTests Assessments/Providers ' +
+      '(signature + replay window, consent gate, #312 withdrawal at assign and launch, idempotency, result mapping). ' +
+      'The DSAR export and erasure routes (owner default D15) are platform-owner only, like bindings, and the erasure ' +
+      'calls the remote provider: covered by the same ProviderEndpointTests (401/403, export, erasure, unknown candidate). ' +
+      'The two candidate-portal reads (D16: the attempt list and the consent templates) are authorized like the launch, ' +
+      'by a CONFIRMED candidate email, never a role, and the templates come from the remote provider: covered by the same ' +
+      "ProviderEndpointTests (the dark flag, 401/403, only the candidate's own attempts, the 404 on another's attempt). " +
+      'The two staff reads of release slice "atsux" (the assignable catalog and a candidate\'s attempts with results) ' +
+      'read the remote catalog or provider-fed results and apply D6 by scope: covered by ProviderEndpointTests.Staff (the ' +
+      'dark flag, 401/403, the vacancy scope 404 and omission, D6 redaction for a narrow reader, #312, the pinned version). ' +
+      "The two round-12 platform-owner binding tools (read one organization's binding state; unbind, refused with " +
+      'binding_has_open_work while attempts are open) are platform-owner only, like bindings: covered by the same ' +
+      'ProviderEndpointTests (round-12 section: 401/403, state, unbind, the open-work refusal). ' +
+      "The org's assessment security settings (proctoring parity, 2026-11-11: GET and PUT) gate on assessment:read / " +
+      'assessment:update at ORG scope, and their only effect is the block the remote provider receives with each new ' +
+      'assignment: covered by ProviderEndpointTests.Settings (401/403 for the reader and the own-scope leader, strict ' +
+      'bodies, the identity check refused while its platform flag is off, tenant isolation, the next assignment carrying ' +
+      'the block) and Assessments/AssessmentProviderProctoringTests (RLS, grants, audit, the attempt snapshot). ' +
+      'The two HR report reads (the PDF reports an attempt\'s latest result offers, and one report as application/pdf) ' +
+      'gate on assessment:read at company scope or wider (D6: a narrower reader is refused even on its own vacancy) ' +
+      'and proxy the remote provider\'s getResultReport with a reports:read token: covered by ' +
+      'ProviderEndpointTests.Reports (the dark flag, D6 403, the list, the PDF headers and audit row, a voided result, ' +
+      'an unknown attempt, an off-pattern variant or locale), Assessments/TimsAssessmentsClientTests (the scope asked ' +
+      'alone, the PDF checks, the size cap, the refusals) and Tims.UnitTests ProviderReportUseCaseTests.',
+    routes: [
+      'GET /assessments/provider-catalog',
+      'GET /assessments/provider-attempts',
+      'POST /assessments/provider-assignments',
+      'POST /assessments/provider-assignments/{attemptId}/cancel',
+      'POST /platform/assessment-providers/bindings',
+      'GET /platform/assessment-providers/organizations/{organizationId}/binding',
+      'POST /platform/assessment-providers/organizations/{organizationId}/binding/unbind',
+      'POST /portal/assessment-attempts/{attemptId}/launch',
+      'GET /portal/assessment-attempts',
+      'GET /portal/assessment-attempts/{attemptId}/consent-templates',
+      'POST /webhooks/tims-assessments',
+      'GET /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/export',
+      'POST /platform/assessment-providers/organizations/{organizationId}/candidates/{candidateId}/erasure',
+      'GET /assessments/provider-settings/proctoring',
+      'PUT /assessments/provider-settings/proctoring',
+      'GET /assessments/provider-attempts/{attemptId}/reports',
+      'GET /assessments/provider-attempts/{attemptId}/report',
+    ],
+  },
 ];
 
 const allowlistNormalised = UNREGISTERED_ALLOWLIST.flatMap((g) =>
@@ -605,7 +687,23 @@ describe('parity registry covers every deployed route (or documents why not)', (
     //         same candidate-consent group. 205 + 1 = 206.
     //         Re-derived after merging main: #331/#332/#334/#337/#339 added no deployed routes, so
     //         main 202 (after #339) + #345's +4 = 206.
-    expect(deployed.size).toBe(206);
+    //         206 → 210 (AS-5): the dark TIMS Assessments provider connector — staff assign, platform-owner
+    //         binding, the candidate launch and the signed webhook — all allowlisted in their own group above.
+    //         210 → 211 (AS-5 review): the staff cancel of a provider attempt joins the same group.
+    //         211 → 213 (AS-5, D15): the platform-owner DSAR export and erasure of provider subjects join it.
+    //         213 → 217 (PR #427, FIT v2, merged in release/assessments-fit-provider): the requirements writer,
+    //         the review-state read and the two essay-grading routes, all C#-only and allowlisted in their own
+    //         group above.
+    //         217 → 219 (release/assessments-fit-provider, D16): the candidate portal's attempt list and consent
+    //         templates join the AS-5 group.
+    //         219 → 220 (release slice "fit"): the candidate page's fit-scores read joins the FIT v2 group.
+    //         220 → 224 (release slice "atsux"): the two provider staff reads join the AS-5 group; the vacancy
+    //         assessments editor's GET and PUT join the FIT v2 group.
+    //         224 → 226 (round 12): the platform owner's binding state read and unbind join the AS-5 group.
+    //         226 → 228 (proctoring parity, 2026-11-11): the org's assessment security settings (GET + PUT) join
+    //         the AS-5 group.
+    //         228 → 230 (HR PDF reports, 2026-11-12): the report list and the report download join the AS-5 group.
+    expect(deployed.size).toBe(230);
     //   92 = 65 read endpoints (surfaces.ts, 14 surfaces) + 27 write (write-surfaces.ts, 8 surfaces:
     //        24 written literally + 3 produced by the shared `transitionEndpoint` helper). The READ side
     //        went 40 → 65 on 2026-08-17 (#195 residual): the four talent surfaces deleted in the
@@ -683,7 +781,17 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 109 → 110 (#312 review): GET /tenant/data-subject-requests joins the EXISTING candidate-consent group, so
     //   the group count below is unchanged. 109 + 1 = 110.
     //   Re-derived after merging main: main 106 (after #339) + #345's +4 = 110.
-    expect(allowlistNormalised.length).toBe(110);
+    // 110 → 114 (AS-5): the provider connector's four dark routes, in their own group.
+    // 114 → 115 (AS-5 review): the staff cancel joins that group.
+    // 115 → 117 (AS-5, D15): the DSAR export and erasure routes join that group.
+    // 117 → 121 (PR #427, release/assessments-fit-provider): FIT v2's four C#-only routes, in their own group.
+    // 121 → 123 (release/assessments-fit-provider, D16): the two candidate-portal reads join the AS-5 group.
+    // 123 → 124 (release slice "fit"): the candidate fit-scores read joins the FIT v2 group.
+    // 124 → 128 (release slice "atsux"): two staff reads join the AS-5 group, the editor's two routes the FIT v2 group.
+    // 128 → 130 (round 12): the binding state read and unbind join the AS-5 group.
+    // 130 → 132 (proctoring parity, 2026-11-11): the org's assessment security settings join the AS-5 group.
+    // 132 → 134 (HR PDF reports, 2026-11-12): the report list and the report download join the AS-5 group.
+    expect(allowlistNormalised.length).toBe(134);
     // Every group must actually carry a reason and actually cover something — an empty group, or one
     // whose "reason" is a word, is a rubber stamp.
     for (const g of UNREGISTERED_ALLOWLIST) {
@@ -705,6 +813,10 @@ describe('parity registry covers every deployed route (or documents why not)', (
     // 14 → 15 (PR #310): the tenant org structure is a C#-only management surface.
     // 15 → 16 (#312/#313): candidate consent — greenfield, and its self-service route is authorized by a verified
     //   candidate session, a principal the by-role harness cannot express. Main 15 (after #339) + #345's +1 = 16.
-    expect(UNREGISTERED_ALLOWLIST.length, 'the sixteen documented gap categories').toBe(16);
+    // 16 → 17 (AS-5): the provider connector — every route depends on a remote provider that does not exist yet,
+    //   and its routes are four principals (staff grant, platform owner, confirmed candidate, HMAC) at once.
+    // 17 → 18 (PR #427, release/assessments-fit-provider): FIT v2's C#-only routes. Not folded into the
+    //   fit-engine group: theirs is a missing fixture, these also have no TS procedure to compare against.
+    expect(UNREGISTERED_ALLOWLIST.length, 'the eighteen documented gap categories').toBe(18);
   });
 });

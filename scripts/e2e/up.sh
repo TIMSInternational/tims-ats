@@ -146,6 +146,33 @@ SQL
     done
   done
   [ "$missing" = 0 ] || e2e_die "ownership-flipped tables missing after baseline load"
+
+  apply_pending_migrations
+}
+
+# The baseline is PRODUCTION, so it lacks the Prisma migrations this branch ships and production has not applied yet.
+# Without them the journeys run new code against the old schema: a release that adds a column the TS reads (e.g.
+# fit_scores.restricted_overall_score, 20261109100000_fit_v2_integrity) fails every query that selects it, and the
+# candidate never appears in the pipeline (candidate-journey.spec.ts "recruiter sees the application in the pipeline").
+# packages/db/baseline/applied-through.txt names the newest migration the baseline already contains; every migration
+# directory after it is applied in order, exactly as the owner applies them to production (`prisma db execute`, by
+# hand). Fail loud: a migration that does not apply on the baseline would not apply in production either.
+apply_pending_migrations() {
+  local marker="$E2E_REPO_ROOT/packages/db/baseline/applied-through.txt" through dir name applied=0
+  [ -s "$marker" ] || e2e_die "missing $marker"
+  through="$(tr -d '[:space:]' <"$marker")"
+  [ -d "$E2E_REPO_ROOT/packages/db/prisma/migrations/$through" ] || e2e_die "applied-through.txt names no migration: $through"
+  for dir in "$E2E_REPO_ROOT"/packages/db/prisma/migrations/*/; do
+    name="$(basename "$dir")"
+    [[ "$name" > "$through" ]] || continue
+    e2e_log "applying pending migration $name (not in the production baseline yet)"
+    psql "$E2E_DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/migration.sql" >>"$E2E_STATE/logs/pending-migrations.log" 2>&1 || {
+      tail -20 "$E2E_STATE/logs/pending-migrations.log" >&2
+      e2e_die "pending migration $name failed on the baseline"
+    }
+    applied=$((applied + 1))
+  done
+  e2e_log "$applied pending migration(s) applied on top of the baseline"
 }
 
 # ── 4. Seeds ──────────────────────────────────────────────────────────────────────────────

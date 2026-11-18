@@ -44,9 +44,56 @@ public interface IFitEngineWriteRepository
     /// #312: in the SAME transaction it first takes the withdrawal's per-candidate advisory lock and RE-CHECKS the
     /// candidate's consent; a withdrawal committed after the pre-loop check skips the write and returns false.
     /// </summary>
+    /// <para><paramref name="skipIfV2Configured"/> (FIT v2 on, Codex ats run 4 [P1]): under the vacancy's requirements
+    /// lock (shared; the requirements trigger takes it exclusively), a vacancy configured for FIT v2 by an edit that
+    /// committed after the compute read its requirements is not written as v1 (false).</para>
     Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
         Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
-        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken);
+        string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+        bool skipIfV2Configured = false);
+
+    /// <summary>
+    /// The FIT v2 write: read the integrity-carrying inputs and write the row ATOMICALLY. In one transaction it
+    /// takes the #312 consent lock and re-checks consent (a withdrawn candidate returns false and
+    /// <paramref name="buildInLock"/> is never called), then takes a per-(organization, candidate, vacancy) FIT v2
+    /// advisory lock, then calls <paramref name="buildInLock"/> ON THAT OPEN TRANSACTION (it re-reads the results
+    /// and evaluates them) and writes what it returns. Two v2 computes for the same pair therefore never
+    /// interleave a read and a write: the row always reflects the results as of its own in-lock read. If
+    /// <paramref name="buildInLock"/> throws or the token is cancelled, the transaction rolls back and the stored
+    /// row is left exactly as it was.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="onlyIfRowExists"/>: a recompute (the recompute queue) writes nothing when no row exists for
+    /// the pair once the FIT v2 lock is held, and returns false, unless <paramref name="createIfMissing"/> is given,
+    /// the candidate holds an active application for the vacancy (read on the same transaction: the computeForVacancy
+    /// population), and <paramref name="createIfMissing"/>, called in the lock, answers true: then the row is created
+    /// as a compute would create it.
+    /// </remarks>
+    /// <para>Codex ats run 3 [P1]: after the FIT v2 lock it also takes the vacancy's requirements lock
+    /// (<c>fit_v2_requirements:{org}:{vacancy}</c>) SHARED, which the <c>job_profiles</c> requirements trigger takes
+    /// exclusively, so the callbacks read the requirements with <see cref="GetFitRequirementsInLockAsync"/> as of a
+    /// state no edit can change before the write commits. <paramref name="buildInLock"/> answers null when the vacancy
+    /// is no longer configured for FIT v2 there: nothing is written and the call returns false.</para>
+    Task<bool> UpsertFitScoreV2Async(
+        Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
+        Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
+        bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null);
+
+    /// <summary>
+    /// The vacancy's <c>job_profiles.fit_requirements</c> as text (null: no profile or a null value), read on the open
+    /// FIT v2 write transaction. Only inside the <see cref="UpsertFitScoreV2Async"/> callbacks.
+    /// </summary>
+    Task<string?> GetFitRequirementsInLockAsync(Guid organizationId, Guid vacancyId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The C#-owned <c>job_profiles.fit_requirements</c> write, one atomic <c>INSERT … ON CONFLICT DO UPDATE</c> on the
+    /// vacancy's profile. <paramref name="replaceAssessments"/> false MERGES: the stored <c>assessments</c> key, if
+    /// any, is carried over inside the same statement (no read-then-write). Returns the stored jsonb, or null when the
+    /// profile row belongs to another organization (nothing written).
+    /// </summary>
+    Task<string?> UpsertFitRequirementsAsync(
+        Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+        CancellationToken cancellationToken);
 
     /// <summary><c>getPipelineCandidateIds</c>: candidate ids of the vacancy's <c>status = 'active'</c> applications.</summary>
     Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(

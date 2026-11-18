@@ -11,6 +11,8 @@ import { RejectCandidateModal } from '../../pipeline/reject-candidate-modal';
 import { useCan } from '../../../../../lib/permissions';
 import { candidateSourceLabel } from '../../../../../lib/candidate-labels';
 import { FIT_BANDS, fitBand, type FitBand } from '../../../../../lib/pipeline-fit';
+import { isReviewPending } from '../../../../../lib/platform-api/fit-engine';
+import { FitReviewPendingBadge } from '../../fit-review-pending-badge';
 
 // The same FIT scale as the pipeline card, list, table and filter (A-23).
 const FIT_BORDER: Record<FitBand, string> = { high: 'border-green-500', medium: 'border-amber-500', low: 'border-red-500' };
@@ -49,6 +51,8 @@ export function CandidateHeader({
   const [showRejectModal, setShowRejectModal] = useState(false);
   const canReject = useCan()('pipeline', 'update');
   const fitScore = c.fitScores?.[0]?.overallScore;
+  // FIT v2: the score is provisional while a result it counts on awaits review (breakdown.reviewPending).
+  const fitPending = isReviewPending(c.fitScores?.[0]?.breakdown);
   const activeApplications = c.applications.filter((application) => application.status === 'active');
   const activeApp = activeApplications[0];
   const currentStage = activeApp?.currentStage?.name;
@@ -125,7 +129,12 @@ export function CandidateHeader({
         </div>
 
         {/* FIT Score */}
-        {fitScore != null && <FitScoreCircle score={fitScore} />}
+        {fitScore != null && (
+          <div className="flex flex-col items-center gap-1 shrink-0">
+            <FitScoreCircle score={fitScore} />
+            {fitPending && <FitReviewPendingBadge compact />}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-2 shrink-0">
@@ -161,6 +170,11 @@ export function CandidateHeader({
           <div>
             <span className="text-[12px] text-teal-700 font-semibold">{t.candidates.aiRecommendation}</span>
             <span className="text-[12px] text-teal-700"> {t.candidates.highFit} (FIT {fitScore})</span>
+            {fitPending && (
+              <div className="mt-1">
+                <FitReviewPendingBadge />
+              </div>
+            )}
           </div>
         </div>
       )}

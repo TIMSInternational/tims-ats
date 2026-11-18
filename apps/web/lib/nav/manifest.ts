@@ -21,7 +21,7 @@ export type NavItem = {
   readonly sub?: readonly NavSubItem[];
 };
 /** Deploy-time flags a nav item can depend on (resolved by lib/nav/feature-flags.ts `isNavFeatureOn`). */
-export type NavFeatureFlag = 'tenantInvitations' | 'candidateConsent';
+export type NavFeatureFlag = 'tenantInvitations' | 'candidateConsent' | 'providerAssessments';
 export type NavSection = { readonly labelKey: string | null; readonly items: readonly NavItem[] };
 export type Shell = 'admin' | 'participant' | 'platform';
 export type RoleManifest = {
@@ -123,6 +123,17 @@ const ORGANIZATION_PROFILE_ITEM: NavItem = {
   icon: 'settings',
   module: 'organization',
 };
+// /settings/assessment-security (proctoring parity with timssuite.com, 2026-11-11): the org's lockdown, alert control
+// and identity check for TIMS tests. The C# write needs assessment:update at org scope, and the surface exists only
+// with the provider connector's flag.
+const ASSESSMENT_SECURITY_ITEM: NavItem = {
+  href: '/settings/assessment-security',
+  labelKey: 'sidebar.assessmentSecurity',
+  icon: 'settings',
+  module: 'assessment',
+  action: 'update',
+  featureFlag: 'providerAssessments',
+};
 const SETTINGS: NavSection = {
   labelKey: 'sidebar.settings',
   items: [
@@ -132,6 +143,7 @@ const SETTINGS: NavSection = {
     DATA_REQUESTS_ITEM,
     { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
     { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
+    ASSESSMENT_SECURITY_ITEM,
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
     { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'settings', module: 'integration' },
     { href: '/settings/audit-log', labelKey: 'sidebar.auditLog', icon: 'clipboard', module: 'audit' },
@@ -171,6 +183,7 @@ const HR_ADMIN_SETTINGS: NavSection = {
     { href: '/settings/business-units', labelKey: 'sidebar.businessUnits', icon: 'team', module: 'user' },
     TEAM_SETTINGS_ITEM,
     DATA_REQUESTS_ITEM,
+    ASSESSMENT_SECURITY_ITEM,
   ],
 };
 const HR_ADMIN_PEOPLE_FIRST: NavSection[] = [COMMAND_CENTER, PEOPLE, TALENT, CULTURE, RECRUITMENT, HR_ADMIN_SETTINGS];
@@ -258,7 +271,10 @@ const FALLBACK_MANIFEST: RoleManifest = participantManifest([PARTICIPANT_HOME]);
 // scope applies). hrbp is left out: its `unit` scope resolves through unitMemberIds, which does NOT
 // include the caller, so an HRBP outside their own units would get "no plan" for a plan they have.
 const OWN_ONBOARDING_SECTION: NavSection = { labelKey: 'sidebar.myHome', items: [MY_ONBOARDING_ITEM] };
-const withOwnOnboarding = (m: RoleManifest): RoleManifest => ({ ...m, sections: [...m.sections, OWN_ONBOARDING_SECTION] });
+const withOwnOnboarding = (m: RoleManifest): RoleManifest => ({
+  ...m,
+  sections: [...m.sections, OWN_ONBOARDING_SECTION],
+});
 const WITH_OWN_ONBOARDING: Record<NavRole, RoleManifest> = {
   super_admin: withOwnOnboarding(MANIFESTS.super_admin),
   hr_admin: withOwnOnboarding(MANIFESTS.hr_admin),

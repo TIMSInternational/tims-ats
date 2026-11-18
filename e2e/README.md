@@ -16,6 +16,19 @@ the other stack refuses too — both limiters draw on the one DynamoDB table (Lo
 `serial` story; every run uses a fresh run id, so every email, slug and title is unique and reruns
 never collide.
 
+## The assessments UX flow (no stack)
+
+`assessments-ux/` is a separate Playwright project that needs no stack: a Vite harness renders the real apps/web
+assessments components (the vacancy assessments editor and the candidate's TIMS Assessments card) in a real browser,
+with only the Next.js runtime and two tRPC reads stubbed, and the spec answers every C# Platform call at the
+same-origin `/api/platform` relay with a mocked TIMS Assessments provider (`assessments-ux/mock-provider.ts`). It
+covers configuring a vacancy's tests (with the version check), assigning them after the consent notice, the status
+chips and the results per test (D3, D20, D6).
+
+```bash
+pnpm --filter @tims/e2e exec playwright test -c assessments-ux/playwright.config.ts
+```
+
 ## Running locally
 
 ```bash

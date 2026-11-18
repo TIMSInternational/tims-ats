@@ -2,6 +2,9 @@
 
 import { useI18n } from '../../../../../lib/i18n';
 import { DiscChart } from '../../../../../components';
+import { EssayGradingPanel } from './essay-grading-panel';
+import { isFitEngineV2Enabled } from '../../../../../lib/platform-api/fit-engine';
+import { assignmentsAwaitingReview } from '../../../../../lib/fit-v2-breakdown';
 
 interface Assignment {
   id: string;
@@ -90,6 +93,11 @@ function AssessmentRow({ name, status, children }: { name: string; status: strin
 
 export function AssessmentResults({ assignments, fitScores }: { assignments: Assignment[]; fitScores: FitScore[] }) {
   const { t } = useI18n();
+  // FIT v2 / D5: the essay grading panel (and its queries) mounts only with the flag on; flag off renders as before.
+  const essayGrading = isFitEngineV2Enabled();
+  // FIT v2: an assignment a stored score holds as "needs review" (cancelled, flagged, an essay awaiting a grade) is
+  // marked, so its number here is not read as final.
+  const underReview = assignmentsAwaitingReview(fitScores);
   const latestFit = fitScores[0];
   const breakdown = latestFit?.breakdown as Record<string, number> | null;
   const hasDisc =
@@ -131,6 +139,11 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
 
           return (
             <AssessmentRow key={a.id} name={a.assessmentType.name} status={a.status}>
+              {underReview.has(a.id) && (
+                <p data-testid="assessment-review-pending" className="text-[11px] text-amber-700 mt-1">
+                  {t.candidates.assessmentReviewPending}
+                </p>
+              )}
               {a.result?.normalizedScore === null && a.status === 'completed' && (
                 <p className="text-[11px] text-amber-700 mt-1">{t.candidates.assessmentScorePending}</p>
               )}
@@ -167,6 +180,9 @@ export function AssessmentResults({ assignments, fitScores }: { assignments: Ass
               !Array.isArray(a.result.breakdown) ? (
                 <BreakdownGrid data={a.result.breakdown as Record<string, number>} />
               ) : null}
+              {essayGrading && a.status === 'completed' && a.result != null && (
+                <EssayGradingPanel assignmentId={a.id} />
+              )}
             </AssessmentRow>
           );
         })}

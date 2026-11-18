@@ -28,7 +28,7 @@ export function DashboardPrivacy({
   orgName: string;
   // Server-persisted withdrawal time (dashboard/page.tsx), so a revisit shows the revoked state.
   withdrawnAt?: string | null;
-  // The organization's candidate contact (settings.candidateContactEmail, else billingEmail); null = none set.
+  // The organization's configured candidate contact (settings.candidateContactEmail only, never billingEmail); null = none set.
   contactEmail?: string | null;
 }) {
   const { t } = useI18n();

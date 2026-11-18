@@ -4,6 +4,10 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
+import {
+  isFitEngineV2Enabled,
+  useUpdateFitRequirementsViaCsharp,
+} from '../../../../../lib/platform-api/fit-engine';
 
 const EDUCATION_LEVELS = ['high_school', 'associate', 'bachelor', 'master', 'phd'] as const;
 type EducationLevel = (typeof EDUCATION_LEVELS)[number];
@@ -12,6 +16,7 @@ interface FitRequirements {
   minYearsExperience?: number;
   requiredEducationLevel?: EducationLevel;
   requiredLanguages?: string[];
+  assessments?: unknown;
 }
 
 // Structured requirements consumed by the FIT Engine's Experience/Education/
@@ -36,6 +41,22 @@ export function FitRequirementsCard({ vacancyId, fitRequirements }: { vacancyId:
     onError: (err) => toast(err.message, { type: 'error' }),
   });
 
+  // FIT v2: the C# writer keeps the configured `assessments` (the TS mutation replaces the whole object and would
+  // erase them) and reports any entry it dropped or adjusted.
+  const viaCsharp = isFitEngineV2Enabled();
+  const configuredAssessments = Array.isArray(current.assessments) ? current.assessments.length : 0;
+  const updateV2 = useUpdateFitRequirementsViaCsharp({
+    onSuccess: (issues) => {
+      toast(t.fitRequirements.saved, { type: 'success' });
+      if (issues.length > 0) {
+        toast(t.fitRequirements.assessmentIssues.replace('{count}', String(issues.length)), { type: 'info' });
+      }
+      utils.vacancy.getById.invalidate({ id: vacancyId });
+    },
+    onError: () => toast(t.fitRequirements.saveError, { type: 'error' }),
+  });
+  const isSaving = viaCsharp ? updateV2.isPending : update.isPending;
+
   const educationLabels: Record<EducationLevel, string> = {
     high_school: t.fitRequirements.educationHighSchool,
     associate: t.fitRequirements.educationAssociate,
@@ -50,12 +71,14 @@ export function FitRequirementsCard({ vacancyId, fitRequirements }: { vacancyId:
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
-    update.mutate({
+    const input = {
       vacancyId,
       minYearsExperience: minYears === '' ? undefined : Number(minYears),
       requiredEducationLevel: educationLevel === '' ? undefined : (educationLevel as EducationLevel),
       requiredLanguages: requiredLanguages.length > 0 ? requiredLanguages : undefined,
-    });
+    };
+    if (viaCsharp) updateV2.mutate(input);
+    else update.mutate(input);
   };
 
   return (
@@ -100,12 +123,18 @@ export function FitRequirementsCard({ vacancyId, fitRequirements }: { vacancyId:
           />
         </div>
 
+        {viaCsharp && configuredAssessments > 0 && (
+          <p className="text-[11px] text-[#8B8B8B]">
+            {t.fitRequirements.assessmentsKept.replace('{count}', String(configuredAssessments))}
+          </p>
+        )}
+
         <button
           onClick={handleSave}
-          disabled={update.isPending}
+          disabled={isSaving}
           className="bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium hover:bg-[#c00b13] transition disabled:opacity-50"
         >
-          {update.isPending ? t.fitRequirements.saving : t.fitRequirements.saveButton}
+          {isSaving ? t.fitRequirements.saving : t.fitRequirements.saveButton}
         </button>
       </div>
     </div>

@@ -26,15 +26,19 @@ vi.mock('../../packages/api/src/services/fit-engine.service', () => ({
 }));
 
 const explainFitMock = vi.fn();
-vi.mock('@tims/ai', () => ({ explainFit: (...a: unknown[]) => explainFitMock(...a) }));
+// The D6 helpers are the real ones (pure); only the model call is mocked.
+vi.mock('@tims/ai', async () => ({
+  ...(await vi.importActual<object>('../../packages/ai/src/fit-visibility')),
+  explainFit: (...a: unknown[]) => explainFitMock(...a),
+}));
 
-const accessAllowed = vi.hoisted(() => ({ value: true }));
+const accessAllowed = vi.hoisted(() => ({ value: true, scope: 'organization' }));
 function setAccessAllowed(value: boolean) {
   accessAllowed.value = value;
 }
 const buildAccessForUserMock = vi.hoisted(() =>
   vi.fn(async () =>
-    accessAllowed.value ? { allowed: true, scope: 'organization', roles: ['hr_admin'] } : { allowed: false },
+    accessAllowed.value ? { allowed: true, scope: accessAllowed.scope, roles: ['hr_admin'] } : { allowed: false },
   ),
 );
 const assertScopedMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -81,6 +85,7 @@ async function makeCaller() {
 beforeEach(() => {
   vi.clearAllMocks();
   setAccessAllowed(true);
+  accessAllowed.scope = 'organization';
 });
 
 describe('fitEngine.getRankingForVacancy', () => {
@@ -89,8 +94,18 @@ describe('fitEngine.getRankingForVacancy', () => {
     const caller = await makeCaller();
     const result = await caller.fitEngine.getRankingForVacancy({ vacancyId: VACANCY_ID });
     expect(assertScopedMock).toHaveBeenCalledWith('vacancy', VACANCY_ID, expect.anything(), 'user-1', ORG_ID);
-    expect(getRankingForVacancyMock).toHaveBeenCalledWith(ORG_ID, VACANCY_ID);
+    expect(getRankingForVacancyMock).toHaveBeenCalledWith(ORG_ID, VACANCY_ID, false);
     expect(result).toEqual([{ candidateId: 'c1', overallScore: 90 }]);
+  });
+
+  it('asks for the D6 view for a reader below company scope (a team leader)', async () => {
+    for (const [scope, hidden] of [['team', true], ['unit', true], ['own', true], ['company', false]] as const) {
+      accessAllowed.scope = scope;
+      getRankingForVacancyMock.mockResolvedValue([]);
+      const caller = await makeCaller();
+      await caller.fitEngine.getRankingForVacancy({ vacancyId: VACANCY_ID });
+      expect(getRankingForVacancyMock).toHaveBeenLastCalledWith(ORG_ID, VACANCY_ID, hidden);
+    }
   });
 
   it('throws FORBIDDEN and never queries when the caller lacks fit_engine:read', async () => {
@@ -127,7 +142,11 @@ describe('fitEngine.simulateWeights', () => {
     const caller = await makeCaller();
     const result = await caller.fitEngine.simulateWeights({ vacancyId: VACANCY_ID, hypotheticalWeights: weights });
     expect(result).toEqual([{ candidateId: 'c1', simulatedScore: 77 }]);
-    expect(simulateWeightsMock).toHaveBeenCalledWith(ORG_ID, VACANCY_ID, weights);
+    expect(simulateWeightsMock).toHaveBeenCalledWith(ORG_ID, VACANCY_ID, weights, false);
+
+    accessAllowed.scope = 'team';
+    await (await makeCaller()).fitEngine.simulateWeights({ vacancyId: VACANCY_ID, hypotheticalWeights: weights });
+    expect(simulateWeightsMock).toHaveBeenLastCalledWith(ORG_ID, VACANCY_ID, weights, true);
   });
 });
 
@@ -174,5 +193,40 @@ describe('fitEngine.explainFit', () => {
 
     expect(result).toEqual({ narrative: 'Solid interview performance.', model: 'sonnet' });
     expect(explainFitMock).toHaveBeenCalledWith(ORG_ID, expect.objectContaining({ overallScore: 78 }));
+  });
+
+  it('a team leader\'s narrative is built from the D6 view: no level, no invertible overall, never the weights', async () => {
+    const lia = {
+      instrument: 'lia', use: 'scored', status: 'completed', score: 50, gate: null, weight: null, assessmentShare: 1,
+      effectiveWeight: 0.4, min: { globalPercentile: 40 }, reason: null, resultId: 'r1', source: 'provider',
+      contentVersion: null, normVersion: null, languagesEvidence: null,
+    };
+    const stored = {
+      overallScore: 73,
+      breakdown: {
+        assessment: 50, interview: 80, experience: 100, education: null, languages: 100, llmJudgment: null,
+        fitVersion: 2, reviewPending: false, assessments: [lia],
+      },
+      weights: { assessment: 0.4, interview: 0.2, experience: 0.2, education: 0.1, languages: 0.1 },
+      candidateName: 'Ana Gomez',
+      vacancyTitle: 'Analyst',
+    };
+    getFitScoreForExplainMock.mockResolvedValue(stored);
+    explainFitMock.mockResolvedValue({ result: { narrative: 'n' }, model: 'sonnet' });
+
+    accessAllowed.scope = 'team';
+    await (await makeCaller()).fitEngine.explainFit({ candidateId: CANDIDATE_ID, vacancyId: VACANCY_ID });
+    const sent = explainFitMock.mock.calls.at(-1)![1] as Record<string, unknown> & { breakdown: Record<string, unknown> };
+    expect(sent.overallScore).toBe(92); // (80×0.2 + 100×0.2 + 100×0.1) / 0.5, not the stored 73
+    expect(sent.breakdown.assessment).toBeNull();
+    expect((sent.breakdown.assessments as Array<Record<string, unknown>>)[0]).toMatchObject({ score: null, belowMinimum: true });
+    expect('weights' in sent).toBe(false);
+
+    accessAllowed.scope = 'organization';
+    await (await makeCaller()).fitEngine.explainFit({ candidateId: CANDIDATE_ID, vacancyId: VACANCY_ID });
+    const hr = explainFitMock.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect(hr.overallScore).toBe(73);
+    expect(hr.breakdown).toEqual(stored.breakdown);
+    expect('weights' in hr).toBe(false);
   });
 });

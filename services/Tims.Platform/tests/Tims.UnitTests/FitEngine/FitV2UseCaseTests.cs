@@ -1,0 +1,871 @@
+using System.Text.Json.Nodes;
+using Tims.Application.FitEngine;
+using Tims.Domain.FitEngine;
+using Xunit;
+
+namespace Tims.UnitTests.FitEngine;
+
+/// <summary>
+/// FIT v2 orchestration pins over a recording fake repository and a fake result source:
+///   the switch — flag OFF is v1 even for a configured vacancy (the result source is never read); flag ON with no
+///     <c>assessments</c> array is byte-identical to flag OFF; flag ON + array takes the v2 path, which REPLACES
+///     the latest-of-any-type read and keeps the six v1 keys first;
+///   hiring guardrails — a not-met gate never moves the assessment number and never skips the candidate (an English gate decides English in languages, D23); a
+///     needs-review result is excluded from the assessment dimension (never read as a 0 instrument score), and
+///     because excluding it still moves the overall number, the row is stored partial with reviewPending: true;
+///   the atomic write — the results are read once, inside the locked write (after the consent re-check), and a
+///     failed or cancelled in-lock read writes nothing (the interleaving itself is pinned against real Postgres in
+///     Tims.IntegrationTests/FitEngine/FitV2Tests);
+///   weighting — the profile's assessment weight is split across scored instruments by their weights;
+///   an English result verifies the languages dimension and counts there only, scored or gate (owner defaults D3 and
+///     D23; a gate additionally shows met / not met and never rejects; any other gate never moves a number);
+///   v1 readers — simulateWeights re-scores a v2 row from its five dimension keys;
+///   the composite source's order. Tests of the SCORED LIA curve pass liaScoredAllowed: true (norms confirmed); the
+///   production default treats LIA as a threshold gate (owner default D20, pinned in FitV2IntegrityTests). (The ATS adapter and the provider stub live in Tims.Infrastructure and are
+///   pinned in Tims.IntegrationTests/FitEngine/FitV2Tests.)
+/// </summary>
+public sealed class FitV2UseCaseTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 11, 7, 12, 0, 0, TimeSpan.Zero);
+    private static readonly Guid OrgId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid VacancyId = Guid.Parse("7ac00000-0000-0000-0000-000000000001");
+    private static readonly Guid CandidateId = Guid.Parse("ca000000-0000-0000-0000-000000000001");
+
+    private const string DefaultWeights =
+        """{"assessment":0.2,"interview":0.2,"experience":0.2,"education":0.2,"languages":0.2}""";
+
+    // ── the switch ──
+    [Fact]
+    public async Task FlagOff_ConfiguredVacancy_IsV1_AndNeverReadsTheResultSource()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", assessmentScore: 64);
+        var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 99));
+
+        await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: false, CancellationToken.None);
+
+        var breakdown = SingleBreakdown(repo);
+        Assert.Equal(
+            ["assessment", "interview", "experience", "education", "languages", "llmJudgment"],
+            breakdown.Select(p => p.Key).ToArray());
+        Assert.Equal(64, breakdown["assessment"]!.GetValue<double>());
+        Assert.Equal(1, repo.LatestAssessmentReads);
+        Assert.Empty(source.Calls);
+    }
+
+    [Fact]
+    public async Task FlagOn_VacancyWithoutAssessmentsArray_IsByteIdenticalToFlagOff()
+    {
+        const string requirements =
+            """{"minYearsExperience":2,"requiredLanguages":["English","Spanish"],"assessments":{"not":"an array"}}""";
+        var off = Repo(requirements, assessmentScore: 75.5, languages: """["English (B2)"]""", interview: 70);
+        var on = Repo(requirements, assessmentScore: 75.5, languages: """["English (B2)"]""", interview: 70);
+        var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 10));
+
+        await new FitEngineWriteUseCase(off, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: false, CancellationToken.None);
+        await new FitEngineWriteUseCase(on, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var a = Assert.Single(off.FitScoreUpserts);
+        var b = Assert.Single(on.FitScoreUpserts);
+        Assert.Equal(a, b);
+        Assert.Empty(source.Calls);
+        Assert.Equal(1, on.LatestAssessmentReads);
+    }
+
+    [Fact]
+    public async Task FlagOn_ConfiguredVacancy_V2Breakdown_V1KeysFirst_ReplacesLatestOfAnyTypeRead()
+    {
+        var repo = Repo(
+            """{"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"personality"}]}""",
+            assessmentScore: 12);
+        var source = new FakeResultSource(
+            Result(FitInstruments.Lia, "r-lia", percentile: 20),
+            Result(FitInstruments.Personality, "r-p"));
+
+        await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+
+        var breakdown = SingleBreakdown(repo);
+        Assert.Equal(
+            ["assessment", "interview", "experience", "education", "languages", "llmJudgment", "fitVersion", "reviewPending", "assessments"],
+            breakdown.Select(p => p.Key).ToArray());
+        Assert.Equal(50, breakdown["assessment"]!.GetValue<double>()); // 20 / 40 → 50, NOT the latest-of-any-type 12
+        Assert.Equal(2, breakdown["fitVersion"]!.GetValue<int>());
+        Assert.False(breakdown["reviewPending"]!.GetValue<bool>());
+        Assert.Equal(0, repo.LatestAssessmentReads);
+        Assert.Equal([(OrgId, CandidateId, VacancyId)], source.Calls); // one read, inside the locked write
+        Assert.Single(repo.FitScoreUpserts);
+
+        var entries = breakdown["assessments"]!.AsArray();
+        Assert.Equal(["lia", "personality"], entries.Select(e => e!["instrument"]!.GetValue<string>()).ToArray());
+        Assert.Null(entries[1]!["score"]); // advisory: never scored
+        Assert.Equal("advisory", entries[1]!["use"]!.GetValue<string>());
+        Assert.Equal("completed", entries[1]!["status"]!.GetValue<string>());
+        Assert.Null(entries[1]!["resultId"]); // advisory: status only
+        Assert.Null(entries[1]!["source"]);
+        Assert.Equal("r-lia", entries[0]!["resultId"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task FlagOn_EmptyAssessmentsArray_AssessmentDimensionIsNull()
+    {
+        var repo = Repo("""{"assessments":[]}""", assessmentScore: 90);
+        var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 90));
+
+        await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var upsert = Assert.Single(repo.FitScoreUpserts);
+        var breakdown = JsonNode.Parse(upsert.BreakdownJson)!.AsObject();
+        Assert.Null(breakdown["assessment"]);
+        Assert.Empty(breakdown["assessments"]!.AsArray());
+        Assert.True(upsert.IsPartial);
+    }
+
+    [Fact]
+    public async Task FlagOn_NonEmptyArrayWhereNothingParses_IsV1_NotADroppedAssessmentDimension()
+    {
+        // A typo ("native-quiz") must not take the v2 path with no instrument, which would drop the quiz score v1
+        // uses for every candidate without a word to HR: the vacancy behaves as if it were not configured.
+        const string requirements = """{"assessments":[{"instrument":"native-quiz"}]}""";
+        var off = Repo(requirements, assessmentScore: 90);
+        var on = Repo(requirements, assessmentScore: 90);
+        var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 90));
+
+        await new FitEngineWriteUseCase(off, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: false, CancellationToken.None);
+        await new FitEngineWriteUseCase(on, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(Assert.Single(off.FitScoreUpserts), Assert.Single(on.FitScoreUpserts));
+        Assert.Equal(90, SingleBreakdown(on)["assessment"]!.GetValue<double>());
+        Assert.Equal(1, on.LatestAssessmentReads);
+        Assert.Empty(source.Calls);
+    }
+
+    // ── hiring guardrails ──
+    [Fact]
+    public async Task FlagOn_GateNotMet_NeverChangesTheOverallScore_AndNeverSkipsTheCandidate()
+    {
+        // A not-met ITC-IA gate is a flag only: both rows score the same and the candidate is still written.
+        var withGate = Repo(
+            """{"requiredLanguages":["English"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"itcia","use":"gate","min":{"level":4}}]}""",
+            interview: 30,
+            languages: """["English (C2)"]""");
+        var withoutGate = Repo(
+            """{"requiredLanguages":["English"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}}]}""",
+            interview: 30,
+            languages: """["English (C2)"]""");
+        var source = new FakeResultSource(
+            Result(FitInstruments.Lia, "r-lia", percentile: 60),
+            Result(FitInstruments.Itcia, "r-it", level: 2));
+
+        await new FitEngineWriteUseCase(withGate, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(withoutGate, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+
+        var gated = Assert.Single(withGate.FitScoreUpserts);
+        var plain = Assert.Single(withoutGate.FitScoreUpserts);
+        Assert.Equal(plain.OverallScore, gated.OverallScore);
+        Assert.Equal(77, gated.OverallScore); // (100 + 30 + 100) × 0.2 / 0.6 = 76.67
+        var itcia = JsonNode.Parse(gated.BreakdownJson)!["assessments"]![1]!;
+        Assert.Equal("not_met", itcia["gate"]!.GetValue<string>());
+        Assert.Null(itcia["score"]);
+    }
+
+    [Fact]
+    public async Task FlagOn_EnglishGate_FeedsLanguages_D23_AndOnlyFlagsBelowMinimum()
+    {
+        // Owner default D23 (2026-11-09): an English result feeds the languages dimension (D3) whatever its role. As a
+        // GATE it decides English there exactly as a scored entry would, and additionally shows not_met; it never
+        // enters the assessment dimension and never skips the candidate. The vacancy does not list English among its
+        // required languages: the test adds it (as for a scored entry), so the CV's Spanish and the test's English
+        // are the two required languages.
+        const string requirements =
+            """{"requiredLanguages":["Spanish"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"english","use":"gate","min":{"cefr":"C1"}}]}""";
+        var notMet = Repo(requirements, interview: 30, languages: """["Spanish"]""");
+        var met = Repo(requirements, interview: 30, languages: """["Spanish"]""");
+
+        await new FitEngineWriteUseCase(notMet, new FakeResultSource(
+                Result(FitInstruments.Lia, "r-lia", percentile: 60), Result(FitInstruments.English, "r-en", cefr: "A2")))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(met, new FakeResultSource(
+                Result(FitInstruments.Lia, "r-lia", percentile: 60), Result(FitInstruments.English, "r-en", cefr: "C2")))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+
+        var below = Assert.Single(notMet.FitScoreUpserts);
+        var above = Assert.Single(met.FitScoreUpserts);
+        var belowBreakdown = JsonNode.Parse(below.BreakdownJson)!;
+        var aboveBreakdown = JsonNode.Parse(above.BreakdownJson)!;
+        Assert.Equal(50, belowBreakdown["languages"]!.GetValue<double>()); // Spanish covered, English not
+        Assert.Equal(100, aboveBreakdown["languages"]!.GetValue<double>());
+        Assert.Equal(100, belowBreakdown["assessment"]!.GetValue<double>()); // LIA alone: the gate never enters it
+        Assert.Equal(60, below.OverallScore); // (100 + 30 + 50) × 0.2 / 0.6
+        Assert.Equal(77, above.OverallScore); // (100 + 30 + 100) × 0.2 / 0.6 = 76.67
+        var english = belowBreakdown["assessments"]![1]!;
+        Assert.Equal("not_met", english["gate"]!.GetValue<string>());
+        Assert.Null(english["score"]);
+        Assert.Null(english["assessmentShare"]);
+        Assert.Equal(0.1, english["effectiveWeight"]!.GetValue<double>()); // the languages weight / 2 languages
+        Assert.Equal("assessment", english["languagesEvidence"]!.GetValue<string>());
+        Assert.Equal("met", aboveBreakdown["assessments"]![1]!["gate"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task FlagOn_NeedsReview_IsExcluded_NotReadAsZero()
+    {
+        const string requirements = """{"minYearsExperience":2,"assessments":[{"instrument":"native_quiz"}]}""";
+        var review = Repo(requirements, yearsExperience: 4);
+        var zero = Repo(requirements, yearsExperience: 4);
+
+        await new FitEngineWriteUseCase(
+                review,
+                new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 0, integrity: ResultIntegrity.NeedsReview)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(zero, new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 0)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var excluded = Assert.Single(review.FitScoreUpserts);
+        var scoredZero = Assert.Single(zero.FitScoreUpserts);
+        Assert.Equal(100, excluded.OverallScore); // only experience (100) remains after renormalization
+        Assert.Equal(50, scoredZero.OverallScore); // (0 × 0.2 + 100 × 0.2) / 0.4
+        var entry = JsonNode.Parse(excluded.BreakdownJson)!["assessments"]![0]!;
+        Assert.Equal("needs_review", entry["status"]!.GetValue<string>());
+        Assert.Null(JsonNode.Parse(excluded.BreakdownJson)!["assessment"]);
+        Assert.True(JsonNode.Parse(excluded.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+        Assert.True(excluded.IsPartial);
+        Assert.False(JsonNode.Parse(scoredZero.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task FlagOn_NeedsReview_WhenAssessmentIsTheOnlyDimension_IsTheNoDataValue_MarkedPending()
+    {
+        // No CV data, no interview: the assessment is the only dimension that could exist. A result awaiting review
+        // leaves NO dimension, so the overall is v1's no-data value (0, partial), exactly what a candidate who never
+        // took the test gets: the flag does not rank the candidate below one with no result. It is not a score:
+        // reviewPending says the number is provisional, and a ranking reader must hold the row apart.
+        const string requirements = """{"assessments":[{"instrument":"native_quiz"}]}""";
+        var review = Repo(requirements);
+        var none = Repo(requirements);
+        var low = Repo(requirements);
+
+        await new FitEngineWriteUseCase(
+                review,
+                new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 85, integrity: ResultIntegrity.NeedsReview)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(none, new FakeResultSource())
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(low, new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 10)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var pending = Assert.Single(review.FitScoreUpserts);
+        var noResult = Assert.Single(none.FitScoreUpserts);
+        var scoredLow = Assert.Single(low.FitScoreUpserts);
+        Assert.Equal(noResult.OverallScore, pending.OverallScore);
+        Assert.Equal(0, pending.OverallScore);
+        Assert.True(pending.IsPartial);
+        Assert.True(JsonNode.Parse(pending.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+        Assert.False(JsonNode.Parse(noResult.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+        Assert.Equal(10, scoredLow.OverallScore);
+        Assert.False(JsonNode.Parse(scoredLow.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task FlagOn_OneScoredInstrumentNeedsReview_RowIsPartial_EvenWithEveryDimensionPresent()
+    {
+        // All five dimensions are present, so v1's isPartial would be false. The quiz awaiting review is left out of
+        // the assessment dimension (lia alone fills it), which makes the number provisional: the row is stored as
+        // partial, which the vacancy ranking and the pipeline views already flag.
+        const string requirements =
+            """{"minYearsExperience":2,"requiredEducationLevel":"bachelor","requiredLanguages":["Spanish"],"assessments":[{"instrument":"lia","min":{"globalPercentile":40}},{"instrument":"native_quiz"}]}""";
+        const string education = """[{"degree":"Bachelor of Science"}]""";
+        var review = Repo(requirements, interview: 80, yearsExperience: 4, languages: """["Spanish"]""", education: education);
+        var valid = Repo(requirements, interview: 80, yearsExperience: 4, languages: """["Spanish"]""", education: education);
+
+        await new FitEngineWriteUseCase(
+                review,
+                new FakeResultSource(
+                    Result(FitInstruments.Lia, "r-lia", percentile: 40),
+                    Result(FitInstruments.NativeQuiz, "a-1", score: 30, integrity: ResultIntegrity.NeedsReview)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+        await new FitEngineWriteUseCase(
+                valid,
+                new FakeResultSource(
+                    Result(FitInstruments.Lia, "r-lia", percentile: 40),
+                    Result(FitInstruments.NativeQuiz, "a-1", score: 30)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+
+        var pending = Assert.Single(review.FitScoreUpserts);
+        var counted = Assert.Single(valid.FitScoreUpserts);
+        var pendingBreakdown = JsonNode.Parse(pending.BreakdownJson)!;
+        Assert.Equal(100, pendingBreakdown["assessment"]!.GetValue<double>()); // lia only: 40 vs 40
+        Assert.Equal(96, pending.OverallScore); // (100 + 80 + 100 + 100 + 100) / 5
+        Assert.True(pending.IsPartial);
+        Assert.True(pendingBreakdown["reviewPending"]!.GetValue<bool>());
+
+        Assert.Equal(65, JsonNode.Parse(counted.BreakdownJson)!["assessment"]!.GetValue<double>()); // (100 + 30) / 2
+        Assert.Equal(89, counted.OverallScore); // (65 + 80 + 100 + 100 + 100) / 5
+        Assert.False(counted.IsPartial);
+        Assert.False(JsonNode.Parse(counted.BreakdownJson)!["reviewPending"]!.GetValue<bool>());
+    }
+
+    // ── the results are read inside the write (the concurrent-recompute race, Codex rounds 2-6) ──
+    [Fact]
+    public async Task FlagOn_ResultsAreReadInsideTheLockedWrite_OnceOnly()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""", yearsExperience: 4);
+        var source = new ScriptedResultSource([Result(FitInstruments.NativeQuiz, "a-1", score: 85)]);
+        repo.OnLockTaken = () => source.Events.Add("lock");
+        source.Events = repo.Events;
+
+        var computed = await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(1, computed.Computed);
+        Assert.Equal(1, source.CallCount);
+        Assert.Equal(["consent", "lock", "read", "write"], repo.Events);
+        Assert.Equal(85, JsonNode.Parse(Assert.Single(repo.FitScoreUpserts).BreakdownJson)!["assessment"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public async Task FlagOn_TheInLockReadThrows_NothingIsWritten_AndTheFailureSurfaces()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        var source = new ThrowingResultSource(new InvalidOperationException("read failed"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None));
+
+        Assert.Empty(repo.FitScoreUpserts);
+        Assert.Equal(1, repo.RolledBack);
+    }
+
+    [Fact]
+    public async Task FlagOn_CancelledDuringTheInLockRead_NothingIsWritten()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        using var cts = new CancellationTokenSource();
+        var source = new ThrowingResultSource(null, cts);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, cts.Token));
+
+        Assert.Empty(repo.FitScoreUpserts);
+        Assert.Equal(1, repo.RolledBack);
+    }
+
+    [Fact]
+    public async Task FlagOn_WithdrawnAtTheWrite_IsNotCounted_AndTheResultsAreNeverRead()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        repo.WithdrawnAfterWrites = 0;
+        var source = new ScriptedResultSource([Result(FitInstruments.NativeQuiz, "a-1", score: 85)]);
+
+        var computed = await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        Assert.Equal(0, computed.Computed);
+        Assert.Empty(repo.FitScoreUpserts);
+        Assert.Equal(0, source.CallCount); // consent is re-checked before the in-lock read
+    }
+
+    // ── weighting ──
+    [Fact]
+    public async Task FlagOn_SplitsTheProfilesAssessmentWeight_ByInstrumentWeights()
+    {
+        var repo = Repo(
+            """{"assessments":[{"instrument":"lia","min":{"globalPercentile":40},"weight":1},{"instrument":"native_quiz","weight":3}]}""",
+            interview: 80,
+            profileWeights: """{"assessment":0.5,"interview":0.5,"experience":0,"education":0,"languages":0}""");
+        var source = new FakeResultSource(
+            Result(FitInstruments.Lia, "r-lia", percentile: 50),
+            Result(FitInstruments.NativeQuiz, "a-1", score: 60));
+
+        await new FitEngineWriteUseCase(repo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+
+        var upsert = Assert.Single(repo.FitScoreUpserts);
+        var breakdown = JsonNode.Parse(upsert.BreakdownJson)!;
+        Assert.Equal(70, breakdown["assessment"]!.GetValue<double>()); // (100 × 1 + 60 × 3) / 4
+        Assert.Equal(75, upsert.OverallScore); // (70 × 0.5 + 80 × 0.5) / 1.0
+        Assert.Equal(0.125, breakdown["assessments"]![0]!["effectiveWeight"]!.GetValue<double>());
+        Assert.Equal(0.375, breakdown["assessments"]![1]!["effectiveWeight"]!.GetValue<double>());
+    }
+
+    // ── a scored English result verifies languages, and counts there only (owner default D3) ──
+    [Fact]
+    public async Task FlagOn_ScoredEnglishBelowTheMinimum_OverridesTheCvClaimInLanguages_AndCountsOnlyThere()
+    {
+        const string requirements =
+            """{"requiredLanguages":["English"],"assessments":[{"instrument":"english","use":"scored","min":{"cefr":"B2"}}]}""";
+        var repo = Repo(requirements, languages: """["English (C2)"]""");
+
+        await new FitEngineWriteUseCase(repo, new FakeResultSource(Result(FitInstruments.English, "r-en", cefr: "B1")))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+
+        var breakdown = SingleBreakdown(repo);
+        Assert.Null(breakdown["assessment"]); // D3: English never enters the assessment dimension
+        Assert.Equal(0, breakdown["languages"]!.GetValue<double>());
+        Assert.Equal(50, breakdown["assessments"]![0]!["score"]!.GetValue<double>()); // the ladder fit, shown only
+        Assert.Equal(0.2, breakdown["assessments"]![0]!["effectiveWeight"]!.GetValue<double>()); // languages 0.2 / 1
+        Assert.Equal("assessment", breakdown["assessments"]![0]!["languagesEvidence"]!.GetValue<string>());
+    }
+
+    // ── v1 readers of a v2 row ──
+    [Fact]
+    public async Task SimulateWeights_ReScoresAV2Row_FromItsFiveDimensionKeys()
+    {
+        const string v2Breakdown =
+            """{"assessment":70,"interview":80,"experience":null,"education":null,"languages":null,"llmJudgment":null,"fitVersion":2,"assessments":[{"instrument":"lia","score":100}]}""";
+        var read = new FakeReadRepo(
+            new FitScoreForVacancyData(Guid.NewGuid(), 75, v2Breakdown, true, Now, CandidateId, "Ana", "Ruiz"));
+        var weights = new Dictionary<string, double>(StringComparer.Ordinal)
+        {
+            ["assessment"] = 0.25,
+            ["interview"] = 0.75,
+            ["experience"] = 0,
+            ["education"] = 0,
+            ["languages"] = 0,
+        };
+
+        var rows = await new FitEngineReadUseCase(read).SimulateWeightsAsync(OrgId, VacancyId, weights, CancellationToken.None);
+
+        var row = Assert.Single(rows);
+        Assert.Equal(78, row.SimulatedScore); // (70 × 0.25 + 80 × 0.75) / 1.0 = 77.5 → 78
+        Assert.True(row.IsPartial);
+    }
+
+    // ── the composite port ──
+    [Fact]
+    public async Task CompositeSource_ConcatenatesInOrder()
+    {
+        var first = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 1));
+        var second = new FakeResultSource(Result(FitInstruments.Lia, "r-1", percentile: 2));
+        var composite = new CompositeAssessmentResultSource([first, new FakeResultSource(), second]);
+
+        var results = await composite.GetResultsAsync(OrgId, CandidateId, VacancyId, CancellationToken.None);
+
+        Assert.Equal(["a-1", "r-1"], results.Select(r => r.ResultId).ToArray());
+        Assert.Equal([(OrgId, CandidateId, VacancyId)], first.Calls);
+    }
+
+    // ── helpers ──
+    // ── owner default D20: LIA is a minimum threshold only (norms unconfirmed) ──
+    [Fact]
+    public async Task ByDefault_AScoredLia_IsAThresholdGate_ThatMovesNoNumber()
+    {
+        const string requirements =
+            """{"assessments":[{"instrument":"lia","use":"scored","min":{"globalPercentile":40},"weight":3},{"instrument":"native_quiz","use":"scored","weight":1}]}""";
+        var source = new FakeResultSource(
+            Result(FitInstruments.Lia, "r-lia", percentile: 10),
+            Result(FitInstruments.NativeQuiz, "a-1", score: 80));
+
+        var thresholdRepo = Repo(requirements);
+        await new FitEngineWriteUseCase(thresholdRepo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        var threshold = SingleBreakdown(thresholdRepo);
+        var lia = threshold["assessments"]!.AsArray()[0]!;
+        Assert.Equal("gate", lia["use"]!.GetValue<string>());
+        Assert.Equal("not_met", lia["gate"]!.GetValue<string>());
+        Assert.Null(lia["score"]);
+        Assert.Null(lia["weight"]);
+        Assert.Equal(80, threshold["assessment"]!.GetValue<double>()); // the quiz alone: LIA's p=10 ranks nobody
+
+        // Norms confirmed (Platform:FitEngineLiaScoredEnabled): the meet-or-exceed curve is back, weighted 3:1.
+        var scoredRepo = Repo(requirements);
+        await new FitEngineWriteUseCase(scoredRepo, source)
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: true, CancellationToken.None);
+        var scored = SingleBreakdown(scoredRepo);
+        Assert.Equal("scored", scored["assessments"]!.AsArray()[0]!["use"]!.GetValue<string>());
+        Assert.Equal(39, scored["assessment"]!.GetValue<double>()); // (25×3 + 80×1)/4 = 38.75 → 39
+    }
+
+    // ── owner default D6 on list surfaces: the stored restricted overall ──
+    [Fact]
+    public async Task A_row_that_hides_a_level_stores_the_overall_a_narrow_reader_may_see_and_one_that_hides_nothing_stores_null()
+    {
+        const string requirements =
+            """{"assessments":[{"instrument":"itcia","use":"scored","min":{"level":4}}]}""";
+        var below = Repo(requirements, interview: 80, profileWeights: """{"assessment":0.5,"interview":0.5}""");
+        await new FitEngineWriteUseCase(below, new FakeResultSource(Result(FitInstruments.Itcia, "r", level: 2)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        var hidden = Assert.Single(below.FitScoreUpserts);
+        Assert.Equal(60, hidden.OverallScore);  // (ITC-IA 40 + interview 80) / 2: inverts to level 2 given the weights
+        Assert.Equal(80, hidden.Restricted);    // the assessment dimension dropped: interview alone
+
+        var met = Repo(requirements, interview: 80, profileWeights: """{"assessment":0.5,"interview":0.5}""");
+        await new FitEngineWriteUseCase(met, new FakeResultSource(Result(FitInstruments.Itcia, "r", level: 5)))
+            .ComputeForVacancyAsync(OrgId, VacancyId, Now, fitV2Enabled: true, CancellationToken.None);
+        Assert.Null(Assert.Single(met.FitScoreUpserts).Restricted);
+    }
+
+    // ── the recompute queue's single-row recompute ──
+    [Fact]
+    public async Task Recompute_RewritesAnExistingRow_UnderTheLock_WithTheThresholdPolicy()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"lia","use":"scored","min":{"globalPercentile":40}}]}""");
+        var source = new ScriptedResultSource([Result(FitInstruments.Lia, "r-lia", percentile: 50)]) { Events = repo.Events };
+
+        var rewritten = await new FitEngineWriteUseCase(repo, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);
+
+        Assert.True(rewritten);
+        // The existence check and the results read both run inside the locked write, in that order.
+        Assert.Equal(["consent", "exists?", "read", "write"], repo.Events);
+        Assert.Equal("met", SingleBreakdown(repo)["assessments"]!.AsArray()[0]!["gate"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Recompute_NeverCreatesARow_AndNeverRunsWithTheFlagOff_OrForAV1Vacancy()
+    {
+        var source = new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 70));
+
+        // Round 11: only a provider result may create a missing row, so an ATS quiz result never does.
+        var missing = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        missing.RowExists = false;
+        Assert.False(await new FitEngineWriteUseCase(
+            missing, new FakeResultSource(Result(FitInstruments.NativeQuiz, "a-1", score: 70))).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(missing.FitScoreUpserts);
+        Assert.Contains("exists?", missing.Events);
+
+        var flagOff = Repo("""{"assessments":[{"instrument":"native_quiz"}]}""");
+        Assert.False(await new FitEngineWriteUseCase(flagOff, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: false, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(flagOff.Events);
+
+        var v1 = Repo("""{"minYearsExperience":2}""");
+        Assert.False(await new FitEngineWriteUseCase(v1, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(v1.Events);
+        Assert.Empty(source.Calls);
+    }
+
+    // Round 11 (e2e H7): a provider result for a pipeline candidate with no fit_scores row creates the FIT v2 row,
+    // instead of waiting for HR's Compute Rankings.
+    [Fact]
+    public async Task Recompute_CreatesTheMissingRow_ForAPipelineCandidateWithAProviderResult()
+    {
+        var repo = Repo("""{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"}}]}""");
+        repo.RowExists = false;
+        var source = new ScriptedResultSource(
+            [Result(FitInstruments.English, "r-en", cefr: "C1", source: "provider")])
+        { Events = repo.Events };
+
+        var written = await new FitEngineWriteUseCase(repo, source).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None);
+
+        Assert.True(written);
+        // The decision reads the results inside the lock, after the existence check, then the build reads them again.
+        Assert.Equal(["consent", "exists?", "create?", "read", "read", "write"], repo.Events);
+        var english = SingleBreakdown(repo)["assessments"]!.AsArray()[0]!;
+        Assert.Equal("met", english["gate"]!.GetValue<string>());
+        Assert.Equal("provider", english["source"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Recompute_DoesNotCreateTheMissingRow_OffThePipeline_ForAnUnlistedInstrument_OrForANonProviderResult()
+    {
+        const string requirements = """{"assessments":[{"instrument":"english","use":"gate","min":{"cefr":"B2"}}]}""";
+        var provider = new FakeResultSource(Result(FitInstruments.English, "r-en", cefr: "C1", source: "provider"));
+
+        // Not an active application for the vacancy: computeForVacancy would not score the candidate either.
+        var offPipeline = Repo(requirements);
+        offPipeline.RowExists = false;
+        offPipeline.PipelineCandidateIds = [];
+        Assert.False(await new FitEngineWriteUseCase(offPipeline, provider).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(offPipeline.FitScoreUpserts);
+        Assert.DoesNotContain("create?", offPipeline.Events);
+
+        // A provider result for an instrument the vacancy does not list.
+        var unlisted = Repo("""{"assessments":[{"instrument":"lia","use":"gate","min":{"globalPercentile":40}}]}""");
+        unlisted.RowExists = false;
+        Assert.False(await new FitEngineWriteUseCase(unlisted, provider).RecomputeExistingAsync(
+            OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(unlisted.FitScoreUpserts);
+
+        // An ATS-native English-like result is not a provider result: HR's compute still decides.
+        var native = Repo(requirements);
+        native.RowExists = false;
+        Assert.False(await new FitEngineWriteUseCase(
+                native, new FakeResultSource(Result(FitInstruments.English, "a-1", cefr: "C1", source: "ats")))
+            .RecomputeExistingAsync(
+                OrgId, CandidateId, VacancyId, Now, fitV2Enabled: true, liaScoredAllowed: false, CancellationToken.None));
+        Assert.Empty(native.FitScoreUpserts);
+    }
+
+    [Fact]
+    public void HoldsProviderResult_MatchesTheProviderSourceTag()
+    {
+        Assert.Equal("provider", Tims.Domain.Assessments.Providers.ProviderFitMapping.SourceName);
+        var listed = new[] { new AssessmentRequirement(FitInstruments.Lia, "gate", null, null, null) };
+        Assert.True(FitEngineWriteUseCase.HoldsProviderResult(
+            [Result(FitInstruments.Lia, "r", percentile: 10, integrity: ResultIntegrity.NeedsReview, source: "provider")],
+            listed));
+        Assert.False(FitEngineWriteUseCase.HoldsProviderResult([Result(FitInstruments.Lia, "r", percentile: 10)], listed));
+    }
+
+    private static JsonObject SingleBreakdown(FakeWriteRepo repo) =>
+        JsonNode.Parse(Assert.Single(repo.FitScoreUpserts).BreakdownJson)!.AsObject();
+
+    private static FakeWriteRepo Repo(
+        string fitRequirements,
+        double? assessmentScore = null,
+        int? interview = null,
+        int? yearsExperience = null,
+        string? languages = null,
+        string profileWeights = DefaultWeights,
+        string? education = null) =>
+        new()
+        {
+            PipelineCandidateIds = [CandidateId],
+            Vacancy = new VacancyForFitData(null, fitRequirements),
+            Candidate = new CandidateForFitData(yearsExperience, education, languages),
+            AssessmentScore = assessmentScore,
+            InterviewScore = interview,
+            DefaultProfile = new WeightProfileData(Guid.NewGuid(), "Default", profileWeights),
+        };
+
+    private static InstrumentResult Result(
+        string instrument,
+        string id,
+        double? score = null,
+        double? percentile = null,
+        string? cefr = null,
+        int? level = null,
+        ResultIntegrity integrity = ResultIntegrity.Valid,
+        string source = "test") =>
+        new(instrument, id, source, integrity, Now.AddDays(-1), score, percentile, cefr, level, null, null);
+
+    private sealed record FitScoreUpsert(
+        double OverallScore, string BreakdownJson, string WeightsJson, bool IsPartial, double? Restricted = null);
+
+    private sealed class FakeResultSource(params InstrumentResult[] results) : IAssessmentResultSource
+    {
+        public List<(Guid Org, Guid Candidate, Guid Vacancy)> Calls { get; } = [];
+
+        public Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            Calls.Add((organizationId, candidateId, vacancyId));
+            return Task.FromResult<IReadOnlyList<InstrumentResult>>(results);
+        }
+    }
+
+    // Returns the i-th scripted response on the i-th call (the last one again once they run out).
+    private sealed class ScriptedResultSource(params InstrumentResult[][] responses) : IAssessmentResultSource
+    {
+        public int CallCount { get; private set; }
+
+        public List<string> Events { get; set; } = [];
+
+        public Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            var response = responses[Math.Min(CallCount, responses.Length - 1)];
+            CallCount++;
+            Events.Add("read");
+            return Task.FromResult<IReadOnlyList<InstrumentResult>>(response);
+        }
+    }
+
+    // Throws the given exception, or cancels the given source and throws its cancellation.
+    private sealed class ThrowingResultSource(Exception? error, CancellationTokenSource? cancel = null)
+        : IAssessmentResultSource
+    {
+        public async Task<IReadOnlyList<InstrumentResult>> GetResultsAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            if (cancel is not null)
+            {
+                await cancel.CancelAsync();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            throw error!;
+        }
+    }
+
+    private sealed class FakeReadRepo(params FitScoreForVacancyData[] rows) : IFitEngineReadRepository
+    {
+        public Task<IReadOnlyList<FitScoreForVacancyData>> GetFitScoresForVacancyAsync(
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FitScoreForVacancyData>>(rows);
+
+        public Task<IReadOnlyList<WeightProfileData>> ListWeightProfilesAsync(
+            Guid organizationId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<WeightProfileData>>([]);
+
+        public Task<IReadOnlyList<CandidateFitScoreData>> GetFitScoresForCandidateAsync(
+            Guid organizationId, Guid candidateId, int max, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<CandidateFitScoreData>>([]);
+
+        public Task<IReadOnlyList<FitReviewStateData>> GetReviewStatesAsync(
+            Guid organizationId, IReadOnlyCollection<Guid> fitScoreIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<FitReviewStateData>>([]);
+
+        public Task<ExplainFitRowData?> GetFitScoreForExplainAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken) =>
+            Task.FromResult<ExplainFitRowData?>(null);
+    }
+
+    private sealed class FakeWriteRepo : IFitEngineWriteRepository
+    {
+        public IReadOnlyList<Guid> PipelineCandidateIds { get; set; } = [];
+
+        public VacancyForFitData? Vacancy { get; init; }
+
+        public CandidateForFitData? Candidate { get; init; }
+
+        public double? AssessmentScore { get; init; }
+
+        public int? InterviewScore { get; init; }
+
+        public WeightProfileData? DefaultProfile { get; init; }
+
+        public int LatestAssessmentReads { get; private set; }
+
+        /// <summary>Simulates a consent withdrawal that commits once this many writes have landed.</summary>
+        public int? WithdrawnAfterWrites { get; set; }
+
+        public List<FitScoreUpsert> FitScoreUpserts { get; } = [];
+
+        public Task<CandidateForFitData?> GetCandidateForFitAsync(
+            Guid organizationId, Guid candidateId, CancellationToken cancellationToken) =>
+            Task.FromResult(Candidate);
+
+        public Task<VacancyForFitData?> GetVacancyForFitAsync(
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+            Task.FromResult(Vacancy);
+
+        public Task<double?> GetLatestAssessmentScoreAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken)
+        {
+            LatestAssessmentReads++;
+            return Task.FromResult(AssessmentScore);
+        }
+
+        public Task<int?> GetLatestInterviewFitScoreAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, CancellationToken cancellationToken) =>
+            Task.FromResult(InterviewScore);
+
+        public Task<WeightProfileData?> FindWeightProfileAsync(
+            Guid organizationId, string name, CancellationToken cancellationToken) =>
+            Task.FromResult(name == "Default" ? DefaultProfile : null);
+
+        public Task<WeightProfileData> UpsertWeightProfileAsync(
+            Guid organizationId, string name, string weightsJson, DateTimeOffset now,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new WeightProfileData(Guid.NewGuid(), name, weightsJson));
+
+        public Task<bool> UpsertFitScoreUnlessWithdrawnAsync(
+            Guid organizationId, Guid candidateId, Guid vacancyId, double overallScore, string breakdownJson,
+            string weightsJson, bool isPartial, DateTimeOffset now, CancellationToken cancellationToken,
+            bool skipIfV2Configured = false)
+        {
+            if (WithdrawnAfterWrites is { } limit && FitScoreUpserts.Count >= limit)
+            {
+                return Task.FromResult(false);
+            }
+
+            FitScoreUpserts.Add(new FitScoreUpsert(overallScore, breakdownJson, weightsJson, isPartial));
+            return Task.FromResult(true);
+        }
+
+        public List<(string Json, bool Replace)> RequirementWrites { get; } = [];
+
+        // The in-lock read sees the vacancy as the fake stores it.
+
+        public async Task<string?> GetFitRequirementsInLockAsync(
+
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+
+            (await GetVacancyForFitAsync(organizationId, vacancyId, cancellationToken))?.FitRequirements;
+
+
+        public Task<string?> UpsertFitRequirementsAsync(
+            Guid organizationId, Guid vacancyId, string fitRequirementsJson, bool replaceAssessments, DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            RequirementWrites.Add((fitRequirementsJson, replaceAssessments));
+            return Task.FromResult<string?>(fitRequirementsJson);
+        }
+
+        public List<string> Events { get; } = [];
+
+        public Action? OnLockTaken { get; set; }
+
+        /// <summary>What the in-lock existence check of a recompute sees.</summary>
+        public bool RowExists { get; set; } = true;
+
+        public int RolledBack { get; private set; }
+
+        // Mirrors the real transaction: consent re-check, lock, in-lock build, write; a throw rolls everything back.
+        public async Task<bool> UpsertFitScoreV2Async(
+            Guid organizationId, Guid candidateId, Guid vacancyId, string weightsJson, DateTimeOffset now,
+            Func<CancellationToken, Task<FitScoreWrite?>> buildInLock, CancellationToken cancellationToken,
+            bool onlyIfRowExists = false, Func<CancellationToken, Task<bool>>? createIfMissing = null)
+        {
+            Events.Add("consent");
+            if (WithdrawnAfterWrites is { } limit && FitScoreUpserts.Count >= limit)
+            {
+                return false;
+            }
+
+            OnLockTaken?.Invoke();
+            if (onlyIfRowExists)
+            {
+                Events.Add("exists?");
+                if (!RowExists)
+                {
+                    // The real repository reads the candidate's active application on the locked transaction.
+                    if (createIfMissing is null || !PipelineCandidateIds.Contains(candidateId))
+                    {
+                        return false;
+                    }
+
+                    Events.Add("create?");
+                    if (!await createIfMissing(cancellationToken))
+                    {
+                        return false;
+                    }
+                }
+            }
+            FitScoreWrite? built;
+            try
+            {
+                built = await buildInLock(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch
+            {
+                RolledBack++;
+                throw;
+            }
+
+            if (built is not { } write)
+            {
+                Events.Add("no longer v2");
+                return false;
+            }
+
+            Events.Add("write");
+            FitScoreUpserts.Add(new FitScoreUpsert(
+                write.OverallScore, write.BreakdownJson, weightsJson, write.IsPartial, write.RestrictedOverallScore));
+            return true;
+        }
+
+        public Task<IReadOnlyList<Guid>> GetPipelineCandidateIdsAsync(
+            Guid organizationId, Guid vacancyId, CancellationToken cancellationToken) =>
+            Task.FromResult(PipelineCandidateIds);
+
+        public Task<IReadOnlySet<Guid>> GetConsentWithdrawnCandidateIdsAsync(
+            Guid organizationId, IReadOnlyCollection<Guid> candidateIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>());
+    }
+}

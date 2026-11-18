@@ -36,6 +36,20 @@ public sealed record FitRankingRow(
     bool IsPartial,
     [property: JsonConverter(typeof(NodeIsoDateTimeOffsetConverter))] DateTimeOffset CalculatedAt);
 
+/// <summary>
+/// FIT v2: one of a candidate's stored fit scores, for the candidate page (header, breakdown and assessment panels),
+/// which reads it here instead of from the TS <c>candidate.getById</c> payload under
+/// <c>NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP</c>. Only vacancies the reader can reach; for a narrow-scoped reader a row
+/// with an instrument below its minimum is redacted (owner default D6), its overall recomputed and marked partial.
+/// </summary>
+public sealed record CandidateFitScoreRow(
+    string FitScoreId,
+    string VacancyId,
+    double OverallScore,
+    JsonNode? Breakdown,
+    bool IsPartial,
+    [property: JsonConverter(typeof(NodeIsoDateTimeOffsetConverter))] DateTimeOffset CalculatedAt);
+
 /// <summary>One row of <c>simulateWeights</c> (fit-engine.service.ts:229-232), sorted simulatedScore DESC.</summary>
 public sealed record SimulatedRankingRow(
     string CandidateId,

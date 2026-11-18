@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 import { withSentryConfig } from "@sentry/nextjs";
+import { permissionsPolicy } from "./lib/security/permissions-policy";
 
 // NOTE: Content-Security-Policy is set per-request in `middleware.ts` so it can
 // carry a unique nonce (nonce-based CSP, no 'unsafe-inline' on script-src in
@@ -65,7 +66,7 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-XSS-Protection", value: "1; mode=block" },
-          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
+          { key: "Permissions-Policy", value: permissionsPolicy(process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN) },
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains",

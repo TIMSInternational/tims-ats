@@ -6,6 +6,8 @@ import { formatDate } from '../../../../lib/format-utils';
 import { DataTable, EmptyState, ErrorState, CandidateAvatar, FitScoreBadge, StageBadge } from '../../../../components';
 import type { CandidateListItem } from '../../../../lib/trpc-types';
 import { candidatePoolLabel, candidateSourceLabel } from '../../../../lib/candidate-labels';
+import { useReviewPendingFitScores } from '../../../../lib/platform-api/fit-engine';
+import { FitReviewPendingBadge } from '../fit-review-pending-badge';
 
 interface CandidateTableProps {
   candidates: CandidateListItem[];
@@ -25,6 +27,12 @@ const POOL_STYLES: Record<string, string> = {
 
 export function CandidateTable({ candidates, isLoading, isError, onRetry }: CandidateTableProps) {
   const { t } = useI18n();
+  // FIT v2: which shown scores are provisional (from C#; candidate.list carries the id, not the breakdown).
+  // A failed read is shown as "unknown", never as final.
+  const reviewState = useReviewPendingFitScores(
+    candidates.flatMap((c) => (c.fitScores?.[0]?.id ? [c.fitScores[0].id] : [])),
+  );
+  const pendingFit = reviewState.data;
 
   if (isError) {
     return (
@@ -83,8 +91,13 @@ export function CandidateTable({ candidates, isLoading, isError, onRetry }: Cand
             </td>
             <td className="px-4 py-3 text-center">
               {fitScore != null ? (
-                <div className="flex justify-center">
+                <div className="flex flex-col items-center gap-1">
                   <FitScoreBadge score={fitScore} size="sm" />
+                  {reviewState.isError ? (
+                    <FitReviewPendingBadge compact unknown />
+                  ) : (
+                    pendingFit?.has(c.fitScores[0].id) && <FitReviewPendingBadge compact />
+                  )}
                 </div>
               ) : (
                 <span className="text-[11px] text-[#CDCDCD]">—</span>
