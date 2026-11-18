@@ -2,7 +2,7 @@
 -- Regenerate: node scripts/db/extract-table-ddl.mjs review_cycles rater_assignments rater_responses
 --
 -- Tables: rater_assignments, rater_responses, review_cycles
--- Source: packages/db/baseline/prod-public-schema.sql (captured 2026-09-29T00:09:44Z, server 17.6)
+-- Source: packages/db/baseline/prod-public-schema.sql (captured 2026-11-18T22:10:09Z, server 17.6)
 --
 -- WHY THIS FILE EXISTS (issue #128, runbook §0 P8)
 -- Deleting a Prisma model during an ownership flip can remove the only executable definition of a
