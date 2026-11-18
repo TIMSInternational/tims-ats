@@ -7,6 +7,7 @@ import {
   cvUploadCspOrigin,
   httpsOriginOf,
   originOf,
+  webAnalyticsScriptOrigin,
   type CspOrigins,
 } from './lib/security/csp';
 import { hasSupabaseSessionCookie, staffLoginUrl } from './lib/auth/staff-login-redirect';
@@ -34,8 +35,9 @@ const PUBLIC_PATHS = [
   // this must never bounce to staff /login — regardless of which host serves it.
   '/offers/sign',
   '/logout',
-  // Crawler policy (app/robots.ts). Must be reachable without a session.
+  // Crawler policy (app/robots.ts) and the careers sitemap (app/sitemap.ts). Must be reachable without a session.
   '/robots.txt',
+  '/sitemap.xml',
 ];
 
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -57,6 +59,9 @@ const CSP_ORIGINS: CspOrigins = {
   // PCA: the provider's own survey site, framed (sandboxed) by the candidate portal. timshr.com by default; the env
   // overrides it, and a non-https value (e.g. `off`) turns framing off. The portal's launch reads the same resolver.
   assessmentProviderFrame: assessmentProviderFrameOrigin(process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN),
+  // Vercel Web Analytics (components/web-analytics.tsx): '' unless NEXT_PUBLIC_WEB_ANALYTICS_ENABLED is 'true'
+  // AND this is not a production build (production serves the script from this origin; see csp.ts).
+  webAnalyticsScript: webAnalyticsScriptOrigin(process.env.NEXT_PUBLIC_WEB_ANALYTICS_ENABLED, IS_PROD),
 };
 
 // Pages whose URL carries a bearer credential (?token= or a path token): never
@@ -145,8 +150,10 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // All non-API, non-static routes (asset extensions excluded by the negative lookahead).
-    '/((?!_next/static|_next/image|favicon.ico|logo_tims.png|auth-hero.png|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
+    // All non-API, non-static routes (asset extensions excluded by the negative lookahead). `/_vercel/` is the
+    // hosting platform's own path space (Web Analytics script + beacons), never an app route: running the auth
+    // redirect there would send an anonymous visitor's analytics requests to /login.
+    '/((?!_next/static|_next/image|_vercel/|favicon.ico|logo_tims.png|auth-hero.png|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
     // Security: ALWAYS run middleware for every /api/ path regardless of suffix so
     // the auth fast-path's x-tims-auth-* strip-then-set cannot be bypassed via an
     // asset-extension-shaped tRPC batch URL (e.g. /api/trpc/proc,x.svg?batch=1).

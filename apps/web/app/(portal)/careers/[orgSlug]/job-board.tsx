@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { Skeleton, ErrorState } from '../../../../components';
 import { EmptyState } from '../../../../components/empty-state';
@@ -13,6 +13,7 @@ import { VacancyCard } from './_components/vacancy-card';
 import { WhyWorkSection } from './_components/why-work-section';
 import { isPilotScope } from '../../../../lib/launch-scope';
 import { PortalFooter } from './_components/portal-footer';
+import { trackCareersFunnel } from '../../../../lib/analytics/web-analytics';
 
 const BRIEFCASE_ICON = (
   <svg className="size-8 text-muted" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -45,6 +46,9 @@ export function JobBoard({ organizationId, orgName, orgSlug, orgLogo = null }: J
   }, {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+
+  // Funnel step 1 (a no-op unless Web Analytics is on): the board was viewed. Only the public slug is sent.
+  useEffect(() => trackCareersFunnel('careers_view', orgSlug), [orgSlug]);
 
   const allItems = vacancies.data?.pages.flatMap((page) => page.items) ?? [];
   const isSearching = Boolean(appliedSearch || appliedLocation);
