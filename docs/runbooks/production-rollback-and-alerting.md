@@ -267,8 +267,7 @@ breaching", an API that stops answering entirely (no requests reach it, so no 5x
 datapoints are emitted) raises **no alarm at all**. These alarms only catch a service that is up and
 misbehaving. Follow-up (owner): add an external probe of `/ready` — a Route 53 health check with a
 CloudWatch alarm on `HealthCheckStatus`, or a CloudWatch Synthetics canary — publishing to the same
-SNS topic. The canaries now exist as Terraform (§4.3); **the gap stays open until they are applied**
-and an uptime alarm email has been received.
+SNS topic. That probe is the uptime canaries of §4.3.
 
 ### 4.1 Create the alarms (live account)
 
@@ -341,7 +340,8 @@ breaching), so a hard outage is no longer silent once they run.
 | `tims-platform-api-uptime-ready` | API `/ready` (2xx)                       | 2 consecutive failed or missing runs |
 
 When `uptime-ready` fires, check `/health` by hand: `/health` 200 with `/ready` 503 means the API is up but
-a dependency (database or rate-limit store) is not; both failing means the service itself is down.
+a dependency (database, rate-limit store or, when configured, the relay-nonce bridge) is not; both failing
+means the service itself is down.
 
 Extra recipients (more inboxes, or SMS numbers) are the module's `alarm_extra_recipients` variable,
 subscribed to the same topic, so they receive every alarm in this section. Emails must click the AWS

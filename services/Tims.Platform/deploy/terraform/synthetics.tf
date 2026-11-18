@@ -2,7 +2,8 @@
 # Three canaries probe the three production surfaces from outside, every 5 minutes, with no new vendor:
 #   web   -> var.synthetics_web_url                 (web app page that renders without sign-in)
 #   suite -> var.synthetics_suite_url               (the suite's public site)
-#   ready -> var.synthetics_api_base_url + /ready   (C# readiness: DB + rate-limit store; 503 when not)
+#   ready -> var.synthetics_api_base_url + /ready   (C# readiness, 503 when not ready: the database, the
+#                                                    rate-limit store and, when configured, the relay-nonce bridge)
 # Each canary has one alarm on its SuccessPercent metric, routed to the platform alarms SNS topic.
 #
 # There is deliberately no /health (liveness) canary: /health runs no checks, so any outage that fails it
@@ -289,7 +290,7 @@ resource "aws_synthetics_canary" "uptime" {
   lifecycle {
     precondition {
       condition     = can(regex("^https://[^/\\s]+", each.value.url))
-      error_message = "enable_synthetics = true requires synthetics_web_url and synthetics_api_base_url to be https:// URLs."
+      error_message = "enable_synthetics = true requires synthetics_web_url, synthetics_suite_url and synthetics_api_base_url to be https:// URLs."
     }
     precondition {
       condition     = can(regex("^[a-z0-9_-]{1,21}$", each.value.name))

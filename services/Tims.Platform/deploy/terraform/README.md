@@ -87,10 +87,12 @@ Until that click, no alarm is delivered.
 `enable_synthetics = true` creates three CloudWatch Synthetics canaries that run every 5 minutes from
 outside, one per production surface: a web app page that renders without sign-in (`synthetics_web_url`,
 e.g. its `/login`), the suite's public site (`synthetics_suite_url`, on its canonical `www` host) and the
-C# API's `/ready` (readiness: database and rate-limit store) under `synthetics_api_base_url`. A run passes
-only on a 2xx answer; the canary does not follow redirects, so give it the final URL. Each canary has an
-alarm (`tims-platform-api-uptime-<web|suite|ready>`) that fires after two failed runs in a row, or when
-the canary stops reporting (missing data is breaching), and publishes to the platform alarms SNS topic.
+C# API's `/ready` (readiness: database, rate-limit store and, when configured, the relay-nonce bridge)
+under `synthetics_api_base_url`. A run passes only on a 2xx answer; the canary does not follow redirects,
+so give it the final URL. Each canary has an alarm (`tims-platform-api-uptime-<web|suite|ready>`) that
+fires after two failed runs in a row, or when the canary stops reporting (missing data is breaching), and
+publishes to the platform alarms SNS topic. Right after the apply, before the first runs report, an alarm
+may go to ALARM once and back to OK.
 
 There is no `/health` canary: `/health` runs no checks, so an outage that fails it also fails `/ready`,
 and App Runner already probes `/health` every 10 seconds. A second canary would page twice for one outage.
