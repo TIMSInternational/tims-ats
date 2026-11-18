@@ -1,5 +1,5 @@
 {
-  "description": "MFA step-up gate (#173). ONE golden, TWO stacks: TS `isMfaGateBlocking` (packages/shared/src/mfa.ts, asserted by tests/security/mfa-gate-fixtures.test.ts) and C# `Tims.Domain.Identity.MfaGate.IsBlocking` (asserted by Tims.UnitTests/Identity/MfaGateFixtureTests.cs). The two asymmetric directions are the whole point and both are pinned below: the FLAG fails OPEN (a misconfigured env must never lock privileged users out) while the LEVEL fails CLOSED (once enforcement is on, an unknown level is never good enough).",
+  "description": "MFA step-up gate (#173). ONE golden, TWO stacks: TS `isMfaGateBlocking` (packages/shared/src/mfa.ts, asserted by tests/security/mfa-gate-fixtures.test.ts) and C# `Tims.Domain.Identity.MfaGate.IsBlocking` (asserted by Tims.UnitTests/Identity/MfaGateFixtureTests.cs). The two asymmetric directions are the whole point and both are pinned below: the FLAG fails OPEN (a misconfigured env must never lock privileged users out) while the LEVEL fails CLOSED (once enforcement is on, an unknown level is never good enough). `extraRolesParse` / `privilegedWithExtra` pin the owner-controlled widening (web MFA_EXTRA_PRIVILEGED_ROLES, C# Platform:MfaExtraPrivilegedRoles): unknown tokens add nothing (fail OPEN), and an unset value leaves the base set unchanged.",
   "cases": [
     {
       "name": "enforcement off — never blocks, even for a privileged aal1 session",
@@ -71,6 +71,70 @@
       "roles": ["hrbp", "super_admin"],
       "isPlatformOwner": false,
       "expected": true
+    }
+  ],
+  "extraRolesParse": [
+    { "name": "unset adds nothing", "input": null, "expected": [] },
+    { "name": "empty adds nothing", "input": "", "expected": [] },
+    { "name": "one role", "input": "hr_admin", "expected": ["hr_admin"] },
+    { "name": "comma list", "input": "hr_admin,hrbp", "expected": ["hr_admin", "hrbp"] },
+    { "name": "spaces, mixed case and duplicates", "input": " HR_ADMIN , hrbp hr_admin ", "expected": ["hr_admin", "hrbp"] },
+    {
+      "name": "unknown and non-staff tokens are ignored — fail OPEN, never a lockout",
+      "input": "hr_admin,company_admin,candidate,external,super_admin,*",
+      "expected": ["hr_admin"]
+    },
+    { "name": "garbled adds nothing", "input": "hr-admin;hrbp", "expected": [] }
+  ],
+  "privilegedWithExtra": [
+    {
+      "name": "hr_admin becomes privileged when listed",
+      "roles": ["hr_admin"],
+      "isPlatformOwner": false,
+      "extraRoles": "hr_admin,hrbp",
+      "expected": true
+    },
+    {
+      "name": "hrbp becomes privileged when listed",
+      "roles": ["hrbp"],
+      "isPlatformOwner": false,
+      "extraRoles": "hr_admin,hrbp",
+      "expected": true
+    },
+    {
+      "name": "a role not listed stays unprivileged",
+      "roles": ["recruiter"],
+      "isPlatformOwner": false,
+      "extraRoles": "hr_admin,hrbp",
+      "expected": false
+    },
+    {
+      "name": "unset variable keeps hr_admin out (default behaviour unchanged)",
+      "roles": ["hr_admin"],
+      "isPlatformOwner": false,
+      "extraRoles": null,
+      "expected": false
+    },
+    {
+      "name": "super_admin stays privileged whatever the variable says",
+      "roles": ["super_admin"],
+      "isPlatformOwner": false,
+      "extraRoles": "hrbp",
+      "expected": true
+    },
+    {
+      "name": "platform owner flag stays privileged with an empty variable",
+      "roles": [],
+      "isPlatformOwner": true,
+      "extraRoles": "",
+      "expected": true
+    },
+    {
+      "name": "a garbled variable widens nothing",
+      "roles": ["hr_admin"],
+      "isPlatformOwner": false,
+      "extraRoles": "hr-admin",
+      "expected": false
     }
   ]
 }

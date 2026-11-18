@@ -95,6 +95,11 @@ const baseEnvSchema = z.object({
   // step up to a verified TOTP factor (Supabase Auth MFA, aal2) before reaching
   // any admin route. Default off so a fresh deploy can never lock admins out.
   MFA_ENFORCED: z.enum(['true', 'false']).optional(),
+  // Extra tenant roles that must step up too, e.g. 'hr_admin,hrbp' (read per call by
+  // packages/shared/src/mfa.ts isMfaPrivileged; listed here for discoverability). Unset = only
+  // platform owners + super_admins. Unknown slugs are ignored, so it is not an enum: a typo must
+  // never fail env validation or lock anyone out. Keep it equal to Platform__MfaExtraPrivilegedRoles.
+  MFA_EXTRA_PRIVILEGED_ROLES: z.string().max(512).optional(),
 
   // §8 Q0b slice 2 (#172). Route the alert cron's `active_surveys` and
   // `pending_salary_adjustments` reads to the C# platform service instead of Prisma —

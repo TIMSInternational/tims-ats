@@ -26,23 +26,64 @@ export function isMfaSatisfied(currentLevel: Aal): boolean {
   return currentLevel === 'aal2';
 }
 
-// WHO must step up. The privileged set = platform owners + super_admins — exactly the
+// Owner-controlled widening of the privileged set, without a code deploy. A comma- (or
+// space-) separated list of tenant staff role slugs, e.g. `hr_admin,hrbp`. Set it to the
+// SAME value as the platform service's Platform__MfaExtraPrivilegedRoles (C# MfaGate) —
+// a session refused by one stack and served by the other is the hole #173 closed.
+export const MFA_EXTRA_PRIVILEGED_ROLES_ENV = 'MFA_EXTRA_PRIVILEGED_ROLES';
+
+// The only slugs the variable can add. super_admin / platform_owner are always privileged;
+// candidate / external are not staff sessions and can never step up.
+export const MFA_EXTRA_PRIVILEGED_ROLE_CHOICES = [
+  'hr_admin',
+  'hrbp',
+  'recruiter',
+  'leader',
+  'committee',
+  'employee',
+] as const;
+
+const EXTRA_ROLE_CHOICES: ReadonlySet<string> = new Set(MFA_EXTRA_PRIVILEGED_ROLE_CHOICES);
+
+// Parse the variable. Unknown tokens are ignored — fail OPEN, like MFA_ENFORCED: a garbled
+// value can never lock anyone out; it just adds nothing. Case-insensitive, de-duplicated.
+export function parseMfaExtraPrivilegedRoles(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const out: string[] = [];
+  for (const token of raw.split(/[\s,]+/)) {
+    const slug = token.toLowerCase();
+    if (EXTRA_ROLE_CHOICES.has(slug) && !out.includes(slug)) out.push(slug);
+  }
+  return out;
+}
+
+// The variable as this process sees it, read per call. Browser bundles have no such variable
+// (it is not NEXT_PUBLIC_), so client-side callers always see the base set.
+function extraPrivilegedRolesFromEnv(): string[] {
+  if (typeof process === 'undefined' || !process.env) return [];
+  return parseMfaExtraPrivilegedRoles(process.env[MFA_EXTRA_PRIVILEGED_ROLES_ENV]);
+}
+
+// WHO must step up. The base privileged set = platform owners + super_admins — exactly the
 // set that bypasses permission checks in trpc.ts and the set the (admin) page gate
-// blocks. Both the page layout AND the tRPC enforcement middleware call this so the
-// two can never drift (a role one treats as privileged but the other doesn't would
-// silently escape MFA enforcement).
-export function isMfaPrivileged(opts: { roles: string[]; isPlatformOwner: boolean }): boolean {
+// blocks — plus any roles listed in MFA_EXTRA_PRIVILEGED_ROLES (default: none, so the
+// default behaviour is unchanged). Both the page layout AND the tRPC enforcement middleware
+// call this so the two can never drift (a role one treats as privileged but the other
+// doesn't would silently escape MFA enforcement). `extraRoles` overrides the environment
+// (tests and the cross-stack goldens pass it explicitly).
+export function isMfaPrivileged(opts: {
+  roles: string[];
+  isPlatformOwner: boolean;
+  extraRoles?: readonly string[];
+}): boolean {
   if (opts.isPlatformOwner) return true;
-  return opts.roles.some((slug) => slug === 'super_admin' || slug === 'platform_owner');
+  const extra = opts.extraRoles ?? extraPrivilegedRolesFromEnv();
+  return opts.roles.some((slug) => slug === 'super_admin' || slug === 'platform_owner' || extra.includes(slug));
 }
 
 // The full decision for a privileged route/procedure: block iff enforcement is on AND
 // the principal is privileged AND their session is not stepped up to aal2.
-export function isMfaGateBlocking(opts: {
-  enforced: boolean;
-  isPrivileged: boolean;
-  currentLevel: Aal;
-}): boolean {
+export function isMfaGateBlocking(opts: { enforced: boolean; isPrivileged: boolean; currentLevel: Aal }): boolean {
   if (!opts.enforced) return false;
   if (!opts.isPrivileged) return false;
   return !isMfaSatisfied(opts.currentLevel);
