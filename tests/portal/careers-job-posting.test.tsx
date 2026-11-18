@@ -185,7 +185,8 @@ describe('JobPosting serialization (no script breakout)', () => {
 });
 
 describe('JobPosting read (same visibility as the page and the sitemap)', () => {
-  it('reads only a PUBLISHED vacancy of an ACTIVE organization, with an explicit select', async () => {
+  it('reads only a PUBLISHED vacancy of an ACTIVE, opted-in organization, with an explicit select', async () => {
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', 'acme');
     findFirst.mockResolvedValueOnce(null);
     await loadJobPostingSource('acme', VACANCY_ID);
     const args = findFirst.mock.calls[0]?.[0];
@@ -213,15 +214,22 @@ describe('JobPosting read (same visibility as the page and the sitemap)', () => 
     expect(args.select.organization).toEqual({ select: { name: true, logo: true } });
   });
 
-  it('never queries for a non-UUID id or an internal (non-customer) organization slug', async () => {
+  it('never queries for a non-UUID id or an organization that did not opt in', async () => {
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', 'acme,__parity_a');
     expect(await loadJobPostingSource('acme', 'not-a-uuid')).toBeNull();
+    // Not a valid organization slug, so the opt-in list ignores it even when named.
     expect(await loadJobPostingSource('__parity_a', VACANCY_ID)).toBeNull();
     expect(await loadJobPostingSource('Acme', VACANCY_ID)).toBeNull();
+    // A well-formed slug that is not in the list (a demo organization, say).
+    expect(await loadJobPostingSource('tims-international', VACANCY_ID)).toBeNull();
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', '');
+    expect(await loadJobPostingSource('acme', VACANCY_ID)).toBeNull();
     expect(findFirst).not.toHaveBeenCalled();
   });
 
   it('is off unless CAREERS_SEO_ENABLED is exactly "true"', async () => {
     findFirst.mockResolvedValue(source());
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', 'acme');
     vi.stubEnv('CAREERS_SEO_ENABLED', '');
     expect(await loadJobPosting('acme', VACANCY_ID)).toBeNull();
     vi.stubEnv('CAREERS_SEO_ENABLED', 'TRUE');
@@ -232,8 +240,17 @@ describe('JobPosting read (same visibility as the page and the sitemap)', () => 
     expect(await loadJobPosting('acme', VACANCY_ID)).toMatchObject({ '@type': 'JobPosting' });
   });
 
+  it('is off for an organization that did not opt in, even with the switch on', async () => {
+    findFirst.mockResolvedValue(source());
+    vi.stubEnv('CAREERS_SEO_ENABLED', 'true');
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', 'invu');
+    expect(await loadJobPosting('acme', VACANCY_ID)).toBeNull();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
   it('a failed read yields no structured data instead of breaking the vacancy page', async () => {
     vi.stubEnv('CAREERS_SEO_ENABLED', 'true');
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', 'acme');
     findFirst.mockRejectedValueOnce(new Error('connection reset'));
     await expect(loadJobPosting('acme', VACANCY_ID)).resolves.toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);

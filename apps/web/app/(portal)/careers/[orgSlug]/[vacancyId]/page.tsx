@@ -15,7 +15,8 @@ export async function generateMetadata({ params }: JobDetailParams): Promise<Met
 
 export default async function JobDetailPage({ params }: JobDetailParams) {
   const { orgSlug, vacancyId } = await params;
-  // schema.org JobPosting for search engines; null unless CAREERS_SEO_ENABLED is on and the vacancy is public.
+  // schema.org JobPosting for search engines; null unless CAREERS_SEO_ENABLED is on, the organization is in
+  // CAREERS_SEO_ORG_SLUGS and the vacancy is public.
   const posting = await loadJobPosting(orgSlug, vacancyId);
   return (
     <>

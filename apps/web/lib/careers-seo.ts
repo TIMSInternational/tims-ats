@@ -1,12 +1,13 @@
 import type { MetadataRoute } from 'next';
-import { getAppUrl, isCustomerOrganizationSlug } from '@tims/shared';
+import { getAppUrl, isOrganizationSlugShape } from '@tims/shared';
 
 // Search-engine surfaces of the public careers portal: the sitemap entries, the robots.txt sitemap line and
-// the JobPosting structured data on vacancy pages. One deploy-time switch, off by default:
+// the JobPosting structured data on vacancy pages. Two deploy-time settings, both needed, off by default:
 //
-//   CAREERS_SEO_ENABLED=true  → /sitemap.xml lists the boards and vacancies, robots.txt points at it, and a
-//                               vacancy page carries schema.org JobPosting data.
-//   unset (or anything else)  → /sitemap.xml is empty, robots.txt has no sitemap line, no JobPosting data.
+//   CAREERS_SEO_ENABLED=true         → the master switch.
+//   CAREERS_SEO_ORG_SLUGS=a,b        → the organizations that opted in. Only these boards are listed in
+//                                      /sitemap.xml and only their vacancy pages carry JobPosting data.
+//   either unset (or anything else)  → /sitemap.xml is empty, robots.txt has no sitemap line, no JobPosting data.
 //
 // Pure module (no database, no React): the loaders live in lib/careers-sitemap.ts and the careers _lib.
 
@@ -27,14 +28,31 @@ export function careersSiteOrigin(resolve: () => string = getAppUrl): string | n
   }
 }
 
+/** Most organizations CAREERS_SEO_ORG_SLUGS can name; entries past it are ignored. */
+export const MAX_CAREERS_SEO_ORGS = 100;
+
 /**
- * Organizations whose careers pages may be listed: a slug a customer organization can have. Internal fixture
- * organizations are seeded with slugs outside that rule, so their boards are never advertised. Inactive
- * organizations never reach this check: their careers pages answer 404 (careers/[orgSlug]/layout.tsx) and the
+ * The organizations whose careers pages may be offered to search engines: the comma-separated slugs in
+ * CAREERS_SEO_ORG_SLUGS, keeping only entries shaped like a slug an organization can be created with. Empty
+ * when unset. Listing is opt-in per organization because the slug shape alone says nothing about who an
+ * organization is: demo and test organizations have ordinary slugs too.
+ */
+export function careersSeoOrgSlugs(raw: string | undefined = process.env.CAREERS_SEO_ORG_SLUGS): ReadonlySet<string> {
+  if (!raw) return new Set();
+  const slugs = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => isOrganizationSlugShape(entry));
+  return new Set(slugs.slice(0, MAX_CAREERS_SEO_ORGS));
+}
+
+/**
+ * Whether an organization's careers pages may be listed: it is in the opt-in list. Inactive organizations
+ * never get further than this check: their careers pages answer 404 (careers/[orgSlug]/layout.tsx) and the
  * loaders only read active ones.
  */
-export function isListableCareersSlug(slug: string): boolean {
-  return isCustomerOrganizationSlug(slug);
+export function isListableCareersSlug(slug: string, listed: ReadonlySet<string> = careersSeoOrgSlugs()): boolean {
+  return listed.has(slug);
 }
 
 export function careersBoardPath(slug: string): string {
@@ -54,8 +72,8 @@ export interface SitemapVacancy {
 }
 
 /**
- * Sitemap entries for the given boards and their published vacancies, on `origin`. Boards whose slug is not
- * listable are dropped along with their vacancies; a vacancy of a board that is not in `boards` is dropped
+ * Sitemap entries for the given boards and their published vacancies, on `origin`. Boards that are not in
+ * `listedSlugs` are dropped along with their vacancies; a vacancy of a board that is not in `boards` is dropped
  * too, so nothing is listed that the caller did not resolve as a public board. A board's lastModified is its
  * most recent vacancy change (or its own, if later).
  */
@@ -63,9 +81,10 @@ export function buildCareersSitemap(
   origin: string,
   boards: readonly SitemapBoard[],
   vacancies: readonly SitemapVacancy[],
+  listedSlugs: ReadonlySet<string> = careersSeoOrgSlugs(),
 ): MetadataRoute.Sitemap {
   const base = origin.replace(/\/+$/, '');
-  const listed = boards.filter((board) => isListableCareersSlug(board.slug));
+  const listed = boards.filter((board) => isListableCareersSlug(board.slug, listedSlugs));
   const boardById = new Map(listed.map((board) => [board.id, board]));
   const latestChange = new Map(listed.map((board) => [board.id, board.updatedAt]));
 

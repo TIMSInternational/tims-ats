@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { careersSiteOrigin, isCareersSeoEnabled } from '../lib/careers-seo';
+import { careersSeoOrgSlugs, careersSiteOrigin, isCareersSeoEnabled } from '../lib/careers-seo';
 
 // Only the public careers portal is meant to be crawled. Everything else is the
 // signed-in staff app or auth pages, and inside the portal the candidate's own
@@ -28,9 +28,10 @@ const NOINDEX_BEARER_PATHS = [
 const CANDIDATE_SIGNED_IN_PATHS = ['/careers/*/login', '/careers/*/dashboard', '/careers/*/me'];
 
 export default function robots(): MetadataRoute.Robots {
-  // The sitemap line only when the careers SEO surfaces are on (lib/careers-seo.ts) and the canonical
-  // origin is configured: an absolute sitemap URL on a guessed host would point crawlers elsewhere.
-  const origin = isCareersSeoEnabled() ? careersSiteOrigin() : null;
+  // The sitemap line only when the careers SEO surfaces are on with at least one opted-in organization
+  // (lib/careers-seo.ts) and the canonical origin is configured: an absolute sitemap URL on a guessed host
+  // would point crawlers elsewhere.
+  const origin = isCareersSeoEnabled() && careersSeoOrgSlugs().size > 0 ? careersSiteOrigin() : null;
   return {
     rules: {
       userAgent: '*',

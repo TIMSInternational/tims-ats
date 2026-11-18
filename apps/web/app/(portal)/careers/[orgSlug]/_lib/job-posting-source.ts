@@ -7,8 +7,9 @@ import { buildJobPosting, type JobPostingSource, type JsonLdObject } from './job
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * A PUBLISHED vacancy of an ACTIVE organization with a listable slug: the same visibility rule as the page
- * (portal.getVacancy + careers/[orgSlug]/layout.tsx) and the sitemap. Explicit select of what the builder reads.
+ * A PUBLISHED vacancy of an ACTIVE organization that opted in to search listing (CAREERS_SEO_ORG_SLUGS): the
+ * page's own visibility rule (portal.getVacancy + careers/[orgSlug]/layout.tsx) plus the sitemap's opt-in.
+ * Explicit select of what the builder reads.
  */
 export async function loadJobPostingSource(orgSlug: string, vacancyId: string): Promise<JobPostingSource | null> {
   if (!UUID_RE.test(vacancyId) || !isListableCareersSlug(orgSlug)) return null;
@@ -35,8 +36,8 @@ export async function loadJobPostingSource(orgSlug: string, vacancyId: string): 
 }
 
 /**
- * The JobPosting for a vacancy page, or null when the careers SEO surfaces are off, the vacancy is not public,
- * or the read fails. Structured data is optional: a failed read must never take the vacancy page (and its
+ * The JobPosting for a vacancy page, or null when the careers SEO surfaces are off, the organization has not
+ * opted in, the vacancy is not public, or the read fails. Structured data is optional: a failed read must never take the vacancy page (and its
  * apply button) down with it.
  */
 export async function loadJobPosting(orgSlug: string, vacancyId: string): Promise<JsonLdObject | null> {

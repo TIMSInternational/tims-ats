@@ -37,11 +37,15 @@ describe('robots.txt policy', () => {
     for (const path of candidatePages) expect(path.length).toBeGreaterThan('/careers'.length);
   });
 
-  it('points at the sitemap only when the careers SEO surfaces are on and the origin is configured', () => {
+  it('points at the sitemap only when the careers SEO surfaces are on, an organization opted in, and the origin is configured', () => {
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://ats.example.com');
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', 'acme');
     vi.stubEnv('CAREERS_SEO_ENABLED', '');
     expect(robots().sitemap).toBeUndefined();
     vi.stubEnv('CAREERS_SEO_ENABLED', 'true');
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', '');
+    expect(robots().sitemap).toBeUndefined();
+    vi.stubEnv('CAREERS_SEO_ORG_SLUGS', 'acme');
     expect(robots().sitemap).toBe('https://ats.example.com/sitemap.xml');
     vi.stubEnv('NEXT_PUBLIC_APP_URL', 'not a url');
     expect(robots().sitemap).toBeUndefined();

@@ -2,15 +2,15 @@ import { z } from 'zod';
 
 /**
  * The slug shape an organization can be created with (the C# create use case enforces the same
- * pattern). Internal fixture organizations are seeded outside this rule, so a slug that fails it
- * never belongs to a customer.
+ * pattern). The parity fixture organizations (scripts/parity/seed.ts) are seeded outside this rule,
+ * but passing it says nothing more than the shape: demo and test organizations pass it too.
  */
 export const ORGANIZATION_SLUG_PATTERN = /^[a-z0-9-]+$/;
 export const ORGANIZATION_SLUG_MIN_LENGTH = 2;
 export const ORGANIZATION_SLUG_MAX_LENGTH = 50;
 
-/** True when `slug` is one a customer organization could have been created with. */
-export function isCustomerOrganizationSlug(slug: string): boolean {
+/** True when `slug` has the shape an organization can be created with (not proof it is a real customer). */
+export function isOrganizationSlugShape(slug: string): boolean {
   return (
     slug.length >= ORGANIZATION_SLUG_MIN_LENGTH &&
     slug.length <= ORGANIZATION_SLUG_MAX_LENGTH &&
