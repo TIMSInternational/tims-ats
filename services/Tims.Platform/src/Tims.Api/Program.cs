@@ -643,6 +643,11 @@ try
         builder.Services.AddScoped<IConsentWithdrawalPropagator, NoConsentWithdrawalPropagator>();
     }
 
+    // The staff deadline for data subject requests: the country-neutral estimate, or (CandidateNoticeLey8968Enabled,
+    // DEFAULT false) the response time the Ley N.° 8968 candidate notice states. One policy for the list, the in-app
+    // notification and the admin email.
+    builder.Services.AddSingleton(DataSubjectRequestDeadline.For(
+        builder.Configuration.GetValue<bool>("Platform:CandidateNoticeLey8968Enabled")));
     builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
     builder.Services.AddScoped<CandidateConsentUseCase>();
     // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the

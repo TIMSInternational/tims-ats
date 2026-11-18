@@ -7059,5 +7059,37 @@
     "bandHigh": "Alta",
     "bandMedium": "Media",
     "bandLow": "Baja"
+  },
+  "portalLey8968Consent": {
+    "prefix": "Autorizo de forma libre, expresa e informada a",
+    "middle": "para recopilar y tratar mis datos personales, incluida mi hoja de vida, con el fin de gestionar mi participación en sus procesos de selección de personal —lo que incluye su almacenamiento en servidores ubicados fuera de Costa Rica y el uso de herramientas automatizadas para organizar la información de mi hoja de vida—, de acuerdo con su",
+    "policyLink": "aviso de privacidad para candidatos",
+    "suffix": ", conforme a la Ley N.° 8968. Sé que puedo acceder, rectificar o suprimir mis datos y revocar esta autorización en cualquier momento."
+  },
+  "portalPrivacyLey8968": {
+    "title": "Aviso de privacidad para candidatos",
+    "subtitle": "Protección de la persona frente al tratamiento de sus datos personales (Ley N.° 8968)",
+    "controllerHeading": "Responsable de la base de datos",
+    "controllerBody": "es responsable de la base de datos y del tratamiento de los datos personales que usted entrega al postularse a sus vacantes. La plataforma tecnológica que utiliza para gestionar sus procesos de selección actúa únicamente como encargada del tratamiento, por cuenta e instrucciones de la organización.",
+    "dataHeading": "Datos que tratamos",
+    "dataBody": "Datos de identificación y contacto (nombre, correo electrónico, teléfono, ubicación), información profesional (cargo, empresa, años de experiencia, perfil de LinkedIn), su mensaje de presentación y, si la adjunta, su hoja de vida. No le pedimos datos sensibles; le solicitamos no incluirlos en su hoja de vida.",
+    "purposeHeading": "Finalidad",
+    "purposeBody": "Gestionar su participación en los procesos de selección de personal de la organización: evaluar su perfil, coordinar entrevistas, comunicarnos con usted sobre el proceso y, si su postulación es seleccionada, iniciar su incorporación. Sus datos no se usan para otras finalidades ni se venden a terceros.",
+    "aiHeading": "Uso de herramientas automatizadas",
+    "aiBody": "Utilizamos un servicio de inteligencia artificial para extraer y ordenar la información de su hoja de vida y para apoyar al equipo de selección con una evaluación preliminar de la afinidad de su perfil con la vacante. Si la organización le asigna evaluaciones, sus resultados también se usan para calcular esa afinidad. Las decisiones sobre su candidatura las toman personas del equipo de selección; ninguna decisión se basa únicamente en un tratamiento automatizado.",
+    "transferHeading": "Dónde se almacenan sus datos",
+    "transferBody": "Sus datos se almacenan y procesan en servidores de proveedores tecnológicos ubicados en los Estados Unidos (servicios de nube, base de datos y correo electrónico), que actúan por cuenta de la organización bajo obligaciones de confidencialidad y seguridad.",
+    "retentionHeading": "Plazo de conservación",
+    "retentionBody": "Conservamos su postulación durante [PENDIENTE: plazo de conservación, común a todas las organizaciones que usan este portal] desde el cierre del proceso de selección, salvo que usted solicite antes su supresión o que exista una obligación legal de conservarla.",
+    "rightsHeading": "Sus derechos",
+    "rightsBody": "De acuerdo con la Ley N.° 8968 y su Reglamento, usted puede acceder a sus datos, solicitar su rectificación o actualización, pedir su supresión y revocar en cualquier momento la autorización otorgada, sin efectos retroactivos. Si considera que sus derechos no fueron atendidos, puede acudir a la Agencia de Protección de Datos de los Habitantes (PRODHAB).",
+    "exerciseHeading": "Cómo ejercer sus derechos",
+    "exerciseBody": "Escriba a {email} indicando su nombre, el correo con el que se postuló y su solicitud. Responderemos en un plazo máximo de cinco días hábiles. [PENDIENTE: confirmar si la organización atenderá estas solicitudes en su correo de contacto para candidatos o en un buzón dedicado a privacidad]",
+    "exerciseBodyNoContact": "Comuníquese con la organización por sus canales oficiales indicando su nombre, el correo con el que se postuló y su solicitud. Responderemos en un plazo máximo de cinco días hábiles. [PENDIENTE: confirmar si la organización atenderá estas solicitudes en su correo de contacto para candidatos o en un buzón dedicado a privacidad]",
+    "baseNotice": "Este aviso cubre las postulaciones realizadas mediante este portal. La organización puede contar con una política institucional de protección de datos que lo complementa."
+  },
+  "dataSubjectRequestsLey8968": {
+    "subtitle": "Solicitudes de supresión de datos personales presentadas por los titulares, conforme a la Ley N.° 8968.",
+    "dueDateNote": "La fecha límite se calcula sumando 5 días hábiles (lunes a viernes) a la fecha de recepción, sin descontar los días feriados: es el plazo de respuesta que indica el aviso de privacidad para candidatos. Verifique el plazo aplicable antes de responder al titular."
   }
 }

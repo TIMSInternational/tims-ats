@@ -7,18 +7,24 @@ namespace Tims.Application.CandidateConsent;
 /// Post-commit email to an organization's admins about a NEW data subject request (supresión de datos). The request
 /// and its in-app notifications are already committed; this only tries delivery. It never throws and never fails
 /// the request: the result carries counts only, so the caller can log without any address or candidate data.
-/// The email names no candidate ("un candidato"). It cites no specific law and promises no legal deadline: the
-/// due date is the estimate <see cref="BusinessDays.DueAt"/> computes, and staff confirm the applicable deadline.
+/// The email names no candidate ("un candidato"). By default it cites no specific law and promises no legal
+/// deadline: the due date is the estimate <see cref="BusinessDays.DueAt(DateTime)"/> computes, and staff confirm the
+/// applicable deadline. With <see cref="DataSubjectRequestDeadline.Ley8968"/> (off by default) it states the response
+/// time the Ley N.° 8968 candidate notice promises, counted on Costa Rica's calendar.
 /// </summary>
-public sealed class DataSubjectRequestNotifier(IEmailSender sender)
+public sealed class DataSubjectRequestNotifier(IEmailSender sender, DataSubjectRequestDeadline? deadline = null)
 {
     public const string Subject = "Nueva solicitud de supresión de datos de un candidato";
+    public const string Ley8968Subject = "Nueva solicitud de supresión de datos de un candidato — responder en 5 días hábiles";
+
+    private readonly DataSubjectRequestDeadline _deadline = deadline ?? DataSubjectRequestDeadline.Estimate;
 
     public async Task<(int Accepted, int Failed)> SendAsync(
         DataSubjectRequestNotice notice, Uri appOrigin, CancellationToken cancellationToken)
     {
         var url = new Uri(appOrigin, CandidateConsentConstants.StaffListPath).AbsoluteUri;
-        var dueDate = BusinessDays.ColombiaDate(notice.DueAt);
+        var dueDate = _deadline.LocalDate(notice.DueAt);
+        var subject = _deadline.IsLey8968 ? Ley8968Subject : Subject;
         var accepted = 0;
         var failed = 0;
         foreach (var recipient in notice.Recipients)
@@ -27,7 +33,7 @@ public sealed class DataSubjectRequestNotifier(IEmailSender sender)
             try
             {
                 ok = await sender.SendEmailAsync(
-                    recipient.Email, Subject, Render(recipient.FirstName, dueDate, url), cancellationToken)
+                    recipient.Email, subject, Render(recipient.FirstName, dueDate, url, _deadline), cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception)
@@ -49,17 +55,25 @@ public sealed class DataSubjectRequestNotifier(IEmailSender sender)
     }
 
     /// <summary>Spanish HTML body (staff register: tú); every interpolated value is HTML-encoded.</summary>
-    public static string Render(string firstName, string dueDate, string url)
+    public static string Render(string firstName, string dueDate, string url) =>
+        Render(firstName, dueDate, url, DataSubjectRequestDeadline.Estimate);
+
+    /// <summary>The body for <paramref name="deadline"/>: the default estimate, or the Ley N.° 8968 notice's deadline.</summary>
+    public static string Render(string firstName, string dueDate, string url, DataSubjectRequestDeadline deadline)
     {
+        ArgumentNullException.ThrowIfNull(deadline);
         static string E(string value) => WebUtility.HtmlEncode(value);
         var greeting = string.IsNullOrWhiteSpace(firstName) ? "Hola" : $"Hola {E(firstName.Trim())}";
+        var deadlineParagraph = deadline.IsLey8968
+            ? $"Según el aviso de privacidad para candidatos (Ley N.° 8968), la solicitud debe responderse dentro de <strong>{deadline.ResponseDays} días hábiles</strong>. Fecha límite estimada: <strong>{E(dueDate)}</strong> (no descuenta feriados; verifica el plazo aplicable)."
+            : $"Respóndela conforme a la legislación de protección de datos aplicable. Fecha límite estimada: <strong>{E(dueDate)}</strong> (15 días hábiles desde la recepción, sin descontar festivos; no es un plazo legal: verifica el plazo aplicable).";
         return $"""
             <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
             <body style="margin:0;padding:24px;background:#f4f3f8;font-family:Arial,Helvetica,sans-serif;color:#241641;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;"><tr><td style="padding:32px 28px;">
             <p style="font-size:16px;line-height:1.6;margin:0 0 16px;">{greeting},</p>
             <p style="font-size:16px;line-height:1.6;margin:0 0 16px;">Se recibió una solicitud de <strong>supresión de datos personales</strong> de un candidato de tu organización.</p>
-            <p style="font-size:16px;line-height:1.6;margin:0 0 16px;">Respóndela conforme a la legislación de protección de datos aplicable. Fecha límite estimada: <strong>{E(dueDate)}</strong> (15 días hábiles desde la recepción, sin descontar festivos; no es un plazo legal: verifica el plazo aplicable).</p>
+            <p style="font-size:16px;line-height:1.6;margin:0 0 16px;">{deadlineParagraph}</p>
             <p style="margin:24px 0;"><a href="{E(url)}" style="display:inline-block;padding:14px 22px;background:#241641;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:bold;">Ver solicitudes</a></p>
             <p style="font-size:12px;line-height:1.6;color:#776b8f;margin:0;">Si el botón no funciona, abre este enlace: <a href="{E(url)}" style="color:#625c70;">{E(url)}</a></p>
             </td></tr></table><p style="text-align:center;font-size:12px;color:#81788e;">TIMS ATS · TIMS International</p></body></html>

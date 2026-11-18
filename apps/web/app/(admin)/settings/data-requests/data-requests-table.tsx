@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ACTIVE_APPLICATION_CONSENT_VARIANT } from '@tims/shared';
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
 import { formatMessage } from '../../../../lib/i18n/format';
@@ -17,6 +18,9 @@ const LINK_CLS = 'font-medium text-brand underline-offset-2 hover:underline';
 export function DataRequestsTable() {
   const { t } = useI18n();
   const m = t.dataSubjectRequests;
+  // The due date follows the deadline policy of the candidate notice's variant (Ley N.° 8968: off by default).
+  const dueDateNote =
+    ACTIVE_APPLICATION_CONSENT_VARIANT === 'ley8968' ? t.dataSubjectRequestsLey8968.dueDateNote : m.dueDateNote;
   const requests = useDataSubjectRequests('pending');
   // Captured once per mount (render must stay pure); a re-mount or reload refreshes the overdue cut-off.
   const [now] = useState(() => Date.now());
@@ -99,7 +103,7 @@ export function DataRequestsTable() {
           );
         })}
       </DataTable>
-      {rows.length > 0 && <p className="max-w-prose text-callout text-secondary">{m.dueDateNote}</p>}
+      {rows.length > 0 && <p className="max-w-prose text-callout text-secondary">{dueDateNote}</p>}
     </div>
   );
 }

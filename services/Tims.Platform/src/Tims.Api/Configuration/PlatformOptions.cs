@@ -749,6 +749,14 @@ public sealed class PlatformOptions
     public bool CandidateConsentEnabled { get; init; }
 
     /// <summary>
+    /// Data subject request deadlines follow the Costa Rica (Ley N.° 8968) candidate notice: 5 business days on Costa
+    /// Rica's calendar, in the staff list, the in-app notification and the admin email
+    /// (<c>DataSubjectRequestDeadline.Ley8968</c>). DEFAULT false: the country-neutral 15-business-day estimate. Turn it
+    /// on together with the web app's NEXT_PUBLIC_LEY_8968_NOTICE_ENABLED, after counsel approves the notice.
+    /// </summary>
+    public bool CandidateNoticeLey8968Enabled { get; init; }
+
+    /// <summary>
     /// Default-disabled company-admin team invitations (<c>/tenant-invitations</c>): list grantable roles,
     /// list/create/resend/revoke invitations for the CALLER'S OWN organization only. Gated by
     /// <c>user:create</c> at organization scope plus InvitationGrantPolicy (no role above the caller's own).

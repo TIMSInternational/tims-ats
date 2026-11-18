@@ -143,6 +143,10 @@ const baseEnvSchema = z.object({
   NEXT_PUBLIC_WEB_ANALYTICS_ENABLED: z.string().max(16).optional(),
   // Extra candidate-facing 404 actions (components/candidate-not-found-actions.tsx). Only 'true' enables.
   NEXT_PUBLIC_CANDIDATE_404_LINKS_ENABLED: z.string().max(16).optional(),
+  // Costa Rica (Ley N.° 8968) consent sentence + candidate notice (@tims/shared application-consent.ts).
+  // Only the exact string 'true' turns it on, and only once the approved text is merged
+  // (LEY_8968_NOTICE_TEXT_FINAL); unset = the country-neutral default. Build-time: needs a redeploy.
+  NEXT_PUBLIC_LEY_8968_NOTICE_ENABLED: z.string().max(16).optional(),
 
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

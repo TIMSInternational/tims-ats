@@ -47,15 +47,26 @@ public static class BusinessDays
     /// any <see cref="DateTime.Kind"/>): 15 business days later, counted on the Colombian calendar. Returns a UTC
     /// instant (Kind=Utc) at the same time of day as the request.
     /// </summary>
-    public static DateTime DueAt(DateTime createdAtUtc)
+    public static DateTime DueAt(DateTime createdAtUtc) =>
+        DueAt(createdAtUtc, DataSubjectRequestResponseDays, ColombiaOffset);
+
+    /// <summary>
+    /// <paramref name="days"/> business days after <paramref name="createdAtUtc"/>, counted on the calendar at
+    /// <paramref name="utcOffset"/> (see <see cref="DataSubjectRequestDeadline"/>). Returns a UTC instant (Kind=Utc)
+    /// at the same time of day as the request.
+    /// </summary>
+    public static DateTime DueAt(DateTime createdAtUtc, int days, TimeSpan utcOffset)
     {
-        var local = DateTime.SpecifyKind(createdAtUtc, DateTimeKind.Unspecified) + ColombiaOffset;
-        var dueLocal = AddBusinessDays(local, DataSubjectRequestResponseDays);
-        return DateTime.SpecifyKind(dueLocal - ColombiaOffset, DateTimeKind.Utc);
+        var local = DateTime.SpecifyKind(createdAtUtc, DateTimeKind.Unspecified) + utcOffset;
+        var dueLocal = AddBusinessDays(local, days);
+        return DateTime.SpecifyKind(dueLocal - utcOffset, DateTimeKind.Utc);
     }
 
     /// <summary>The Colombian calendar date of a UTC instant, as <c>dd/MM/yyyy</c> (for Spanish emails).</summary>
-    public static string ColombiaDate(DateTime utc) =>
-        (DateTime.SpecifyKind(utc, DateTimeKind.Unspecified) + ColombiaOffset)
+    public static string ColombiaDate(DateTime utc) => LocalDate(utc, ColombiaOffset);
+
+    /// <summary>The calendar date of a UTC instant at <paramref name="utcOffset"/>, as <c>dd/MM/yyyy</c>.</summary>
+    public static string LocalDate(DateTime utc, TimeSpan utcOffset) =>
+        (DateTime.SpecifyKind(utc, DateTimeKind.Unspecified) + utcOffset)
             .ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture);
 }
