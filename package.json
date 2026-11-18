@@ -2,6 +2,9 @@
   "name": "tims-ats",
   "private": true,
   "packageManager": "pnpm@11.0.8",
+  "engines": {
+    "node": ">=22 <26"
+  },
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
