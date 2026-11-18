@@ -346,6 +346,8 @@ a dependency (database or rate-limit store) is not; both failing means the servi
 Extra recipients (more inboxes, or SMS numbers) are the module's `alarm_extra_recipients` variable,
 subscribed to the same topic, so they receive every alarm in this section. Emails must click the AWS
 confirmation link; SMS numbers only receive messages once the account's SNS SMS sandbox allows them.
+Never list an address that is already subscribed to the topic (check `aws sns list-subscriptions-by-topic`
+first): Terraform would take that subscription over and unsubscribe it on removal or destroy.
 
 They publish to the same SNS topic as §4.1 (set `synthetics_alarm_topic_arn` to it while that topic is
 script-managed). The URLs are Terraform variables with no committed value. These alarms are **not**

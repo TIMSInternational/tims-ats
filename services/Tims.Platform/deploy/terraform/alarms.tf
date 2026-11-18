@@ -107,11 +107,15 @@ resource "aws_sns_topic_subscription" "alarm_extra" {
       condition     = !(var.synthetics_alarm_topic_arn != "" && var.enable_alarms)
       error_message = "synthetics_alarm_topic_arn is for an externally managed topic: set enable_alarms = false with it, or unset it to use the topic alarms.tf creates."
     }
-    # SNS returns the existing subscription for a repeated endpoint, so two Terraform resources would own
-    # one subscription and removing either would unsubscribe both.
+    # SNS returns the EXISTING subscription when an endpoint already on the topic subscribes again, so
+    # Terraform would then own a subscription it did not create, and dropping the entry (or a destroy)
+    # would unsubscribe it. alarm_email is on the topic on both paths: alarms.tf subscribes it with
+    # enable_alarms, and the externally managed topic is normally subscribed to the same inbox by
+    # scripts/ops/create-alarms.sh. So the guard applies on both paths, case-insensitively. Other endpoints
+    # already on an external topic are not visible from here: check the topic's subscriptions first (README).
     precondition {
-      condition     = !(var.enable_alarms && contains(var.alarm_extra_recipients, var.alarm_email))
-      error_message = "alarm_extra_recipients must not repeat alarm_email; it is already subscribed."
+      condition     = !contains([for r in var.alarm_extra_recipients : lower(r)], lower(var.alarm_email))
+      error_message = "alarm_extra_recipients must not repeat alarm_email: it is already subscribed to the alarm topic, and Terraform would take that subscription over."
     }
   }
 }

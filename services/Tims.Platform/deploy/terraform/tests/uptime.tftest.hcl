@@ -53,6 +53,21 @@ variables {
 run "enabled_external_topic" {
   command = apply
 
+  # A distinct engine ARN per canary, so the log-group assertion below shows each group follows its own
+  # canary (the mock_provider default alone would give all three the same function name).
+  override_resource {
+    target = aws_synthetics_canary.uptime["web"]
+    values = { engine_arn = "arn:aws:lambda:us-west-2:111122223333:function:cwsyn-web-0a0a0a0a:1" }
+  }
+  override_resource {
+    target = aws_synthetics_canary.uptime["suite"]
+    values = { engine_arn = "arn:aws:lambda:us-west-2:111122223333:function:cwsyn-suite-0b0b0b0b:1" }
+  }
+  override_resource {
+    target = aws_synthetics_canary.uptime["ready"]
+    values = { engine_arn = "arn:aws:lambda:us-west-2:111122223333:function:cwsyn-ready-0c0c0c0c:1" }
+  }
+
   assert {
     condition     = jsonencode(sort(keys(aws_synthetics_canary.uptime))) == jsonencode(["ready", "suite", "web"])
     error_message = "expected exactly web, suite, ready canaries"
@@ -78,8 +93,8 @@ run "enabled_external_topic" {
     error_message = "alarm names wrong"
   }
   assert {
-    condition     = alltrue([for g in aws_cloudwatch_log_group.synthetics : g.retention_in_days == 90 && g.name == "/aws/lambda/cwsyn-mock-0f1e2d3c"])
-    error_message = "log groups must be named from the engine ARN with 90-day retention"
+    condition     = alltrue([for k, g in aws_cloudwatch_log_group.synthetics : g.retention_in_days == 90 && startswith(g.name, "/aws/lambda/cwsyn-${k}-")]) && length(distinct([for g in aws_cloudwatch_log_group.synthetics : g.name])) == 3
+    error_message = "each canary's log group must be named from its own engine ARN, with 90-day retention"
   }
   assert {
     condition     = aws_sns_topic_subscription.alarm_extra["+15555550100"].protocol == "sms" && aws_sns_topic_subscription.alarm_extra["oncall@example.test"].protocol == "email"
@@ -159,6 +174,17 @@ run "recipient_repeating_alarm_email_refused" {
   expect_failures = [aws_sns_topic_subscription.alarm_extra]
 }
 
+# The path the owner steps use: external topic, enable_alarms = false. alarm_email is on that topic too,
+# so repeating it (in any letter case) must be refused here as well, not only with enable_alarms.
+run "recipient_repeating_alarm_email_refused_on_external_topic" {
+  command = plan
+  variables {
+    alarm_email            = "primary@example.test"
+    alarm_extra_recipients = ["Primary@Example.test", "+15555550100"]
+  }
+  expect_failures = [aws_sns_topic_subscription.alarm_extra]
+}
+
 run "bad_recipient_refused" {
   command = plan
   variables {
@@ -171,6 +197,14 @@ run "duplicate_recipient_refused" {
   command = plan
   variables {
     alarm_extra_recipients = ["a@example.test", "a@example.test"]
+  }
+  expect_failures = [var.alarm_extra_recipients]
+}
+
+run "duplicate_recipient_other_case_refused" {
+  command = plan
+  variables {
+    alarm_extra_recipients = ["a@example.test", "A@example.test"]
   }
   expect_failures = [var.alarm_extra_recipients]
 }

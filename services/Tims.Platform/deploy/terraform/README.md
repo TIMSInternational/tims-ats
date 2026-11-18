@@ -107,7 +107,8 @@ and App Runner already probes `/health` every 10 seconds. A second canary would 
   `enable_alarms = false` (a precondition refuses both together), so with it set Terraform creates no
   topic and no subscription: before relying on the canaries, check that the existing topic has a
   **Confirmed** subscriber (`aws sns list-subscriptions-by-topic --topic-arn <arn>`; a
-  `PendingConfirmation` ARN or an empty list means the alarms page no one).
+  `PendingConfirmation` ARN or an empty list means the alarms page no one). Do not put any endpoint from
+  that list in `alarm_extra_recipients` (see below).
 - **Runtime** is pinned (`local.synthetics_runtime_version`); upgrading it is a reviewed change.
   AWS deprecates Synthetics runtimes on a schedule — check the runtime list before each upgrade.
 - **Artifacts** go to a private, SSE-S3-encrypted bucket with all Block Public Access flags, TLS-only
@@ -140,7 +141,12 @@ them (App Runner alarms and uptime alarms alike).
   destination countries also need an origination identity. Send a test alarm and confirm it arrives.
 - The subscriptions are in the uptime alarms' dependency closure, so the targeted uptime apply creates
   them. To add recipients on their own: `-target=aws_sns_topic_subscription.alarm_extra`.
-- Do not repeat `alarm_email` in the list; a precondition refuses it.
+- **Never list an address that is already subscribed to the topic.** SNS answers a repeat subscribe with the
+  existing subscription, so Terraform would take it over, and removing the entry or a `terraform destroy`
+  would unsubscribe it. A precondition refuses `alarm_email` (case-insensitively, on both topic paths), but
+  Terraform cannot see the other subscribers of an externally managed topic: with
+  `synthetics_alarm_topic_arn`, run `aws sns list-subscriptions-by-topic --topic-arn <arn>` first and leave
+  out every endpoint it lists.
 
 ## Log retention, S3 versioning, ECR tags — what this module covers
 

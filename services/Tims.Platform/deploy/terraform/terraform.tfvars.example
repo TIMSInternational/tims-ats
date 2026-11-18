@@ -106,5 +106,6 @@ synthetics_alarm_topic_arn = ""
 # --- Extra alert recipients (alarms.tf) -----------------------------------------------------------------
 # Subscribed to the alarm topic in use (enable_alarms, or synthetics_alarm_topic_arn). Emails must click the
 # AWS confirmation link; SMS numbers (E.164) only receive messages once verified in, or moved out of, the
-# account's SNS SMS sandbox. Real values go in terraform.tfvars, never here.
+# account's SNS SMS sandbox. Real values go in terraform.tfvars, never here. Never list an endpoint that is
+# already subscribed to the topic (alarm_email included): Terraform would take that subscription over.
 alarm_extra_recipients = [] # e.g. ["oncall@example.com", "+15555550100"]

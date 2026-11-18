@@ -180,9 +180,11 @@ variable "alarm_extra_recipients" {
     error_message = "Each alarm_extra_recipients entry must be an email address or an E.164 phone number (+ then 8-15 digits, no spaces)."
   }
 
+  # Case-insensitive, like the repeat-of-alarm_email guard in alarms.tf: two spellings of one address
+  # would be two Terraform resources over a single SNS subscription.
   validation {
-    condition     = length(distinct(var.alarm_extra_recipients)) == length(var.alarm_extra_recipients)
-    error_message = "The alarm_extra_recipients entries must be unique."
+    condition     = length(distinct([for r in var.alarm_extra_recipients : lower(r)])) == length(var.alarm_extra_recipients)
+    error_message = "The alarm_extra_recipients entries must be unique (case-insensitive)."
   }
 }
 

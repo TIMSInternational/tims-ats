@@ -214,7 +214,7 @@ describe('synthetics.tf — uptime canaries', () => {
     expect(closure.has('aws_cloudwatch_log_group.synthetics')).toBe(true);
   });
 
-  it('refuses the topic override together with enable_alarms, so the override path never creates a subscription', () => {
+  it('refuses the topic override together with enable_alarms, so the override path creates no topic and no alarm_email subscription', () => {
     const alarm = block(SYN, 'resource "aws_cloudwatch_metric_alarm" "synthetics" {');
     expect(alarm).toMatch(/condition\s*=\s*!\(var\.synthetics_alarm_topic_arn != "" && var\.enable_alarms\)/);
   });
@@ -268,11 +268,11 @@ describe('alarms.tf — extra alert recipients', () => {
   }
   const accepted = (r: string) => recipientPatterns().some((re) => re.test(r));
 
-  it('is a list of strings that defaults to empty', () => {
+  it('is a list of strings that defaults to empty, unique case-insensitively', () => {
     expect(recipientsVar()).toMatch(/type\s*=\s*list\(string\)/);
     expect(variableDefault('alarm_extra_recipients')).toBe('[]');
     expect(recipientsVar()).toMatch(
-      /length\(distinct\(var\.alarm_extra_recipients\)\) == length\(var\.alarm_extra_recipients\)/,
+      /length\(distinct\(\[for r in var\.alarm_extra_recipients : lower\(r\)\]\)\) == length\(var\.alarm_extra_recipients\)/,
     );
   });
 
@@ -305,10 +305,22 @@ describe('alarms.tf — extra alert recipients', () => {
     expect(sub).toContain('protocol  = each.value');
     expect(sub).toContain('endpoint  = each.key');
     expect(sub).toMatch(/condition\s*=\s*!\(var\.synthetics_alarm_topic_arn != "" && var\.enable_alarms\)/);
-    // SNS returns the existing subscription for a repeated endpoint: two resources would own one.
-    expect(sub).toMatch(
-      /condition\s*=\s*!\(var\.enable_alarms && contains\(var\.alarm_extra_recipients, var\.alarm_email\)\)/,
+  });
+
+  it('refuses a recipient that repeats alarm_email on BOTH topic paths, case-insensitively', () => {
+    // SNS returns the existing subscription for an endpoint already on the topic, so Terraform would take
+    // it over and unsubscribe it on removal or destroy. alarm_email is on the topic with enable_alarms AND
+    // on the externally managed topic the owner steps use, so the guard must not depend on enable_alarms.
+    const sub = block(ALARMS_TF, 'resource "aws_sns_topic_subscription" "alarm_extra" {');
+    const guard = sub
+      .split(/\n\s{4}precondition \{/)
+      .slice(1)
+      .find((p) => p.includes('var.alarm_email'));
+    expect(guard, 'missing repeat-of-alarm_email precondition').toBeDefined();
+    expect(guard).toMatch(
+      /condition\s*=\s*!contains\(\[for r in var\.alarm_extra_recipients : lower\(r\)\], lower\(var\.alarm_email\)\)/,
     );
+    expect(guard).not.toMatch(/enable_alarms|synthetics_alarm_topic_arn/);
   });
 });
 
@@ -321,6 +333,15 @@ describe('tests/uptime.tftest.hcl — the enabled path under `terraform test`', 
     for (const account of tftest.match(/\b\d{12}\b/g) ?? []) expect(account).toBe('111122223333');
     for (const host of tftest.match(/https:\/\/[a-z0-9.-]+/g) ?? []) expect(host).toMatch(/\.test$/);
     expect(tftest).toMatch(/^run "enabled_external_topic" \{\n\s+command = apply/m);
+  });
+
+  it('exercises the repeat-of-alarm_email refusal on the external-topic path, not only with enable_alarms', () => {
+    const tftest = readFileSync(join(TF_DIR, 'tests/uptime.tftest.hcl'), 'utf8');
+    const run = block(tftest, 'run "recipient_repeating_alarm_email_refused_on_external_topic" {');
+    // The file-level variables set synthetics_alarm_topic_arn and leave enable_alarms at false.
+    expect(tftest).toMatch(/^\s+synthetics_alarm_topic_arn\s+= "arn:aws:sns:[^"]+"$/m);
+    expect(run).not.toMatch(/enable_alarms|synthetics_alarm_topic_arn/);
+    expect(run).toMatch(/expect_failures = \[aws_sns_topic_subscription\.alarm_extra\]/);
   });
 });
 
