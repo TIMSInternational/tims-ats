@@ -31,7 +31,7 @@ allowBuilds:
 # Security patches scoped to affected dependency release lines.
 overrides:
   "@opentelemetry/api": "1.9.1"
-  "vite@>=8.0.0 <8.0.16": "8.0.16"
+  "vite@>=8.0.0 <8.1.6": "8.1.6"
   "brace-expansion@>=1 <2": "1.1.20"
   "brace-expansion@>=2 <3": "2.1.6"
   "brace-expansion@>=5 <5.0.11": "5.0.11"
@@ -44,3 +44,12 @@ overrides:
   "source-map-js@>=1.0.0 <1.2.2": "1.2.2"
   "next@15.5.28>sharp": "0.35.5"
   "ai@4.3.19>jsondiffpatch": "0.7.6"
+
+# Advisories `pnpm audit` may still report that have no fix to override to. Each entry needs a reason
+# and should be deleted once the audit feed stops reporting it.
+auditConfig:
+  ignoreGhsas:
+    # picomatch ReDoS report (CVE-2026-112366). GitHub withdrew this advisory on 2026-11-18 after the
+    # maintainer rejected it upstream (micromatch/picomatch#235), and it names a "patched" 4.0.8 that was
+    # never published (latest is 4.0.7), so no override can satisfy it. The npm audit feed still lists it.
+    - GHSA-fc5q-39xc-vjpf

@@ -4,7 +4,7 @@
 #
 # OpenApiGenerateDocumentsOnBuild is turned OFF for the image build: the build-time emit
 # writes the contract into the repo's contracts/openapi (a dev/CI concern, outside the
-# container context). The RUNTIME /openapi endpoint (MapOpenApi) is unaffected.
+# container context). The RUNTIME /openapi endpoint (MapOpenApi) is mapped in Development only.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 

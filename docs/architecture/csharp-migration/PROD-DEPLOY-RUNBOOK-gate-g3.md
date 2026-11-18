@@ -181,7 +181,8 @@ docker push $ACCT.dkr.ecr.$REGION.amazonaws.com/$REPO:$TAG
 
 - [ ] `GET /health` → **200** (liveness).
 - [ ] `GET /ready` → **200** (DB + rate-limit table reachable) — proves the connection string, the table and the instance role's access to it.
-- [ ] `GET /openapi/v1.json` → **200**.
+- [ ] `GET /openapi/v1.json` → **404** (the runtime document is served in Development only; the contract lives in
+      `contracts/openapi/`).
 - [ ] Mint a real Supabase **staff JWT** → `GET /whoami` → **200** with the resolved principal — proves JWKS
       (asymmetric-JWT deploy-verify) **and** the privileged identity read (DB-ROLE requirement §2). If this 401s,
       the base role can't read identity tables → fix the role before any cutover.

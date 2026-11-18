@@ -5,8 +5,6 @@ export * from './offer-status';
 export * from './candidate-documents';
 
 export const APP_NAME = 'TIMS Platform';
-export const APP_DOMAIN = 'tims.com';
-export const SUPPORT_EMAIL = 'soporte@tims.com';
 
 export const PLANS = ['trial', 'starter', 'professional', 'enterprise'] as const;
 export type Plan = typeof PLANS[number];
