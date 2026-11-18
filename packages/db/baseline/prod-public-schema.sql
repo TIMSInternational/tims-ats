@@ -1,14 +1,9 @@
 -- TIMS ATS — production schema baseline (issue #115)
 --
--- Captured:        2026-09-29T00:09:44Z
+-- Captured:        2026-11-18T22:10:09Z
 -- Server version:  17.6
 -- Schemas:         public, supabase_migrations
 -- Command:         bash scripts/db/schema-baseline.sh capture
--- Re-baselined:    2026-11-03, NOT by capture: the drift check 16 reported (nightly run 41656817104)
---                  plus the backup_drill_reader grants, read from pg_class.relacl / pg_default_acl, were
---                  applied to the body. Equality with the live dump was proven by check 16 itself, run by
---                  nightly-db-controls dispatched on branch chore/schema-baseline-2026-11-03. The next
---                  'capture' replaces this header.
 --
 -- This file is GROUND TRUTH for what production actually looks like — not what the
 -- migrations say it should look like. #111 proved those are different things.
@@ -261,6 +256,7 @@ ALTER TYPE public."SubscriptionStatus" OWNER TO postgres;
 
 CREATE FUNCTION public.current_org_id() RETURNS uuid
     LANGUAGE sql STABLE
+    SET search_path TO ''
     AS $$
   SELECT NULLIF(current_setting('app.current_org_id', true), '')::uuid;
 $$;
@@ -268,11 +264,315 @@ $$;
 ALTER FUNCTION public.current_org_id() OWNER TO postgres;
 
 --
+-- Name: fit_scores_keep_v2(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_scores_keep_v2() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+BEGIN
+  -- Every comparison is coalesced: `breakdown -> 'fitVersion'` is NULL on a v1 row (and on a non-object), and a NULL
+  -- inside NOT (...) would make the whole condition NULL, i.e. silently skip the guard.
+  IF coalesce(OLD.breakdown -> 'fitVersion' = '2'::jsonb, false)
+     AND NOT coalesce(NEW.breakdown -> 'fitVersion' = '2'::jsonb, false)
+     AND coalesce(current_setting('tims.fit_writer', true), '') <> 'fit_v2_aware'
+  THEN
+    NEW.overall_score := OLD.overall_score;
+    NEW.restricted_overall_score := OLD.restricted_overall_score;
+    NEW.weights := OLD.weights;
+    NEW.is_partial := OLD.is_partial;
+    NEW.calculated_at := OLD.calculated_at;
+    NEW.breakdown := CASE
+      WHEN coalesce(jsonb_typeof(NEW.breakdown -> 'llmJudgment') = 'object', false)
+        THEN jsonb_set(OLD.breakdown, '{llmJudgment}', NEW.breakdown -> 'llmJudgment', true)
+      ELSE OLD.breakdown
+    END;
+  END IF;
+  RETURN NEW;
+END
+$$;
+
+ALTER FUNCTION public.fit_scores_keep_v2() OWNER TO postgres;
+
+--
+-- Name: fit_v2_assignment_changed(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_v2_assignment_changed() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    PERFORM public.fit_v2_request_recompute(NEW.organization_id, NEW.candidate_id, NEW.vacancy_id);
+  END IF;
+  RETURN NULL;
+END
+$$;
+
+ALTER FUNCTION public.fit_v2_assignment_changed() OWNER TO postgres;
+
+--
+-- Name: fit_v2_proctoring_changed(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_v2_proctoring_changed() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+DECLARE
+  a record;
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND NEW.severity IS NOT DISTINCT FROM OLD.severity
+     AND NEW.review_status IS NOT DISTINCT FROM OLD.review_status
+     AND NEW.assignment_id = OLD.assignment_id THEN
+    RETURN NULL;
+  END IF;
+  SELECT x.organization_id, x.candidate_id, x.vacancy_id INTO a
+  FROM public.assessment_assignments x
+  WHERE x.id = NEW.assignment_id AND x.organization_id = NEW.organization_id;
+  IF FOUND THEN
+    PERFORM public.fit_v2_request_recompute(a.organization_id, a.candidate_id, a.vacancy_id);
+  END IF;
+  RETURN NULL;
+END
+$$;
+
+ALTER FUNCTION public.fit_v2_proctoring_changed() OWNER TO postgres;
+
+--
+-- Name: fit_v2_provider_attempt_changed(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_v2_provider_attempt_changed() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $_$
+    BEGIN
+      IF TG_OP = 'UPDATE' AND NEW.state IS NOT DISTINCT FROM OLD.state
+         AND NEW.provider_erasure_requested_at IS NOT DISTINCT FROM OLD.provider_erasure_requested_at THEN
+        RETURN NULL;
+      END IF;
+      -- An erased attempt's data leaves the stored FIT row now, whatever the FIT v2 flag: jsonb_path_exists
+      -- in lax mode is false (never an error) on a v1 row or a breakdown without an assessments array.
+      IF (NEW.provider_erasure_requested_at IS NOT NULL OR NEW.state = 'erased')
+         AND to_regclass('public.fit_scores') IS NOT NULL THEN
+        -- FIT v2's lock for this (organization, candidate, vacancy), the key of
+        -- FitEngineWriteRepository.FitV2LockKey: a compute that read the result before this erasure finishes
+        -- its write first, and that write is deleted below; one that starts later waits for this transaction
+        -- and reads the erasure.
+        PERFORM pg_advisory_xact_lock(hashtextextended(
+          'fit_v2:' || NEW.organization_id::text || ':' || NEW.candidate_id::text || ':' || NEW.vacancy_id::text, 0));
+        DELETE FROM public.fit_scores f
+         WHERE f.organization_id = NEW.organization_id
+           AND f.candidate_id = NEW.candidate_id
+           AND f.vacancy_id = NEW.vacancy_id
+           AND jsonb_path_exists(
+                 f.breakdown,
+                 '$.assessments[*] ? (@.source == "provider" && @.instrument == $instrument)',
+                 jsonb_build_object('instrument', NEW.instrument));
+      END IF;
+      IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NOT NULL
+         AND has_function_privilege('public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute') THEN
+        PERFORM public.fit_v2_request_recompute(NEW.organization_id, NEW.candidate_id, NEW.vacancy_id);
+      END IF;
+      RETURN NULL;
+    END
+    $_$;
+
+ALTER FUNCTION public.fit_v2_provider_attempt_changed() OWNER TO postgres;
+
+--
+-- Name: fit_v2_provider_result_changed(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_v2_provider_result_changed() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $_$
+    DECLARE
+      a record;
+      r_attempt uuid;
+      r_org uuid;
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        r_attempt := OLD.attempt_id;
+        r_org := OLD.organization_id;
+      ELSE
+        r_attempt := NEW.attempt_id;
+        r_org := NEW.organization_id;
+      END IF;
+      SELECT x.organization_id, x.candidate_id, x.vacancy_id INTO a
+      FROM public.assessment_provider_attempts x
+      WHERE x.id = r_attempt AND x.organization_id = r_org;
+      IF NOT FOUND THEN
+        RETURN NULL;
+      END IF;
+      -- A deleted result (the provider hid it, or the subject was erased) leaves the stored FIT row now,
+      -- whatever the FIT flags (the recompute worker runs only with them on), under FIT v2's lock: the row
+      -- whose breakdown names this result is deleted (Codex ats round 13 run 6).
+      IF TG_OP = 'DELETE' AND to_regclass('public.fit_scores') IS NOT NULL THEN
+        PERFORM pg_advisory_xact_lock(hashtextextended(
+          'fit_v2:' || a.organization_id::text || ':' || a.candidate_id::text || ':' || a.vacancy_id::text, 0));
+        DELETE FROM public.fit_scores f
+         WHERE f.organization_id = a.organization_id
+           AND f.candidate_id = a.candidate_id
+           AND f.vacancy_id = a.vacancy_id
+           AND jsonb_path_exists(
+                 f.breakdown,
+                 '$.assessments[*] ? (@.source == "provider" && @.resultId == $result)',
+                 jsonb_build_object('result', OLD.provider_result_id::text));
+      END IF;
+      IF to_regprocedure('public.fit_v2_request_recompute(uuid,uuid,uuid)') IS NOT NULL
+         AND has_function_privilege('public.fit_v2_request_recompute(uuid,uuid,uuid)', 'execute') THEN
+        PERFORM public.fit_v2_request_recompute(a.organization_id, a.candidate_id, a.vacancy_id);
+      END IF;
+      RETURN NULL;
+    END
+    $_$;
+
+ALTER FUNCTION public.fit_v2_provider_result_changed() OWNER TO postgres;
+
+--
+-- Name: fit_v2_request_recompute(uuid, uuid, uuid); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_v2_request_recompute(p_organization_id uuid, p_candidate_id uuid, p_vacancy_id uuid) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+BEGIN
+  IF p_organization_id IS NULL OR p_candidate_id IS NULL OR p_vacancy_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF coalesce(current_setting('app.current_org_id', true), '') NOT IN ('', p_organization_id::text) THEN
+    RAISE EXCEPTION 'fit_v2_request_recompute: organization % is not the current tenant', p_organization_id
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.job_profiles jp
+    WHERE jp.vacancy_id = p_vacancy_id
+      AND jp.organization_id = p_organization_id
+      AND jsonb_typeof(jp.fit_requirements) = 'object'
+      AND jp.fit_requirements ? 'assessments'
+  ) THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO public.fit_recompute_requests AS r (candidate_id, vacancy_id, organization_id)
+  VALUES (p_candidate_id, p_vacancy_id, p_organization_id)
+  ON CONFLICT (candidate_id, vacancy_id) DO UPDATE
+    SET request_seq = r.request_seq + 1,
+        requested_at = clock_timestamp(),
+        available_at = clock_timestamp(),
+        attempts = 0,
+        last_error = NULL;
+END
+$$;
+
+ALTER FUNCTION public.fit_v2_request_recompute(p_organization_id uuid, p_candidate_id uuid, p_vacancy_id uuid) OWNER TO postgres;
+
+--
+-- Name: fit_v2_requirements_changed(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_v2_requirements_changed() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+DECLARE
+  r record;
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND NEW.fit_requirements IS NOT DISTINCT FROM OLD.fit_requirements
+     AND NEW.vacancy_id = OLD.vacancy_id THEN
+    RETURN NULL;
+  END IF;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('fit_v2_requirements:' || NEW.organization_id::text || ':' || NEW.vacancy_id::text, 0));
+  IF NOT coalesce(jsonb_typeof(NEW.fit_requirements) = 'object' AND NEW.fit_requirements ? 'assessments', false) THEN
+    DELETE FROM public.fit_scores f
+    WHERE f.organization_id = NEW.organization_id AND f.vacancy_id = NEW.vacancy_id
+      AND f.breakdown ->> 'fitVersion' = '2';
+    RETURN NULL;
+  END IF;
+  FOR r IN
+    SELECT f.candidate_id
+    FROM public.fit_scores f
+    WHERE f.organization_id = NEW.organization_id AND f.vacancy_id = NEW.vacancy_id
+  LOOP
+    PERFORM public.fit_v2_request_recompute(NEW.organization_id, r.candidate_id, NEW.vacancy_id);
+  END LOOP;
+  RETURN NULL;
+END
+$$;
+
+ALTER FUNCTION public.fit_v2_requirements_changed() OWNER TO postgres;
+
+--
+-- Name: fit_v2_result_changed(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.fit_v2_result_changed() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+DECLARE
+  a record;
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND NEW.normalized_score IS NOT DISTINCT FROM OLD.normalized_score
+     AND NEW.breakdown IS NOT DISTINCT FROM OLD.breakdown
+     AND NEW.assignment_id = OLD.assignment_id THEN
+    RETURN NULL;
+  END IF;
+  SELECT x.organization_id, x.candidate_id, x.vacancy_id INTO a
+  FROM public.assessment_assignments x
+  WHERE x.id = NEW.assignment_id AND x.organization_id = NEW.organization_id;
+  IF FOUND THEN
+    PERFORM public.fit_v2_request_recompute(a.organization_id, a.candidate_id, a.vacancy_id);
+  END IF;
+  RETURN NULL;
+END
+$$;
+
+ALTER FUNCTION public.fit_v2_result_changed() OWNER TO postgres;
+
+--
+-- Name: job_profiles_keep_assessments(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.job_profiles_keep_assessments() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public'
+    AS $$
+BEGIN
+  IF coalesce(jsonb_typeof(OLD.fit_requirements) = 'object' AND OLD.fit_requirements ? 'assessments', false)
+     AND NOT coalesce(jsonb_typeof(NEW.fit_requirements) = 'object' AND NEW.fit_requirements ? 'assessments', false)
+     AND coalesce(current_setting('tims.fit_writer', true), '') <> 'fit_v2_aware'
+  THEN
+    NEW.fit_requirements := CASE
+      WHEN coalesce(jsonb_typeof(NEW.fit_requirements) = 'object', false) THEN NEW.fit_requirements
+      ELSE '{}'::jsonb
+    END || jsonb_build_object('assessments', OLD.fit_requirements -> 'assessments');
+  END IF;
+  RETURN NEW;
+END
+$$;
+
+ALTER FUNCTION public.job_profiles_keep_assessments() OWNER TO postgres;
+
+--
 -- Name: tims_append_only_guard(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
 CREATE FUNCTION public.tims_append_only_guard() RETURNS trigger
     LANGUAGE plpgsql
+    SET search_path TO ''
     AS $$
 BEGIN
     RAISE EXCEPTION '% is append-only: % is not permitted', TG_TABLE_NAME, TG_OP
@@ -608,6 +908,240 @@ CREATE TABLE public.assessment_consents (
 ALTER TABLE ONLY public.assessment_consents FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.assessment_consents OWNER TO postgres;
+
+--
+-- Name: assessment_provider_attempts; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.assessment_provider_attempts (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    binding_id uuid NOT NULL,
+    candidate_id uuid NOT NULL,
+    vacancy_id uuid NOT NULL,
+    instrument text NOT NULL,
+    state text NOT NULL,
+    purpose text NOT NULL,
+    job_relatedness_reason text NOT NULL,
+    locale text NOT NULL,
+    time_multiplier numeric(3,2) NOT NULL,
+    aids text[] DEFAULT '{}'::text[] NOT NULL,
+    requested_expires_at timestamp with time zone,
+    provider_subject_id uuid,
+    provider_assignment_id uuid,
+    instrument_version text,
+    content_version text,
+    required_consents text[] DEFAULT '{}'::text[] NOT NULL,
+    expires_at timestamp with time zone,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    last_launched_at timestamp with time zone,
+    latest_result_id uuid,
+    last_error_code text,
+    withdrawal_state text,
+    provider_erasure_requested_at timestamp with time zone,
+    assigned_by_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    consent_capture_generation integer DEFAULT 0 NOT NULL,
+    consent_capture_started_at timestamp with time zone,
+    consent_captures_in_flight integer DEFAULT 0 NOT NULL,
+    age_band text,
+    last_polled_at timestamp with time zone,
+    missing_consents text[] DEFAULT '{}'::text[] NOT NULL,
+    poll_lease_owner uuid,
+    poll_lease_until timestamp with time zone,
+    create_started_at timestamp with time zone,
+    declined_optional_consents text[] DEFAULT '{}'::text[] NOT NULL,
+    granted_optional_consents text[] DEFAULT '{}'::text[] NOT NULL,
+    withdrawal_lease_owner uuid,
+    withdrawal_lease_until timestamp with time zone,
+    create_fences timestamp with time zone[] DEFAULT '{}'::timestamp with time zone[] NOT NULL,
+    result_visibility_generation integer DEFAULT 0 NOT NULL,
+    completed_by text,
+    proctoring_anti_cheat_consequence text,
+    proctoring_anti_cheat_threshold integer,
+    proctoring_identity_check boolean,
+    proctoring_lockdown boolean,
+    void_reason text,
+    job_code text,
+    CONSTRAINT ck_assessment_provider_attempts_age_band CHECK (((age_band IS NULL) OR (age_band = ANY (ARRAY['18_plus'::text, '16_17'::text])))),
+    CONSTRAINT ck_assessment_provider_attempts_aids CHECK ((aids <@ ARRAY['extended_breaks'::text, 'screen_reader'::text, 'screen_magnification'::text, 'high_contrast'::text, 'assistive_input'::text, 'captions_or_transcript'::text, 'reader_assistance'::text, 'separate_setting'::text])),
+    CONSTRAINT ck_assessment_provider_attempts_completed_by CHECK (((completed_by IS NULL) OR (completed_by = ANY (ARRAY['candidate'::text, 'time_limit'::text, 'proctoring_auto_submit'::text])))),
+    CONSTRAINT ck_assessment_provider_attempts_consent_capture CHECK (((consent_capture_generation >= 0) AND (consent_captures_in_flight >= 0))),
+    CONSTRAINT ck_assessment_provider_attempts_content_version CHECK (((content_version IS NULL) OR (char_length(content_version) <= 64))),
+    CONSTRAINT ck_assessment_provider_attempts_error_code CHECK (((last_error_code IS NULL) OR (char_length(last_error_code) <= 64))),
+    CONSTRAINT ck_assessment_provider_attempts_external_ids CHECK (((state = ANY (ARRAY['pending_create'::text, 'cancelled'::text])) OR ((provider_assignment_id IS NOT NULL) AND (provider_subject_id IS NOT NULL)))),
+    CONSTRAINT ck_assessment_provider_attempts_instrument CHECK ((instrument = ANY (ARRAY['lia'::text, 'english'::text, 'itcia'::text, 'personality'::text, 'mi'::text, 'pca'::text]))),
+    CONSTRAINT ck_assessment_provider_attempts_instrument_version CHECK (((instrument_version IS NULL) OR (instrument_version ~ '^[0-9]{1,3}\.[0-9]{1,3}$'::text))),
+    CONSTRAINT ck_assessment_provider_attempts_job_code CHECK (((job_code IS NULL) OR ((instrument = 'pca'::text) AND (job_code ~ '^[A-Za-z0-9_-]{2,30}$'::text)))),
+    CONSTRAINT ck_assessment_provider_attempts_locale CHECK ((locale ~ '^[a-z]{2}(-[A-Z]{2})?$'::text)),
+    CONSTRAINT ck_assessment_provider_attempts_missing_consents CHECK ((missing_consents <@ ARRAY['assessment'::text, 'biometric'::text, 'voice'::text, 'ai_scoring'::text])),
+    CONSTRAINT ck_assessment_provider_attempts_optional_consents CHECK (((granted_optional_consents <@ ARRAY['assessment'::text, 'biometric'::text, 'voice'::text, 'ai_scoring'::text]) AND (declined_optional_consents <@ ARRAY['assessment'::text, 'biometric'::text, 'voice'::text, 'ai_scoring'::text]) AND (NOT (granted_optional_consents && declined_optional_consents)))),
+    CONSTRAINT ck_assessment_provider_attempts_poll_lease CHECK (((poll_lease_owner IS NULL) = (poll_lease_until IS NULL))),
+    CONSTRAINT ck_assessment_provider_attempts_proctoring CHECK ((((proctoring_lockdown IS NULL) = (proctoring_identity_check IS NULL)) AND ((proctoring_anti_cheat_threshold IS NULL) = (proctoring_anti_cheat_consequence IS NULL)) AND ((proctoring_anti_cheat_threshold IS NULL) OR (proctoring_lockdown IS NOT NULL)) AND ((proctoring_anti_cheat_threshold IS NULL) OR ((proctoring_anti_cheat_threshold >= 1) AND (proctoring_anti_cheat_threshold <= 20))) AND ((proctoring_anti_cheat_consequence IS NULL) OR (proctoring_anti_cheat_consequence = ANY (ARRAY['warn'::text, 'auto_submit'::text, 'void'::text]))))),
+    CONSTRAINT ck_assessment_provider_attempts_purpose CHECK ((purpose = 'selection'::text)),
+    CONSTRAINT ck_assessment_provider_attempts_reason CHECK (((char_length(job_relatedness_reason) >= 3) AND (char_length(job_relatedness_reason) <= 500))),
+    CONSTRAINT ck_assessment_provider_attempts_required_consents CHECK ((required_consents <@ ARRAY['assessment'::text, 'biometric'::text, 'voice'::text, 'ai_scoring'::text])),
+    CONSTRAINT ck_assessment_provider_attempts_state CHECK ((state = ANY (ARRAY['pending_create'::text, 'created'::text, 'launched'::text, 'in_progress'::text, 'completed'::text, 'result_ready'::text, 'voided'::text, 'expired'::text, 'cancelled'::text, 'erased'::text]))),
+    CONSTRAINT ck_assessment_provider_attempts_time_multiplier CHECK (((time_multiplier >= (1)::numeric) AND (time_multiplier <= (3)::numeric))),
+    CONSTRAINT ck_assessment_provider_attempts_void_reason CHECK (((void_reason IS NULL) OR (void_reason = ANY (ARRAY['proctoring_void'::text, 'identity_check_failed'::text, 'administrative_void'::text, 'consent_withdrawn'::text])))),
+    CONSTRAINT ck_assessment_provider_attempts_withdrawal_lease CHECK (((withdrawal_lease_owner IS NULL) = (withdrawal_lease_until IS NULL))),
+    CONSTRAINT ck_assessment_provider_attempts_withdrawal_state CHECK (((withdrawal_state IS NULL) OR (withdrawal_state = ANY (ARRAY['pending'::text, 'done'::text]))))
+);
+
+ALTER TABLE ONLY public.assessment_provider_attempts FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.assessment_provider_attempts OWNER TO postgres;
+
+--
+-- Name: assessment_provider_bindings; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.assessment_provider_bindings (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    provider text NOT NULL,
+    provider_tenant_id uuid NOT NULL,
+    enabled_instruments text[] DEFAULT '{}'::text[] NOT NULL,
+    default_locale text NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_assessment_provider_bindings_instruments CHECK ((enabled_instruments <@ ARRAY['lia'::text, 'english'::text, 'itcia'::text, 'personality'::text, 'mi'::text, 'pca'::text])),
+    CONSTRAINT ck_assessment_provider_bindings_locale CHECK ((default_locale ~ '^[a-z]{2}(-[A-Z]{2})?$'::text)),
+    CONSTRAINT ck_assessment_provider_bindings_provider CHECK ((provider = 'tims-assessments'::text))
+);
+
+ALTER TABLE ONLY public.assessment_provider_bindings FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.assessment_provider_bindings OWNER TO postgres;
+
+--
+-- Name: assessment_provider_results; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.assessment_provider_results (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    attempt_id uuid NOT NULL,
+    provider_result_id uuid NOT NULL,
+    result_revision integer NOT NULL,
+    result_schema text NOT NULL,
+    instrument text NOT NULL,
+    instrument_version text NOT NULL,
+    content_version text NOT NULL,
+    content_sha256 text NOT NULL,
+    norm_version text,
+    scoring_version text NOT NULL,
+    scoring_method text NOT NULL,
+    purpose text NOT NULL,
+    validity_status text NOT NULL,
+    validity_reasons text[] DEFAULT '{}'::text[] NOT NULL,
+    requires_human_review boolean DEFAULT false NOT NULL,
+    completion text NOT NULL,
+    global_percentile double precision,
+    cefr text,
+    level integer,
+    time_multiplier_applied numeric(3,2) NOT NULL,
+    rendered_for text NOT NULL,
+    rendered_level text NOT NULL,
+    scores jsonb,
+    completed_at timestamp with time zone NOT NULL,
+    scored_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_assessment_provider_results_cefr CHECK (((cefr IS NULL) OR (cefr = ANY (ARRAY['A1'::text, 'A2'::text, 'B1'::text, 'B2'::text, 'C1'::text, 'C2'::text])))),
+    CONSTRAINT ck_assessment_provider_results_completion CHECK ((completion = ANY (ARRAY['complete'::text, 'partial'::text]))),
+    CONSTRAINT ck_assessment_provider_results_instrument CHECK ((instrument = ANY (ARRAY['lia'::text, 'english'::text, 'itcia'::text, 'personality'::text, 'mi'::text, 'pca'::text]))),
+    CONSTRAINT ck_assessment_provider_results_level CHECK (((level IS NULL) OR ((level >= 1) AND (level <= 5)))),
+    CONSTRAINT ck_assessment_provider_results_percentile CHECK (((global_percentile IS NULL) OR ((global_percentile >= (0)::double precision) AND (global_percentile <= (100)::double precision)))),
+    CONSTRAINT ck_assessment_provider_results_purpose CHECK ((purpose = 'selection'::text)),
+    CONSTRAINT ck_assessment_provider_results_rendering CHECK (((rendered_for = 'tenant_hr'::text) AND (rendered_level = ANY (ARRAY['summary'::text, 'full'::text])))),
+    CONSTRAINT ck_assessment_provider_results_revision CHECK ((result_revision >= 1)),
+    CONSTRAINT ck_assessment_provider_results_schema CHECK ((result_schema = ANY (ARRAY['LiaResultV1'::text, 'EnglishResultV1'::text, 'ItciaResultV1'::text, 'PersonalityResultV1'::text, 'MiResultV1'::text, 'PcaResultV1'::text]))),
+    CONSTRAINT ck_assessment_provider_results_scoring_method CHECK ((scoring_method = ANY (ARRAY['deterministic'::text, 'ai_assisted'::text, 'provider'::text]))),
+    CONSTRAINT ck_assessment_provider_results_sha256 CHECK ((content_sha256 ~ '^[a-f0-9]{64}$'::text)),
+    CONSTRAINT ck_assessment_provider_results_time_multiplier CHECK (((time_multiplier_applied >= (1)::numeric) AND (time_multiplier_applied <= (3)::numeric))),
+    CONSTRAINT ck_assessment_provider_results_validity CHECK ((validity_status = ANY (ARRAY['valid'::text, 'voided'::text, 'needs_review'::text])))
+);
+
+ALTER TABLE ONLY public.assessment_provider_results FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.assessment_provider_results OWNER TO postgres;
+
+--
+-- Name: assessment_provider_settings; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.assessment_provider_settings (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    proctoring_lockdown boolean DEFAULT false NOT NULL,
+    anti_cheat_threshold integer,
+    anti_cheat_consequence text,
+    identity_check boolean DEFAULT false NOT NULL,
+    updated_by_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_assessment_provider_settings_anti_cheat CHECK ((((anti_cheat_threshold IS NULL) = (anti_cheat_consequence IS NULL)) AND ((anti_cheat_threshold IS NULL) OR ((anti_cheat_threshold >= 1) AND (anti_cheat_threshold <= 20))) AND ((anti_cheat_consequence IS NULL) OR (anti_cheat_consequence = ANY (ARRAY['warn'::text, 'auto_submit'::text, 'void'::text])))))
+);
+
+ALTER TABLE ONLY public.assessment_provider_settings FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.assessment_provider_settings OWNER TO postgres;
+
+--
+-- Name: assessment_provider_subject_checks; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.assessment_provider_subject_checks (
+    organization_id uuid NOT NULL,
+    provider_subject_id uuid NOT NULL,
+    last_checked_at timestamp with time zone,
+    last_attempted_at timestamp with time zone NOT NULL,
+    next_check_at timestamp with time zone NOT NULL,
+    consecutive_failures integer DEFAULT 0 NOT NULL,
+    CONSTRAINT ck_assessment_provider_subject_checks_failures CHECK ((consecutive_failures >= 0))
+);
+
+ALTER TABLE ONLY public.assessment_provider_subject_checks FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.assessment_provider_subject_checks OWNER TO postgres;
+
+--
+-- Name: assessment_provider_webhook_inbox; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.assessment_provider_webhook_inbox (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    event_type text NOT NULL,
+    event_version integer NOT NULL,
+    provider_tenant_id uuid NOT NULL,
+    occurred_at timestamp with time zone NOT NULL,
+    delivery_attempt integer,
+    status text NOT NULL,
+    processing_attempts integer DEFAULT 0 NOT NULL,
+    last_error_code text,
+    data jsonb NOT NULL,
+    received_at timestamp with time zone DEFAULT now() NOT NULL,
+    processed_at timestamp with time zone,
+    lease_owner uuid,
+    lease_until timestamp with time zone,
+    next_attempt_at timestamp with time zone,
+    CONSTRAINT ck_assessment_provider_webhook_inbox_attempts CHECK ((processing_attempts >= 0)),
+    CONSTRAINT ck_assessment_provider_webhook_inbox_error_code CHECK (((last_error_code IS NULL) OR (char_length(last_error_code) <= 64))),
+    CONSTRAINT ck_assessment_provider_webhook_inbox_lease CHECK (((lease_owner IS NULL) = (lease_until IS NULL))),
+    CONSTRAINT ck_assessment_provider_webhook_inbox_status CHECK ((status = ANY (ARRAY['received'::text, 'processed'::text, 'ignored'::text, 'failed'::text]))),
+    CONSTRAINT ck_assessment_provider_webhook_inbox_type CHECK ((event_type = ANY (ARRAY['assignment.started'::text, 'session.completed'::text, 'session.voided'::text, 'result.ready'::text, 'assignment.expired'::text, 'assignment.voided'::text, 'subject.erased'::text]))),
+    CONSTRAINT ck_assessment_provider_webhook_inbox_version CHECK ((event_version = 1))
+);
+
+ALTER TABLE ONLY public.assessment_provider_webhook_inbox FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.assessment_provider_webhook_inbox OWNER TO postgres;
 
 --
 -- Name: assessment_questions; Type: TABLE; Schema: public; Owner: postgres
@@ -1281,6 +1815,25 @@ ALTER TABLE ONLY public.feedbacks FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.feedbacks OWNER TO postgres;
 
 --
+-- Name: fit_recompute_requests; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.fit_recompute_requests (
+    candidate_id uuid NOT NULL,
+    vacancy_id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    request_seq bigint DEFAULT 1 NOT NULL,
+    requested_at timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    available_at timestamp(3) with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    last_error character varying(200)
+);
+
+ALTER TABLE ONLY public.fit_recompute_requests FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.fit_recompute_requests OWNER TO postgres;
+
+--
 -- Name: fit_scores; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1295,7 +1848,8 @@ CREATE TABLE public.fit_scores (
     is_partial boolean DEFAULT false NOT NULL,
     calculated_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp(3) without time zone NOT NULL
+    updated_at timestamp(3) without time zone NOT NULL,
+    restricted_overall_score double precision
 );
 
 ALTER TABLE ONLY public.fit_scores FORCE ROW LEVEL SECURITY;
@@ -2145,7 +2699,12 @@ CREATE TABLE public.proctoring_sessions (
     severity text,
     events jsonb,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp(3) without time zone NOT NULL
+    updated_at timestamp(3) without time zone NOT NULL,
+    review_status text DEFAULT 'unreviewed'::text NOT NULL,
+    review_notes text,
+    reviewed_at timestamp(3) without time zone,
+    reviewed_by_id uuid,
+    CONSTRAINT proctoring_sessions_review_status_check CHECK ((review_status = ANY (ARRAY['unreviewed'::text, 'clear'::text, 'concern'::text, 'inconclusive'::text])))
 );
 
 ALTER TABLE ONLY public.proctoring_sessions FORCE ROW LEVEL SECURITY;
@@ -2281,6 +2840,7 @@ ALTER TABLE public.qrtz_paused_trigger_grps OWNER TO postgres;
 --
 -- Name: qrtz_scheduler_state; Type: TABLE; Schema: public; Owner: postgres
 --
+
 CREATE TABLE public.qrtz_scheduler_state (
     sched_name text NOT NULL,
     instance_name text NOT NULL,
@@ -2915,6 +3475,48 @@ ALTER TABLE ONLY public."__EFMigrationsHistory"
     ADD CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId");
 
 --
+-- Name: assessment_provider_attempts PK_assessment_provider_attempts; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_attempts
+    ADD CONSTRAINT "PK_assessment_provider_attempts" PRIMARY KEY (id);
+
+--
+-- Name: assessment_provider_bindings PK_assessment_provider_bindings; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_bindings
+    ADD CONSTRAINT "PK_assessment_provider_bindings" PRIMARY KEY (id);
+
+--
+-- Name: assessment_provider_results PK_assessment_provider_results; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_results
+    ADD CONSTRAINT "PK_assessment_provider_results" PRIMARY KEY (id);
+
+--
+-- Name: assessment_provider_settings PK_assessment_provider_settings; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_settings
+    ADD CONSTRAINT "PK_assessment_provider_settings" PRIMARY KEY (id);
+
+--
+-- Name: assessment_provider_subject_checks PK_assessment_provider_subject_checks; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_subject_checks
+    ADD CONSTRAINT "PK_assessment_provider_subject_checks" PRIMARY KEY (organization_id, provider_subject_id);
+
+--
+-- Name: assessment_provider_webhook_inbox PK_assessment_provider_webhook_inbox; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_webhook_inbox
+    ADD CONSTRAINT "PK_assessment_provider_webhook_inbox" PRIMARY KEY (id);
+
+--
 -- Name: fx_rates PK_fx_rates; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3256,6 +3858,13 @@ ALTER TABLE ONLY public.feature_flags
 
 ALTER TABLE ONLY public.feedbacks
     ADD CONSTRAINT feedbacks_pkey PRIMARY KEY (id);
+
+--
+-- Name: fit_recompute_requests fit_recompute_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.fit_recompute_requests
+    ADD CONSTRAINT fit_recompute_requests_pkey PRIMARY KEY (candidate_id, vacancy_id);
 
 --
 -- Name: fit_scores fit_scores_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
@@ -4495,6 +5104,18 @@ CREATE INDEX feedbacks_organization_id_idx ON public.feedbacks USING btree (orga
 CREATE INDEX feedbacks_to_user_id_idx ON public.feedbacks USING btree (to_user_id);
 
 --
+-- Name: fit_recompute_requests_available_at_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX fit_recompute_requests_available_at_idx ON public.fit_recompute_requests USING btree (available_at);
+
+--
+-- Name: fit_recompute_requests_organization_id_available_at_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX fit_recompute_requests_organization_id_available_at_idx ON public.fit_recompute_requests USING btree (organization_id, available_at);
+
+--
 -- Name: fit_scores_candidate_id_vacancy_id_key; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4733,6 +5354,60 @@ CREATE UNIQUE INDEX invoices_organization_id_invoice_number_key ON public.invoic
 --
 
 CREATE INDEX invoices_subscription_id_idx ON public.invoices USING btree (subscription_id);
+
+--
+-- Name: ix_assessment_provider_attempts_binding; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_attempts_binding ON public.assessment_provider_attempts USING btree (binding_id);
+
+--
+-- Name: ix_assessment_provider_attempts_candidate_vacancy; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_attempts_candidate_vacancy ON public.assessment_provider_attempts USING btree (organization_id, candidate_id, vacancy_id);
+
+--
+-- Name: ix_assessment_provider_attempts_poll; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_attempts_poll ON public.assessment_provider_attempts USING btree (organization_id, last_polled_at) WHERE ((provider_assignment_id IS NOT NULL) AND (withdrawal_state IS NULL) AND (provider_erasure_requested_at IS NULL) AND (state = ANY (ARRAY['created'::text, 'launched'::text, 'in_progress'::text, 'completed'::text, 'result_ready'::text, 'voided'::text, 'expired'::text])));
+
+--
+-- Name: ix_assessment_provider_attempts_subject; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_attempts_subject ON public.assessment_provider_attempts USING btree (organization_id, provider_subject_id);
+
+--
+-- Name: ix_assessment_provider_attempts_withdrawal_pending; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_attempts_withdrawal_pending ON public.assessment_provider_attempts USING btree (organization_id, candidate_id) WHERE (withdrawal_state = 'pending'::text);
+
+--
+-- Name: ix_assessment_provider_results_attempt; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_results_attempt ON public.assessment_provider_results USING btree (attempt_id);
+
+--
+-- Name: ix_assessment_provider_subject_checks_next; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_subject_checks_next ON public.assessment_provider_subject_checks USING btree (next_check_at);
+
+--
+-- Name: ix_assessment_provider_webhook_inbox_due; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_webhook_inbox_due ON public.assessment_provider_webhook_inbox USING btree (organization_id, next_attempt_at) WHERE (next_attempt_at IS NOT NULL);
+
+--
+-- Name: ix_assessment_provider_webhook_inbox_erased_subject; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ix_assessment_provider_webhook_inbox_erased_subject ON public.assessment_provider_webhook_inbox USING btree (organization_id, lower((data ->> 'subject_id'::text))) WHERE (event_type = 'subject.erased'::text);
 
 --
 -- Name: ix_hris_external_employees_connector; Type: INDEX; Schema: public; Owner: postgres
@@ -5545,6 +6220,48 @@ CREATE INDEX users_supabase_user_id_idx ON public.users USING btree (supabase_us
 CREATE UNIQUE INDEX users_supabase_user_id_key ON public.users USING btree (supabase_user_id);
 
 --
+-- Name: ux_assessment_provider_attempts_open; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ux_assessment_provider_attempts_open ON public.assessment_provider_attempts USING btree (organization_id, candidate_id, vacancy_id, instrument) WHERE (state = ANY (ARRAY['pending_create'::text, 'created'::text, 'launched'::text, 'in_progress'::text, 'completed'::text, 'result_ready'::text]));
+
+--
+-- Name: ux_assessment_provider_attempts_provider_assignment; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ux_assessment_provider_attempts_provider_assignment ON public.assessment_provider_attempts USING btree (organization_id, provider_assignment_id);
+
+--
+-- Name: ux_assessment_provider_bindings_org_provider; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ux_assessment_provider_bindings_org_provider ON public.assessment_provider_bindings USING btree (organization_id, provider);
+
+--
+-- Name: ux_assessment_provider_bindings_provider_tenant; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ux_assessment_provider_bindings_provider_tenant ON public.assessment_provider_bindings USING btree (provider, provider_tenant_id);
+
+--
+-- Name: ux_assessment_provider_results_provider_result; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ux_assessment_provider_results_provider_result ON public.assessment_provider_results USING btree (organization_id, provider_result_id);
+
+--
+-- Name: ux_assessment_provider_settings_org; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ux_assessment_provider_settings_org ON public.assessment_provider_settings USING btree (organization_id);
+
+--
+-- Name: ux_assessment_provider_webhook_inbox_event; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX ux_assessment_provider_webhook_inbox_event ON public.assessment_provider_webhook_inbox USING btree (organization_id, event_id);
+
+--
 -- Name: ux_fx_rates_base_quote_asof; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5671,6 +6388,54 @@ ALTER TABLE public.data_access_logs ENABLE ALWAYS TRIGGER data_access_logs_appen
 CREATE TRIGGER data_access_logs_append_only_truncate BEFORE TRUNCATE ON public.data_access_logs FOR EACH STATEMENT EXECUTE FUNCTION public.tims_append_only_guard();
 
 ALTER TABLE public.data_access_logs ENABLE ALWAYS TRIGGER data_access_logs_append_only_truncate;
+
+--
+-- Name: fit_scores fit_scores_keep_v2; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER fit_scores_keep_v2 BEFORE UPDATE ON public.fit_scores FOR EACH ROW EXECUTE FUNCTION public.fit_scores_keep_v2();
+
+--
+-- Name: assessment_assignments fit_v2_assignment_changed; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER fit_v2_assignment_changed AFTER UPDATE OF status ON public.assessment_assignments FOR EACH ROW EXECUTE FUNCTION public.fit_v2_assignment_changed();
+
+--
+-- Name: proctoring_sessions fit_v2_proctoring_changed; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER fit_v2_proctoring_changed AFTER INSERT OR UPDATE ON public.proctoring_sessions FOR EACH ROW EXECUTE FUNCTION public.fit_v2_proctoring_changed();
+
+--
+-- Name: assessment_provider_attempts fit_v2_provider_attempt_changed; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER fit_v2_provider_attempt_changed AFTER INSERT OR UPDATE OF state, provider_erasure_requested_at ON public.assessment_provider_attempts FOR EACH ROW EXECUTE FUNCTION public.fit_v2_provider_attempt_changed();
+
+--
+-- Name: assessment_provider_results fit_v2_provider_result_changed; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER fit_v2_provider_result_changed AFTER INSERT OR DELETE OR UPDATE ON public.assessment_provider_results FOR EACH ROW EXECUTE FUNCTION public.fit_v2_provider_result_changed();
+
+--
+-- Name: job_profiles fit_v2_requirements_changed; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER fit_v2_requirements_changed AFTER INSERT OR UPDATE OF fit_requirements, vacancy_id ON public.job_profiles FOR EACH ROW EXECUTE FUNCTION public.fit_v2_requirements_changed();
+
+--
+-- Name: assessment_results fit_v2_result_changed; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER fit_v2_result_changed AFTER INSERT OR UPDATE ON public.assessment_results FOR EACH ROW EXECUTE FUNCTION public.fit_v2_result_changed();
+
+--
+-- Name: job_profiles job_profiles_keep_assessments; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER job_profiles_keep_assessments BEFORE UPDATE ON public.job_profiles FOR EACH ROW EXECUTE FUNCTION public.job_profiles_keep_assessments();
 
 --
 -- Name: access_reviews access_reviews_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
@@ -6112,6 +6877,20 @@ ALTER TABLE ONLY public.fit_scores
 
 ALTER TABLE ONLY public.fit_scores
     ADD CONSTRAINT fit_scores_vacancy_id_fkey FOREIGN KEY (vacancy_id) REFERENCES public.vacancies(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+--
+-- Name: assessment_provider_attempts fk_assessment_provider_attempts_binding; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_attempts
+    ADD CONSTRAINT fk_assessment_provider_attempts_binding FOREIGN KEY (binding_id) REFERENCES public.assessment_provider_bindings(id) ON DELETE RESTRICT;
+
+--
+-- Name: assessment_provider_results fk_assessment_provider_results_attempt; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.assessment_provider_results
+    ADD CONSTRAINT fk_assessment_provider_results_attempt FOREIGN KEY (attempt_id) REFERENCES public.assessment_provider_attempts(id) ON DELETE RESTRICT;
 
 --
 -- Name: hire_predictions hire_predictions_application_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
@@ -6975,6 +7754,42 @@ ALTER TABLE public.assessment_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assessment_consents ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: assessment_provider_attempts; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.assessment_provider_attempts ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: assessment_provider_bindings; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.assessment_provider_bindings ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: assessment_provider_results; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.assessment_provider_results ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: assessment_provider_settings; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.assessment_provider_settings ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: assessment_provider_subject_checks; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.assessment_provider_subject_checks ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: assessment_provider_webhook_inbox; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.assessment_provider_webhook_inbox ENABLE ROW LEVEL SECURITY;
+
+--
 -- Name: assessment_questions; Type: ROW SECURITY; Schema: public; Owner: postgres
 --
 
@@ -7159,6 +7974,12 @@ ALTER TABLE public.feature_flags ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.feedbacks ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: fit_recompute_requests; Type: ROW SECURITY; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.fit_recompute_requests ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: fit_scores; Type: ROW SECURITY; Schema: public; Owner: postgres
@@ -7557,6 +8378,42 @@ CREATE POLICY tenant_isolation ON public.assessment_assignments USING ((organiza
 CREATE POLICY tenant_isolation ON public.assessment_consents USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
 
 --
+-- Name: assessment_provider_attempts tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.assessment_provider_attempts USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
+-- Name: assessment_provider_bindings tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.assessment_provider_bindings USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
+-- Name: assessment_provider_results tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.assessment_provider_results USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
+-- Name: assessment_provider_settings tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.assessment_provider_settings USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
+-- Name: assessment_provider_subject_checks tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.assessment_provider_subject_checks USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
+-- Name: assessment_provider_webhook_inbox tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.assessment_provider_webhook_inbox USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
 -- Name: assessment_questions tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
 --
 
@@ -7749,6 +8606,12 @@ CREATE POLICY tenant_isolation ON public.feature_flags USING ((organization_id =
 --
 
 CREATE POLICY tenant_isolation ON public.feedbacks USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
+
+--
+-- Name: fit_recompute_requests tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
+--
+
+CREATE POLICY tenant_isolation ON public.fit_recompute_requests USING ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.current_org_id'::text, true), ''::text))::uuid));
 
 --
 -- Name: fit_scores tenant_isolation; Type: POLICY; Schema: public; Owner: postgres
@@ -8190,6 +9053,18 @@ GRANT USAGE ON SCHEMA public TO ci_rls_probe;
 GRANT USAGE ON SCHEMA supabase_migrations TO ci_readonly;
 
 --
+-- Name: FUNCTION fit_v2_request_recompute(p_organization_id uuid, p_candidate_id uuid, p_vacancy_id uuid); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.fit_v2_request_recompute(p_organization_id uuid, p_candidate_id uuid, p_vacancy_id uuid) FROM PUBLIC;
+
+--
+-- Name: FUNCTION fit_v2_requirements_changed(); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.fit_v2_requirements_changed() FROM PUBLIC;
+
+--
 -- Name: TABLE "__EFMigrationsHistory"; Type: ACL; Schema: public; Owner: postgres
 --
 
@@ -8314,6 +9189,60 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_consents TO app_ten
 GRANT SELECT ON TABLE public.assessment_consents TO ci_readonly;
 GRANT SELECT ON TABLE public.assessment_consents TO ci_rls_probe;
 GRANT SELECT ON TABLE public.assessment_consents TO backup_drill_reader;
+
+--
+-- Name: TABLE assessment_provider_attempts; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_provider_attempts TO app_tenant;
+GRANT SELECT ON TABLE public.assessment_provider_attempts TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_provider_attempts TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_provider_attempts TO backup_drill_reader;
+
+--
+-- Name: TABLE assessment_provider_bindings; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT ON TABLE public.assessment_provider_bindings TO app_tenant;
+GRANT SELECT ON TABLE public.assessment_provider_bindings TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_provider_bindings TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_provider_bindings TO backup_drill_reader;
+
+--
+-- Name: TABLE assessment_provider_results; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_provider_results TO app_tenant;
+GRANT SELECT ON TABLE public.assessment_provider_results TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_provider_results TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_provider_results TO backup_drill_reader;
+
+--
+-- Name: TABLE assessment_provider_settings; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.assessment_provider_settings TO app_tenant;
+GRANT SELECT ON TABLE public.assessment_provider_settings TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_provider_settings TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_provider_settings TO backup_drill_reader;
+
+--
+-- Name: TABLE assessment_provider_subject_checks; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.assessment_provider_subject_checks TO app_tenant;
+GRANT SELECT ON TABLE public.assessment_provider_subject_checks TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_provider_subject_checks TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_provider_subject_checks TO backup_drill_reader;
+
+--
+-- Name: TABLE assessment_provider_webhook_inbox; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.assessment_provider_webhook_inbox TO app_tenant;
+GRANT SELECT ON TABLE public.assessment_provider_webhook_inbox TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_provider_webhook_inbox TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_provider_webhook_inbox TO backup_drill_reader;
 
 --
 -- Name: TABLE assessment_questions; Type: ACL; Schema: public; Owner: postgres
@@ -8593,6 +9522,15 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.feedbacks TO app_tenant;
 GRANT SELECT ON TABLE public.feedbacks TO ci_readonly;
 GRANT SELECT ON TABLE public.feedbacks TO ci_rls_probe;
 GRANT SELECT ON TABLE public.feedbacks TO backup_drill_reader;
+
+--
+-- Name: TABLE fit_recompute_requests; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,DELETE,UPDATE ON TABLE public.fit_recompute_requests TO app_tenant;
+GRANT SELECT ON TABLE public.fit_recompute_requests TO ci_readonly;
+GRANT SELECT ON TABLE public.fit_recompute_requests TO ci_rls_probe;
+GRANT SELECT ON TABLE public.fit_recompute_requests TO backup_drill_reader;
 
 --
 -- Name: TABLE fit_scores; Type: ACL; Schema: public; Owner: postgres
@@ -8929,7 +9867,6 @@ GRANT SELECT ON TABLE public.platform_invitations TO backup_drill_reader;
 -- Name: TABLE platform_owner_emails; Type: ACL; Schema: public; Owner: postgres
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.platform_owner_emails TO app_tenant;
 GRANT SELECT ON TABLE public.platform_owner_emails TO ci_readonly;
 GRANT SELECT ON TABLE public.platform_owner_emails TO ci_rls_probe;
 GRANT SELECT ON TABLE public.platform_owner_emails TO backup_drill_reader;
