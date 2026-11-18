@@ -20,7 +20,7 @@ describe('staff login page', () => {
 
   it('uses accented Spanish copy', () => {
     render(<LoginPage />);
-    expect(screen.getByRole('heading', { name: 'Iniciar Sesión' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Iniciar sesión' })).toBeInTheDocument();
     expect(screen.getByText('¿Olvidaste tu contraseña?')).toBeInTheDocument();
     expect(screen.getByText(/¿No tienes cuenta\?/)).toBeInTheDocument();
   });

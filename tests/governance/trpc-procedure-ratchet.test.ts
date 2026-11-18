@@ -41,8 +41,35 @@ import { appRouter } from '@tims/api';
 /**
  * Measured 2026-08-31 at `7d1e6a94` + PR #249, exactly, from the router.
  * MAY ONLY EVER DECREASE.
+ *
+ * ONE recorded exception: 353 → 354 on 2026-10-28 for `candidate.getDocumentUrl` (staff CV download,
+ * a launch-blocking recruitment-spine gap). Raised under owner decision D-1, which grants a narrow
+ * survival-rule exception for launch-blocking recruitment-spine fixes only. It is not headroom: the
+ * exact-equality test below still pins it, and the procedure is owed a C# port like every other.
+ *
+ * Second D-1 exception: 354 → 357 on 2026-11-04 for the pilot approval spine (audit B-01 and
+ * company-admin access-1): `vacancy.getPending` (the approver inbox's vacancy half; offers already had
+ * `offer.getPending`) and `vacancy.withdrawApproval` + `offer.withdrawApproval` (a request stuck with an
+ * absent approver otherwise stays in pending_approval for good). Same terms: not headroom, owed a C# port.
+ *
+ * Third D-1 exception: 357 → 362 on 2026-11-04 for the pilot UX wave 2 (release/pilot-ux-wave2), one
+ * procedure per audit finding, merged from separately reviewed work packages:
+ *   - `offer.withdraw` (pilot audit B-04: a wrong or unwanted offer — including one already emailed — could
+ *     not be taken back, so its signing link stayed live and a corrected offer could not be issued once
+ *     one-open-offer-per-application is enforced).
+ *   - `candidate.getDocumentUploadUrl` (pilot audit A-21: staff could not attach any document to a
+ *     candidate — the pilot tenant's workaround for required documents that arrive by email;
+ *     `candidate.uploadDocument` was a mock storing an unopenable URL). It issues the same presigned S3
+ *     POST the public apply flow uses.
+ *   - `vacancy.resume` (audit A-08): "Congelar" had no way back, so a frozen vacancy left the careers portal
+ *     and the pipeline for good. Owed its C# port with the rest of the vacancy spine.
+ *   - `candidatePortal.withdrawMyApplication` ("Retirar mi postulación", the existing 'withdrawn' status) and
+ *     `candidatePortal.updateMyProfile` (audit C-33: a candidate could not correct a wrong phone number). The
+ *     candidate reads they sit beside live only in this router; the current profile values are rendered
+ *     server-side, so no read procedure was added.
+ * Same terms: not headroom, owed a C# port.
  */
-const PROCEDURE_CEILING = 353;
+const PROCEDURE_CEILING = 362;
 
 /**
  * The top-level routers registered in `packages/api/src/root.ts` on 2026-08-31.

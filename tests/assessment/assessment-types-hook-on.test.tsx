@@ -14,10 +14,10 @@ vi.mock('@tims/auth/client', () => ({
 const fetchMock = vi.fn<typeof fetch>();
 vi.stubGlobal('fetch', fetchMock);
 
-const TYPE_ID = '7a000000-0000-0000-0000-00000000c0de';
+const TYPE_ID = '7a000000-0000-4000-8000-00000000c0de';
 const row = {
   id: TYPE_ID,
-  organizationId: '11111111-1111-1111-1111-111111111111',
+  organizationId: '11111111-1111-4111-8111-111111111111',
   name: 'Logica',
   code: 'logica',
   description: null,
@@ -84,7 +84,7 @@ describe('assessment-type C# wrapper (flag on)', () => {
 
     // The C# handler's own 404 carries { message } — the id is not in the caller's org.
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ message: 'Tipo de evaluacion no encontrado' }), { status: 404 }),
+      new Response(JSON.stringify({ message: 'Tipo de evaluación no encontrado' }), { status: 404 }),
     );
     let caught: unknown;
     await act(async () => {

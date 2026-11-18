@@ -26,8 +26,8 @@ public static class AssessmentTypeWriteEndpoints
 {
     private const string CreateAction = "create";
     private const string UpdateAction = "update";
-    private const string NotFoundMessage = "Tipo de evaluacion no encontrado";
-    private const string ConflictMessage = "Ya existe un tipo de evaluacion con ese nombre";
+    private const string NotFoundMessage = "Tipo de evaluación no encontrado";
+    private const string ConflictMessage = "Ya existe un tipo de evaluación con ese nombre";
 
     public static void MapAssessmentTypeWriteEndpoints(this WebApplication app)
     {

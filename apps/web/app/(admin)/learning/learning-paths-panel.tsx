@@ -12,49 +12,62 @@ interface LearningPathsPanelProps {
   paths: LearningPath[];
   loading: boolean;
   isError?: boolean;
+  error?: unknown;
   onRetry?: () => void;
+  /** No courses exist yet: say that a path needs one (why "Crear ruta" is disabled). */
+  showNeedsCourseHint?: boolean;
   t: {
     learningPaths: string;
     noPaths: string;
+    noPathsHint: string;
     courses: string;
   };
 }
 
-export function LearningPathsPanel({ paths, loading, isError, onRetry, t }: LearningPathsPanelProps) {
+const CARD = 'rounded-xl border border-border bg-white p-4 shadow-card md:p-5';
+
+export function LearningPathsPanel({
+  paths,
+  loading,
+  isError,
+  error,
+  onRetry,
+  showNeedsCourseHint,
+  t,
+}: LearningPathsPanelProps) {
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-        <Skeleton className="h-4 w-48 mb-3" />
+      <div className={CARD} aria-busy="true">
+        <Skeleton className="mb-3 h-4 w-48" />
         <Skeleton className="h-10 w-full" />
       </div>
     );
   }
 
-  if (isError) {
-    return (
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <ErrorState onRetry={onRetry} />
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{t.learningPaths}</h3>
-      {paths.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.noPaths}</p>
+    <section className={CARD} aria-labelledby="learning-paths-heading">
+      <h2 id="learning-paths-heading" className="mb-3 text-subheading font-semibold text-primary">
+        {t.learningPaths}
+      </h2>
+      {isError ? (
+        <ErrorState size="compact" error={error} onRetry={onRetry} />
+      ) : paths.length === 0 ? (
+        <div className="py-2 text-center">
+          <p className="text-body font-medium text-primary">{t.noPaths}</p>
+          {showNeedsCourseHint && <p className="mt-1 text-callout text-secondary">{t.noPathsHint}</p>}
+        </div>
       ) : (
-        <div className="space-y-2.5">
+        <ul className="space-y-2.5">
           {paths.map((path) => (
-            <div key={path.id} className="border border-[#EDEDED] rounded-lg p-3">
-              <p className="text-[12px] font-medium text-[#333]">{path.name}</p>
-              <p className="text-[10px] text-[#8B8B8B]">
+            <li key={path.id} className="rounded-lg border border-border p-3">
+              <p className="text-body font-medium text-primary">{path.name}</p>
+              <p className="text-callout text-secondary">
                 {path.courses.length} {t.courses}
               </p>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

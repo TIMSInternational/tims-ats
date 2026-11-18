@@ -41,7 +41,7 @@ vi.mock('../../apps/web/lib/toast', () => ({ toast: (m: string, o?: unknown) => 
 import { InterviewAiPanel } from '../../apps/web/app/(admin)/recruitment/interviews/[id]/room/interview-ai-panel';
 
 const INTERVIEW_ID = '33333333-3333-4333-8333-333333333333';
-const SERVER_MSG = 'Envia tu evaluacion antes de ver las evaluaciones de los demas evaluadores';
+const SERVER_MSG = 'Envía tu evaluación antes de ver las evaluaciones de los demás evaluadores';
 
 function renderPanel(isViewerBlinded: boolean) {
   localStorage.setItem('tims-locale', 'EN');

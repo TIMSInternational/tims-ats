@@ -19,12 +19,14 @@ const db = vi.hoisted(() => ({
   businessUnit: { findFirst: vi.fn() },
   team: { findFirst: vi.fn() },
   user: { findFirst: vi.fn() },
-  vacancy: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() },
+  vacancy: { create: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(), findFirstOrThrow: vi.fn() },
+  auditLog: { create: vi.fn() },
 }));
+// vacancy.update writes through vacancy-lifecycle.repository.ts: one runTenantTransaction (here, the mock db).
 vi.mock('@tims/db', () => ({
   tenantDb: db,
   runWithTenant: (_o: string, f: () => unknown) => f(),
-  runTenantTransaction: vi.fn(),
+  runTenantTransaction: vi.fn(async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(db)),
 }));
 const access = vi.hoisted(() => ({
   buildAccessForUser: vi.fn(async () => ({ allowed: true, scope: 'organization', roles: ['recruiter'] })),
@@ -39,7 +41,9 @@ vi.mock('../../packages/api/src/access', () => access);
 async function makeCaller() {
   const { createCallerFactory, router } = await import('../../packages/api/src/trpc');
   const { vacancyCrudRouter } = await import('../../packages/api/src/routers/vacancy/crud');
-  return createCallerFactory(router({ vacancy: vacancyCrudRouter }))({
+  const { vacancyLifecycleRouter } = await import('../../packages/api/src/routers/vacancy/lifecycle');
+  const { mergeRouters } = await import('../../packages/api/src/trpc');
+  return createCallerFactory(router({ vacancy: mergeRouters(vacancyCrudRouter, vacancyLifecycleRouter) }))({
     user: {
       id: 'user-1',
       organizationId: ORG,
@@ -64,7 +68,8 @@ beforeEach(() => {
   db.team.findFirst.mockResolvedValue({ businessUnitId: BU });
   db.user.findFirst.mockResolvedValue({ id: USER });
   db.vacancy.create.mockResolvedValue({ id: VACANCY });
-  db.vacancy.update.mockResolvedValue({ id: VACANCY });
+  db.vacancy.updateMany.mockResolvedValue({ count: 1 });
+  db.vacancy.findFirstOrThrow.mockResolvedValue({ id: VACANCY });
   db.vacancy.findFirst.mockResolvedValue({ companyId: null, businessUnitId: BU, teamId: null });
 });
 
@@ -120,7 +125,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
       organizationId: ORG,
       deletedAt: null,
     });
-    expect(db.vacancy.update).not.toHaveBeenCalled();
+    expect(db.vacancy.updateMany).not.toHaveBeenCalled();
   });
 
   it('update: rejects a cross-tenant team id and leaves the vacancy untouched', async () => {
@@ -129,7 +134,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
     await expect(caller.vacancy.update({ id: VACANCY, businessUnitId: BU, teamId: TEAM })).rejects.toMatchObject({
       code: 'BAD_REQUEST',
     });
-    expect(db.vacancy.update).not.toHaveBeenCalled();
+    expect(db.vacancy.updateMany).not.toHaveBeenCalled();
   });
 
   it('update: clearing placement (null) needs no lookups', async () => {
@@ -137,7 +142,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
     await caller.vacancy.update({ id: VACANCY, businessUnitId: null, teamId: null, assignedTo: null });
     expect(db.businessUnit.findFirst).not.toHaveBeenCalled();
     expect(db.team.findFirst).not.toHaveBeenCalled();
-    expect(db.vacancy.update).toHaveBeenCalledTimes(1);
+    expect(db.vacancy.updateMany).toHaveBeenCalledTimes(1);
   });
 
   // ── company (tenant leak through list/detail `company { name }`) ──────────────────────────────────────────
@@ -177,7 +182,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
     await expect(caller.vacancy.update({ id: VACANCY, companyId: OTHER_COMPANY })).rejects.toMatchObject({
       code: 'BAD_REQUEST',
     });
-    expect(db.vacancy.update).not.toHaveBeenCalled();
+    expect(db.vacancy.updateMany).not.toHaveBeenCalled();
   });
 
   it("update: a company-only change is checked against the vacancy's CURRENT unit", async () => {
@@ -189,7 +194,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
       message: expect.stringMatching(/no pertenece a la empresa/),
     });
     expect(db.businessUnit.findFirst.mock.calls.at(-1)![0].where).toMatchObject({ id: BU, organizationId: ORG });
-    expect(db.vacancy.update).not.toHaveBeenCalled();
+    expect(db.vacancy.updateMany).not.toHaveBeenCalled();
   });
 
   // ── unit-only change vs the CURRENT team ──────────────────────────────────────────────────────────────
@@ -203,7 +208,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
       message: expect.stringMatching(/equipo actual de la vacante no pertenece/),
     });
     expect(db.team.findFirst.mock.calls[0]![0].where).toMatchObject({ id: OTHER_TEAM, organizationId: ORG });
-    expect(db.vacancy.update).not.toHaveBeenCalled();
+    expect(db.vacancy.updateMany).not.toHaveBeenCalled();
   });
 
   it('update: a unit change together with clearing the team is accepted', async () => {
@@ -211,7 +216,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
     const caller = await makeCaller();
     await caller.vacancy.update({ id: VACANCY, businessUnitId: BU, teamId: null });
     expect(db.team.findFirst).not.toHaveBeenCalled();
-    expect(db.vacancy.update).toHaveBeenCalledTimes(1);
+    expect(db.vacancy.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('update: a unit change whose current team belongs to the new unit is accepted', async () => {
@@ -219,7 +224,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
     db.team.findFirst.mockResolvedValue({ businessUnitId: BU });
     const caller = await makeCaller();
     await caller.vacancy.update({ id: VACANCY, businessUnitId: BU });
-    expect(db.vacancy.update).toHaveBeenCalledTimes(1);
+    expect(db.vacancy.updateMany).toHaveBeenCalledTimes(1);
   });
 
   // ── cross-tenant ids on update ───────────────────────────────────────────────────────────────────────
@@ -231,7 +236,7 @@ describe('vacancy org placement — tenant + consistency checks', () => {
       message: expect.stringMatching(/unidad de negocio no existe/),
     });
     expect(db.businessUnit.findFirst.mock.calls[0]![0].where).toMatchObject({ id: OTHER_BU, organizationId: ORG });
-    expect(db.vacancy.update).not.toHaveBeenCalled();
+    expect(db.vacancy.updateMany).not.toHaveBeenCalled();
   });
 
   it('update: rejects a cross-tenant assignee and leaves the vacancy untouched', async () => {
@@ -242,13 +247,13 @@ describe('vacancy org placement — tenant + consistency checks', () => {
       message: expect.stringMatching(/responsable asignado/),
     });
     expect(db.user.findFirst.mock.calls[0]![0].where).toMatchObject({ id: USER, organizationId: ORG, deletedAt: null });
-    expect(db.vacancy.update).not.toHaveBeenCalled();
+    expect(db.vacancy.updateMany).not.toHaveBeenCalled();
   });
 
   it('update: an edit that touches no anchor performs no placement lookups', async () => {
     const caller = await makeCaller();
     await caller.vacancy.update({ id: VACANCY, title: 'Nuevo titulo' });
     expect(db.vacancy.findFirst).not.toHaveBeenCalled();
-    expect(db.vacancy.update).toHaveBeenCalledTimes(1);
+    expect(db.vacancy.updateMany).toHaveBeenCalledTimes(1);
   });
 });

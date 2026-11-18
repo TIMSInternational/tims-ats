@@ -1,27 +1,40 @@
 'use client';
 
+import { useId } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDashboardAiCostAnomalies } from '../../../../lib/platform-api/dashboard';
 import { useI18n } from '../../../../lib/i18n';
 import { formatCurrency, Skeleton } from '../dashboard-utils';
 import { ErrorState } from '../../../../components';
+import { StatusBadge, type StatusTone } from '../../../../components/status-badge';
 
-const TYPE_CONFIG = {
-  zero_usage: { bg: 'bg-amber-50', dot: 'bg-amber-500', label: 'Zero usage' },
-  over_budget: { bg: 'bg-red-50', dot: 'bg-red-500', label: 'Over budget' },
-  high_cost: { bg: 'bg-violet-50', dot: 'bg-violet-500', label: 'High cost' },
-} as const;
+const CARD = 'flex flex-col rounded-xl border border-border bg-white p-5 shadow-card';
+
+const TYPE_TONE: Record<string, StatusTone> = {
+  zero_usage: 'warning',
+  over_budget: 'danger',
+  high_cost: 'info',
+};
 
 export function AiCostAnomalyPanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const d = t.dashboard;
   const router = useRouter();
+  const titleId = useId();
   const { data, isLoading, isError, refetch } = useDashboardAiCostAnomalies();
+
+  const typeLabel: Record<string, string> = {
+    zero_usage: d.zeroUsage,
+    over_budget: d.overBudget,
+    high_cost: d.highCost,
+  };
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <Skeleton className="h-4 w-44 mb-2" />
-        <Skeleton className="h-3 w-56 mb-4" />
+      <div className={CARD} aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
+        <Skeleton className="mb-2 h-4 w-44" />
+        <Skeleton className="mb-4 h-3 w-56" />
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full rounded-lg" />
@@ -33,97 +46,97 @@ export function AiCostAnomalyPanel() {
 
   if (isError) {
     return (
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <ErrorState onRetry={() => refetch()} />
+      <div className={CARD}>
+        <ErrorState size="compact" onRetry={() => refetch()} />
       </div>
     );
   }
 
   if (!data || data.anomalies.length === 0) {
     return (
-      <div className="rounded-xl border border-[#EDEDED] bg-white p-5">
-        <h3 className="text-sm font-semibold text-[#1F114C] mb-1">{t.dashboard.aiCostTitle ?? 'AI Cost Anomalies'}</h3>
+      <section aria-labelledby={titleId} className={CARD}>
+        <h2 id={titleId} className="mb-1 text-heading font-semibold text-brand">
+          {d.aiCostTitle}
+        </h2>
         <div className="py-6 text-center">
           <svg
-            className="w-8 h-8 text-emerald-300 mx-auto mb-2"
+            className="mx-auto mb-2 size-8 text-success"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.5"
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
             <path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-sm text-[#8B8B8B]">{t.dashboard.noAnomalies ?? 'No cost anomalies detected'}</p>
-          <p className="text-xs text-[#8B8B8B] mt-0.5">
-            {t.dashboard.allOptimized ?? 'All AI agents optimally configured'}
-          </p>
+          <p className="text-subheading font-semibold text-primary">{d.noAnomalies}</p>
+          <p className="mt-0.5 text-callout text-secondary">{d.allOptimized}</p>
         </div>
-      </div>
+      </section>
     );
   }
 
   return (
-    <div className="rounded-xl border border-[#EDEDED] bg-white p-5 flex flex-col">
-      <div className="flex items-center justify-between mb-1">
+    <section aria-labelledby={titleId} className={CARD}>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-[#1F114C]">{t.dashboard.aiCostTitle ?? 'AI Cost Anomalies'}</h3>
-          <p className="text-xs text-[#8B8B8B]">
-            {t.dashboard.aiCostSubtitle ?? 'Agents with unusual spending patterns'}
-          </p>
+          <h2 id={titleId} className="text-heading font-semibold text-brand">
+            {d.aiCostTitle}
+          </h2>
+          <p className="text-callout text-secondary">{d.aiCostSubtitle}</p>
         </div>
         {data.totalPotentialSavings > 0 && (
           <div className="text-right">
-            <p className="text-lg font-bold text-amber-600">{formatCurrency(data.totalPotentialSavings)}</p>
-            <p className="text-[10px] text-[#8B8B8B]">{t.dashboard.potentialSavings ?? 'potential savings'}</p>
+            <p className="text-title font-bold tabular-nums text-warning">
+              {formatCurrency(data.totalPotentialSavings, locale)}
+            </p>
+            <p className="text-caption text-secondary">{d.potentialSavings}</p>
           </div>
         )}
       </div>
 
-      {/* Summary pills */}
-      <div className="flex gap-2 mb-4">
+      {/* Summary */}
+      <div className="mb-4 flex flex-wrap gap-2">
         {data.zeroUsageCount > 0 && (
-          <span className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="text-xs font-medium text-amber-700">{data.zeroUsageCount}</span>
-            <span className="text-[10px] text-amber-600">{t.dashboard.zeroUsage ?? 'zero usage'}</span>
-          </span>
+          <StatusBadge tone="warning">
+            {data.zeroUsageCount} {d.zeroUsage}
+          </StatusBadge>
         )}
         {data.overBudgetCount > 0 && (
-          <span className="flex items-center gap-1.5 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            <span className="text-xs font-medium text-red-700">{data.overBudgetCount}</span>
-            <span className="text-[10px] text-red-600">{t.dashboard.overBudget ?? 'over budget'}</span>
-          </span>
+          <StatusBadge tone="danger">
+            {data.overBudgetCount} {d.overBudget}
+          </StatusBadge>
         )}
       </div>
 
       {/* Anomalies list */}
-      <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
-        {data.anomalies.slice(0, 10).map((anomaly, i) => {
-          const cfg = TYPE_CONFIG[anomaly.type] ?? TYPE_CONFIG.zero_usage;
-          return (
+      <ul className="max-h-[280px] space-y-1.5 overflow-y-auto">
+        {data.anomalies.slice(0, 10).map((anomaly, i) => (
+          <li key={`${anomaly.agentSlug}-${anomaly.orgId}-${i}`}>
             <button
-              key={`${anomaly.agentSlug}-${anomaly.orgId}-${i}`}
+              type="button"
               onClick={() => router.push('/platform/ai-agents')}
-              className={`w-full text-left rounded-lg px-4 py-2.5 transition-all hover:shadow-sm ${cfg.bg}`}
+              className="w-full rounded-lg bg-surface-hover px-4 py-2.5 text-left transition-colors hover:bg-surface"
             >
-              <div className="flex items-center gap-3">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-medium text-[#333] truncate">{anomaly.agentName}</span>
-                    <span className="text-[10px] text-[#8B8B8B]">{anomaly.orgName}</span>
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="truncate text-body font-medium text-primary">{anomaly.agentName}</span>
+                    <span className="text-caption text-secondary">{anomaly.orgName}</span>
+                    <StatusBadge tone={TYPE_TONE[anomaly.type] ?? 'warning'}>
+                      {typeLabel[anomaly.type] ?? anomaly.type}
+                    </StatusBadge>
                   </div>
-                  <p className="text-[11px] text-[#585858]">{anomaly.detail}</p>
+                  <p className="text-callout text-secondary">{anomaly.detail}</p>
                 </div>
-                <span className="text-xs font-bold text-amber-600 shrink-0">
-                  {formatCurrency(anomaly.potentialSavings)}
+                <span className="shrink-0 text-callout font-bold tabular-nums text-warning">
+                  {formatCurrency(anomaly.potentialSavings, locale)}
                 </span>
               </div>
             </button>
-          );
-        })}
-      </div>
-    </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

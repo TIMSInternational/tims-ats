@@ -209,11 +209,15 @@ describe('/settings/users (Equipo) — hidden while the tenant-invitations flag 
       return true;
     });
     expect(shown).toContain('/settings/users');
-    expect(new Set(asked)).toEqual(new Set(['tenantInvitations', 'candidateConsent']));
+    expect(new Set(asked)).toEqual(new Set(['tenantInvitations', 'candidateConsent', 'providerAssessments']));
   });
 
   it('every flagged item is a known flagged entry (no other item silently depends on a flag)', () => {
-    const known = new Set(['/settings/users|tenantInvitations', '/settings/data-requests|candidateConsent']);
+    const known = new Set([
+      '/settings/users|tenantInvitations',
+      '/settings/data-requests|candidateConsent',
+      '/settings/assessment-security|providerAssessments',
+    ]);
     for (const role of NAV_ROLES) {
       const flagged = MANIFESTS[role].sections.flatMap((s) => s.items.filter((i) => i.featureFlag !== undefined));
       for (const item of flagged) expect(known.has(`${item.href}|${item.featureFlag}`), item.href).toBe(true);

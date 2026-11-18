@@ -131,7 +131,7 @@ describe('assertScoped', () => {
     vi.mocked(tenantDb.actionPlan.findFirst).mockResolvedValue(null as never);
     await expect(assertScoped('actionPlan', 'ap1', ACCESS, 'me', 'org-1')).rejects.toMatchObject({
       code: 'NOT_FOUND',
-      message: 'Plan de accion no encontrado',
+      message: 'Plan de acción no encontrado',
     });
     expect(tenantDb.actionPlan.findFirst).toHaveBeenCalledWith({
       where: {

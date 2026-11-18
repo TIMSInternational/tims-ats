@@ -76,10 +76,20 @@ public sealed class VacancyScopedApproverTests(F fixture)
     }
 
     [Fact]
-    public async Task VacancyCreatorWithoutVacancyUpdate_Is403()
+    public async Task CallerWithoutVacancyUpdate_Is403()
     {
-        // #304: the picker follows submitForApproval's gate (vacancy:update); a leader holds only create @team.
-        Assert.Equal(HttpStatusCode.Forbidden, (await Get($"&vacancyId={F.Vacancy1}", F.LeaderA)).StatusCode);
+        // #304: the picker follows submitForApproval's gate (vacancy:update); the employee holds nothing.
+        Assert.Equal(HttpStatusCode.Forbidden, (await Get($"&vacancyId={F.Vacancy1}", F.Employee)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Leader_WithVacancyUpdateAtTeamScope_PicksApproversOnlyForTheirTeamsVacancy()
+    {
+        // Pilot 2026-11-06: the leader holds vacancy:update @team, so they can send their own team's draft for
+        // approval — the same approver set a recruiter sees for it — but another team's vacancy is out of scope.
+        Assert.Equal(OrgWide.Concat([F.LeaderA, F.Hrbp, F.Assignee]).Order().ToArray(),
+            await Ids($"&vacancyId={F.Vacancy1}&limit=50", F.LeaderA));
+        Assert.Equal(HttpStatusCode.NotFound, (await Get($"&vacancyId={F.Unit2Vacancy}", F.LeaderA)).StatusCode);
     }
 
     [Fact]

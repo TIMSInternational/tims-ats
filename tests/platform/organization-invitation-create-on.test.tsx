@@ -6,7 +6,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 process.env.NEXT_PUBLIC_ORG_INVITATION_CREATE_VIA_CSHARP = 'true';
 const mocks = vi.hoisted(() => ({ post: vi.fn(), legacy: vi.fn(), enabled: true, toast: vi.fn() }));
 vi.mock('../../apps/web/lib/platform-api/client', () => ({ platformPost: mocks.post, isPlatformApiEnabled: () => mocks.enabled }));
-vi.mock('../../apps/web/lib/trpc', () => ({ trpc: { platform: { createOrgInvitation: { useMutation: () => ({ mutateAsync: mocks.legacy }) } } } }));
+vi.mock('../../apps/web/lib/trpc', () => ({
+  trpc: {
+    platform: {
+      createOrgInvitation: { useMutation: () => ({ mutateAsync: mocks.legacy }) },
+      // The org modal reads existing organizations for its similar-name warning (D-15).
+      listOrganizationsMinimal: { useQuery: () => ({ data: [] }) },
+    },
+  },
+}));
 vi.mock('../../apps/web/lib/i18n', async () => {
   const { default: t } = await import('../../apps/web/lib/i18n/en.json');
   return { useI18n: () => ({ t }) };
@@ -60,8 +68,15 @@ it.each(['accepted', 'unconfirmed', 'changed', 'state_unconfirmed'])('modal repo
   fireEvent.change(fields[0], { target: { value: input.email } });
   fireEvent.change(fields[1], { target: { value: input.organizationName } });
   fireEvent.change(fields[2], { target: { value: input.organizationSlug } });
+  // Country is required; the preset fills time zone, currency and locale, which are what C# receives.
+  expect(view.getByRole('button', { name: en.invitations.createAndSend })).toBeDisabled();
+  fireEvent.change(view.getByLabelText(/^Country/), { target: { value: 'GT' } });
   fireEvent.click(view.getByRole('button', { name: en.invitations.createAndSend }));
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  expect(mocks.post).toHaveBeenCalledWith('/platform/invitations/organizations', {
+    ...input,
+    localeProfile: { country: 'GT', timezone: 'America/Guatemala', currency: 'GTQ', locale: 'es-GT' },
+  });
   expect(mocks.toast).toHaveBeenCalledExactlyOnceWith(
     delivery === 'accepted' ? en.invitations.orgInviteSent : en.invitations.orgInviteDeliveryUnconfirmed,
     { type: delivery === 'accepted' ? 'success' : 'warning' },

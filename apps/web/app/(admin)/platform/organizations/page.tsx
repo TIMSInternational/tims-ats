@@ -4,13 +4,24 @@ import { useState } from 'react';
 import { csvRow } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 import { CreateOrgModal } from './create-org-modal';
 import { EditOrgModal } from './edit-org-modal';
 import { OrgTable } from './org-table';
 import { OrgBulkBar } from './org-bulk-bar';
-import { Skeleton, ErrorState } from '../../../../components';
+import {
+  Button,
+  ErrorState,
+  KpiCard,
+  KpiCardSkeleton,
+  PageHeader,
+  Pagination,
+  inputClasses,
+  selectClasses,
+} from '../../../../components';
+import { PLAN_KEYS, planLabel } from './plan-label';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
 
@@ -80,125 +91,137 @@ export default function OrganizationsPage() {
     const a = document.createElement('a'); a.href = url;
     a.download = `organizaciones-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
-    toast(t.organizations.csvExported, { type: 'success' });
+    toast(formatMessage(t.organizations.rowsExported, { count: rows.length }), { type: 'success' });
   };
 
+  const o = t.organizations;
+  const hasFilters = Boolean(search || planFilter || statusFilter);
+  const icon = (d: string) => (
+    <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 flex-shrink-0">
-        {kpis.isLoading ? Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 animate-pulse">
-            <Skeleton className="h-3 w-24 mb-3" /><Skeleton className="h-7 w-12 mb-2" /><Skeleton className="h-3 w-20" />
-          </div>
-        )) : kpis.isError ? (
-          <div className="col-span-2 md:col-span-4 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-            <ErrorState onRetry={() => kpis.refetch()} />
-          </div>
-        ) : kpis.data ? <>
-          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiTotal}</span>
-              <div className="w-8 h-8 rounded-lg bg-[#1F114C]/10 flex items-center justify-center"><svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4" /></svg></div>
+    <div className="flex flex-col lg:h-full lg:overflow-hidden">
+      <PageHeader
+        title={o.title}
+        actions={
+          <Button onClick={() => setShowCreateModal(true)} icon={icon('M12 5v14M5 12h14')}>
+            {o.newOrg}
+          </Button>
+        }
+      />
+      <div className="flex min-h-0 flex-1 flex-col p-3 md:p-6">
+        {/* KPIs */}
+        <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 md:mb-6 md:grid-cols-4 md:gap-4">
+          {kpis.isLoading ? (
+            Array.from({ length: 4 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          ) : kpis.isError ? (
+            <div className="col-span-2 rounded-xl bg-white shadow-card md:col-span-4">
+              <ErrorState onRetry={() => kpis.refetch()} error={kpis.error} size="compact" />
             </div>
-            <div className="text-xl md:text-2xl font-bold text-[#333]">{kpis.data.total}</div>
-            <div className="text-xs text-[#8B8B8B] mt-1">{kpis.data.active} {t.organizations.kpiActive.toLowerCase()}</div>
-          </div>
-          <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiActive}</span>
-              <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center"><svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><path d="M22 4L12 14.01l-3-3" /></svg></div>
-            </div>
-            <div className="text-xl md:text-2xl font-bold text-[#333]">{kpis.data.active}</div>
-            <div className="text-xs text-[#8B8B8B] mt-1">{kpis.data.total > 0 ? Math.round((kpis.data.active / kpis.data.total) * 100) : 0}% del total</div>
-          </div>
-          <div className={`bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 ${kpis.data.suspended > 0 ? 'border border-red-200' : ''}`}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiSuspended}</span>
-              <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center"><svg className="w-4 h-4 text-[#DD0C15]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M15 9l-6 6M9 9l6 6" /></svg></div>
-            </div>
-            <div className={`text-xl md:text-2xl font-bold ${kpis.data.suspended > 0 ? 'text-[#DD0C15]' : 'text-[#333]'}`}>{kpis.data.suspended}</div>
-            <div className={`text-xs mt-1 ${kpis.data.suspended > 0 ? 'text-[#DD0C15] font-medium' : 'text-[#8B8B8B]'}`}>{kpis.data.suspended > 0 ? t.common.requiresAttention : t.common.noIssues}</div>
-          </div>
-          <div className={`bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 ${kpis.data.expiringThisWeek > 0 ? 'border border-amber-200' : ''}`}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-[#8B8B8B] font-medium uppercase tracking-wide">{t.organizations.kpiTrialing}</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center"><svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg></div>
-            </div>
-            <div className="text-xl md:text-2xl font-bold text-[#333]">{kpis.data.trialing}</div>
-            <div className={`text-xs mt-1 font-medium ${kpis.data.expiringThisWeek > 0 ? 'text-amber-600' : 'text-[#8B8B8B]'}`}>{kpis.data.expiringThisWeek} vencen esta semana</div>
-          </div>
-        </> : null}
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4 mb-4 flex items-center gap-3 flex-shrink-0">
-        <div className="relative flex-1 max-w-xs">
-          <input type="text" placeholder={t.organizations.searchOrg} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="w-full h-9 pl-9 pr-4 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]" />
-          <svg className="w-4 h-4 text-[#8B8B8B] absolute left-3 top-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+          ) : kpis.data ? (
+            <>
+              <KpiCard label={o.kpiTotal} value={kpis.data.total} icon={icon('M3 21h18M3 7v14m6-14v14m6-14v14m6-14v14M3 7l9-4 9 4')} />
+              <KpiCard
+                label={o.kpiActive}
+                value={kpis.data.active}
+                subtitle={formatMessage(o.kpiActiveShare, {
+                  pct: kpis.data.total > 0 ? Math.round((kpis.data.active / kpis.data.total) * 100) : 0,
+                })}
+                icon={icon('M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z')}
+              />
+              <KpiCard
+                label={o.kpiSuspended}
+                value={kpis.data.suspended}
+                tone="danger"
+                highlight={kpis.data.suspended > 0}
+                subtitle={kpis.data.suspended > 0 ? t.common.requiresAttention : t.common.noIssues}
+                icon={icon('M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636')}
+              />
+              <KpiCard
+                label={o.kpiTrialing}
+                value={kpis.data.trialing}
+                subtitle={formatMessage(o.expiringThisWeek, { count: kpis.data.expiringThisWeek })}
+                icon={icon('M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z')}
+              />
+            </>
+          ) : null}
         </div>
-        <select value={planFilter} onChange={(e) => { setPlanFilter(e.target.value); setPage(0); }} className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:border-[#1F114C]">
-          <option value="">{t.organizations.filterAll} Plans</option>
-          <option value="trial">Trial</option>
-          <option value="starter">Starter</option>
-          <option value="professional">Professional</option>
-          <option value="enterprise">Enterprise</option>
-        </select>
-        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }} className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:border-[#1F114C]">
-          <option value="">{t.organizations.filterAll}</option>
-          <option value="active">{t.organizations.statusActive}</option>
-          <option value="suspended">{t.organizations.statusSuspended}</option>
-        </select>
-        {(search || planFilter || statusFilter) && (
-          <button onClick={clearFilters} className="h-9 px-3 rounded-lg text-sm text-[#8B8B8B] hover:text-[#585858] transition font-medium">{t.common.close} filtros</button>
-        )}
-        <div className="flex-1" />
-        <button onClick={handleExport} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] font-medium hover:bg-[#F6F6F6] transition flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          CSV
-        </button>
-        <button onClick={() => setShowCreateModal(true)} className="h-9 px-4 rounded-lg bg-[#1F114C] text-sm text-white font-medium hover:bg-[#2a1866] transition flex items-center gap-1.5">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-          {t.organizations.newOrg}
-        </button>
-      </div>
 
-      {/* Bulk bar */}
-      {selectedIds.length > 0 && (
-        <OrgBulkBar
-          selectedIds={selectedIds}
-          organizations={organizations}
-          onDeselectAll={() => setSelectedIds([])}
-        />
-      )}
-
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {orgs.isError ? (
-            <ErrorState onRetry={() => orgs.refetch()} />
-          ) : (
-            <OrgTable
-              organizations={organizations}
-              isLoading={orgs.isLoading}
-              selectedIds={selectedIds}
-              onSelectIds={setSelectedIds}
-              sortBy={sortBy}
-              sortDir={sortDir}
-              onSort={handleSort}
-              onEdit={setEditOrg}
+        {/* Filters */}
+        <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2 rounded-xl bg-white p-3 shadow-card md:gap-3 md:p-4">
+          <div className="relative w-full sm:w-auto sm:min-w-56 sm:max-w-xs sm:flex-1">
+            <input
+              type="search"
+              aria-label={o.searchOrgLabel}
+              placeholder={o.searchOrg}
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              className={inputClasses('md', 'pl-9')}
             />
-          )}
-        </div>
-        <div className="flex items-center justify-between px-5 py-3 border-t border-[#EDEDED] flex-shrink-0">
-          <span className="text-xs text-[#8B8B8B]">{t.common.showing} {organizations.length > 0 ? page * limit + 1 : 0}-{page * limit + organizations.length} {t.common.of} {total}</span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40"><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" /></svg></button>
-            {Array.from({ length: Math.min(Math.ceil(total / limit), 5) }).map((_, i) => (
-              <button key={i} onClick={() => setPage(i)} className={`w-8 h-8 rounded-lg text-xs font-medium transition ${page === i ? 'bg-[#1F114C] text-white' : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'}`}>{i + 1}</button>
-            ))}
-            <button onClick={() => setPage((p) => p + 1)} disabled={(page + 1) * limit >= total} className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40"><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg></button>
+            <svg className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
           </div>
+          <select
+            aria-label={o.filterPlan}
+            value={planFilter}
+            onChange={(e) => { setPlanFilter(e.target.value); setPage(0); }}
+            className={selectClasses('md', 'w-full sm:w-auto')}
+          >
+            <option value="">{o.allPlans}</option>
+            {PLAN_KEYS.map((p) => <option key={p} value={p}>{planLabel(p, t)}</option>)}
+          </select>
+          <select
+            aria-label={o.filterStatus}
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+            className={selectClasses('md', 'w-full sm:w-auto')}
+          >
+            <option value="">{o.allStatuses}</option>
+            <option value="active">{o.statusActive}</option>
+            <option value="suspended">{o.statusSuspended}</option>
+          </select>
+          {hasFilters && (
+            <Button variant="tertiary" onClick={clearFilters}>{t.common.clearFilters}</Button>
+          )}
+          <div className="hidden flex-1 sm:block" />
+          <Button variant="secondary" onClick={handleExport} icon={icon('M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')}>
+            {o.exportCsv}
+          </Button>
+        </div>
+
+        {/* Bulk bar */}
+        {selectedIds.length > 0 && (
+          <OrgBulkBar
+            selectedIds={selectedIds}
+            organizations={organizations}
+            onDeselectAll={() => setSelectedIds([])}
+          />
+        )}
+
+        {/* Table */}
+        <div className="flex min-h-[28rem] flex-1 flex-col overflow-hidden rounded-xl bg-white shadow-card lg:min-h-0">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {orgs.isError ? (
+              <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
+            ) : (
+              <OrgTable
+                organizations={organizations}
+                isLoading={orgs.isLoading}
+                selectedIds={selectedIds}
+                onSelectIds={setSelectedIds}
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={handleSort}
+                onEdit={setEditOrg}
+                hasFilters={hasFilters}
+                onClearFilters={clearFilters}
+                onCreate={() => setShowCreateModal(true)}
+              />
+            )}
+          </div>
+          <Pagination page={page} limit={limit} total={total} onPageChange={setPage} className="shrink-0" />
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { invokeAgent } from '../invoke';
 import { wrapAsData } from '../pii';
 
-const SYSTEM_PROMPT = `You are the candidate-facing FAQ assistant for TIMS ATS.
+export const CANDIDATE_FAQ_SYSTEM_PROMPT = `You are the candidate-facing FAQ assistant for TIMS ATS.
 Answer questions about the candidate's own application process using ONLY the supplied candidate portal context.
 
 Output format: JSON only, with this exact shape:
@@ -16,10 +16,10 @@ Rules:
 - If the context does not contain enough information, say that the recruiting team should confirm it.
 - Do not invent dates, interview links, offer terms, stages, or application outcomes.
 - Offer amounts: annualBaseSalary is the ANNUAL base salary and monthlyEquivalent is that amount divided by 12, both in the offer's ISO currency code. Whenever you state an amount, name the currency code and say whether it is per year or per month; never present the annual figure as a monthly one.
-- Keep the answer concise and candidate-friendly.
-- sources must contain only these labels when relevant: profile, applications, interviews, offers.`;
+- Keep the answer concise and candidate-friendly, and under 1200 characters.
+- sources must contain only these labels when relevant (at most 4): profile, applications, interviews, offers.`;
 
-const outputSchema = z.object({
+export const candidateFaqOutputSchema = z.object({
   answer: z.string().min(1).max(1200),
   sources: z.array(z.enum(['profile', 'applications', 'interviews', 'offers'])).max(4),
 });
@@ -77,7 +77,7 @@ export async function answerCandidateFaq(
     slug: 'candidate-faq',
     orgId,
     input,
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: CANDIDATE_FAQ_SYSTEM_PROMPT,
     buildUserMessage: ({ question, context }) => {
       const contextJson = JSON.stringify(context);
       return [
@@ -86,7 +86,7 @@ export async function answerCandidateFaq(
         'Answer the candidate question using only the candidate_portal_context_json. Return JSON only.',
       ].join('\n\n');
     },
-    schema: outputSchema,
+    schema: candidateFaqOutputSchema,
     fallback: () => ({ answer: fallbackAnswer, sources: [] }),
     maxTokens: 900,
   });

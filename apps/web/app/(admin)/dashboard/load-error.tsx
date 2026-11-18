@@ -1,12 +1,12 @@
 'use client';
 
-// Muted, proportionate "couldn't load data" row for a failed dashboard query.
-// Distinct from EmptyState (which means "no data"), so an errored section never
-// renders misleading zeros or an empty-looking placeholder.
-export function LoadError({ message }: { message: string }) {
+import { ErrorState } from '../../../components';
+
+// Proportionate "couldn't load" block for one failed dashboard section. Distinct from EmptyState (which
+// means "no data"), so an errored section never renders misleading zeros. With `onRetry` (the caller's
+// query refetch) the person can recover this one card without reloading the page (feedback.md).
+export function LoadError({ message, onRetry, error }: { message: string; onRetry?: () => void; error?: unknown }) {
   return (
-    <div className="flex items-center justify-center rounded-lg bg-[#F6F6F6] p-4 text-[13px] text-[#8B8B8B]">
-      {message}
-    </div>
+    <ErrorState size="compact" title={message} onRetry={onRetry} error={error} className="rounded-lg bg-surface" />
   );
 }

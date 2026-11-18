@@ -4,8 +4,20 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
+import { useCan } from '../../../../../lib/permissions';
 import { describeOfferActionError, isStateConflict } from '../../../../../lib/offer-action-error';
 import { UserPicker, type PickedUser } from '../../../../../components/user-picker';
+import { Button } from '../../../../../components/button';
+import { BUTTON_GROUP_CLASSES, TEXT_LINK_CLASSES } from '../../../../../components/button-styles';
+import { FIELD_LABEL_CLASSES, textareaClasses } from '../../../../../components/field-styles';
+
+// An open confirmation remembers the step it was opened for (Codex P1): a decision or withdrawal is
+// sent for THAT step, and the confirmation closes by itself when a refetch shows a different step.
+type Decision = { kind: 'approve' | 'reject'; stepId: string };
+
+// Decision rows put Cancel and the secondary actions first and the primary last; below sm they stack full
+// width with the primary on top (buttons.md › Style, foundation-spec.md §5).
+const ROW = `${BUTTON_GROUP_CLASSES} [&>*]:max-sm:w-full`;
 
 export function OfferApprovalActions({
   offerId,
@@ -15,53 +27,115 @@ export function OfferApprovalActions({
 }: {
   offerId: string;
   status: string;
-  approvals: Array<{ approver: { id: string }; status: string }>;
+  approvals: Array<{ id: string; approver: { id: string }; status: string }>;
   onUpdated: () => void;
 }) {
   const { t } = useI18n();
+  const can = useCan();
   const [approver, setApprover] = useState<PickedUser | null>(null);
-  const [rejectionComment, setRejectionComment] = useState('');
+  // B-13: approve and reject are each a deliberate second step; the reason box appears only for reject.
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [comment, setComment] = useState('');
+  const [withdrawStepId, setWithdrawStepId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const me = trpc.user.me.useQuery(undefined, { enabled: status === 'pending_approval' });
   const submit = trpc.offer.submitForApproval.useMutation();
   const approve = trpc.offer.approve.useMutation();
   const reject = trpc.offer.reject.useMutation();
-  const isPending = submit.isPending || approve.isPending || reject.isPending;
-  const isMyTurn = approvals.some((item) => item.approver.id === me.data?.id && item.status === 'pending');
+  const withdraw = trpc.offer.withdrawApproval.useMutation();
+  const isPending = submit.isPending || approve.isPending || reject.isPending || withdraw.isPending;
+  // Decisions and withdrawals name the step the viewer saw, so a stale tab can never act on a newer,
+  // resubmitted request (the server answers CONFLICT and the card refetches).
+  const myStep = approvals.find((item) => item.approver.id === me.data?.id && item.status === 'pending');
+  const isMyTurn = myStep !== undefined;
+  const livePendingStep = approvals.find((item) => item.status === 'pending');
+  // Same gate as submitForApproval / withdrawApproval on the server.
+  const canRequest = can('offer', 'create') || can('offer', 'update');
+  // A confirmation opened for a step that is no longer the live one (withdrawn and resubmitted) is closed.
+  const activeDecision = decision !== null && decision.stepId === myStep?.id ? decision : null;
+  const confirmWithdrawStepId =
+    withdrawStepId !== null && withdrawStepId === livePendingStep?.id ? withdrawStepId : null;
+  const confirmingWithdraw = confirmWithdrawStepId !== null;
 
-  const run = async (action: () => Promise<unknown>) => {
+  const closeForms = () => {
+    setDecision(null);
+    setComment('');
+    setWithdrawStepId(null);
+  };
+  const startDecision = (kind: Decision['kind']) => {
+    if (!myStep) return;
+    setComment('');
+    setDecision({ kind, stepId: myStep.id });
+  };
+
+  // `action` resolves to the success message to toast (B-13: every action confirms what happened).
+  const run = async (action: () => Promise<string>) => {
     setError(null);
     try {
-      await action();
+      const success = await action();
+      toast(success, { type: 'success' });
+      closeForms();
       onUpdated();
     } catch (cause) {
-      const message = describeOfferActionError(cause, { forbidden: t.offers.errorForbiddenAction, generic: t.offers.errorOfferAction });
+      const message = describeOfferActionError(cause, {
+        forbidden: t.offers.errorForbiddenAction,
+        generic: t.offers.errorOfferAction,
+      });
       setError(message);
       toast(message, { type: 'error' });
-      // Another decision won the race: refetch so the stale approve/reject buttons disappear.
-      if (isStateConflict(cause)) onUpdated();
+      // The request moved on (another decision won, or it was withdrawn and resubmitted): close the open
+      // confirmation, so it cannot be re-sent against the newer request, and refetch.
+      if (isStateConflict(cause)) {
+        closeForms();
+        onUpdated();
+      }
     }
   };
 
   if (status !== 'draft' && status !== 'pending_approval') return null;
+  // Only what the viewer can actually do (Codex P2): no request form without offer:create/update, and
+  // no empty card for a viewer who can neither decide nor withdraw.
+  if (status === 'draft' && !canRequest) return null;
+  if (status === 'pending_approval' && (me.isLoading || (!isMyTurn && (!canRequest || !livePendingStep)))) {
+    return null;
+  }
+
+  // B-32: the card is titled by what the viewer can do here, not "Cadena de Aprobación" a second time.
+  const title =
+    status === 'draft' ? t.offers.requestApproval : isMyTurn ? t.offers.yourDecision : t.offers.approvalRequestTitle;
+
+  const requestApproval = (picked: PickedUser) =>
+    run(async () => {
+      await submit.mutateAsync({ id: offerId, approverIds: [picked.id] });
+      setApprover(null);
+      return t.offers.approvalRequestedTo.replace('{name}', `${picked.firstName} ${picked.lastName}`.trim());
+    });
+
+  // Stuck-approval unblock: whoever may request approval can take the request back and send it to someone
+  // else, also when they are one of its approvers (rejecting would end the offer for good).
+  const withdrawButton = canRequest && livePendingStep && (
+    <Button variant="secondary" disabled={isPending} onClick={() => setWithdrawStepId(livePendingStep.id)}>
+      {t.offers.withdrawApproval}
+    </Button>
+  );
 
   return (
-    <div className="rounded-xl border border-[#EDEDED] bg-white p-4">
-      <h3 className="mb-3 text-[14px] font-semibold text-[#1F114C]">{t.offers.approvalChain}</h3>
+    <section className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5" aria-labelledby="offer-approval-actions-title">
+      <h2 id="offer-approval-actions-title" className="mb-3 text-heading font-semibold text-brand">{title}</h2>
       {status === 'draft' && (
         <div className="space-y-3">
-          <p className="text-[12px] font-medium text-[#585858]">{t.offers.approver}</p>
+          <p className="text-body font-medium text-primary">{t.offers.approver}</p>
           {/* Server-side search (not a fixed first page) so every eligible approver stays reachable. */}
           {approver ? (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#EDEDED] px-3 py-2">
-              <span className="truncate text-[13px] text-[#333]">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+              <span className="truncate text-body text-primary">
                 {approver.firstName} {approver.lastName}
               </span>
               <button
                 type="button"
                 disabled={isPending}
                 onClick={() => setApprover(null)}
-                className="text-[12px] font-medium text-[#1F114C] disabled:opacity-50"
+                className={`${TEXT_LINK_CLASSES} disabled:opacity-50`}
               >
                 {t.common.change}
               </button>
@@ -77,52 +151,122 @@ export function OfferApprovalActions({
               emptyLabel={t.assignablePeople.noEligibleApprovers}
             />
           )}
-          <button
-            type="button"
-            disabled={!approver || isPending}
-            onClick={() => approver && run(() => submit.mutateAsync({ id: offerId, approverIds: [approver.id] }))}
-            className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
-          >
+          <Button disabled={!approver || isPending} onClick={() => approver && requestApproval(approver)}>
             {t.offers.requestApproval}
-          </button>
+          </Button>
         </div>
       )}
-      {status === 'pending_approval' && isMyTurn && (
+      {status === 'pending_approval' && confirmWithdrawStepId !== null && (
         <div className="space-y-3">
-          <label className="block text-[12px] font-medium text-[#585858]">
-            {t.offers.rejectionReason}
-            <textarea
-              value={rejectionComment}
-              maxLength={20000}
-              onChange={(event) => setRejectionComment(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]"
-            />
-          </label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => run(() => approve.mutateAsync({ id: offerId }))}
-              className="rounded-lg bg-green-600 px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
+          <p className="text-callout text-secondary">{t.offers.withdrawApprovalPrompt}</p>
+          <div className={ROW}>
+            <Button variant="secondary" disabled={isPending} onClick={() => setWithdrawStepId(null)}>
+              {t.common.cancel}
+            </Button>
+            <Button
+              loading={isPending}
+              onClick={() =>
+                run(async () => {
+                  await withdraw.mutateAsync({ id: offerId, approvalId: confirmWithdrawStepId });
+                  return t.offers.withdrawApprovalSuccess;
+                })
+              }
             >
-              {t.offers.approve}
-            </button>
-            <button
-              type="button"
-              disabled={isPending || !rejectionComment.trim()}
-              onClick={() => run(() => reject.mutateAsync({ id: offerId, comment: rejectionComment.trim() }))}
-              className="rounded-lg border border-red-300 px-4 py-2 text-[12px] font-medium text-red-700 disabled:opacity-50"
-            >
-              {t.offers.reject}
-            </button>
+              {t.offers.withdrawApprovalConfirm}
+            </Button>
           </div>
         </div>
       )}
+      {status === 'pending_approval' && !confirmingWithdraw && isMyTurn && activeDecision === null && (
+        <div className={ROW}>
+          {withdrawButton}
+          <Button variant="destructive-secondary" disabled={isPending} onClick={() => startDecision('reject')}>
+            {t.offers.reject}
+          </Button>
+          <Button disabled={isPending} onClick={() => startDecision('approve')}>
+            {t.offers.approve}
+          </Button>
+        </div>
+      )}
+      {status === 'pending_approval' && !confirmingWithdraw && activeDecision !== null && (
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="offer-decision-comment" className={FIELD_LABEL_CLASSES}>
+              {activeDecision.kind === 'reject' ? (
+                <>
+                  {t.offers.rejectionReason}
+                  <span aria-hidden="true"> *</span>
+                </>
+              ) : (
+                t.offers.approvalCommentOptional
+              )}
+            </label>
+            <textarea
+              id="offer-decision-comment"
+              value={comment}
+              maxLength={20000}
+              autoFocus
+              required={activeDecision.kind === 'reject'}
+              onChange={(event) => setComment(event.target.value)}
+              className={textareaClasses()}
+            />
+          </div>
+          <div className={ROW}>
+            <Button variant="secondary" disabled={isPending} onClick={closeForms}>
+              {t.common.cancel}
+            </Button>
+            {activeDecision.kind === 'approve' ? (
+              <Button
+                loading={isPending}
+                onClick={() =>
+                  run(async () => {
+                    const trimmed = comment.trim();
+                    const result = await approve.mutateAsync({
+                      id: offerId,
+                      approvalId: activeDecision.stepId,
+                      ...(trimmed ? { comment: trimmed } : {}),
+                    });
+                    return result.status === 'approved'
+                      ? t.offers.approvalRecordedFinal
+                      : t.offers.approvalRecordedPartial;
+                  })
+                }
+              >
+                {t.offers.approveConfirm}
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                disabled={!comment.trim()}
+                loading={isPending}
+                onClick={() =>
+                  run(async () => {
+                    await reject.mutateAsync({
+                      id: offerId,
+                      approvalId: activeDecision.stepId,
+                      comment: comment.trim(),
+                    });
+                    return t.offers.offerRejectedToast;
+                  })
+                }
+              >
+                {t.offers.rejectConfirm}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      {status === 'pending_approval' && !confirmingWithdraw && !isMyTurn && canRequest && (
+        <div className="space-y-3">
+          <p className="text-callout text-secondary">{t.offers.awaitingApproverDecision}</p>
+          {withdrawButton}
+        </div>
+      )}
       {error && (
-        <p role="alert" className="mt-2 text-[12px] text-red-600">
+        <p role="alert" className="mt-2 text-callout text-danger">
           {error}
         </p>
       )}
-    </div>
+    </section>
   );
 }

@@ -1,34 +1,20 @@
 'use client';
 
-import { useI18n } from '../../../../lib/i18n';
-import { ErrorState } from '../../../../components';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
+import { formatNumber, formatPercent } from '../../../../lib/format-utils';
+import { ErrorState, KpiCard, KpiCardSkeleton } from '../../../../components';
 import {
   useDeiDashboardKpis,
   useDeiGenderRepresentation,
   useDeiPayEquity,
   useDeiInclusionIndex,
 } from '../../../../lib/platform-api/dei';
+import { DeiGenderRatioKpi } from './dei-gender-ratio-kpi';
 
-function KpiSkeleton() {
-  return (
-    <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] animate-pulse">
-      <div className="h-20 bg-gray-100 rounded" />
-    </div>
-  );
-}
-
-function KpiCard({ label, children, sub }: { label: string; children: React.ReactNode; sub?: string }) {
-  return (
-    <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-      <p className="text-[11px] text-[#8B8B8B] mb-1">{label}</p>
-      {children}
-      {sub && <p className="text-[10px] text-[#8B8B8B] mt-1">{sub}</p>}
-    </div>
-  );
-}
+const GRID = 'mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5';
 
 export function DeiKpis() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const kpis = useDeiDashboardKpis();
   const genders = useDeiGenderRepresentation();
   const pay = useDeiPayEquity();
@@ -36,34 +22,29 @@ export function DeiKpis() {
 
   if (kpis.isLoading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+      <div className={GRID} aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
         {Array.from({ length: 5 }).map((_, i) => (
-          <KpiSkeleton key={i} />
+          <KpiCardSkeleton key={i} />
         ))}
       </div>
     );
   }
 
-  if (kpis.isError || !kpis.data) {
+  if (kpis.isError || !kpis.data || genders.isError || pay.isError || inclusion.isError) {
     return (
-      <div className="bg-white rounded-xl p-4 mb-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center text-[12px] text-[#DD0C15]">
-        {t.dei.errKpis}
-      </div>
-    );
-  }
-
-  if (genders.isError || pay.isError || inclusion.isError) {
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <div className="col-span-2 md:col-span-5 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-          <ErrorState
-            onRetry={() => {
-              genders.refetch();
-              pay.refetch();
-              inclusion.refetch();
-            }}
-          />
-        </div>
+      <div className="mb-4 rounded-xl border border-border bg-white shadow-card">
+        <ErrorState
+          size="compact"
+          title={t.dei.errKpis}
+          error={kpis.error ?? genders.error ?? pay.error ?? inclusion.error}
+          onRetry={() => {
+            kpis.refetch();
+            genders.refetch();
+            pay.refetch();
+            inclusion.refetch();
+          }}
+        />
       </div>
     );
   }
@@ -72,65 +53,54 @@ export function DeiKpis() {
   // Suppressed gender distribution (round 7) returns empty groups → ratio bar shows 0%
   // for all (never a real share). Read from the { groups, suppressed } shape.
   const byGender = Object.fromEntries((genders.data?.groups ?? []).map((g) => [g.gender, g.percentage ?? 0]));
-  const male = byGender.male ?? 0;
-  const female = byGender.female ?? 0;
-  const nb = byGender.non_binary ?? 0;
   const gap = pay.data?.gapPct;
+  const gapTone = gap == null ? undefined : Math.abs(gap) < 3 ? 'success' : Math.abs(gap) <= 5 ? 'warning' : 'danger';
+  const inclusionIndex = inclusion.data?.index;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-      {/* Gender ratio */}
-      <KpiCard label={t.dei.kpiGenderRatio} sub={t.dei.kpiGenderRatioHint}>
-        <div className="flex items-center justify-center gap-2 my-1">
-          <span className="text-[11px] font-semibold text-blue-600">{male}%</span>
-          <span className="text-[11px] font-semibold text-pink-500">{female}%</span>
-          <span className="text-[11px] font-semibold text-purple-400">{nb}%</span>
-        </div>
-        <div className="flex gap-0.5 h-2 rounded-full overflow-hidden mt-2">
-          <div className="bg-blue-500" style={{ width: `${male}%` }} />
-          <div className="bg-pink-400" style={{ width: `${female}%` }} />
-          <div className="bg-purple-400" style={{ width: `${nb}%` }} />
-        </div>
-      </KpiCard>
+    <div className={GRID}>
+      <DeiGenderRatioKpi male={byGender.male ?? 0} female={byGender.female ?? 0} nonBinary={byGender.non_binary ?? 0} />
 
       {/* Parity index — null when any gender group is min-5 suppressed (cross-endpoint differencing guard). */}
-      <KpiCard label={t.dei.kpiParity} sub={t.dei.kpiParityHint}>
-        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">
-          {d.genderParityIndex === null ? t.dei.na : d.genderParityIndex.toFixed(2)}
-        </p>
-        <p className="text-[10px] text-[#8B8B8B]">
-          {d.womenPct === null ? t.dei.na : `${d.womenPct}${t.dei.womenSuffix}`}
-        </p>
-      </KpiCard>
+      <KpiCard
+        label={t.dei.kpiParity}
+        value={
+          d.genderParityIndex === null
+            ? '—'
+            : formatNumber(d.genderParityIndex, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        }
+        subtitle={
+          d.womenPct === null
+            ? formatMessage(t.dei.kpiParityHint, { one: formatNumber(1, locale, { minimumFractionDigits: 1 }) })
+            : formatMessage(t.dei.womenShare, { pct: formatPercent(d.womenPct, locale) })
+        }
+        unavailableReason={d.genderParityIndex === null ? t.dei.noData : undefined}
+      />
 
-      {/* Pay gap */}
-      <KpiCard label={t.dei.kpiPayGap} sub={t.dei.kpiPayGapHint}>
-        {gap === null || gap === undefined ? (
-          <p className="text-[18px] font-bold text-[#8B8B8B] mt-2">{t.dei.na}</p>
-        ) : (
-          <p
-            className={`text-[20px] md:text-[24px] font-bold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}
-          >
-            {gap > 0 ? '+' : ''}
-            {gap}%
-          </p>
-        )}
-      </KpiCard>
+      <KpiCard
+        label={t.dei.kpiPayGap}
+        value={gap == null ? '—' : `${gap > 0 ? '+' : ''}${formatPercent(gap, locale, 1)}`}
+        subtitle={t.dei.kpiPayGapHint}
+        tone={gapTone}
+        unavailableReason={gap == null ? t.dei.noData : undefined}
+      />
 
-      {/* Inclusion */}
-      <KpiCard label={t.dei.kpiInclusion} sub={t.dei.kpiInclusionHint}>
-        <p className="text-[20px] md:text-[24px] font-bold text-green-600">{inclusion.data?.index ?? t.dei.na}</p>
-      </KpiCard>
+      <KpiCard
+        label={t.dei.kpiInclusion}
+        value={inclusionIndex == null ? '—' : formatNumber(inclusionIndex, locale)}
+        subtitle={t.dei.kpiInclusionHint}
+        unavailableReason={inclusionIndex == null ? t.dei.noData : undefined}
+      />
 
-      {/* Demographics coverage */}
-      <KpiCard label={t.dei.kpiCoverage} sub={`${d.totalEmployees} ${t.dei.employeesSuffix}`}>
-        <p className="text-[20px] md:text-[24px] font-bold text-[#1F114C]">
-          {d.demographicsCoverage === null ? t.dei.na : `${d.demographicsCoverage}%`}
-        </p>
-        <p className="text-[10px] text-[#8B8B8B]">
-          {d.totalNationalities} {t.dei.nationalitiesSuffix}
-        </p>
-      </KpiCard>
+      <KpiCard
+        label={t.dei.kpiCoverage}
+        value={d.demographicsCoverage === null ? '—' : formatPercent(d.demographicsCoverage, locale)}
+        subtitle={formatMessage(t.dei.coverageCaption, {
+          employees: formatNumber(d.totalEmployees, locale),
+          nationalities: d.totalNationalities === null ? '—' : formatNumber(d.totalNationalities, locale),
+        })}
+        unavailableReason={d.demographicsCoverage === null ? t.dei.noData : undefined}
+      />
     </div>
   );
 }

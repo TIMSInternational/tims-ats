@@ -466,7 +466,7 @@ jobs:
           GOT_IMAGE="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageIdentifier'])")"
           ENV_AFTER="$(python3 -c "import json;print(len(json.load(open('after.json'))['Service']['SourceConfiguration']['ImageRepository']['ImageConfiguration'].get('RuntimeEnvironmentVariables',{})))")"
           URL="$(python3 -c "import json;print(json.load(open('after.json'))['Service']['ServiceUrl'])")"
-          # /ready runs the dependency checks (Postgres; Redis when configured) and answers 503 when the
+          # /ready runs the dependency checks (Postgres; the rate-limit table when configured) and answers 503 when the
           # DB is unreachable. /health is liveness only (Program.cs: Predicate = _ => false) and would
           # pass a pod that cannot reach its database. Each probe is bounded (--max-time), and a few
           # retries absorb the moment right after the operation reports SUCCEEDED. The API exposes no

@@ -10,7 +10,7 @@ function assertConfigured(): void {
   if (!isBillingConfigured()) {
     throw new TRPCError({
       code: 'PRECONDITION_FAILED',
-      message: 'El pago con Stripe no esta configurado.',
+      message: 'El pago con Stripe no está configurado.',
     });
   }
 }
@@ -97,7 +97,7 @@ export const billingService = {
 
     const ctx = await repo.getOrgBillingContext(orgId);
     if (!ctx) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada.' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Organización no encontrada.' });
     }
     // An org with an existing billing relationship (live Stripe sub OR a paid
     // local/manually-billed plan) must change plans via the Billing Portal or sales
@@ -105,7 +105,7 @@ export const billingService = {
     if (blocksSelfServeCheckout(ctx.subscription)) {
       throw new TRPCError({
         code: 'CONFLICT',
-        message: 'Ya tienes una suscripcion activa. Administra tu plan desde el portal de facturacion.',
+        message: 'Ya tienes una suscripción activa. Administra tu plan desde el portal de facturación.',
       });
     }
 
@@ -130,7 +130,7 @@ export const billingService = {
     if (!session.url) {
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
-        message: 'No se pudo crear la sesion de pago.',
+        message: 'No se pudo crear la sesión de pago.',
       });
     }
     return { url: session.url };
@@ -149,7 +149,7 @@ export const billingService = {
     if (!customerId) {
       throw new TRPCError({
         code: 'PRECONDITION_FAILED',
-        message: 'Aun no tienes una cuenta de facturacion de Stripe.',
+        message: 'Aún no tienes una cuenta de facturación de Stripe.',
       });
     }
     const configuration = process.env.STRIPE_PORTAL_CONFIGURATION_ID;
@@ -173,7 +173,7 @@ export const billingService = {
     if (!subscriptionId) {
       throw new TRPCError({
         code: 'PRECONDITION_FAILED',
-        message: 'No hay una suscripcion de Stripe activa para cancelar.',
+        message: 'No hay una suscripción de Stripe activa para cancelar.',
       });
     }
     await getStripe().subscriptions.update(subscriptionId, { cancel_at_period_end: true });

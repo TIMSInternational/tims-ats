@@ -28,12 +28,31 @@ const buildAccessForUserMock = vi.hoisted(() =>
 );
 
 const mockDb = vi.hoisted(() => ({
-  offer: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  offer: {
+    findFirst: vi.fn(),
+    findFirstOrThrow: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    count: vi.fn(async () => 1),
+  },
   organization: { findFirst: vi.fn() },
   user: { findMany: vi.fn() },
   offerApproval: { createMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
 }));
-const runTenantTransactionMock = vi.hoisted(() => vi.fn());
+const runTenantTransactionMock = vi.hoisted(() =>
+  vi.fn(async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(mockDb)),
+);
+
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+// The send also moves the candidate to the "Oferta" stage; that is tested in tests/offer/offer-sent-stage-advance.test.ts.
+vi.mock('../../packages/api/src/services/offer-stage-advance.service', () => ({
+  prepareOfferStageAdvance: vi.fn(async () => ({ advance: vi.fn(async () => 'moved') })),
+}));
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+  lockAndAssertApplicationNotRejected: vi.fn(async () => undefined),
+}));
 
 vi.mock('@tims/db', () => ({
   tenantDb: mockDb,
@@ -163,7 +182,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = 'https://app.tims.test';
   mockDb.offer.update.mockResolvedValue({ id: OFFER_ID, status: 'pending_approval', approvals: [], settings: {} });
-  mockDb.offer.findFirstOrThrow.mockResolvedValue({ id: OFFER_ID, status: 'pending_approval', approvals: [], settings: {} });
+  mockDb.offer.findFirstOrThrow.mockResolvedValue({
+    id: OFFER_ID,
+    status: 'pending_approval',
+    approvals: [],
+    settings: {},
+  });
   mockDb.offerApproval.count.mockResolvedValue(0);
   mockDb.offer.updateMany.mockResolvedValue({ count: 1 });
   sendOfferToCandidateMock.mockResolvedValue(true);
@@ -189,7 +213,9 @@ beforeEach(() => {
 });
 
 describe('the canonical matrix itself is unchanged (least privilege)', () => {
-  it('recruiter still holds offer:create but NOT offer:update — terms stay editable only by HR admins', () => {
+  // Draft terms are editable with offer:create (offer.update, draft-only — tests/offer/offer-edit-withdraw.test.ts);
+  // submitted, approved and sent terms stay frozen, and re-sending a live link stays offer:update.
+  it('recruiter still holds offer:create but NOT offer:update — the matrix itself is not widened', () => {
     expect(decide(['recruiter'], 'offer', 'create').allowed).toBe(true);
     expect(decide(['recruiter'], 'offer', 'update').allowed).toBe(false);
   });
@@ -333,7 +359,9 @@ describe('offer.submitForApproval — recruiter can request approval with a vali
     }
     expect(error).toMatchObject({
       code: 'BAD_REQUEST',
-      message: 'Uno o mas aprobadores no tienen esta oferta dentro de su alcance',
+      // B-11: the message names the fix (the vacancy's hiring manager) instead of a bare scope error.
+      message:
+        'Uno de los aprobadores no tiene esta oferta dentro de su alcance. Si es el líder de la vacante, asígnalo como Responsable de la contratación en la vacante (botón Editar) o elige otro aprobador.',
     });
     expect(mockDb.offerApproval.createMany).not.toHaveBeenCalled();
     expect(mockDb.offer.update).not.toHaveBeenCalled();

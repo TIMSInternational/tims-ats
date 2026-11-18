@@ -12,7 +12,7 @@ const read = (path: string) => readFileSync(resolve(__dirname, '../..', path), '
 
 describe('Supabase subprocessor row — credentials the code sends', () => {
   it('the sign-in form sends the entered password to Supabase Auth', () => {
-    expect(read('apps/web/app/(auth)/login/page.tsx')).toMatch(/supabase\.auth\.signInWithPassword\(/);
+    expect(read('apps/web/app/(auth)/login/login-form.tsx')).toMatch(/supabase\.auth\.signInWithPassword\(/);
   });
 
   it('says Supabase receives the password (and stores it hashed), in both locales', () => {

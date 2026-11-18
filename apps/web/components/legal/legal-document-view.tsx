@@ -40,7 +40,7 @@ export function LegalDocumentView({ slug, content }: LegalDocumentViewProps) {
               key={link.slug}
               href={link.href}
               aria-current={link.slug === slug ? 'page' : undefined}
-              className={`text-[12px] ${link.slug === slug ? 'font-semibold text-[#1F114C]' : 'text-[#585858] hover:text-[#1F114C]'}`}
+              className={`inline-flex min-h-7 items-center text-callout pointer-coarse:min-h-11 ${link.slug === slug ? 'font-semibold text-brand' : 'text-secondary hover:text-brand'}`}
             >
               {link.label}
             </Link>
@@ -53,7 +53,7 @@ export function LegalDocumentView({ slug, content }: LegalDocumentViewProps) {
               type="button"
               onClick={() => setLocale(code)}
               aria-pressed={locale === code}
-              className={`rounded px-2 py-0.5 text-[11px] font-semibold ${locale === code ? 'bg-[#1F114C] text-white' : 'text-[#585858] hover:bg-[#EDEDED]'}`}
+              className={`min-h-7 rounded px-2 py-0.5 text-caption font-semibold pointer-coarse:min-h-11 ${locale === code ? 'bg-brand text-white' : 'text-secondary hover:bg-border'}`}
             >
               {code}
             </button>
@@ -64,18 +64,18 @@ export function LegalDocumentView({ slug, content }: LegalDocumentViewProps) {
       {doc.isDraft && (
         <p
           role="note"
-          className="mt-6 rounded-lg border border-[#F5C26B] bg-[#FFF8E6] px-3 py-2 text-[12px] font-medium text-[#7A4E00]"
+          className="mt-6 rounded-lg border border-warning bg-warning-bg px-3 py-2 text-callout font-medium text-warning"
         >
           {t.legal.draftBanner}
         </p>
       )}
 
-      <h1 className="mt-6 text-[24px] font-bold text-[#1F114C]">{doc.title}</h1>
+      <h1 className="mt-6 font-display text-display font-bold text-brand">{doc.title}</h1>
       <MarkdownText
         source={bodyWithoutTitle(doc.source)}
         headingBase={1}
         maxLength={LEGAL_MAX_CONTENT_CHARS}
-        className="mt-4 space-y-3 text-[13px] leading-relaxed text-[#585858]"
+        className="mt-4 space-y-3 text-body leading-relaxed text-secondary"
       />
       {slug === 'subprocessors' && <SubprocessorTable locale={lang} />}
     </main>

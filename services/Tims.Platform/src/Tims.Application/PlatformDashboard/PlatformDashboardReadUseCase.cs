@@ -302,7 +302,7 @@ public sealed class PlatformDashboardReadUseCase(IPlatformDashboardReadRepositor
 
         foreach (var org in orgs)
         {
-            activity.Add(new RecentActivityItem(org.Id, "org_created", $"Nueva organizacion: {org.Name}", org.CreatedAt, org.Plan));
+            activity.Add(new RecentActivityItem(org.Id, "org_created", $"Nueva organización: {org.Name}", org.CreatedAt, org.Plan));
         }
 
         foreach (var user in users)

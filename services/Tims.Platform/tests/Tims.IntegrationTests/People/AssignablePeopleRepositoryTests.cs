@@ -35,4 +35,28 @@ public sealed class AssignablePeopleRepositoryTests(TenantPeopleFixture fixture)
         Assert.Contains(TenantPeopleFixture.Hrbp, byCreate.Select(p => p.Id));
         Assert.DoesNotContain(TenantPeopleFixture.Hrbp, byUpdate.Select(p => p.Id));
     }
+
+    [Fact]
+    public async Task EligibilityAlsoAction_RequiresBothActions()
+    {
+        // interview:create AND interview:update: hrbp holds create only, so the second action is what drops Pablo.
+        var both = await Repository().ListAsync(
+            Acme, new AssignablePurposeRule("offer", "create", "interview", "create", EligibilityAlsoAction: "update"),
+            null, 50, vacancy: null, subjects: null, CancellationToken.None) ?? [];
+        Assert.Equal(new[]
+        {
+            TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin, TenantPeopleFixture.Recruiter,
+            TenantPeopleFixture.Leader, TenantPeopleFixture.Committee,
+        }.Order().ToArray(), both.Select(p => p.Id).Order().ToArray());
+
+        // The real evaluator rule (create + read): everyone above plus hrbp (MATRIX: interview read/create @unit).
+        var evaluators = await Repository().ListAsync(
+            Acme, AssignablePurposes.RuleFor(AssignablePurpose.InterviewEvaluator),
+            null, 50, vacancy: null, subjects: null, CancellationToken.None) ?? [];
+        Assert.Equal(new[]
+        {
+            TenantPeopleFixture.Admin, TenantPeopleFixture.HrAdmin, TenantPeopleFixture.Recruiter,
+            TenantPeopleFixture.Leader, TenantPeopleFixture.Committee, TenantPeopleFixture.Hrbp,
+        }.Order().ToArray(), evaluators.Select(p => p.Id).Order().ToArray());
+    }
 }

@@ -258,22 +258,22 @@ public sealed class PlatformDashboardInsightsEndpointAuthTests(PlatformDashboard
         var expected = new (string Id, string Type, string Severity, string Title, string Description)[]
         {
             (PlatformDashboardReadFixture.InvoiceOverdueGlobex.ToString(), "overdue_invoice", "critical",
-                "Factura vencida - Globex Inc", "$2,000 EUR vencida hace 10 dias"),
+                "Factura vencida - Globex Inc", "$2,000 EUR vencida hace 10 días"),
             (PlatformDashboardReadFixture.InvoiceOverdueAcme.ToString(), "overdue_invoice", "critical",
-                "Factura vencida - Acme Corp", "$1,234.5 USD vencida hace 3 dias"),
+                "Factura vencida - Acme Corp", "$1,234.5 USD vencida hace 3 días"),
             ("f0000000-0000-0000-0000-000000000006", "failed_payment", "critical",
-                "Pago fallido - Wayne Enterprises", "Suscripcion professional con pago pendiente ($999/mes)"),
+                "Pago fallido - Wayne Enterprises", "Suscripción professional con pago pendiente ($999/mes)"),
             (PlatformDashboardReadFixture.OrgF.ToString(), "suspended_org", "warning",
-                "Organizacion suspendida - Wayne Enterprises",
-                "La organizacion esta desactivada y sus usuarios no pueden acceder"),
+                "Organización suspendida - Wayne Enterprises",
+                "La organización está desactivada y sus usuarios no pueden acceder"),
             ("f0000000-0000-0000-0000-000000000004", "expiring_trial", "warning",
-                "Trial expira pronto - Umbrella Corp", "El periodo de prueba expira en 3 dias"),
+                "Trial expira pronto - Umbrella Corp", "El periodo de prueba expira en 3 días"),
             (PlatformDashboardReadFixture.InvitationStaleAcme.ToString(), "pending_invitation", "info",
-                $"Invitacion sin aceptar - {PlatformDashboardReadFixture.StaleInvitationEmail}",
-                "Enviada hace 9 dias para Acme Corp"),
+                $"Invitación sin aceptar - {PlatformDashboardReadFixture.StaleInvitationEmail}",
+                "Enviada hace 9 días para Acme Corp"),
             (PlatformDashboardReadFixture.InvitationStaleOrphan.ToString(), "pending_invitation", "info",
-                $"Invitacion sin aceptar - {PlatformDashboardReadFixture.OrphanInvitationEmail}",
-                "Enviada hace 6 dias"),
+                $"Invitación sin aceptar - {PlatformDashboardReadFixture.OrphanInvitationEmail}",
+                "Enviada hace 6 días"),
         };
 
         for (var i = 0; i < expected.Length; i++)

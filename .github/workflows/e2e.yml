@@ -1,7 +1,7 @@
 name: E2E
 
 # Playwright journeys (company + candidate) against a throwaway, LOCAL-ONLY stack: Supabase CLI,
-# the production-schema baseline + seeds, the C# API container, LocalStack (SES/S3), Redis, Caddy
+# the production-schema baseline + seeds, the C# API container, LocalStack (SES/S3/DynamoDB), Caddy
 # (TLS) and `next start`. The whole bring-up lives in scripts/e2e/up.sh so CI and local runs are
 # the same code path — this file only installs tools, calls the scripts and keeps the evidence.
 #

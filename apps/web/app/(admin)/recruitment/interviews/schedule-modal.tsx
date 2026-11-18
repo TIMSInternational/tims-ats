@@ -1,33 +1,67 @@
 'use client';
 
 import { useState } from 'react';
+import { timeZoneLabel, zonedWallTimeToDate } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { Modal } from '../../../../components';
-import { type Step, stepLabels } from './schedule-modal.helpers';
-import { Step1Fields, Step2Fields, Step3Fields } from './schedule-modal.fields';
+import { Button } from '../../../../components/button';
+import { Stepper } from '../../../../components/stepper';
+import { FIELD_LABEL_CLASSES, selectClasses } from '../../../../components/field-styles';
+import { type Step, STEP_LABEL_KEYS, defaultInterviewType, locationPayload } from './schedule-modal.helpers';
+import { Step1Fields, Step2Fields } from './schedule-modal.fields';
+import { Step3Fields } from './schedule-modal.step3';
 import { useI18n } from '../../../../lib/i18n';
 import { useAssignablePeople } from '../../../../lib/platform-api/assignable-people';
+
+/**
+ * Opening the form from a candidate (pipeline card / row, Candidate 360, move toast — A-10): the candidate and
+ * the application are known, so the form starts at step 2 and books against that application.
+ */
+export interface SchedulePrefill {
+  candidateId: string;
+  candidateName: string;
+  /** The candidate's active applications; the first is preselected, the others can be picked in step 2. */
+  applications: Array<{ id: string; vacancyId: string; vacancyTitle: string }>;
+}
 
 interface ScheduleModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  prefill?: SchedulePrefill;
 }
 
-export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
-  const { t } = useI18n();
-  const [step, setStep] = useState<Step>(1);
+/** "YYYY-MM-DD" of tomorrow on the user's own calendar (not UTC: after 18:00 in Costa Rica UTC is
+ *  already the next day, so the UTC date skipped a day). */
+function localTomorrow(now: Date = new Date()): string {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function ScheduleModal({ onClose, onSuccess, prefill }: ScheduleModalProps) {
+  const { t, locale } = useI18n();
+  const prefilledApp = prefill?.applications[0];
+  const [step, setStep] = useState<Step>(prefilledApp ? 2 : 1);
 
   // Step 1: Who
   const [candidateSearch, setCandidateSearch] = useState('');
-  const [selectedCandidateId, setSelectedCandidateId] = useState('');
-  const [selectedCandidateName, setSelectedCandidateName] = useState('');
-  const [selectedVacancyId, setSelectedVacancyId] = useState('');
-  const [selectedVacancyTitle, setSelectedVacancyTitle] = useState('');
+  const [selectedCandidateId, setSelectedCandidateId] = useState(prefilledApp ? (prefill?.candidateId ?? '') : '');
+  const [selectedCandidateName, setSelectedCandidateName] = useState(prefilledApp ? (prefill?.candidateName ?? '') : '');
+  const [selectedVacancyId, setSelectedVacancyId] = useState(prefilledApp?.vacancyId ?? '');
+  const [selectedVacancyTitle, setSelectedVacancyTitle] = useState(prefilledApp?.vacancyTitle ?? '');
+  const [selectedApplicationId, setSelectedApplicationId] = useState(prefilledApp?.id ?? '');
+  const pickApplication = (applicationId: string) => {
+    const app = prefill?.applications.find((a) => a.id === applicationId);
+    if (!app) return;
+    setSelectedApplicationId(app.id);
+    setSelectedVacancyId(app.vacancyId);
+    setSelectedVacancyTitle(app.vacancyTitle);
+  };
 
   // Step 2: What & When
-  const [interviewType, setInterviewType] = useState('video');
-  const [scheduledDate, setScheduledDate] = useState('');
+  const [interviewType, setInterviewType] = useState(() => defaultInterviewType());
+  const [scheduledDate, setScheduledDate] = useState(localTomorrow);
   const [scheduledTime, setScheduledTime] = useState('10:00');
   const [duration, setDuration] = useState(60);
   const [location, setLocation] = useState('');
@@ -47,6 +81,32 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
     { staleTime: 60_000 },
   );
 
+  // The zone the typed time means — the chain the invitation emails print: the organization's, then the
+  // selected vacancy's company, then UTC said explicitly. Read from interview.list (filtered to the
+  // vacancy, one row) rather than a procedure of its own. The browser's zone plays no part (A-17).
+  const zoneQuery = trpc.interview.list.useQuery(
+    { vacancyId: selectedVacancyId, pageSize: 1 },
+    { enabled: selectedVacancyId !== '', staleTime: 5 * 60_000 },
+  );
+  const schedulingTimeZone = zoneQuery.data?.schedulingTimeZone ?? null;
+  const isTimeZoneError = zoneQuery.isError;
+  const timeZone = schedulingTimeZone?.timeZone ?? null;
+  const labelLocale = locale === 'EN' ? 'en' : 'es';
+  const scheduledAt = timeZone ? zonedWallTimeToDate(scheduledDate, scheduledTime, timeZone) : null;
+  const zoneLabel = timeZone
+    ? timeZoneLabel(timeZone, labelLocale, scheduledAt ?? new Date())
+    : isTimeZoneError
+      ? t.common.error
+      : t.common.loading;
+  const whenLabel =
+    scheduledAt && timeZone
+      ? `${new Intl.DateTimeFormat(labelLocale === 'en' ? 'en-US' : 'es-CR', {
+          dateStyle: 'full',
+          timeStyle: 'short',
+          timeZone,
+        }).format(scheduledAt)}, ${zoneLabel}`
+      : '';
+
   // Evaluators come from the tenant people directory (interview:create), not user.list (user:read),
   // which recruiters do not hold.
   const evaluators = useAssignablePeople({ purpose: 'interview_evaluator', limit: 50 });
@@ -54,21 +114,21 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
   const createInterview = trpc.interview.schedule.useMutation();
 
   const isStep1Valid = selectedCandidateId && selectedVacancyId;
-  const isStep2Valid = interviewType && scheduledDate && scheduledTime;
+  const isStep2Valid = interviewType && scheduledDate && scheduledTime && scheduledAt !== null;
   const isStep3Valid = selectedEvaluatorIds.length > 0;
   const isPending = createInterview.isPending;
 
   const handleSubmit = async () => {
-    if (!isStep1Valid || !isStep2Valid || !isStep3Valid) return;
+    if (!isStep1Valid || !isStep2Valid || !isStep3Valid || !scheduledAt) return;
     try {
-      const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
       const created = await createInterview.mutateAsync({
         candidateId: selectedCandidateId,
         vacancyId: selectedVacancyId,
+        ...(prefill && selectedApplicationId ? { applicationId: selectedApplicationId } : {}),
         type: interviewType,
         scheduledAt,
         duration,
-        location: location.trim() || undefined,
+        ...locationPayload(location),
         notes: notes.trim() || undefined,
         evaluatorIds: selectedEvaluatorIds,
       });
@@ -78,7 +138,7 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
       }
       onSuccess();
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Error al agendar', { type: 'error' });
+      toast(err instanceof Error ? err.message : t.interviews.scheduleError, { type: 'error' });
     }
   };
 
@@ -88,29 +148,36 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
     );
   };
 
-  // Default date to tomorrow
-  if (!scheduledDate) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setScheduledDate(tomorrow.toISOString().split('T')[0]!);
-  }
+  const firstStep: Step = prefill ? 2 : 1;
+  const footer = (
+    <>
+      {step > firstStep && (
+        <Button variant="tertiary" className="sm:mr-auto" onClick={() => setStep((step - 1) as Step)}
+          icon={<svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>}>
+          {t.common.back}
+        </Button>
+      )}
+      <Button variant="secondary" onClick={onClose}>
+        {t.common.cancel}
+      </Button>
+      {step < 3 ? (
+        <Button
+          onClick={() => setStep((step + 1) as Step)}
+          disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid)}
+        >
+          {t.common.next}
+        </Button>
+      ) : (
+        <Button onClick={handleSubmit} disabled={!isStep3Valid} loading={isPending} loadingLabel={t.portal.scheduling}>
+          {t.interviews.modalTitle}
+        </Button>
+      )}
+    </>
+  );
 
   return (
-    <Modal title={t.interviews.modalTitle} onClose={onClose} maxWidth="max-w-2xl">
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-6">
-        {stepLabels.map((label, i) => (
-          <div key={i} className="flex items-center gap-2 flex-1">
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
-              step > i + 1 ? 'bg-green-500 text-white' : step === i + 1 ? 'bg-[#1F114C] text-white' : 'bg-[#EDEDED] text-[#8B8B8B]'
-            }`}>
-              {step > i + 1 ? '✓' : i + 1}
-            </div>
-            <span className={`text-[11px] ${step === i + 1 ? 'text-[#1F114C] font-medium' : 'text-[#8B8B8B]'}`}>{label}</span>
-            {i < 2 && <div className={`flex-1 h-[1px] ${step > i + 1 ? 'bg-green-500' : 'bg-[#EDEDED]'}`} />}
-          </div>
-        ))}
-      </div>
+    <Modal title={t.interviews.modalTitle} onClose={onClose} size="lg" footer={footer}>
+      <Stepper steps={STEP_LABEL_KEYS.map((key) => t.interviews[key])} current={step - 1} className="mb-6" />
 
       {/* Step 1: Candidate + Vacancy */}
       {step === 1 && (
@@ -129,6 +196,32 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
         />
       )}
 
+      {/* Prefilled from a candidate: who and for which application, instead of step 1 */}
+      {prefill && step === 2 && (
+        <div className="mb-4 rounded-lg bg-surface px-3 py-2">
+          {prefill.applications.length > 1 ? (
+            <label className={`${FIELD_LABEL_CLASSES} mb-0`}>
+              {t.candidates.scheduleForApplication} · {prefill.candidateName}
+              <select
+                value={selectedApplicationId}
+                onChange={(e) => pickApplication(e.target.value)}
+                className={selectClasses('md', 'mt-1.5 font-normal')}
+              >
+                {prefill.applications.map((app) => (
+                  <option key={app.id} value={app.id}>
+                    {app.vacancyTitle}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="text-callout text-primary">
+              {t.candidates.scheduleSummary.replace('{candidate}', prefill.candidateName).replace('{vacancy}', selectedVacancyTitle)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Step 2: Type & Schedule */}
       {step === 2 && (
         <Step2Fields
@@ -142,6 +235,8 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
           setDuration={setDuration}
           location={location}
           setLocation={setLocation}
+          timeZoneLabel={zoneLabel}
+          isUtcFallback={schedulingTimeZone?.source === 'utc'}
         />
       )}
 
@@ -156,42 +251,11 @@ export function ScheduleModal({ onClose, onSuccess }: ScheduleModalProps) {
           selectedCandidateName={selectedCandidateName}
           selectedVacancyTitle={selectedVacancyTitle}
           interviewType={interviewType}
-          scheduledDate={scheduledDate}
-          scheduledTime={scheduledTime}
+          whenLabel={whenLabel}
           duration={duration}
         />
       )}
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-[#EDEDED]">
-        <div>
-          {step > 1 && (
-            <button onClick={() => setStep((step - 1) as Step)} className="text-[12px] text-[#585858] hover:text-[#1F114C] transition flex items-center gap-1">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-              Anterior
-            </button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm text-[#585858] hover:bg-[#F6F6F6] transition">
-            Cancelar
-          </button>
-          {step < 3 ? (
-            <button
-              onClick={() => setStep((step + 1) as Step)}
-              disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid)}
-              className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1a5c] transition disabled:opacity-50 flex items-center gap-1">
-              Siguiente
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-            </button>
-          ) : (
-            <button onClick={handleSubmit} disabled={!isStep3Valid || isPending}
-              className="h-9 px-5 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition disabled:opacity-50 flex items-center gap-2">
-              {isPending ? t.portal.scheduling : t.interviews.modalTitle}
-            </button>
-          )}
-        </div>
-      </div>
     </Modal>
   );
 }

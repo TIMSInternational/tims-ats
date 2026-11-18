@@ -18,6 +18,12 @@ import { ScoringStage } from './scoring-stage';
 import { ClosedStage } from './closed-stage';
 import { CallStateBridge } from './call-state-bridge';
 import type { DailyJoinErrorCategory } from './daily-join-error';
+import { RoomNotFound } from './room-not-found';
+import { shouldRetryInterviewQuery } from './room-load-error';
+import { usePermissions } from '../../../../../../lib/permissions';
+import { canOfferInterviewCancel } from '../../interview-cancel';
+import { canRescheduleInterview } from '../../interview-reschedule';
+import { RescheduleInterviewDialog } from '../../reschedule-interview-dialog';
 
 function getInitials(name: string): string {
   return name
@@ -38,7 +44,10 @@ export default function InterviewRoomPage({
   const { t } = useI18n();
   const { id } = use(params);
 
-  const interview = trpc.interview.getById.useQuery({ id });
+  const interview = trpc.interview.getById.useQuery({ id }, { retry: shouldRetryInterviewQuery });
+  // "Reprogramar" from the room (recruiter-journeys-28): same people as the list's Cancel; the API decides.
+  const { roles, can } = usePermissions();
+  const [showReschedule, setShowReschedule] = useState(false);
 
   // Scoring never requires video (#325). null = the default stage for this interview
   // (see below); set once the evaluator switches between lobby, scoring and the call.
@@ -117,14 +126,7 @@ export default function InterviewRoomPage({
   // Only when there is NO data: a failed background refetch (e.g. the getById.invalidate
   // after submitting a scorecard) must not tear down a live call or the unsaved draft.
   if (!interview.data) {
-    return (
-      <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
-        <div className="text-center">
-          <p className="text-white text-[14px] mb-2">{t.interviews.couldNotLoadInterview}</p>
-          <p className="text-white/50 text-[12px]">{interview.error?.message ?? t.interviews.roomInterviewNotFound}</p>
-        </div>
-      </div>
-    );
+    return <RoomNotFound error={interview.error} />;
   }
 
   const data = interview.data;
@@ -145,7 +147,7 @@ export default function InterviewRoomPage({
       : (chosenStage ?? (data.status === 'completed' ? 'scoring' : 'lobby'));
 
   let stageNode: ReactNode;
-  let stageClass = 'flex-1 flex flex-col bg-[#0a0a0a] min-w-0';
+  let stageClass = 'flex-1 flex flex-col min-w-0';
   const isInCall = stage === 'call' && roomData !== null;
   if (isRoomClosed && !isInCall) {
     stageNode = <ClosedStage candidateName={candidateName} subtitle={subtitle} message={closedMessage} />;
@@ -161,7 +163,7 @@ export default function InterviewRoomPage({
         {/* Closed while in the call (e.g. cancelled by someone else): keep the call and its
             controls (yanking the provider would not end it) and say so. */}
         {isRoomClosed && (
-          <p role="status" className="absolute top-4 inset-x-4 z-20 bg-black/70 text-white text-[12px] rounded-lg px-3 py-2 text-center">
+          <p role="status" className="absolute top-4 inset-x-4 z-20 bg-black/70 text-white text-callout rounded-lg px-3 py-2 text-center">
             {closedMessage}
           </p>
         )}
@@ -178,7 +180,8 @@ export default function InterviewRoomPage({
       </DailyProvider>
     );
   } else if (stage === 'scoring') {
-    stageClass = 'md:flex-[60] flex flex-col bg-[#0a0a0a] min-w-0 shrink-0 md:shrink';
+    // No call to frame: a narrow white panel beside the scorecard, a compact header row on phones.
+    stageClass = 'md:flex-[35] flex flex-col bg-surface min-w-0 shrink-0 md:shrink border-b border-border md:border-b-0';
     stageNode = (
       <ScoringStage
         candidateName={candidateName}
@@ -214,7 +217,19 @@ export default function InterviewRoomPage({
         vacancyTitle={data.vacancy.title}
         isCallActive={stage === 'call' && isCallActive}
         onLeaveCall={handleLeaveCall}
+        onReschedule={
+          canOfferInterviewCancel(roles, can('interview', 'update')) && canRescheduleInterview(data) && stage !== 'call'
+            ? () => setShowReschedule(true)
+            : undefined
+        }
       />
+      {showReschedule && (
+        <RescheduleInterviewDialog
+          target={{ id: data.id, vacancyId: data.vacancy.id, scheduledAt: data.scheduledAt, duration: data.duration }}
+          onClose={() => setShowReschedule(false)}
+          onDone={() => { setShowReschedule(false); void interview.refetch(); }}
+        />
+      )}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         <div className={stageClass}>{stageNode}</div>
         <div className={isScorecardVisible ? 'contents' : 'hidden'} hidden={!isScorecardVisible}>
@@ -226,9 +241,11 @@ export default function InterviewRoomPage({
 }
 
 function InterviewRoomSkeleton() {
+  const { t } = useI18n();
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-6 h-[50px] bg-[#1F114C] shrink-0">
+    <div className="h-full flex flex-col overflow-hidden" aria-busy="true">
+      <span className="sr-only">{t.common.loadingContent}</span>
+      <div className="flex items-center justify-between px-4 md:px-6 h-[50px] bg-brand shrink-0">
         <div className="flex items-center gap-3">
           <Skeleton className="w-24 h-3 bg-white/10 rounded" />
           <Skeleton className="w-40 h-3 bg-white/10 rounded" />

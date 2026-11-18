@@ -50,7 +50,7 @@ Mutation 7 below confirms (1) is not decorative: wiring `unread-count` to the gr
 
 `notifications` rows are addressed by `user_id` but the production RLS policy is
 `organization_id = current_setting('app.current_org_id')`. Both `notify()` call sites
-(`routers/platform/organizations.ts:220`, `:300`) address **all platform owners** while stamping the
+(`routers/platform/organizations.ts:226`, `:300`) address **all platform owners** while stamping the
 **target org's** id.
 
 **A second producer, found by the 2026-08-31 cross-model review:** `platform.sendBulkNotification`
@@ -212,7 +212,7 @@ Prerequisites for step 5:
 ## Step 6 preconditions
 
 `notifications` has writers outside this router and outside any flag: `packages/api/src/lib/notify.ts`
-(`createMany`, called from `routers/platform/organizations.ts:220` and `:300`),
+(`createMany`, called from `routers/platform/organizations.ts:226` and `:300`),
 `platform.sendBulkNotification` (`routers/platform/system.ts:85` — missing from this list until the
 2026-08-31 cross-model review caught it; it has a live FE caller and its all-orgs path writes NULL org
 stamps, see divergence 1), and the C# `PlatformOrganizationsWriteDbContext`/`CreateDbContext`. The write

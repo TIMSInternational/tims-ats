@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Skeleton, ErrorState } from '../../../components';
+import { Button, EmptyState, ErrorState, ProgressBar, Skeleton, StatusBadge, TextInput } from '../../../components';
+import type { StatusTone } from '../../../components';
 import { EnrollModal } from './enroll-modal';
-import { useI18n } from '../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../lib/i18n';
 import { formatCourseDuration } from './course-duration';
 
 interface Course {
@@ -21,7 +22,12 @@ interface CourseCatalogProps {
   courses: Course[];
   loading: boolean;
   isError?: boolean;
+  error?: unknown;
   onRetry?: () => void;
+  /** Display only: "Inscribir" is offered to roles that can create enrollments. Defaults to true. */
+  canEnroll?: boolean;
+  /** The empty catalog's next step, when the viewer may create courses. */
+  onCreateCourse?: () => void;
   t: {
     courseCatalog: string;
     searchCourse: string;
@@ -36,15 +42,30 @@ interface CourseCatalogProps {
   };
 }
 
-const TAG_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  required: { bg: 'bg-red-50', text: 'text-[#DD0C15]', label: 'Obligatorio' },
-  gap: { bg: 'bg-purple-50', text: 'text-purple-600', label: 'Por Brecha' },
-  company: { bg: 'bg-blue-50', text: 'text-blue-600', label: 'Empresa' },
+type TagKey = 'tagRequired' | 'tagGap' | 'tagCompany';
+const TAGS: Record<'required' | 'gap' | 'company', { tone: StatusTone; labelKey: TagKey }> = {
+  required: { tone: 'danger', labelKey: 'tagRequired' },
+  gap: { tone: 'info', labelKey: 'tagGap' },
+  company: { tone: 'brand', labelKey: 'tagCompany' },
 };
+
+type TypeKey = 'typeOnline' | 'typeInPerson' | 'typeHybrid';
+const TYPE_LABEL: Record<string, TypeKey> = { online: 'typeOnline', in_person: 'typeInPerson', hybrid: 'typeHybrid' };
 
 type Filter = 'all' | 'required' | 'gap' | 'company';
 
-export function CourseCatalog({ courses, loading, isError, onRetry, t }: CourseCatalogProps) {
+const CARD = 'w-full rounded-xl border border-border bg-white shadow-card md:w-[55%]';
+
+export function CourseCatalog({
+  courses,
+  loading,
+  isError,
+  error,
+  onRetry,
+  canEnroll = true,
+  onCreateCourse,
+  t,
+}: CourseCatalogProps) {
   const { t: tI18n } = useI18n();
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
@@ -66,23 +87,17 @@ export function CourseCatalog({ courses, loading, isError, onRetry, t }: CourseC
   ];
 
   function getTag(course: Course) {
-    if (course.isRequired) return TAG_STYLES.required;
-    if (course.category?.toLowerCase().includes('brecha')) return TAG_STYLES.gap;
-    return TAG_STYLES.company;
-  }
-
-  function getProgressColor(pct: number) {
-    if (pct >= 70) return { bar: 'bg-green-500', text: 'text-green-600' };
-    if (pct >= 40) return { bar: 'bg-amber-500', text: 'text-amber-600' };
-    return { bar: 'bg-red-500', text: 'text-red-600' };
+    if (course.isRequired) return TAGS.required;
+    if (course.category?.toLowerCase().includes('brecha')) return TAGS.gap;
+    return TAGS.company;
   }
 
   if (loading) {
     return (
-      <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-        <Skeleton className="h-4 w-40 mb-3" />
+      <div className={`${CARD} p-4 md:p-5`} aria-busy="true">
+        <Skeleton className="mb-3 h-4 w-40" />
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-16 w-full mb-2" />
+          <Skeleton key={i} className="mb-2 h-16 w-full" />
         ))}
       </div>
     );
@@ -90,98 +105,112 @@ export function CourseCatalog({ courses, loading, isError, onRetry, t }: CourseC
 
   if (isError) {
     return (
-      <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <ErrorState onRetry={onRetry} />
+      <div className={CARD}>
+        <ErrorState error={error} onRetry={onRetry} />
       </div>
     );
   }
 
+  const clearFilters = () => {
+    setFilter('all');
+    setSearch('');
+  };
+
   return (
-    <div className="w-full md:w-[55%] bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 flex flex-col max-h-[370px]">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[13px] font-semibold text-[#1F114C]">{t.courseCatalog}</h3>
-        <input
-          type="text"
-          placeholder={t.searchCourse}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border border-[#EDEDED] rounded-lg px-2.5 h-7 text-[11px] w-[140px] outline-none focus:border-[#1F114C]"
-        />
+    <section className={`${CARD} flex flex-col p-4 md:max-h-96 md:p-5`} aria-labelledby="course-catalog-heading">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="course-catalog-heading" className="text-subheading font-semibold text-primary">
+          {t.courseCatalog}
+        </h2>
+        <label className="w-full sm:w-48">
+          <span className="sr-only">{tI18n.learning.searchCourseLabel}</span>
+          <TextInput type="search" placeholder={t.searchCourse} value={search} onChange={(e) => setSearch(e.target.value)} />
+        </label>
       </div>
-      <div className="flex gap-1 mb-3">
+      <div role="group" aria-label={tI18n.learning.filterLabel} className="mb-3 flex flex-wrap gap-1.5">
         {filters.map((f) => (
           <button
             key={f.key}
+            type="button"
             onClick={() => setFilter(f.key)}
-            className={`px-3 py-1 rounded-full text-[11px] font-medium transition ${
-              filter === f.key ? 'bg-[#1F114C] text-white' : 'bg-[#F6F6F6] text-[#585858] hover:bg-[#EDEDED]'
+            aria-pressed={filter === f.key}
+            className={`h-7 whitespace-nowrap rounded-full px-3 text-callout font-medium transition-colors duration-150 pointer-coarse:min-h-11 ${
+              filter === f.key ? 'bg-brand text-white' : 'bg-surface text-secondary hover:bg-border'
             }`}
           >
             {f.label}
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto space-y-2">
+      <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
-          <div className="py-6 text-center">
-            <p className="text-[12px] font-medium text-[#585858]">{courses.length === 0 ? t.noCourses : t.noResults}</p>
-            {courses.length === 0 && <p className="mt-1 text-[11px] text-[#8B8B8B]">{t.noCoursesDesc}</p>}
-          </div>
+          courses.length === 0 ? (
+            <EmptyState
+              size="compact"
+              title={t.noCourses}
+              description={t.noCoursesDesc}
+              action={onCreateCourse ? { label: tI18n.learning.newCourseAction, onClick: onCreateCourse, variant: 'secondary' } : undefined}
+            />
+          ) : (
+            <EmptyState
+              size="compact"
+              title={t.noResults}
+              secondaryAction={{ label: tI18n.common.clearFilters, onClick: clearFilters }}
+            />
+          )
         ) : (
-          filtered.map((course) => {
-            const tag = getTag(course);
-            const pct = course.avgProgress;
-            const prog = getProgressColor(pct);
-            return (
-              <div
-                key={course.id}
-                className="border border-[#EDEDED] rounded-lg p-3 hover:border-[#1F114C]/20 cursor-pointer transition"
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-medium text-[#333]">{course.title}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${tag.bg} ${tag.text}`}>
-                      {tag.label}
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-[#8B8B8B]">{formatCourseDuration(course.duration)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] text-[#8B8B8B]">
-                      {course._count.enrollments} {t.enrolled}
-                    </span>
-                    <span className="text-[10px] text-[#8B8B8B]">{course.type}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-[80px] h-1.5 bg-[#EDEDED] rounded-full">
-                      <div className={`h-full ${prog.bar} rounded-full`} style={{ width: `${pct}%` }} />
+          <ul className="space-y-2">
+            {filtered.map((course) => {
+              const tag = getTag(course);
+              const pct = course.avgProgress;
+              const typeKey = TYPE_LABEL[course.type];
+              return (
+                <li key={course.id} className="rounded-lg border border-border p-3">
+                  <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="text-body font-medium text-primary">{course.title}</span>
+                      <StatusBadge tone={tag.tone} icon="none">
+                        {tI18n.learning[tag.labelKey]}
+                      </StatusBadge>
                     </div>
-                    <span className={`text-[10px] font-medium ${prog.text}`}>{pct}%</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEnrollCourse({ id: course.id, title: course.title });
-                      }}
-                      className="h-6 px-2 rounded text-[10px] bg-[#1F114C] text-white hover:bg-[#1F114C]/80 transition"
-                    >
-                      {tI18n.learning.enrollAction}
-                    </button>
+                    <span className="text-callout tabular-nums text-secondary">{formatCourseDuration(course.duration)}</span>
                   </div>
-                </div>
-              </div>
-            );
-          })
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 text-callout text-secondary">
+                      <span>
+                        {course._count.enrollments} {t.enrolled}
+                      </span>
+                      <span>{typeKey ? tI18n.learning[typeKey] : course.type}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ProgressBar
+                        value={pct}
+                        label={formatMessage(tI18n.learning.courseProgressAria, { title: course.title })}
+                        hideLabel
+                        className="w-20"
+                      />
+                      <span className="w-9 text-right text-callout font-medium tabular-nums text-secondary">{pct}%</span>
+                      {canEnroll && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setEnrollCourse({ id: course.id, title: course.title })}
+                          aria-label={formatMessage(tI18n.learning.enrollInCourse, { title: course.title })}
+                        >
+                          {tI18n.learning.enrollAction}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
       {enrollCourse && (
-        <EnrollModal
-          courseId={enrollCourse.id}
-          courseTitle={enrollCourse.title}
-          onClose={() => setEnrollCourse(null)}
-        />
+        <EnrollModal courseId={enrollCourse.id} courseTitle={enrollCourse.title} onClose={() => setEnrollCourse(null)} />
       )}
-    </div>
+    </section>
   );
 }

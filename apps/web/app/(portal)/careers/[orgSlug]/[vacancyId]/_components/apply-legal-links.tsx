@@ -17,7 +17,7 @@ export function ApplyLegalLinks() {
   if (!isLegalPagesEnabled()) return null;
 
   return (
-    <p className="pl-6 text-[11px] text-[#8B8B8B]" data-testid="apply-legal-links">
+    <p className="mt-1.5 pl-6 text-caption text-secondary" data-testid="apply-legal-links">
       {t.legal.consentLinksPrefix}{' '}
       {links.map((link, index) => (
         <Fragment key={link.slug}>
@@ -26,7 +26,7 @@ export function ApplyLegalLinks() {
             href={link.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-[#1F114C] underline hover:text-[#DD0C15]"
+            className="font-medium text-brand underline hover:text-brand-hover"
           >
             {link.label}
           </a>

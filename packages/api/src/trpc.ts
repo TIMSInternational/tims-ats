@@ -3,6 +3,8 @@ import superjson from 'superjson';
 import type { Context } from './context';
 import { db, runWithTenant } from '@tims/db';
 import { clientIpFrom } from './lib/client-ip';
+import { shapeClientError } from './lib/error-shape';
+import { permissionDeniedMessage } from './lib/permission-labels';
 import { checkRateLimit, getRateLimitCategory } from './middleware/rate-limit';
 import { buildAccessForUser, createAnchorLoader, type AccessContext } from './access';
 import { resolveApiKeyPrincipal, buildExternalAccessUser } from './access/external-auth';
@@ -15,8 +17,10 @@ import type { Module, Action } from '@tims/shared';
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
-  errorFormatter({ shape }) {
-    return shape;
+  // Generic INTERNAL_SERVER_ERROR text + no stack in production; Prisma not-found -> NOT_FOUND.
+  // The full error is logged by the HTTP handler's onError. See lib/error-shape.ts.
+  errorFormatter({ shape, error }) {
+    return shapeClientError(shape, error);
   },
 });
 
@@ -48,7 +52,9 @@ const withRateLimit = t.middleware(async ({ ctx, next, path, type }) => {
     category === 'ai' && ctx.user?.organizationId
       ? `org:${ctx.user.organizationId}`
       : (ctx.user?.id ?? anonymousIdentifier(ctx.headers));
-  await checkRateLimit(identifier, category);
+  // `path` lets credential-like procedures reject during a shared-store outage instead of
+  // degrading to per-instance counters (see FAIL_CLOSED_PATHS in middleware/rate-limit.ts).
+  await checkRateLimit(identifier, category, { path });
   return next();
 });
 
@@ -57,7 +63,7 @@ const isAuthed = t.middleware(({ ctx, next }) => {
   if (!ctx.user) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
-      message: 'Debes iniciar sesion para acceder a este recurso',
+      message: 'Debes iniciar sesión para acceder a este recurso',
     });
   }
   return next({
@@ -78,7 +84,7 @@ const isCandidate = t.middleware(({ ctx, next }) => {
   if (!ctx.supabaseAuth) {
     throw new TRPCError({
       code: 'UNAUTHORIZED',
-      message: 'Debes iniciar sesion para acceder a tu portal',
+      message: 'Debe iniciar sesión para acceder a su portal',
     });
   }
   return next({
@@ -113,7 +119,7 @@ const withTenantContext = t.middleware(({ ctx, next }) => {
   if (!orgId) {
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: 'No se encontro contexto de organizacion',
+      message: 'No se encontró contexto de organización',
     });
   }
   // Validate UUID format as defense-in-depth before it becomes the RLS GUC value.
@@ -141,7 +147,7 @@ function requirePermission(module: string, action: string) {
     if (!access.allowed) {
       throw new TRPCError({
         code: 'FORBIDDEN',
-        message: `No tienes permiso para ${action} en ${module}`,
+        message: permissionDeniedMessage(module, action),
       });
     }
 
@@ -170,7 +176,7 @@ function requireAnyPermission(module: string, actions: readonly [string, ...stri
     }
     throw new TRPCError({
       code: 'FORBIDDEN',
-      message: `No tienes permiso para ${actions[0]} en ${module}`,
+      message: permissionDeniedMessage(module, actions[0]),
     });
   });
 }
@@ -278,13 +284,15 @@ export const candidateProcedure = publicProcedure.use(isCandidate);
 const requireApiKey = t.middleware(async ({ ctx, next, path, type }) => {
   const principal = await resolveApiKeyPrincipal(ctx.headers, new Date());
   if (!principal) {
-    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Clave de API invalida o expirada' });
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Clave de API inválida o expirada' });
   }
   // Per-KEY rate limit. publicProcedure's withRateLimit runs BEFORE this middleware
   // and keys on source IP (no apiKeyId yet); a paid integration surface needs per-key
   // quotas too, so we add a second limit keyed on the resolved key id (defense in
   // depth — IP flood protection AND per-key throughput).
-  await checkRateLimit(`apikey:${principal.apiKeyId}`, getRateLimitCategory(path, type as 'query' | 'mutation'));
+  await checkRateLimit(`apikey:${principal.apiKeyId}`, getRateLimitCategory(path, type as 'query' | 'mutation'), {
+    path,
+  });
   // Fire-and-forget: must not block or change the timing of the request.
   touchApiKeyLastUsed(principal.apiKeyId);
   return runWithTenant(principal.organizationId, () =>

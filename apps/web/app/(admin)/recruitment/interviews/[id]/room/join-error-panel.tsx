@@ -45,22 +45,22 @@ export function JoinErrorPanel({ category, onRetry, onScoreWithoutVideo }: JoinE
   };
 
   return (
-    <div role="alert" className="flex-1 flex items-center justify-center bg-[#0a0a0a] p-6">
+    <div role="alert" className="tims-chrome flex flex-1 items-center justify-center bg-[#0a0a0a] p-6">
       <div className="max-w-sm text-center">
-        <p className="text-white text-[15px] font-medium mb-2">{t.interviewRoom.joinErrorTitle}</p>
-        <p className="text-white/60 text-[12px] mb-5">{t.interviewRoom[MESSAGE_KEYS[category]]}</p>
+        <p className="text-white text-subheading font-medium mb-2">{t.interviewRoom.joinErrorTitle}</p>
+        <p className="text-white/70 text-callout mb-5">{t.interviewRoom[MESSAGE_KEYS[category]]}</p>
         <button
           type="button"
           onClick={handleRetry}
           disabled={isRetrying}
-          className="bg-[#DD0C15] text-white px-6 py-2.5 rounded-lg text-[13px] font-medium hover:bg-[#c00b13] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-11 rounded-lg bg-white px-6 py-2.5 text-body font-medium text-brand transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isRetrying ? t.interviews.roomConnecting : t.interviewRoom.joinRetry}
         </button>
         <button
           type="button"
           onClick={handleScoreWithoutVideo}
-          className="block mx-auto mt-3 text-white/80 border border-white/20 px-5 py-2 rounded-lg text-[13px] font-medium hover:bg-white/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mx-auto mt-3 block min-h-9 rounded-lg border border-white/40 px-5 py-2 text-body font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11"
         >
           {t.interviewRoom.scoreWithoutVideo}
         </button>

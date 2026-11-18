@@ -8,7 +8,7 @@ public sealed class StaffContextFixtureTests
     private sealed record Root(string Description, List<Case> Cases);
     private sealed record AppUserDto(
         string Id, string SupabaseUserId, string Email, string? OrganizationId,
-        bool IsActive, bool IsPlatformOwner, List<string> RoleSlugs);
+        bool IsActive, bool IsPlatformOwner, List<string> RoleSlugs, bool? OrganizationIsActive = null);
     private sealed record ExpectedCtx(
         bool Resolved, PrincipalType? PrincipalType, string? OrganizationId, string? UserId,
         List<string>? Roles, string? ImpersonatedBy);
@@ -20,7 +20,8 @@ public sealed class StaffContextFixtureTests
 
     private static AppUserRow? Row(AppUserDto? dto) => dto is null
         ? null
-        : new AppUserRow(dto.Id, dto.SupabaseUserId, dto.Email, dto.OrganizationId, dto.IsActive, dto.IsPlatformOwner, dto.RoleSlugs);
+        : new AppUserRow(dto.Id, dto.SupabaseUserId, dto.Email, dto.OrganizationId, dto.IsActive, dto.IsPlatformOwner, dto.RoleSlugs,
+            dto.OrganizationIsActive ?? true);
 
     [Theory]
     [MemberData(nameof(Cases))]

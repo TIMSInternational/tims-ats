@@ -143,10 +143,10 @@ describe('MIN_NORM_SAMPLE_SIZE', () => {
 describe('answerInputSchema / submitAssessmentAnswersSchema', () => {
   it('accepts a choice answer and a free-text answer', () => {
     expect(
-      answerInputSchema.parse({ questionId: '11111111-1111-1111-1111-111111111111', selectedOptionIds: ['a'] }),
+      answerInputSchema.parse({ questionId: '11111111-1111-4111-8111-111111111111', selectedOptionIds: ['a'] }),
     ).toBeTruthy();
     expect(
-      answerInputSchema.parse({ questionId: '11111111-1111-1111-1111-111111111111', freeText: 'my essay' }),
+      answerInputSchema.parse({ questionId: '11111111-1111-4111-8111-111111111111', freeText: 'my essay' }),
     ).toBeTruthy();
   });
 
@@ -157,7 +157,7 @@ describe('answerInputSchema / submitAssessmentAnswersSchema', () => {
   it('rejects free text over the bound', () => {
     expect(() =>
       answerInputSchema.parse({
-        questionId: '11111111-1111-1111-1111-111111111111',
+        questionId: '11111111-1111-4111-8111-111111111111',
         freeText: 'x'.repeat(20001),
       }),
     ).toThrow();

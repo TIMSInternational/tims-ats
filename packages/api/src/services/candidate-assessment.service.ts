@@ -27,7 +27,7 @@ export const candidateAssessmentService = {
     // async + await INSIDE the scope: Prisma queries are lazy (they run on .then).
     const candidate = await runWithTenant(org.id, async () => await candidatePortalRepo.findActiveCandidate(org.id, email));
     if (!candidate) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
     }
     // Outer pre-check: fail fast on an obviously-invalid attempt before opening
     // a write transaction. The SAME check is repeated inside the transaction
@@ -37,7 +37,7 @@ export const candidateAssessmentService = {
       await candidateAssessmentRepo.findOwnedAssignment(org.id, candidate.id, assignmentId),
     );
     if (!preCheck) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
     }
     if (preCheck.status === 'completed') {
       throw new TRPCError({ code: 'CONFLICT', message: 'assignment_already_completed' });
@@ -52,7 +52,7 @@ export const candidateAssessmentService = {
     return runTenantTransaction(org.id, async (tx) => {
       const assignment = await candidateAssessmentWriteRepo.findAssignmentInTx(tx, org.id, candidate.id, assignmentId);
       if (!assignment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
       if (assignment.status === 'completed') {
         throw new TRPCError({ code: 'CONFLICT', message: 'assignment_already_completed' });

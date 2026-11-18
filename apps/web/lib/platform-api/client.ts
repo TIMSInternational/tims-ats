@@ -43,6 +43,11 @@ export class PlatformApiError extends Error {
   readonly hasHandlerMessage: boolean;
   /** Stable machine-readable `code` from a `{ code, message }` error body (e.g. a 409 conflict), if any. */
   readonly code: string | undefined;
+  /**
+   * The parsed JSON error body, unvalidated (undefined when it was not JSON). For endpoints whose error body carries
+   * more than a message, e.g. `{ error, current }` on a conflict: a caller must validate it before use.
+   */
+  readonly body: unknown;
 
   constructor(status: number, statusText: string, body?: unknown) {
     const handlerMessage = extractErrorMessage(body);
@@ -51,6 +56,7 @@ export class PlatformApiError extends Error {
     this.status = status;
     this.hasHandlerMessage = handlerMessage !== undefined;
     this.code = extractErrorCode(body);
+    this.body = body;
   }
 }
 
@@ -200,6 +206,34 @@ export async function platformGetRaw(path: string, query?: QueryParams, pathPara
   }
 
   return response.json();
+}
+
+/**
+ * GET of a binary body (a report PDF): same auth, base URL and error handling as {@link platformGet}, but asks for
+ * `application/pdf` and returns the body as a Blob. The path is the C# route template; {@link PathParams} fill it.
+ */
+export async function platformGetBlob(path: string, query?: QueryParams, pathParams?: PathParams): Promise<Blob> {
+  if (!isPlatformApiEnabled()) {
+    throw new Error('Platform API is disabled: NEXT_PUBLIC_TIMS_PLATFORM_API_URL is unset.');
+  }
+
+  const token = await getAccessToken();
+  const headers: Record<string, string> = { Accept: 'application/pdf' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const resolvedPath = applyPathParams(path, pathParams);
+  const response = await fetch(`/api/platform${resolvedPath}${buildQueryString(query)}`, {
+    method: 'GET',
+    headers,
+    credentials: 'same-origin',
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => undefined);
+    throw new PlatformApiError(response.status, response.statusText, errorBody);
+  }
+
+  return response.blob();
 }
 
 // ---------------------------------------------------------------------------

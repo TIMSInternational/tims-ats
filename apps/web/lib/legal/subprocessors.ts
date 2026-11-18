@@ -82,16 +82,20 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     vendor: 'Amazon Web Services, Inc.',
     service: 'Amazon Bedrock',
     purpose: {
-      es: 'Inferencia de modelos de IA para las funciones asistidas por IA (por ejemplo, análisis de CV, preselección de candidatos, redacción de vacantes).',
-      en: 'AI model inference for AI-assisted features (for example CV parsing, candidate screening, vacancy writing).',
+      es: 'Inferencia de modelos de IA para las funciones asistidas por IA (por ejemplo, análisis de CV, preselección y comparación de candidatos con la vacante, explicación de la puntuación FIT, guías y resúmenes de entrevistas, redacción de vacantes).',
+      en: 'AI model inference for AI-assisted features (for example CV parsing, candidate screening and matching against the vacancy, FIT score explanations, interview guides and summaries, vacancy writing).',
     },
     dataCategories: {
-      es: 'Texto enviado en las solicitudes al modelo, que puede incluir contenido de CV y datos de perfil de candidatos o colaboradores; respuestas del modelo.',
-      en: 'Text sent in model requests, which can include CV content and candidate or employee profile data; model responses.',
+      es: 'Texto enviado en las solicitudes al modelo, que puede incluir contenido de CV, datos de perfil de candidatos o colaboradores y el desglose de la puntuación FIT (incluidos los resultados de evaluaciones que la alimentan); respuestas del modelo.',
+      en: 'Text sent in model requests, which can include CV content, candidate or employee profile data and the FIT score breakdown (including the assessment results that feed it); model responses.',
     },
     condition: 'always',
     // 'amazon-bedrock', not the factory name: tests/ai/door-gate.test.ts forbids that token outside packages/ai.
-    evidence: [{ file: 'packages/ai/src/client.ts', contains: 'amazon-bedrock' }],
+    evidence: [
+      { file: 'packages/ai/src/client.ts', contains: 'amazon-bedrock' },
+      { file: 'packages/ai/src/agents/cv-parser.ts', contains: 'cv-parser' },
+      { file: 'packages/ai/src/agents/fit-explainer.ts', contains: 'assessments' },
+    ],
   },
   {
     id: 'aws-s3',
@@ -109,6 +113,7 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     activatedBy: ['CV_UPLOADS_BUCKET', 'CV_UPLOADS_REGION'],
     evidence: [
       { file: 'packages/api/package.json', contains: '@aws-sdk/client-s3' },
+      { file: 'packages/api/package.json', contains: '@aws-sdk/s3-request-presigner' },
       { file: 'apps/web/lib/env.ts', contains: 'CV_UPLOADS_BUCKET' },
     ],
   },
@@ -147,6 +152,29 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     },
     condition: 'always',
     evidence: [{ file: 'services/Tims.Platform/deploy/terraform/main.tf', contains: 'aws_apprunner_service' }],
+  },
+  {
+    id: 'aws-dynamodb',
+    vendor: 'Amazon Web Services, Inc.',
+    service: 'Amazon DynamoDB',
+    purpose: {
+      es: 'Limitación de tasa de solicitudes compartida por la aplicación web y el servicio de API.',
+      en: 'Request rate limiting shared by the web application and the API service.',
+    },
+    dataCategories: {
+      es: 'Contadores de limitación con su clave: dirección IP, identificadores internos de usuario, de organización, de clave de API o de vacante, y el hash SHA-256 de la dirección de correo que recibe la confirmación de postulación.',
+      en: 'Rate-limit counters and their keys: IP address, internal user, organization, API key or vacancy identifiers, and the SHA-256 hash of the email address that receives the application confirmation.',
+    },
+    condition: 'configured',
+    activatedBy: ['RATE_LIMIT_DYNAMODB_TABLE', 'RATE_LIMIT_DYNAMODB_REGION'],
+    evidence: [
+      { file: 'packages/api/src/middleware/rate-limit-store.ts', contains: '@aws-sdk/client-dynamodb' },
+      { file: 'packages/api/src/middleware/rate-limit.ts', contains: "createHash('sha256')" },
+      {
+        file: 'services/Tims.Platform/src/Tims.Infrastructure/RateLimiting/DynamoDbRateLimitStore.cs',
+        contains: 'Amazon.DynamoDBv2',
+      },
+    ],
   },
   {
     id: 'daily',
@@ -195,14 +223,15 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
       en: 'Error monitoring for the web application.',
     },
     dataCategories: {
-      es: 'Reportes de error (mensaje de error, traza, URL de la solicitud, navegador y dispositivo). Los errores del servidor incluyen además los identificadores internos del usuario que inició sesión y de su organización. El envío de PII por defecto está desactivado y los tokens de enlace para unirse a entrevistas se eliminan antes del envío.',
-      en: 'Error reports (error message, stack trace, request URL, browser and device). Server errors also carry the internal identifiers of the signed-in user and of their organization. Default PII sending is disabled and interview-join link tokens are scrubbed before sending.',
+      es: 'Reportes de error (mensaje de error, traza, URL de la solicitud, navegador y dispositivo). Los errores del servidor incluyen además los identificadores internos del usuario que inició sesión y de su organización. El envío de PII por defecto está desactivado, y antes del envío se eliminan las credenciales que viajan en enlaces: los tokens de enlace para firmar ofertas, para unirse a entrevistas y de entrevistas con IA, y los códigos de invitación, de restablecimiento de contraseña y de inicio de sesión.',
+      en: 'Error reports (error message, stack trace, request URL, browser and device). Server errors also carry the internal identifiers of the signed-in user and of their organization. Default PII sending is disabled, and credentials carried in links are scrubbed before sending: offer-signing, interview-join and AI-interview link tokens, and invitation, password-reset and sign-in codes.',
     },
     condition: 'configured',
     activatedBy: ['NEXT_PUBLIC_SENTRY_DSN', 'SENTRY_DSN'],
     evidence: [
       { file: 'apps/web/instrumentation-client.ts', contains: 'sendDefaultPii: false' },
-      { file: 'apps/web/lib/sentry-redact.ts', contains: 'JOIN_TOKEN_PATH' },
+      { file: 'apps/web/lib/sentry-redact.ts', contains: 'export function redactSentryEvent' },
+      { file: 'apps/web/sentry.server.config.ts', contains: 'beforeSend: (event) => redactSentryEvent(event)' },
       { file: 'apps/web/app/api/trpc/[trpc]/route.ts', contains: 'extra: base' },
       { file: 'apps/web/package.json', contains: '@sentry/nextjs' },
     ],
@@ -228,18 +257,65 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     vendor: 'Upstash, Inc.',
     service: 'Upstash Redis',
     purpose: {
-      es: 'Limitación de tasa de solicitudes y caché.',
-      en: 'Request rate limiting and caching.',
+      es: 'Registro temporal de identificadores de un solo uso del servicio de API durante la transición de su almacén de limitación de tasa, y cachés opcionales que solo se usan si se activan expresamente.',
+      en: "Temporary register of the API service's single-use request identifiers while its rate-limit store transitions, and optional caches used only when explicitly enabled.",
     },
     dataCategories: {
-      es: 'Claves de limitación (direcciones IP, identificadores de usuario y de organización, hash de direcciones de correo); valores en caché (verificaciones de permisos y respuestas de IA de los agentes configurados con caché).',
-      en: 'Rate-limit keys (IP addresses, user and organization identifiers, hashed email addresses); cached values (permission checks and AI responses for agents configured with a cache TTL).',
+      es: 'Identificadores aleatorios de un solo uso (sin datos personales). Solo si se activan las cachés: resultados de verificaciones de permisos y respuestas de IA de los agentes configurados con caché.',
+      en: 'Random single-use identifiers (no personal data). Only when the caches are enabled: permission-check results and AI responses for agents configured with a cache TTL.',
     },
     condition: 'configured',
-    activatedBy: ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+    activatedBy: ['RedisConnectionString', 'AI_CACHE_UPSTASH_ENABLED', 'PERMISSION_CACHE_UPSTASH_ENABLED'],
     evidence: [
-      { file: 'packages/api/src/middleware/rate-limit.ts', contains: '@upstash/ratelimit' },
-      { file: 'packages/ai/src/cache.ts', contains: 'cacheTtlSeconds' },
+      { file: 'services/Tims.Platform/src/Tims.Api/Http/LegacyRelayNonceBridge.cs', contains: 'tims:relay:nonce:' },
+      { file: 'packages/ai/src/cache.ts', contains: "process.env.AI_CACHE_UPSTASH_ENABLED === 'true'" },
+      { file: 'packages/api/src/lib/cache.ts', contains: 'PERMISSION_CACHE_UPSTASH_ENABLED' },
+    ],
+  },
+  {
+    id: 'tims-assessments',
+    vendor: 'TIMS International',
+    service: 'TIMS Assessments (timssuite.com)',
+    purpose: {
+      es: 'Aplicación y calificación de las evaluaciones que la organización asigna a un candidato (por ejemplo LIA, Personalidad TIMS, Inglés y PCA); sus resultados alimentan la puntuación FIT.',
+      en: 'Delivery and scoring of the assessments the organization assigns to a candidate (for example LIA, TIMS Personality, English and PCA); their results feed the FIT score.',
+    },
+    dataCategories: {
+      es: 'Nombre de la organización; nombre, apellidos, correo electrónico e idioma preferido del candidato y una referencia interna; la vacante a la que se vincula la evaluación y la razón por la que se relaciona con el puesto; ajustes de tiempo o de accesibilidad y una declaración de rango de edad; la configuración de supervisión de la prueba; los consentimientos del candidato para las evaluaciones; respuestas y resultados de las evaluaciones.',
+      en: "Organization name; the candidate's given and family name, email address, preferred language and an internal reference; the vacancy the assessment is linked to and why it relates to the position; time or accessibility accommodations and an age-band attestation; the test's proctoring settings; the candidate's assessment consents; assessment answers and results.",
+    },
+    condition: 'customer-enabled',
+    evidence: [
+      {
+        file: 'services/Tims.Platform/src/Tims.Infrastructure/Assessments/Providers/TimsAssessmentsClient.cs',
+        contains: 'AddIfPresent(body, "email", request.Email)',
+      },
+      {
+        file: 'services/Tims.Platform/src/Tims.Infrastructure/Assessments/Providers/TimsAssessmentsClient.cs',
+        contains: '["display_name"] = request.DisplayName',
+      },
+      { file: 'services/Tims.Platform/src/Tims.Api/Program.cs', contains: 'var providerResultsFeedFit' },
+    ],
+  },
+  {
+    id: 'tims-pca',
+    vendor: 'TIMS International',
+    service: 'PCA (timshr.com)',
+    purpose: {
+      es: 'Cuestionario PCA (Análisis de Competencias Personales), que el candidato responde en el sitio de TIMS International cuando la organización se lo asigna.',
+      en: "The PCA questionnaire (Personal Competencies Analysis), which the candidate answers on TIMS International's site when the organization assigns it.",
+    },
+    dataCategories: {
+      es: 'Las respuestas del candidato al cuestionario, ingresadas directamente en ese sitio; metadatos de las solicitudes del navegador (dirección IP, agente de usuario).',
+      en: "The candidate's questionnaire answers, entered directly on that site; browser request metadata (IP address, user agent).",
+    },
+    condition: 'customer-enabled',
+    evidence: [
+      {
+        file: 'apps/web/lib/security/csp.ts',
+        contains: "DEFAULT_ASSESSMENT_PROVIDER_FRAME_ORIGIN = 'https://timshr.com'",
+      },
+      { file: 'apps/web/lib/assessment-player-launch.ts', contains: "launch.delivery === 'link_out'" },
     ],
   },
   {

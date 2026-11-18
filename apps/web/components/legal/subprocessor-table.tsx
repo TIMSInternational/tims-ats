@@ -19,9 +19,9 @@ export function SubprocessorTable({ locale }: SubprocessorTableProps) {
   };
 
   return (
-    <div className="mt-4 overflow-x-auto rounded-lg border border-[#EDEDED] bg-white">
-      <table className="w-full min-w-[640px] text-left text-[12px] text-[#585858]">
-        <thead className="bg-[#F6F6F6] text-[11px] uppercase tracking-[0.5px] text-[#8B8B8B]">
+    <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-white">
+      <table className="w-full min-w-[640px] text-left text-callout text-secondary">
+        <thead className="bg-surface text-caption uppercase tracking-[0.5px] text-secondary">
           <tr>
             <th scope="col" className="px-3 py-2 font-semibold">
               {l.subprocessorVendor}
@@ -42,8 +42,8 @@ export function SubprocessorTable({ locale }: SubprocessorTableProps) {
         </thead>
         <tbody>
           {SUBPROCESSORS.map((sp) => (
-            <tr key={sp.id} data-subprocessor-id={sp.id} className="border-t border-[#EDEDED] align-top">
-              <td className="px-3 py-2 font-medium text-[#333]">{sp.vendor}</td>
+            <tr key={sp.id} data-subprocessor-id={sp.id} className="border-t border-border align-top">
+              <td className="px-3 py-2 font-medium text-primary">{sp.vendor}</td>
               <td className="px-3 py-2">{sp.service}</td>
               <td className="px-3 py-2">{sp.purpose[locale]}</td>
               <td className="px-3 py-2">{sp.dataCategories[locale]}</td>

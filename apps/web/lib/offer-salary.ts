@@ -8,14 +8,15 @@
  * display shows the currency CODE, a localized amount and the period.
  */
 
+import { isZeroDecimalCurrency } from '@tims/shared';
+import { TENANT_LOCALE } from './tenant-locale';
+
 export type SalaryPeriod = 'monthly' | 'yearly';
 
 export const MONTHS_PER_YEAR = 12;
 
 /** Mirrors the API cap on `offer.create` / `offer.update` (packages/api/src/routers/offer/crud.ts). */
 export const MAX_OFFER_ANNUAL_SALARY = 1_000_000_000_000;
-
-const ZERO_DECIMAL = new Set(['COP', 'CLP', 'JPY', 'KRW', 'PYG', 'VND']);
 
 export interface VacancySalaryRange {
   min: number | null;
@@ -60,11 +61,12 @@ export function vacancyMidpointIn(range: VacancySalaryRange | null, period: Sala
 }
 
 /**
- * "COP 96.000.000" — ISO code + localized digits; never a bare "$".
+ * "CRC 850 000" — ISO code + digits in the tenant locale (es-CR groups with a non-breaking space, so an
+ * amount never wraps mid-number); never a bare "$".
  * A stored value that is not a 3-letter code (legacy rows; the API once accepted any string) is shown
  * verbatim next to plain digits — never replaced by a guessed currency such as USD.
  */
-export function formatMoneyCode(amount: number, currency: string, locale = 'es-CO'): string {
+export function formatMoneyCode(amount: number, currency: string, locale = TENANT_LOCALE): string {
   const normalized = currency.trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(normalized)) {
     const digitsOnly = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(amount);
@@ -72,16 +74,15 @@ export function formatMoneyCode(amount: number, currency: string, locale = 'es-C
     return raw ? `${raw} ${digitsOnly}` : digitsOnly;
   }
   const code = normalized;
-  const digits = ZERO_DECIMAL.has(code) || Number.isInteger(amount) ? 0 : 2;
+  // The zero-decimal list is shared with the salary inputs and the server (@tims/shared ZERO_DECIMAL_CURRENCIES).
+  const digits = isZeroDecimalCurrency(code) || Number.isInteger(amount) ? 0 : 2;
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: code,
     currencyDisplay: 'code',
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  })
-    .format(amount)
-    .replace(/ /g, ' ');
+  }).format(amount);
 }
 
 export interface PeriodLabels {
@@ -89,12 +90,12 @@ export interface PeriodLabels {
   perMonth: string;
 }
 
-/** Annual stored salary rendered as "COP 96.000.000 / año (COP 8.000.000 / mes)". */
+/** Annual stored salary rendered as "CRC 10 200 000 / año (CRC 850 000 / mes)". */
 export function formatAnnualOfferSalary(
   annual: number,
   currency: string,
   labels: PeriodLabels,
-  locale = 'es-CO',
+  locale = TENANT_LOCALE,
 ): string {
   const monthly = annualToPeriod(annual, 'monthly');
   return `${formatMoneyCode(annual, currency, locale)} / ${labels.perYear} (${formatMoneyCode(monthly, currency, locale)} / ${labels.perMonth})`;

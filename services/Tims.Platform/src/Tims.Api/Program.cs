@@ -11,14 +11,18 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
-using StackExchange.Redis;
+using Amazon;
+using Amazon.DynamoDBv2;
 using Tims.Api.AccessReview;
 using Tims.Api.AssessmentTypes;
+using Tims.Api.Assessments;
 using Tims.Api.CandidateConsent;
 using Tims.Application.CandidateConsent;
 using Tims.Infrastructure.CandidateConsent;
 using Tims.Application.AssessmentTypes;
 using Tims.Infrastructure.AssessmentTypes;
+using Tims.Application.Assessments.Providers;
+using Tims.Infrastructure.Assessments.Providers;
 using Tims.Api.Fx;
 using Tims.Api.AlertMetrics;
 using Tims.Api.Audit;
@@ -161,7 +165,8 @@ try
     // --- Health / readiness -----------------------------------------------------------
     builder.Services.AddHealthChecks()
         .AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"])
-        .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
+        .AddCheck<RateLimitStoreHealthCheck>("ratelimit-store", tags: ["ready"])
+        .AddCheck<LegacyRelayNonceBridgeHealthCheck>("relay-nonce-bridge", tags: ["ready"]);
 
     // --- Supabase JWT authentication (WP2.1) ------------------------------------------
     // Validates issuer, audience, lifetime, AND signing key (JWKS) — never skips exp/iss/aud
@@ -591,10 +596,48 @@ try
     builder.Services.AddScoped<IAssessmentTypeWriteRepository, AssessmentTypeWriteRepository>();
     builder.Services.AddScoped<AssessmentTypeWriteUseCase>();
 
+    // AS-5: the TIMS Assessments provider connector (every instrument is a REMOTE provider behind the headless API
+    // v1). EF-OWNED assessment_provider_* tables (migration 20261107232524, NOT applied by the PR that added it),
+    // the typed /v1 client with its client-credentials token cache, and the use cases. Inert registration: routes are
+    // mapped only when AssessmentProvidersEnabled is on, and an unconfigured client answers provider_unconfigured.
+    builder.Services.AddAssessmentProviders(builder.Configuration, databaseConnectionString);
+
     // #312/#313: candidate data-processing consent (status + evidence read, staff and self-service withdrawal).
     // data_consents + data_subject_requests (efcoreStranglerWrite) and audit_logs in ONE context so a withdrawal and
     // its audit row share a transaction. Runs UNDER TenantScope; dark unless CandidateConsentEnabled.
     builder.Services.AddDbContext<CandidateConsentDbContext>(options => options.UseNpgsql(databaseConnectionString));
+    // D15: with the provider connector ON (its migration applied), a #312 withdrawal stages the candidate's provider
+    // attempts in its own transaction and then propagates to the provider. OFF: neither runs, so the withdrawal never
+    // touches the provider tables (which may not exist yet).
+    if (builder.Configuration.GetValue<bool>("Platform:AssessmentProvidersEnabled"))
+    {
+        builder.Services.AddScoped<IConsentWithdrawalCascade, ProviderConsentWithdrawalCascade>();
+        builder.Services.AddScoped<IConsentWithdrawalPropagator, ProviderConsentWithdrawalPropagator>();
+        // The cascade's durable retry: an attempt left pending (outage, unconfirmed 404, capture in flight) is retried
+        // every 10 minutes without waiting for a webhook or another withdrawal.
+        builder.Services.AddHostedService<ProviderWithdrawalSweepHostedService>();
+        // D17: the polling fallback. Webhooks stay the primary signal; stale attempts are re-read every 5 minutes under
+        // a per-attempt lease, so two instances never poll the same attempt.
+        builder.Services.AddHostedService<ProviderAttemptPollHostedService>();
+        // Codex r13 P1: the same job runs the erasure sweep after each poll (every subject holding a stored result is
+        // asked about at most once per interval), bounded by the validated Platform options.
+        builder.Services.AddSingleton(sp =>
+        {
+            var platform = sp.GetRequiredService<IOptions<PlatformOptions>>().Value;
+            return new ProviderErasureSweepSettings(
+                TimeSpan.FromDays(platform.AssessmentProviderErasureCheckIntervalDays),
+                platform.AssessmentProviderErasureCheckMaxSubjects);
+        });
+        // Contract step 6: the webhook route only verifies and commits the inbox row (2xx fast); this worker applies
+        // the events under per-row leases, with backoff retries, woken by the route.
+        builder.Services.AddHostedService<ProviderInboxWorkerHostedService>();
+    }
+    else
+    {
+        builder.Services.AddScoped<IConsentWithdrawalCascade, NoConsentWithdrawalCascade>();
+        builder.Services.AddScoped<IConsentWithdrawalPropagator, NoConsentWithdrawalPropagator>();
+    }
+
     builder.Services.AddScoped<ICandidateConsentRepository, CandidateConsentRepository>();
     builder.Services.AddScoped<CandidateConsentUseCase>();
     // Post-commit admin email for a new data subject request, and the fail-closed auth-settings probe the
@@ -647,7 +690,31 @@ try
     builder.Services.AddScoped<FitEngineReadUseCase>();
     builder.Services.AddDbContext<FitEngineWriteDbContext>(options => options.UseNpgsql(databaseConnectionString));
     builder.Services.AddScoped<IFitEngineWriteRepository, FitEngineWriteRepository>();
+    // FIT v2 result port: the ATS native-quiz tables first, then the TIMS Assessments provider connector's stored
+    // results (AS-5). Read only when Platform:FitEngineV2Enabled is on. The provider adapter is composed ONLY with
+    // the connector ON: its tables (migration 20261107232524) exist only then, and a FIT v2 compute must never fail
+    // on a missing table. OFF: a provider instrument a vacancy lists shows as no_result.
+    builder.Services.AddScoped<AtsAssessmentResultSource>();
+    builder.Services.AddScoped<ProviderFitResultSource>();
+    var providerResultsFeedFit = builder.Configuration.GetValue<bool>("Platform:AssessmentProvidersEnabled");
+    builder.Services.AddScoped<IAssessmentResultSource>(sp => new CompositeAssessmentResultSource(
+        providerResultsFeedFit
+            ? [sp.GetRequiredService<AtsAssessmentResultSource>(), sp.GetRequiredService<ProviderFitResultSource>()]
+            : [sp.GetRequiredService<AtsAssessmentResultSource>()]));
     builder.Services.AddScoped<FitEngineWriteUseCase>();
+    // FIT v2: the vacancy assessments editor's read and conditional replace of fit_requirements.assessments[] only.
+    builder.Services.AddScoped<IFitAssessmentRequirementsRepository, FitAssessmentRequirementsRepository>();
+    builder.Services.AddScoped<FitAssessmentRequirementsUseCase>();
+    builder.Services.AddScoped<IEssayGradingRepository, EssayGradingRepository>();
+    // FIT v2: the recompute queue (database triggers enqueue; this drains). The loop runs only while the FIT v2
+    // compute is live.
+    builder.Services.AddScoped<IFitRecomputeQueue, FitRecomputeQueueRepository>();
+    builder.Services.AddScoped<FitRecomputeUseCase>();
+    if (builder.Configuration.GetValue<bool>("Platform:FitEngineWriteEnabled")
+        && builder.Configuration.GetValue<bool>("Platform:FitEngineV2Enabled"))
+    {
+        builder.Services.AddHostedService<FitRecomputeHostedService>();
+    }
 
     // Phase-5 Slice 25 / #98 — notification. ONE DbContext for both sides: the read and write flags cover the
     // SAME two tables, and getPreferences is a query that INSERTs, so the read path needs write capability.
@@ -881,27 +948,62 @@ try
         }));
 
     // --- Rate limiting (WP2.6) --------------------------------------------------------
-    // Shared-bucket sliding-window limiter that reproduces @upstash/ratelimit byte-for-byte, so
-    // C# and TS throttle against the SAME Redis keys. The Redis limiter is registered ONLY when a
-    // connection string is configured (Upstash exposes a Redis TCP endpoint); AbortOnConnectFail
-    // is false so a transient outage surfaces as a per-call RedisConnectionException the guard
-    // handles (fail-open-to-in-memory in Development, fail-closed in production) rather than
-    // crashing the host. The in-memory fallback is always registered but engaged Development-only.
-    var redisConnectionString = platformSection[nameof(PlatformOptions.RedisConnectionString)];
-    if (!string.IsNullOrWhiteSpace(redisConnectionString))
+    // Shared sliding-window limiter (the @upstash/ratelimit algorithm, ported to DynamoDB), so
+    // C# and TS throttle against the SAME DynamoDB items (contracts/ratelimit-fixtures/dynamodb.json).
+    // The shared store is registered ONLY when both the table and its region are configured; a
+    // half-configured or malformed pair fails at startup instead of on every request. Credentials
+    // come from the default chain (the App Runner instance role). No SDK retries — an increment is
+    // not idempotent — and every call is bounded by DynamoDbRateLimitStore.TimeoutMs; a store
+    // outage surfaces per call and the guard handles it (fail-open-to-in-memory in Development,
+    // fail-closed in production). The in-memory fallback is always registered but engaged
+    // Development-only. The relay nonce store and the readiness probe use the same store.
+    var rateLimitStore = RateLimitStoreSettings.Read(platformSection);
+    // Build-time OpenAPI generation runs this file with GetDocument.Insider as the entry assembly and no
+    // environment (so "Production"); it never serves a request. See the strangler gating below.
+    var isOpenApiDocGeneration =
+        string.Equals(Assembly.GetEntryAssembly()?.GetName().Name, "GetDocument.Insider", StringComparison.Ordinal);
+    if (rateLimitStore is null && !builder.Environment.IsDevelopment() && !isOpenApiDocGeneration)
     {
-        builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+        // Outside Development every rate-limited request and every relay nonce check fails closed without
+        // the store, while /health (App Runner's probe) stays green, so a deploy that lost these settings
+        // would take traffic and refuse it. Refuse to start instead: the deployment fails and the previous
+        // version keeps serving.
+        throw new InvalidOperationException(RateLimitStoreSettings.MissingOutsideDevelopment);
+    }
+
+    if (rateLimitStore is not null)
+    {
+        builder.Services.AddSingleton(_ => new DynamoDbRateLimitStore(
+            new AmazonDynamoDBClient(new AmazonDynamoDBConfig
+            {
+                RegionEndpoint = RegionEndpoint.GetBySystemName(rateLimitStore.Region),
+                Timeout = TimeSpan.FromMilliseconds(DynamoDbRateLimitStore.TimeoutMs),
+                MaxErrorRetry = 0,
+                // A separate SDK retry allowance that defaults to ten even with MaxErrorRetry=0.
+                MaxStaleConnectionRetries = 0,
+            }),
+            rateLimitStore.Table));
+        builder.Services.AddSingleton<DynamoDbSlidingWindowRateLimiter>();
+    }
+
+    // Rollback-window relay-nonce bridge (Http/LegacyRelayNonceBridge.cs): registered only while the Upstash
+    // connection string pre-DynamoDB images read is still configured. AbortOnConnectFail=false: an outage
+    // surfaces per call (that nonce is rejected) instead of crashing the host.
+    var legacyRedis = platformSection[nameof(PlatformOptions.RedisConnectionString)];
+    if (!string.IsNullOrWhiteSpace(legacyRedis))
+    {
+        builder.Services.AddSingleton(_ =>
         {
-            var config = ConfigurationOptions.Parse(redisConnectionString);
+            var config = StackExchange.Redis.ConfigurationOptions.Parse(legacyRedis);
             config.AbortOnConnectFail = false;
-            return ConnectionMultiplexer.Connect(config);
+            config.ConnectTimeout = (int)LegacyRelayNonceBridge.Timeout.TotalMilliseconds;
+            return new LegacyRelayNonceBridge(StackExchange.Redis.ConnectionMultiplexer.Connect(config));
         });
-        builder.Services.AddSingleton<RedisSlidingWindowRateLimiter>();
     }
 
     builder.Services.AddSingleton<InMemorySlidingWindowRateLimiter>();
     builder.Services.AddSingleton<RateLimitGuard>(sp => new RateLimitGuard(
-        sp.GetService<RedisSlidingWindowRateLimiter>(),
+        sp.GetService<DynamoDbSlidingWindowRateLimiter>(),
         sp.GetRequiredService<InMemorySlidingWindowRateLimiter>(),
         sp.GetRequiredService<IHostEnvironment>()));
 
@@ -1135,6 +1237,10 @@ try
     // ClientIp kernel, which is pinned cross-stack.
     app.UseMiddleware<TrustedProxyHeaderMiddleware>();
 
+    // nosniff + HSTS on every response (including CORS preflights and error responses) outside
+    // Development. Header-only, reads nothing from the request.
+    app.UseMiddleware<SecurityHeadersMiddleware>();
+
     // CORS runs FIRST among the request-handling middlewares — an unauthenticated preflight (OPTIONS) is
     // answered by this middleware before it can reach authentication or the fail-closed rate limiter.
     app.UseCors(BrowserCorsPolicyName);
@@ -1227,8 +1333,8 @@ try
         Predicate = _ => false,
     });
 
-    // Readiness: dependency checks (DB + Redis). Degraded (e.g. Redis unconfigured) → 200;
-    // Unhealthy (DB unreachable) → 503.
+    // Readiness: dependency checks (DB + rate-limit store). Degraded (e.g. store unconfigured) → 200;
+    // Unhealthy (DB or a configured store unreachable) → 503.
     app.MapHealthChecks("/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
     {
         Predicate = check => check.Tags.Contains("ready"),
@@ -1267,8 +1373,6 @@ try
     // the process entry assembly) forces both mapped so the emitted contract stays accurate even while the
     // runtime default is dark; at real runtime the entry assembly is Tims.Api, so the flags fully govern.
     var externalOptions = app.Services.GetRequiredService<IOptions<PlatformOptions>>().Value;
-    var isOpenApiDocGeneration =
-        string.Equals(Assembly.GetEntryAssembly()?.GetName().Name, "GetDocument.Insider", StringComparison.Ordinal);
 
     // External-vendor assessment READ surface (Phase-5 Slice 1): GET /external/assessment-results (list,
     // cursor) + /external/assessment-results/{assignmentId} (getOne). ApiKey scheme + assessment:read
@@ -1553,6 +1657,19 @@ try
         app.MapAssessmentTypeWriteEndpoints();
     }
 
+    // AS-5: TIMS Assessments provider connector — staff assign (assessment:create + vacancy scope), platform-owner
+    // binding, the candidate's launch (confirmed email; consent gate incl. #312) and the signed webhook. Dark unless on.
+    if (externalOptions.AssessmentProvidersEnabled || isOpenApiDocGeneration)
+    {
+        app.MapProviderAssignmentEndpoints();
+        app.MapProviderCandidateEndpoints();
+        app.MapProviderPortalEndpoints();
+        app.MapProviderSubjectRightsEndpoints();
+        app.MapProviderBindingAdminEndpoints(); // round 12: the platform owner's binding state and safe unbind
+        app.MapProviderStaffReadEndpoints(); // AS-7 / AS-14: the staff catalog and a candidate's attempts with results
+        app.MapProviderSettingsEndpoints(); // proctoring parity: the org's assessment security settings
+    }
+
     // #312/#313: candidate consent status/evidence, staff-recorded withdrawal and the candidate's self-service
     // withdrawal. Dark unless the flag is on; apply migration 20261001120000_consent_evidence_withdrawal first.
     if (externalOptions.CandidateConsentEnabled || isOpenApiDocGeneration)
@@ -1599,6 +1716,8 @@ try
     if (externalOptions.FitEngineReadEnabled || isOpenApiDocGeneration)
     {
         app.MapFitEngineReadEndpoints();
+        app.MapFitReviewStateEndpoints(); // FIT v2: the reviewPending marker for the candidate/talent-pool tables
+        app.MapFitCandidateScoresEndpoints(); // FIT v2: the candidate page's fit scores (D6-redacted)
     }
 
     // Phase-5 Slice 24 / #90 (efcoreStranglerWrite): the FIT-engine WRITE surface (2 writes) — POST
@@ -1612,6 +1731,21 @@ try
     if (externalOptions.FitEngineWriteEnabled || isOpenApiDocGeneration)
     {
         app.MapFitEngineWriteEndpoints();
+    }
+
+    // FIT v2: the C#-owned fit_requirements writer (merges assessments[], reports dropped entries). Only with the
+    // compute route AND the v2 flag, so the flag-on deploy has one writer that knows the key (apps/web switches the
+    // requirements card to it under NEXT_PUBLIC_FIT_ENGINE_V2_VIA_CSHARP).
+    if ((externalOptions.FitEngineWriteEnabled && externalOptions.FitEngineV2Enabled) || isOpenApiDocGeneration)
+    {
+        app.MapFitRequirementsEndpoints();
+        app.MapFitAssessmentRequirementsEndpoints(); // the vacancy assessments editor (assessments[] only, conditional)
+    }
+
+    // FIT v2 / owner default D5: minimal manual essay grading (a quiz awaiting a grade is needs review in FIT v2).
+    if (externalOptions.FitEngineV2Enabled || isOpenApiDocGeneration)
+    {
+        app.MapEssayGradingEndpoints();
     }
 
     // Phase-5 Slice 25 / #98 (efcoreReadOnly + efcoreStranglerWrite): the notification READ surface (3 reads) —

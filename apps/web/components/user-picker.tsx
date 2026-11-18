@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { trpc } from '../lib/trpc';
 import {
   useAssignablePeople,
@@ -46,6 +46,16 @@ interface UserPickerProps {
   vacancyId?: string;
   /** Shown instead of `emptyLabel` when the list is empty and nothing has been searched. */
   emptyHint?: string;
+  /** A visible label above the search box. Omit when the caller renders its own label (use `inputId`). */
+  label?: string;
+  /** Id for the search input, so a caller's <label htmlFor> names it. */
+  inputId?: string;
+  /** Id of an element that already names the picker (e.g. the modal title). */
+  ariaLabelledBy?: string;
+  /** Accessible name when nothing visible names the field. Defaults to the placeholder. */
+  ariaLabel?: string;
+  /** 'onFocus' keeps the result list closed until the field is focused or typed into (two pickers in one dialog). */
+  listMode?: 'always' | 'onFocus';
 }
 
 interface PickerSource {
@@ -70,8 +80,17 @@ export function UserPicker({
   autoFocus = true,
   vacancyId,
   emptyHint,
+  label,
+  inputId,
+  ariaLabelledBy,
+  ariaLabel,
+  listMode = 'always',
 }: UserPickerProps) {
   const [search, setSearch] = useState('');
+  const [touched, setTouched] = useState(false);
+  const autoId = useId();
+  const fieldId = inputId ?? `user-picker-${autoId}`;
+  const showList = listMode === 'always' || touched || search !== '';
   const legacy = trpc.user.list.useQuery(
     { limit: 25, search: search || undefined, isActive: true },
     { enabled: purpose === undefined },
@@ -104,44 +123,57 @@ export function UserPicker({
 
   return (
     <div>
+      {label && (
+        <label htmlFor={fieldId} className="mb-1.5 block text-body font-medium text-primary">
+          {label}
+        </label>
+      )}
       <input
+        id={fieldId}
         type="text"
         value={search}
         maxLength={100}
         onChange={(e) => setSearch(e.target.value)}
+        onFocus={() => setTouched(true)}
         placeholder={searchPlaceholder}
-        className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] placeholder:text-[#B8B8B8] focus:outline-none focus:border-[#1F114C]/40"
+        aria-labelledby={label || inputId ? undefined : ariaLabelledBy}
+        aria-label={label || inputId || ariaLabelledBy ? undefined : (ariaLabel ?? searchPlaceholder)}
+        className="h-9 w-full rounded-lg border border-field-border bg-white px-3 text-base text-primary placeholder:text-muted hover:border-secondary focus-visible:border-brand sm:text-body pointer-coarse:h-11"
         autoFocus={autoFocus}
       />
-      <div className="mt-2 border border-[#EDEDED] rounded-lg max-h-[260px] overflow-y-auto bg-white">
-        {source.failure ? (
-          <AssignablePeopleError failure={source.failure} onRetry={source.refetch} />
-        ) : source.isLoading ? (
-          <p className="px-3 py-3 text-[12px] text-[#8B8B8B]">{loadingLabel}</p>
-        ) : users.length === 0 ? (
-          <p className="px-3 py-3 text-[12px] text-[#8B8B8B]">
-            {emptyHint && search.trim() === '' && source.rows.length === 0 ? emptyHint : emptyLabel}
-          </p>
-        ) : (
-          users.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => onSelect(u.id, { id: u.id, firstName: u.firstName, lastName: u.lastName })}
-              className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-[#F6F6F6] transition disabled:opacity-50 disabled:cursor-not-allowed border-b border-[#F6F6F6] last:border-0"
-            >
-              <CandidateAvatar firstName={u.firstName} lastName={u.lastName} avatar={u.avatar} size="sm" />
-              <div className="min-w-0">
-                <p className="text-[12px] text-[#333] font-medium truncate">
-                  {u.firstName} {u.lastName}
-                </p>
-                <p className="text-[10px] text-[#8B8B8B] truncate">{u.email}</p>
-              </div>
-            </button>
-          ))
-        )}
-      </div>
+      {showList && (
+        <div className="mt-2 border border-border rounded-lg max-h-[260px] overflow-y-auto bg-white">
+          {source.failure ? (
+            <AssignablePeopleError failure={source.failure} onRetry={source.refetch} />
+          ) : source.isLoading ? (
+            <p role="status" className="px-3 py-3 text-callout text-secondary">
+              {loadingLabel}
+            </p>
+          ) : users.length === 0 ? (
+            <p role="status" className="px-3 py-3 text-callout text-secondary">
+              {emptyHint && search.trim() === '' && source.rows.length === 0 ? emptyHint : emptyLabel}
+            </p>
+          ) : (
+            users.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => onSelect(u.id, { id: u.id, firstName: u.firstName, lastName: u.lastName })}
+                className="w-full text-left px-3 py-2.5 min-h-12 flex items-center gap-2.5 hover:bg-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-b border-border-subtle last:border-0"
+              >
+                <CandidateAvatar firstName={u.firstName} lastName={u.lastName} avatar={u.avatar} size="sm" decorative />
+                <div className="min-w-0">
+                  <p className="text-body text-primary font-medium truncate">
+                    {u.firstName} {u.lastName}
+                  </p>
+                  <p className="text-caption text-muted truncate">{u.email}</p>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -9,8 +9,8 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 
 /// <summary>
 /// The platform-owner organizations WRITE repository (Phase-5 slice 20, issue #76) — the C# port of
-/// <c>updateOrganization</c> (<c>organizations.ts:244-289</c>) and <c>suspendOrganization</c>
-/// (<c>organizations.ts:291-322</c>).
+/// <c>updateOrganization</c> (<c>organizations.ts:250-299</c>) and <c>suspendOrganization</c>
+/// (<c>organizations.ts:301-332</c>).
 ///
 /// <para><b>The org UPDATE and the audit INSERT are ONE transaction.</b> Both mutations open a
 /// <see cref="TenantScope"/>, issue the UPDATE, add the <c>audit_logs</c> row, <c>SaveChanges</c> and only
@@ -54,7 +54,9 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
         // (`OrgPlan`) with no EF store mapping to write back through — the same {plan}::"OrgPlan" cast
         // BillingWebhookRepository already uses on this column — and COALESCE expresses "absent leaves the
         // stored value alone" in one statement instead of a load-then-mutate round trip that could act on a
-        // stale row. Timestamps bind as text + ::timestamp: a raw command carries no column-type hint, so
+        // stale row. `settings` is MERGED (#201): `stored || patch` keeps every key the patch does not name
+        // (candidateContactEmail, ...) in the same single statement; a non-object stored value (never written
+        // by the product) is treated as empty, exactly like the TS mergeOrgSettings. Timestamps bind as text + ::timestamp: a raw command carries no column-type hint, so
         // Npgsql would default a DateTime to timestamptz and reject the Unspecified UTC wall-clock.
         var affected = await _db.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -62,7 +64,9 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
                  name = COALESCE({name}, name),
                  plan = COALESCE({plan}::"OrgPlan", plan),
                  is_active = COALESCE({isActive}, is_active),
-                 settings = COALESCE({settings}::jsonb, settings),
+                 settings = CASE WHEN {settings}::jsonb IS NULL THEN settings
+                                 ELSE (CASE WHEN jsonb_typeof(settings) = 'object' THEN settings
+                                            ELSE jsonb_build_object() END) || {settings}::jsonb END,
                  updated_at = {updatedAt}::timestamp
              WHERE id = {id}
              """,
@@ -91,7 +95,7 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
         DateTime now,
         CancellationToken cancellationToken)
     {
-        // organizations.ts:296 — `isActive: !suspend`. Suspending deactivates; unsuspending reactivates.
+        // organizations.ts:306 — `isActive: !suspend`. Suspending deactivates; unsuspending reactivates.
         var isActive = !suspend;
         var updatedAt = ToTimestampText(now);
 
@@ -109,7 +113,7 @@ public sealed class PlatformOrganizationsWriteRepository(PlatformOrganizationsWr
             return null;
         }
 
-        // organizations.ts:313 — the action, not a `changes` payload, carries the direction. The TS write
+        // organizations.ts:323 — the action, not a `changes` payload, carries the direction. The TS write
         // sets no `changes` key at all for this audit, so neither does this one.
         AddAuditRow(id, actorId, suspend ? SuspendedAction : ActivatedAction, changes: null);
 

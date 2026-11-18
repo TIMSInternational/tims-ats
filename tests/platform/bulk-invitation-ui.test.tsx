@@ -18,7 +18,9 @@ vi.mock('../../apps/web/lib/trpc', () => ({ trpc: { platform: {
   listOrganizations: { useQuery: () => ({ data: { organizations: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Target', slug: 'target' }] } }) },
   bulkInviteUsers: { useMutation: () => ({ mutate: vi.fn() }) },
 } } }));
-vi.mock('../../apps/web/components', () => ({
+// The real shared Button/field styles render; only Modal and ErrorState are stubbed.
+vi.mock('../../apps/web/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../apps/web/components')>()),
   Modal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ErrorState: ({ onRetry }: { onRetry: () => void }) => <button onClick={onRetry}>Retry roles</button>,
 }));
@@ -39,10 +41,10 @@ it('submits CSV and displays partial outcomes with recovery guidance',async()=>{
   fireEvent.click(view.getByRole('button',{name:en.invitations.bulkMode}));
   fireEvent.change(view.getByPlaceholderText(en.invitations.searchOrganization),{target:{value:'Target'}});
   fireEvent.click(view.getByRole('button',{name:/Target/}));
-  const file=new File(['email\na@example.test\nb@example.test\nA@example.test'],'invite.csv',{type:'text/csv'});
+  const file=new File(['email,role\na@example.test,recruiter\nb@example.test,recruiter\nA@example.test,recruiter'],'invite.csv',{type:'text/csv'});
   fireEvent.change(view.getByLabelText(en.invitations.selectFile),{target:{files:[file]}});
-  fireEvent.click(await view.findByRole('button',{name:'Continuar'}));
-  fireEvent.click(view.getByRole('button',{name:'Invitar 3 Usuarios'}));
+  fireEvent.click(await view.findByRole('button',{name:en.users.continueStep}));
+  fireEvent.click(view.getByRole('button',{name:'Invite 3 users'}));
   await view.findByText(en.invitations.bulkResultsTitle);
   expect(view.getByText(en.invitations.bulkDeliveryUnconfirmed)).toBeTruthy();
   expect(view.getByText(en.invitations.bulkDuplicateRow)).toBeTruthy();
@@ -51,4 +53,37 @@ it('submits CSV and displays partial outcomes with recovery guidance',async()=>{
   expect(mocks.post).toHaveBeenCalledOnce();expect(mocks.legacy).not.toHaveBeenCalled();
   expect(mocks.post.mock.calls[0][0]).toBe('/platform/invitations/bulk');
   fireEvent.click(view.getByRole('button',{name:en.common.close}));expect(close).toHaveBeenCalledOnce();view.unmount();
+});
+
+it('refuses a CSV batch whose rows have no role instead of letting them default to employee',async()=>{
+  const {InviteWizard}=await import('../../apps/web/app/(admin)/platform/users/invite-wizard');
+  const view=render(<InviteWizard onClose={vi.fn()} onSuccess={vi.fn()}/>,{wrapper});
+  fireEvent.click(view.getByRole('button',{name:en.invitations.bulkMode}));
+  fireEvent.change(view.getByPlaceholderText(en.invitations.searchOrganization),{target:{value:'Target'}});
+  fireEvent.click(view.getByRole('button',{name:/Target/}));
+  const file=new File(['email,role\na@example.test,recruiter\nb@example.test,'],'invite.csv',{type:'text/csv'});
+  fireEvent.change(view.getByLabelText(en.invitations.selectFile),{target:{files:[file]}});
+  fireEvent.click(await view.findByRole('button',{name:en.users.continueStep}));
+  fireEvent.click(view.getByRole('button',{name:'Invite 2 users'}));
+  await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(`${en.invitations.bulkRowsMissingRole} 2`,{type:'error',duration:8000}));
+  expect(mocks.post).not.toHaveBeenCalled();expect(mocks.legacy).not.toHaveBeenCalled();view.unmount();
+});
+
+it('previews each CSV row with its role label from the shared map, never a raw slug or an implied employee',async()=>{
+  const {InviteWizard}=await import('../../apps/web/app/(admin)/platform/users/invite-wizard');
+  const view=render(<InviteWizard onClose={vi.fn()} onSuccess={vi.fn()}/>,{wrapper});
+  fireEvent.click(view.getByRole('button',{name:en.invitations.bulkMode}));
+  fireEvent.change(view.getByPlaceholderText(en.invitations.searchOrganization),{target:{value:'Target'}});
+  fireEvent.click(view.getByRole('button',{name:/Target/}));
+  const file=new File(['email,role\na@example.test,hr_admin\nb@example.test,'],'invite.csv',{type:'text/csv'});
+  fireEvent.change(view.getByLabelText(en.invitations.selectFile),{target:{files:[file]}});
+  fireEvent.click(await view.findByRole('button',{name:en.users.continueStep}));
+  const rows=view.getAllByRole('row').slice(1);
+  expect(rows[0].textContent).toContain(en.roles.hr_admin);
+  expect(rows[0].textContent).not.toContain('hr_admin');
+  // A row with no role is refused on submit, so the preview must not claim it would become an employee.
+  expect(rows[1].textContent).toContain(en.teamSettings.noRole);
+  expect(rows[1].textContent).not.toContain(en.roles.employee);
+  expect(rows[1].textContent).not.toContain('employee');
+  view.unmount();
 });

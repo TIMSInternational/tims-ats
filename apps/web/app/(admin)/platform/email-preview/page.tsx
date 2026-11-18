@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { formatMessage, useI18n } from '../../../../lib/i18n';
+import { FIELD_LABEL_CLASSES, PageHeader, Select } from '../../../../components';
 
 const TEMPLATES = [
   'interviewInvitation',
@@ -58,20 +60,20 @@ function signOff(contactEmail: string): string {
 
 function generatePreview(template: TemplateName): string {
   const company = 'TIMS International';
-  const candidate = 'Maria Fernanda Lopez';
+  const candidate = 'María Fernanda López';
   const vacancy = 'Gerente de Operaciones';
   const date = new Date(2026, 5, 10, 10, 0);
   const contact = 'rrhh@timsinternational.com';
 
   switch (template) {
     case 'interviewInvitation': {
-      const content = heading('Invitacion a Entrevista') +
+      const content = heading('Invitación a Entrevista') +
         paragraph(`Estimado/a ${candidate},`) +
         paragraph(`Nos complace informarle que ha sido seleccionado/a para una entrevista para el cargo de <strong>${vacancy}</strong> en ${company}.`) +
         detailsTable(
           detailRow('Fecha y hora', formatDate(date)) +
-          detailRow('Tipo', 'Entrevista tecnica') +
-          detailRow('Duracion', '60 minutos') +
+          detailRow('Tipo', 'Entrevista técnica') +
+          detailRow('Duración', '60 minutos') +
           detailRow('Enlace', `<a href="#" style="color:${BRAND.navy};">https://meet.daily.co/tims-interview-abc123</a>`)
         ) +
         paragraph('<strong>Recomendaciones:</strong><br>&#8226; Ingrese 5 minutos antes de la hora programada<br>&#8226; Tenga a la mano una copia de su hoja de vida<br>&#8226; Prepare preguntas sobre el cargo y la empresa') +
@@ -80,26 +82,26 @@ function generatePreview(template: TemplateName): string {
     }
     case 'interviewReschedule': {
       const oldDate = new Date(2026, 5, 8, 14, 0);
-      const content = heading('Reprogramacion de Entrevista') +
+      const content = heading('Reprogramación de Entrevista') +
         paragraph(`Estimado/a ${candidate},`) +
         paragraph(`Le informamos que su entrevista para el cargo de <strong>${vacancy}</strong> ha sido reprogramada.`) +
         detailsTable(
           detailRow('Fecha anterior', `<s style="color:${BRAND.muted};">${formatDate(oldDate)}</s>`) +
           detailRow('Nueva fecha', formatDate(date)) +
-          detailRow('Tipo', 'Entrevista tecnica') +
-          detailRow('Duracion', '60 minutos') +
+          detailRow('Tipo', 'Entrevista técnica') +
+          detailRow('Duración', '60 minutos') +
           detailRow('Enlace', `<a href="#" style="color:${BRAND.navy};">https://meet.daily.co/tims-interview-abc123</a>`)
         ) +
-        paragraph('Lamentamos cualquier inconveniente. Agradecemos su comprension.') +
+        paragraph('Lamentamos cualquier inconveniente. Agradecemos su comprensión.') +
         signOff(contact);
       return baseLayout(content, company);
     }
     case 'interviewCancellation': {
-      const content = heading('Cancelacion de Entrevista') +
+      const content = heading('Cancelación de Entrevista') +
         paragraph(`Estimado/a ${candidate},`) +
         paragraph(`Lamentamos informarle que la entrevista programada para el cargo de <strong>${vacancy}</strong> ha sido cancelada.`) +
-        detailsTable(detailRow('Motivo', 'La posicion ha sido cubierta internamente')) +
-        paragraph('Valoramos su interes en nuestra organizacion y le animamos a estar pendiente de futuras oportunidades.') +
+        detailsTable(detailRow('Motivo', 'La posición ha sido cubierta internamente')) +
+        paragraph('Valoramos su interés en nuestra organización y le animamos a estar pendiente de futuras oportunidades.') +
         signOff(contact);
       return baseLayout(content, company);
     }
@@ -109,7 +111,7 @@ function generatePreview(template: TemplateName): string {
         paragraph(`Nos complace extenderle una oferta formal para el cargo de <strong>${vacancy}</strong> en ${company}.`) +
         paragraph('Por favor revise los terminos de la oferta y, de estar de acuerdo, proceda a firmarla electronicamente.') +
         ctaButton('#', 'Revisar y Firmar Oferta') +
-        paragraph('<strong>Importante:</strong> Esta oferta tiene una vigencia de 5 dias calendario a partir de la fecha de envio.') +
+        paragraph('<strong>Importante:</strong> Esta oferta tiene una vigencia de 5 días calendario a partir de la fecha de envío.') +
         paragraph('Si tiene preguntas sobre los terminos, no dude en comunicarse con nosotros.') +
         paragraph('Cordialmente,<br>Equipo de Talento Humano');
       return baseLayout(content, company);
@@ -123,7 +125,7 @@ function generatePreview(template: TemplateName): string {
           detailRow('Cargo', vacancy) +
           detailRow('Aceptada el', formatDate(date))
         ) +
-        paragraph('<strong>Proximos pasos sugeridos:</strong><br>&#8226; Iniciar proceso de onboarding<br>&#8226; Solicitar documentacion de ingreso<br>&#8226; Coordinar fecha de inicio<br>&#8226; Notificar al equipo receptor') +
+        paragraph('<strong>Próximos pasos sugeridos:</strong><br>&#8226; Iniciar proceso de onboarding<br>&#8226; Solicitar documentación de ingreso<br>&#8226; Coordinar fecha de inicio<br>&#8226; Notificar al equipo receptor') +
         paragraph('Cordialmente,<br>Sistema TIMS ATS');
       return baseLayout(content, company);
     }
@@ -136,63 +138,67 @@ function generatePreview(template: TemplateName): string {
           detailRow('Cargo', vacancy) +
           detailRow('Declinada el', formatDate(date))
         ) +
-        paragraph('<strong>Acciones sugeridas:</strong><br>&#8226; Revisar candidatos finalistas alternativos<br>&#8226; Evaluar condiciones de la oferta frente al mercado<br>&#8226; Considerar reabrir la vacante si no hay mas candidatos') +
+        paragraph('<strong>Acciones sugeridas:</strong><br>&#8226; Revisar candidatos finalistas alternativos<br>&#8226; Evaluar condiciones de la oferta frente al mercado<br>&#8226; Considerar reabrir la vacante si no hay más candidatos') +
         paragraph('Cordialmente,<br>Sistema TIMS ATS');
       return baseLayout(content, company);
     }
   }
 }
 
-const LABELS: Record<TemplateName, string> = {
-  interviewInvitation: 'Invitacion a Entrevista',
-  interviewReschedule: 'Reprogramacion de Entrevista',
-  interviewCancellation: 'Cancelacion de Entrevista',
-  offerSent: 'Oferta Enviada',
-  offerAcceptedNotification: 'Oferta Aceptada (HR)',
-  offerDeclinedNotification: 'Oferta Declinada (HR)',
-};
-
 export default function EmailPreviewPage() {
+  const { t } = useI18n();
+  const ep = t.emailPreview;
   const [selected, setSelected] = useState<TemplateName>('interviewInvitation');
   const html = generatePreview(selected);
+  const label = (name: TemplateName) => ep.templates[name];
 
   return (
-    <div className="flex h-full">
-      {/* Sidebar */}
-      <div className="w-64 shrink-0 border-r border-border bg-white p-4">
-        <h2 className="text-sm font-semibold text-brand mb-4 uppercase tracking-wider">
-          Email Templates
-        </h2>
-        <div className="space-y-1">
-          {TEMPLATES.map((t) => (
-            <button
-              key={t}
-              onClick={() => setSelected(t)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                selected === t
-                  ? 'bg-brand text-white font-medium'
-                  : 'text-secondary hover:bg-surface'
-              }`}
-            >
-              {LABELS[t]}
-            </button>
-          ))}
+    <div className="flex h-full flex-col">
+      <PageHeader title={ep.title} description={ep.description} />
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <nav aria-label={ep.templatesLabel} className="hidden w-64 shrink-0 border-r border-border bg-white p-4 md:block">
+          <ul className="space-y-1">
+            {TEMPLATES.map((name) => (
+              <li key={name}>
+                <button
+                  type="button"
+                  onClick={() => setSelected(name)}
+                  aria-current={selected === name ? 'true' : undefined}
+                  className={`w-full rounded-md px-3 py-2 text-left text-body transition-colors ${
+                    selected === name ? 'bg-brand font-medium text-white' : 'text-secondary hover:bg-surface'
+                  }`}
+                >
+                  {label(name)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-surface p-4 md:p-8">
+          <div className="mb-4 md:hidden">
+            <label htmlFor="email-template" className={FIELD_LABEL_CLASSES}>
+              {ep.templateLabel}
+            </label>
+            <Select id="email-template" value={selected} onChange={(e) => setSelected(e.target.value as TemplateName)}>
+              {TEMPLATES.map((name) => (
+                <option key={name} value={name}>
+                  {label(name)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-heading font-semibold text-primary">{label(selected)}</h2>
+            <span className="rounded border border-border bg-white px-2 py-1 text-callout text-secondary">
+              {ep.previewNote}
+            </span>
+          </div>
+          <iframe
+            srcDoc={html}
+            className="min-h-[37.5rem] w-full flex-1 rounded-lg border border-border bg-white shadow-card"
+            title={formatMessage(ep.iframeTitle, { template: label(selected) })}
+          />
         </div>
-      </div>
-      {/* Preview */}
-      <div className="flex-1 overflow-auto bg-surface p-8">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-primary">{LABELS[selected]}</h1>
-          <span className="text-xs text-muted bg-white px-2 py-1 rounded border border-border">
-            Vista previa — no se envia email real
-          </span>
-        </div>
-        <iframe
-          srcDoc={html}
-          className="w-full bg-white rounded-lg border border-border shadow-sm"
-          style={{ height: 'calc(100vh - 180px)', minHeight: 600 }}
-          title="Email Preview"
-        />
       </div>
     </div>
   );

@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
-import { buildCsp, cvUploadCspOrigin, originOf, type CspOrigins } from './lib/security/csp';
+import {
+  assessmentProviderFrameOrigin,
+  buildCsp,
+  cvUploadCspOrigin,
+  httpsOriginOf,
+  originOf,
+  type CspOrigins,
+} from './lib/security/csp';
+import { hasSupabaseSessionCookie, staffLoginUrl } from './lib/auth/staff-login-redirect';
 
 const PUBLIC_PATHS = [
   '/login',
@@ -29,6 +37,8 @@ const PUBLIC_PATHS = [
   // candidates and prospects with no session. Each page 404s unless NEXT_PUBLIC_LEGAL_PAGES_ENABLED.
   '/legal',
   '/logout',
+  // Crawler policy (app/robots.ts). Must be reachable without a session.
+  '/robots.txt',
 ];
 
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -45,6 +55,11 @@ const CSP_ORIGINS: CspOrigins = {
   // default region — so they cannot silently disagree. Resolved at module scope,
   // so a misconfiguration warning is logged once per instance, never per request.
   cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
+  // D16: the TIMS hosted assessment player, framed by the candidate portal only when configured (https only).
+  assessmentPlayer: httpsOriginOf(process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN),
+  // PCA: the provider's own survey site, framed (sandboxed) by the candidate portal. timshr.com by default; the env
+  // overrides it, and a non-https value (e.g. `off`) turns framing off. The portal's launch reads the same resolver.
+  assessmentProviderFrame: assessmentProviderFrameOrigin(process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN),
 };
 
 // Pages whose URL carries a bearer credential (?token= or a path token): never
@@ -54,7 +69,8 @@ function isBearerLinkPathname(pathname: string): boolean {
     pathname === '/accept-invitation' ||
     pathname === '/reset-password' ||
     pathname.startsWith('/offers/sign/') ||
-    pathname.startsWith('/interview/join/')
+    pathname.startsWith('/interview/join/') ||
+    pathname.startsWith('/ai-interview/')
   );
 }
 
@@ -74,6 +90,8 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('content-security-policy', csp);
 
+  // Read BEFORE the refresh: a failed refresh blanks the session cookie on the request.
+  const hadSessionCookie = hasSupabaseSessionCookie(request.cookies.getAll());
   const { supabaseResponse, user } = await updateSession(request, requestHeaders);
 
   // Mirror the CSP onto every response we return (including redirects).
@@ -82,6 +100,7 @@ export async function middleware(request: NextRequest) {
     if (isBearerLinkPathname(request.nextUrl.pathname)) {
       res.headers.set('referrer-policy', 'no-referrer');
       res.headers.set('cache-control', 'no-store');
+      res.headers.set('x-robots-tag', 'noindex, nofollow, noarchive');
     }
     return res;
   };
@@ -108,9 +127,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // Admin routes (app.tims.com or localhost)
+  // Keep path + query so the user returns to the same view; a session cookie that no longer
+  // resolves to a user means the session expired, and /login says so.
   if (!isPublicPath && !user) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
+    const loginUrl = staffLoginUrl(request.url, `${pathname}${request.nextUrl.search}`, hadSessionCookie);
     return applyCsp(NextResponse.redirect(loginUrl));
   }
 

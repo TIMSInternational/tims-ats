@@ -1,5 +1,6 @@
 import { S3Client, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import { createPresignedPost, type PresignedPostOptions } from '@aws-sdk/s3-presigned-post';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import { CV_ALLOWED_CONTENT_TYPES, type CvContentType } from './cv-extraction';
 
@@ -36,23 +37,46 @@ function getCvStorage(): { bucket: string; s3: S3Client } {
 // Presigned S3 POST (not PUT): a POST policy supports a content-length-range
 // condition, so the size cap and content-type are enforced by S3 itself at
 // upload time, not merely trusted from the client.
+/**
+ * S3 user-metadata key (x-amz-meta-candidate-id) a STAFF upload's presigned POST pins to the candidate it
+ * was issued for (A-21). The value is part of the signed POST policy, so the browser cannot change it, and
+ * recording the upload re-reads it (cvObjectHead): an object can only be attached to its own candidate.
+ */
+export const UPLOAD_CANDIDATE_METADATA = 'candidate-id';
+
 export async function createCvUploadPresignedPost(
   orgId: string,
   contentType: CvContentType,
+  options: { candidateId?: string } = {},
 ): Promise<{ url: string; fields: Record<string, string>; key: string }> {
   const key = `cv-uploads/${orgId}/${randomUUID()}.${CV_EXTENSIONS[contentType]}`;
   const { bucket, s3 } = getCvStorage();
+  const metadataField = `x-amz-meta-${UPLOAD_CANDIDATE_METADATA}`;
+  const bound = options.candidateId;
+  const conditions: NonNullable<PresignedPostOptions['Conditions']> = [
+    ['content-length-range', 0, CV_MAX_BYTES],
+    ['eq', '$Content-Type', contentType],
+  ];
+  if (bound) conditions.push(['eq', `$${metadataField}`, bound]);
   const { url, fields } = await createPresignedPost(s3, {
     Bucket: bucket,
     Key: key,
-    Conditions: [
-      ['content-length-range', 0, CV_MAX_BYTES],
-      ['eq', '$Content-Type', contentType],
-    ],
-    Fields: { 'Content-Type': contentType },
+    Conditions: conditions,
+    Fields: { 'Content-Type': contentType, ...(bound ? { [metadataField]: bound } : {}) },
     Expires: 300,
   });
   return { url, fields, key };
+}
+
+/**
+ * Size and pinned candidate of a stored upload (HEAD only — the body is never read), for recording a staff
+ * document upload. `candidateId` is null for an object that was not uploaded through a staff presigned POST
+ * (e.g. a public application's CV).
+ */
+export async function cvObjectHead(key: string): Promise<{ sizeBytes: number; candidateId: string | null }> {
+  const { bucket, s3 } = getCvStorage();
+  const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+  return { sizeBytes: head.ContentLength ?? 0, candidateId: head.Metadata?.[UPLOAD_CANDIDATE_METADATA] ?? null };
 }
 
 export async function fetchCvObject(key: string): Promise<{ buffer: Buffer; sizeBytes: number }> {
@@ -66,4 +90,76 @@ export async function fetchCvObject(key: string): Promise<{ buffer: Buffer; size
   if (!obj.Body) throw new Error(`CV object has no body: ${key}`);
   const buffer = Buffer.from(await obj.Body.transformToByteArray());
   return { buffer, sizeBytes };
+}
+
+// ---------------------------------------------------------------------------
+// Staff CV download — a short-lived presigned GET for one stored CV object.
+// ---------------------------------------------------------------------------
+
+/** Lifetime of a staff CV download link. Long enough to open it, short enough not to circulate. */
+export const CV_DOWNLOAD_URL_TTL_SECONDS = 300;
+
+const CV_DOWNLOAD_TYPES: Record<string, { contentType: string; disposition: 'inline' | 'attachment' }> = {
+  // A PDF renders in the browser's own viewer on the S3 origin, never on the app origin.
+  pdf: { contentType: 'application/pdf', disposition: 'inline' },
+  docx: {
+    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    disposition: 'attachment',
+  },
+};
+
+/**
+ * The file extension of a key that lies inside this org's CV upload prefix, or null.
+ *
+ * Mirrors the shape createCvUploadPresignedPost writes (`cv-uploads/<orgId>/<uuid>.<ext>`). Anything
+ * else is refused: another org's prefix, a legacy non-S3 URL, a nested path, or `..` segments. The
+ * single-segment name pattern cannot contain `/`, so it cannot climb out of the org prefix.
+ */
+export function cvKeyExtensionForOrg(orgId: string, key: string): 'pdf' | 'docx' | null {
+  const prefix = `cv-uploads/${orgId}/`;
+  if (!key.startsWith(prefix)) return null;
+  const match = /^[A-Za-z0-9-]{1,64}\.(pdf|docx)$/.exec(key.slice(prefix.length));
+  return match ? (match[1] as 'pdf' | 'docx') : null;
+}
+
+/**
+ * A Content-Disposition value with a header-safe filename: control characters, quotes, backslashes,
+ * semicolons, path separators and lone surrogates are removed and the name is capped at 150 code
+ * points; the `filename` fallback is ASCII-only and the RFC 5987 `filename*` carries the UTF-8 name.
+ */
+export function contentDispositionFor(disposition: 'inline' | 'attachment', fileName: string, ext: string): string {
+  const cleaned = fileName
+    .normalize('NFKC')
+    // Lone UTF-16 surrogates make encodeURIComponent throw; a stored name may carry one.
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f"\\/;]/g, '')
+    .trim();
+  // Truncate by code point, never mid surrogate pair.
+  const base = Array.from(cleaned).slice(0, 150).join('');
+  const name = base.toLowerCase().endsWith(`.${ext}`) ? base : `${base || 'cv'}.${ext}`;
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_');
+  const encoded = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${disposition}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
+ * Presigned GET for a CV object the caller has already authorized. The key is re-checked here against
+ * the org prefix (defence in depth: this function must never sign an arbitrary key).
+ */
+export async function createCvDownloadUrl(orgId: string, key: string, fileName: string): Promise<string> {
+  const ext = cvKeyExtensionForOrg(orgId, key);
+  if (!ext) throw new Error('CV key is outside the organization upload prefix');
+  const { contentType, disposition } = CV_DOWNLOAD_TYPES[ext];
+  const { bucket, s3 } = getCvStorage();
+  return getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ResponseContentType: contentType,
+      ResponseContentDisposition: contentDispositionFor(disposition, fileName, ext),
+    }),
+    { expiresIn: CV_DOWNLOAD_URL_TTL_SECONDS },
+  );
 }

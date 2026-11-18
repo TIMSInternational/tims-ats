@@ -4,7 +4,17 @@ import { useState } from 'react';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import { formatDate } from '../../../../lib/format-utils';
-import { DataTable, EmptyState, ErrorState, StatusBadge } from '../../../../components';
+import {
+  Button,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Menu,
+  Select,
+  StatusBadge,
+  type MenuEntry,
+} from '../../../../components';
+import { formatMessage } from '../../../../lib/i18n/format';
 import {
   TENANT_INVITATION_STATUS_FILTERS,
   useResendTenantInvitation,
@@ -14,14 +24,12 @@ import {
   type TenantInvitation,
   type TenantInvitationStatusFilter,
 } from '../../../../lib/platform-api/tenant-invitations';
+import { roleLabel } from '../../../../lib/role-labels';
 import { invitationErrorMessage } from './invitation-error-message';
 import { RevokeInvitationModal } from './revoke-invitation-modal';
 
-const ACTION_CLS = 'text-xs font-medium hover:underline disabled:opacity-50 disabled:no-underline';
-const LOAD_MORE_CLS =
-  'self-center h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#1F114C] hover:bg-[#F7F7F7] transition disabled:opacity-50';
-
-export function PendingInvitationsTable() {
+/** "Invitaciones": heading + status filter on one row, then the list (settings-17, settings-18). */
+export function PendingInvitationsTable({ headingClassName }: { headingClassName: string }) {
   const { t } = useI18n();
   const m = t.teamSettings;
   // Pending (not yet expired) invitations first; expired ones are one filter away instead of silently
@@ -46,19 +54,11 @@ export function PendingInvitationsTable() {
     },
   });
 
-  if (invitations.isError)
-    return (
-      <ErrorState
-        message={invitationErrorMessage(invitations.error, 'read', m)}
-        onRetry={() => void invitations.refetch()}
-      />
-    );
-
-  const roleNames = new Map((roles.data ?? []).map((role) => [role.slug, role.name]));
+  const grantableRoles = new Set((roles.data ?? []).map((role) => role.slug));
   const statusMap = {
-    pending: { cls: 'bg-amber-50 text-amber-700', label: m.statusPending },
-    sent: { cls: 'bg-blue-50 text-blue-700', label: m.statusSent },
-    expired: { cls: 'bg-gray-100 text-gray-600', label: m.statusExpired },
+    pending: { tone: 'warning' as const, label: m.statusPending },
+    sent: { tone: 'info' as const, label: m.statusSent },
+    expired: { tone: 'neutral' as const, label: m.statusExpired },
   };
   const busy = resend.isPending || revoke.isPending;
   const rows = invitations.data?.pages.flatMap((page) => page.invitations) ?? [];
@@ -70,76 +70,135 @@ export function PendingInvitationsTable() {
   // Resend revives a grant of the invitation's role, so the API refuses it (403) unless the caller could
   // grant that role. `roles.data` IS the caller's grantable list; mirror the rule so the button is not a trap.
   // A NULL role is accepted as `employee`. Until the list loads, defer to the server.
-  const canResend = (inv: TenantInvitation) => !roles.data || roleNames.has(inv.roleSlug ?? 'employee');
+  const canResend = (inv: TenantInvitation) => !roles.data || grantableRoles.has(inv.roleSlug ?? 'employee');
+
+  const roleText = (inv: TenantInvitation) => (inv.roleSlug ? roleLabel(t.roles, inv.roleSlug) : m.noRole);
+  // A resend the caller may not make stays visible but disabled, with its reason on screen and announced
+  // (not only in a hover tooltip, which keyboard and touch users never see).
+  const resendReasonId = (inv: TenantInvitation) => `invite-resend-reason-${inv.id}`;
+  const notGrantableNote = (inv: TenantInvitation, withId: boolean) => (
+    <span
+      id={withId ? resendReasonId(inv) : undefined}
+      className="inline-flex items-center gap-1 text-caption text-secondary"
+    >
+      <svg
+        className="size-3.5 shrink-0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8h.01M11 12h1v4h1" />
+      </svg>
+      {m.resendNotGrantable}
+    </span>
+  );
+  const menuFor = (inv: TenantInvitation): MenuEntry[] => [
+    { key: 'resend', label: m.resend, disabled: busy || !canResend(inv), onSelect: () => resend.mutate(inv.id) },
+    { key: 'revoke', label: m.revoke, destructive: true, disabled: busy, onSelect: () => setRevoking(inv) },
+  ];
+
+  const mobileList = (
+    <ul className="divide-y divide-border">
+      {rows.map((inv) => (
+        <li key={inv.id} className="flex items-start justify-between gap-3 px-4 py-3">
+          <div className="min-w-0 space-y-0.5">
+            <p className="truncate text-body font-medium text-primary">{inv.email}</p>
+            <p className="text-callout text-secondary">
+              {roleText(inv)} · {formatMessage(m.expiresOn, { date: formatDate(inv.expiresAt) })}
+            </p>
+            <StatusBadge status={inv.status} map={statusMap} />
+            {!canResend(inv) && <p>{notGrantableNote(inv, false)}</p>}
+          </div>
+          <Menu items={menuFor(inv)} label={formatMessage(m.rowActions, { name: inv.email })} />
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
-    <div className="flex flex-col gap-3">
-      <label className="self-end flex items-center gap-2 text-xs text-[#585858]">
-        {m.filterLabel}
-        <select
-          value={filter}
-          onChange={(event) => setFilter(event.target.value as TenantInvitationStatusFilter)}
-          className="h-8 rounded-lg border border-[#EDEDED] px-2 text-sm text-[#333]"
+    <section aria-labelledby="team-pending-heading" className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="team-pending-heading" className={headingClassName}>
+          {m.pendingTitle}
+        </h2>
+        <label className="flex items-center gap-2 text-callout text-secondary">
+          {m.filterLabel}
+          <Select
+            value={filter}
+            onChange={(event) => setFilter(event.target.value as TenantInvitationStatusFilter)}
+            className="w-auto"
+          >
+            {TENANT_INVITATION_STATUS_FILTERS.map((value) => (
+              <option key={value} value={value}>
+                {filterLabels[value]}
+              </option>
+            ))}
+          </Select>
+        </label>
+      </div>
+      {invitations.isError ? (
+        <ErrorState
+          message={invitationErrorMessage(invitations.error, 'read', m)}
+          onRetry={() => void invitations.refetch()}
+          error={invitations.error}
+        />
+      ) : (
+        <DataTable
+          loading={invitations.isLoading}
+          label={m.pendingTitle}
+          mobileList={rows.length > 0 ? mobileList : undefined}
+          columns={[
+            { key: 'email', label: m.colEmail },
+            { key: 'role', label: m.colRole },
+            { key: 'status', label: m.colStatus },
+            { key: 'expires', label: m.colExpires },
+            { key: 'actions', label: m.colActions, align: 'right' },
+          ]}
+          empty={<EmptyState message={m.pendingEmpty} />}
         >
-          {TENANT_INVITATION_STATUS_FILTERS.map((value) => (
-            <option key={value} value={value}>
-              {filterLabels[value]}
-            </option>
+          {rows.map((inv) => (
+            <tr key={inv.id} className="border-b border-border last:border-0">
+              <td className="px-4 py-3 text-body text-primary">{inv.email}</td>
+              <td className="px-4 py-3 text-body text-secondary">{roleText(inv)}</td>
+              <td className="px-4 py-3">
+                <StatusBadge status={inv.status} map={statusMap} />
+              </td>
+              <td className="px-4 py-3 text-body tabular-nums text-secondary">{formatDate(inv.expiresAt)}</td>
+              <td className="px-4 py-3 text-right">
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex justify-end gap-2 whitespace-nowrap">
+                    <Button
+                      variant="tertiary"
+                      size="sm"
+                      disabled={busy || !canResend(inv)}
+                      aria-describedby={canResend(inv) ? undefined : resendReasonId(inv)}
+                      onClick={() => resend.mutate(inv.id)}
+                    >
+                      {m.resend}
+                    </Button>
+                    <Button variant="destructive-secondary" size="sm" disabled={busy} onClick={() => setRevoking(inv)}>
+                      {m.revoke}
+                    </Button>
+                  </div>
+                  {!canResend(inv) && notGrantableNote(inv, true)}
+                </div>
+              </td>
+            </tr>
           ))}
-        </select>
-      </label>
-      <DataTable
-        loading={invitations.isLoading}
-        columns={[
-          { key: 'email', label: m.colEmail },
-          { key: 'role', label: m.colRole },
-          { key: 'status', label: m.colStatus },
-          { key: 'expires', label: m.colExpires },
-          { key: 'actions', label: m.colActions, align: 'right' },
-        ]}
-        empty={<EmptyState icon={null} message={m.pendingEmpty} />}
-      >
-        {rows.map((inv) => (
-          <tr key={inv.id} className="border-b border-[#EDEDED] last:border-0">
-            <td className="px-4 py-3 text-sm text-[#333]">{inv.email}</td>
-            <td className="px-4 py-3 text-sm text-[#585858]">
-              {inv.roleSlug ? (roleNames.get(inv.roleSlug) ?? inv.roleSlug) : m.noRole}
-            </td>
-            <td className="px-4 py-3">
-              <StatusBadge status={inv.status} map={statusMap} />
-            </td>
-            <td className="px-4 py-3 text-sm text-[#585858]">{formatDate(inv.expiresAt)}</td>
-            <td className="px-4 py-3 text-right whitespace-nowrap">
-              <button
-                type="button"
-                disabled={busy || !canResend(inv)}
-                title={canResend(inv) ? undefined : m.resendNotGrantable}
-                onClick={() => resend.mutate(inv.id)}
-                className={`${ACTION_CLS} text-[#1F114C] mr-4`}
-              >
-                {m.resend}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setRevoking(inv)}
-                className={`${ACTION_CLS} text-[#DD0C15]`}
-              >
-                {m.revoke}
-              </button>
-            </td>
-          </tr>
-        ))}
-      </DataTable>
+        </DataTable>
+      )}
       {invitations.hasNextPage && (
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          className="self-center"
           onClick={() => void invitations.fetchNextPage()}
           disabled={invitations.isFetchingNextPage}
-          className={LOAD_MORE_CLS}
         >
           {m.loadMore}
-        </button>
+        </Button>
       )}
       {revoking && (
         <RevokeInvitationModal
@@ -149,6 +208,6 @@ export function PendingInvitationsTable() {
           onConfirm={() => revoke.mutate(revoking.id)}
         />
       )}
-    </div>
+    </section>
   );
 }

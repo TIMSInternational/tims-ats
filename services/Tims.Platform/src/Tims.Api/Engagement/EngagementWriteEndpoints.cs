@@ -46,7 +46,7 @@ public static class EngagementWriteEndpoints
     private const string DuplicateResponseMessage = "Ya respondiste esta encuesta";
     private const string SurveyNotActiveMessage = "Encuesta no encontrada o no activa";
     private const string SurveyNotFoundMessage = "Encuesta no encontrada";
-    private const string ActionPlanNotFoundMessage = "Plan de accion no encontrado";
+    private const string ActionPlanNotFoundMessage = "Plan de acción no encontrado";
 
     private const int MaxTitleLength = 200;
     private const int MaxQuestionTextLength = 500;
@@ -244,7 +244,7 @@ public static class EngagementWriteEndpoints
 
                 // (1) The action plan must be in the caller's grant (matching the TS updateActionPlan mutation's
                 // in-grant check). Out-of-grant / nonexistent →
-                // ScopedNotFoundException (404, "Plan de accion no encontrado") — never confirms the id exists.
+                // ScopedNotFoundException (404, "Plan de acción no encontrado") — never confirms the id exists.
                 var anchors = anchorLoaderFactory.Create(orgId, callerId);
                 ScopePredicateSqlTranslator.Translated scopeGuard;
                 try

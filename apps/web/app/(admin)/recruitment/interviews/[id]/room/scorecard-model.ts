@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   DEFAULT_COMPETENCY_IDS,
+  DEFAULT_COMPETENCY_SCALE_MAX,
   RATING_KEY_MAX,
   type ScorecardCompetency,
 } from '@tims/shared';
@@ -66,6 +67,8 @@ export function withStoredCompetencies(
       key: k,
       label: (DEFAULT_COMPETENCY_IDS as readonly string[]).includes(k) ? null : k,
       targetLevel: null,
+      targetScaleMax: DEFAULT_COMPETENCY_SCALE_MAX,
+      description: null,
     }));
   return [...items, ...extra];
 }

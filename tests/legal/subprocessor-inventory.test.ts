@@ -34,9 +34,10 @@ const NPM_DEPENDENCIES: Record<string, Classification> = {
   '@ai-sdk/amazon-bedrock': 'aws-bedrock',
   '@aws-sdk/client-s3': 'aws-s3',
   '@aws-sdk/s3-presigned-post': 'aws-s3',
+  '@aws-sdk/s3-request-presigner': 'aws-s3',
   '@aws-sdk/client-ses': 'aws-ses',
+  '@aws-sdk/client-dynamodb': 'aws-dynamodb',
   '@upstash/redis': 'upstash',
-  '@upstash/ratelimit': 'upstash',
   stripe: 'stripe',
   ai: lib('provider-agnostic AI SDK core; the network call is made by @ai-sdk/amazon-bedrock'),
   '@hello-pangea/dnd': lib(),
@@ -75,7 +76,9 @@ const NUGET_PACKAGES: Record<string, Classification> = {
   // Platform health check: Bedrock control-plane reachability probe (no personal data sent).
   'AWSSDK.Bedrock': 'aws-bedrock',
   'Stripe.net': 'stripe',
-  // Program.cs: the C# rate limiter shares the Upstash Redis instance over its TCP endpoint.
+  // Program.cs: rate limiting moved to DynamoDB (shared with the web app's store).
+  'AWSSDK.DynamoDBv2': 'aws-dynamodb',
+  // Program.cs: the rollback-window relay-nonce bridge (LegacyRelayNonceBridge) reaches Upstash Redis over TCP.
   'StackExchange.Redis': 'upstash',
   'Npgsql.EntityFrameworkCore.PostgreSQL': 'supabase',
   'OpenTelemetry.Exporter.OpenTelemetryProtocol': lib(
@@ -101,6 +104,7 @@ const NUGET_PACKAGES: Record<string, Classification> = {
   'coverlet.collector': lib('test only'),
   'Microsoft.AspNetCore.Mvc.Testing': lib('test only'),
   'Microsoft.NET.Test.Sdk': lib('test only'),
+  'Testcontainers.DynamoDb': lib('test only'),
   'Testcontainers.PostgreSql': lib('test only'),
   'Testcontainers.Redis': lib('test only'),
   xunit: lib('test only'),
@@ -125,6 +129,10 @@ const HOSTS = new Map<string, Classification>([
   ['elevenlabs.io', 'elevenlabs'],
   ['api.elevenlabs.io', 'elevenlabs'],
   ['api.bamboohr.com', 'bamboohr'],
+  // The TIMS Assessments API v1 (AssessmentProviders__BaseUrl; the literal is the documented default in a comment).
+  ['www.timssuite.com', 'tims-assessments'],
+  // PCA's own site, framed (sandboxed) or linked out from the candidate portal (lib/security/csp.ts).
+  ['timshr.com', 'tims-pca'],
   ['*.supabase.co', 'supabase'],
   ['*.daily.co', 'daily'],
   ['*.wss.daily.co', 'daily'],

@@ -9,15 +9,29 @@ vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: en }) }));
 import { RegisterForm } from '../../apps/web/app/(auth)/register/register-form';
 
 describe('company registration password policy', () => {
+  // Field must not strip the native `required` (an empty submit is stopped by the browser, as before).
+  it('keeps every field natively required', () => {
+    render(<RegisterForm accountType="company" />);
+    for (const label of [
+      en.auth.firstName,
+      en.auth.lastName,
+      en.auth.companyName,
+      en.auth.corporateEmail,
+      en.auth.password,
+    ]) {
+      expect(screen.getByLabelText(label)).toBeRequired();
+    }
+  });
+
   it('rejects an eleven-character password before calling Supabase', () => {
     mocks.signUp.mockReset();
-    render(<RegisterForm accountType="company" onBack={() => undefined} />);
+    render(<RegisterForm accountType="company" />);
     const fields = screen.getAllByRole('textbox');
     fireEvent.change(fields[0], { target: { value: 'Test' } });
     fireEvent.change(fields[1], { target: { value: 'User' } });
     fireEvent.change(fields[2], { target: { value: 'Test Company' } });
     fireEvent.change(fields[3], { target: { value: 'test@example.test' } });
-    const password = screen.getByPlaceholderText(en.auth.passwordMinPlaceholder);
+    const password = screen.getByLabelText(en.auth.password);
     fireEvent.change(password, { target: { value: 'shortsecret' } });
     fireEvent.submit(password.closest('form')!);
     expect(screen.getByText(en.auth.passwordMinLength)).toBeInTheDocument();

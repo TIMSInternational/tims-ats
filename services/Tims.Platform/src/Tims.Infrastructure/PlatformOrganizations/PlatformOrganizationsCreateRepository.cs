@@ -10,7 +10,7 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 
 /// <summary>
 /// The platform-owner organization CREATE repository (Phase-5 slice 21, issue #76) — the C# port of
-/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:149-242</c>).
+/// <c>createOrganization</c> (<c>routers/platform/organizations.ts:151-248</c>).
 ///
 /// <para><b>SEVEN tables and the audit row are ONE transaction.</b> The TS wraps seven writes in
 /// <c>db.$transaction</c> (<c>:113-147</c>); this port opens a <see cref="TenantScope"/> on the NEW
@@ -20,7 +20,7 @@ namespace Tims.Infrastructure.PlatformOrganizations;
 /// what distinguishes this port from the TS <c>.catch(() =&gt; {})</c> at <c>:166</c>. Proved by mutation in
 /// <c>PlatformOrganizationsCreateRepositoryTests</c>, in both directions.</para>
 ///
-/// <para><b>Statement order reproduces the TS exactly</b> (<c>organizations.ts:184-218</c> +
+/// <para><b>Statement order reproduces the TS exactly</b> (<c>organizations.ts:189-224</c> +
 /// <c>org-provisioning.ts:18-31</c>): organizations → companies → business_units → teams →
 /// plan_modules SELECT → org_entitlements → roles → subscriptions → audit_logs. Only the chain
 /// organizations → companies → business_units → teams is FK-forced; <c>roles</c> and <c>subscriptions</c>
@@ -78,10 +78,10 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
         try
         {
             await OrganizationBundleWriter.CreateAsync(_db, organizationId, input.Name, input.Slug,
-                input.Plan, billingEmail, now, cancellationToken).ConfigureAwait(false);
+                input.Plan, billingEmail, now, cancellationToken, input.LocaleProfile).ConfigureAwait(false);
 
             // 9. The FAIL-CLOSED audit row, INSIDE the scope's transaction. TS writes this AFTER the
-            // transaction with `.catch(() => {})` (organizations.ts:228-239); here a failure rolls the whole
+            // transaction with `.catch(() => {})` (organizations.ts:234-245); here a failure rolls the whole
             // seven-table creation back. Federico's decision on #76, already shipped for update/suspend.
             AddAuditRow(organizationId, actorId, changesJson);
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -144,7 +144,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
         {
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
-            // organizations.ts:232 — `ctx.user.id`, the `users.id` uuid, NOT supabaseUserId.
+            // organizations.ts:238 — `ctx.user.id`, the `users.id` uuid, NOT supabaseUserId.
             ActorId = actorId,
             Action = CreatedAction,
             Entity = OrganizationEntity,
@@ -166,7 +166,7 @@ public sealed class PlatformOrganizationsCreateRepository(PlatformOrganizationsC
 
     /// <summary>
     /// The TS <c>return org</c> is the full row <c>db.organization.create()</c> resolves to (no
-    /// <c>select:</c> at <c>organizations.ts:185-192</c>). Field order follows the Prisma model declaration
+    /// <c>select:</c> at <c>organizations.ts:190-198</c>). Field order follows the Prisma model declaration
     /// order so the JSON shape matches — identical to slice 20's <c>Map</c>, on the same record type.
     /// </summary>
     private static PlatformOrganizationRow Map(PlatformOrganizationWriteEntity entity) =>

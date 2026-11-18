@@ -36,6 +36,10 @@ locals {
 
   # Secret CONTAINERS created here; VALUES populated out-of-band (never in TF state).
   # key => the env var name the .NET service reads (Platform:X binds from Platform__X).
+  # `redis` is kept for the ROLLBACK WINDOW ONLY: images before the DynamoDB rate limiter read this (Upstash)
+  # secret, and a rollback swaps only the image. The current image uses it only to claim relay nonces under the
+  # old key too (LegacyRelayNonceBridge), so a nonce is single-use across versions. Remove it, its binding and
+  # the Upstash database only once no pre-DynamoDB image can be rolled back to.
   base_secrets = {
     db            = "Platform__DatabaseConnectionString"
     redis         = "Platform__RedisConnectionString"
@@ -65,6 +69,9 @@ locals {
     Platform__SupabaseJwtIssuer           = var.supabase_jwt_issuer
     Platform__SupabaseJwtAudience         = var.supabase_jwt_audience
     Platform__SupabaseJwksMetadataAddress = var.supabase_jwks_metadata_address
+    # The shared rate-limit table (created by the owner kit, not here; see README). Region = the table's.
+    Platform__RateLimitDynamoDbTable      = var.rate_limit_dynamodb_table
+    Platform__RateLimitDynamoDbRegion     = var.aws_region
     Platform__ExternalVendorReadEnabled   = tostring(var.feature_flags.external_vendor_read)
     Platform__ExternalVendorWriteEnabled  = tostring(var.feature_flags.external_vendor_write)
     Platform__BillingReadEnabled          = tostring(var.feature_flags.billing_read)
@@ -95,6 +102,18 @@ locals {
     # Q0b slice 2 (#172): the cross-org alert-metric surface. Enabling it WITHOUT populating the
     # alert_metrics_cron secret above is inert, not open — the gate refuses everything.
     Platform__AlertMetricsCronReadEnabled = tostring(var.feature_flags.alert_metrics_cron_read)
+    # AS-5: the TIMS Assessments provider connector (nine routes, plus the #312 sweep and the D17 poller, both
+    # registered only with this flag on). Inert, not open, until the out-of-band AssessmentProviders__* client
+    # credentials and webhook secret are set AND the three provider migrations (20261107232524, 20261108224533,
+    # 20261109010328) are applied: an unconfigured client answers provider_unconfigured and an unsigned webhook is
+    # refused. Those secrets are deliberately NOT in base_secrets here (see the README's placeholder-secret note); the
+    # options class treats REPLACE_ME_OUT_OF_BAND as unset. AssessmentProviders__PortalBaseUrl (optional, an https
+    # origin registered at the provider) is the candidate portal the hosted player returns to (D16).
+    Platform__AssessmentProvidersEnabled = tostring(var.feature_flags.assessment_providers)
+    # FIT v2 (per-instrument fit). Changes only POST /fit-engine/vacancies/{id}/compute, and only for vacancies
+    # whose fit_requirements carry an `assessments` array; inert while Platform__FitEngineWriteEnabled is off
+    # (that flag maps the route and is NOT wired here — it is flipped out-of-band like the other slice flags).
+    Platform__FitEngineV2Enabled = tostring(var.feature_flags.fit_engine_v2)
     # #173. A STRING, not a bool: Tims.Domain.Identity.MfaGate.IsEnforced treats ONLY the exact "true" as
     # enabling, so a garbled value fails OPEN and cannot lock privileged operators out. Also never wired
     # when it shipped. Set it to the SAME value as the web app's MFA_ENFORCED — a session refused by one
@@ -193,6 +212,23 @@ data "aws_iam_policy_document" "read_secrets" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [for s in aws_secretsmanager_secret.this : s.arn]
   }
+}
+
+data "aws_caller_identity" "current" {}
+
+# The shared rate-limit table: exactly the three item calls the store makes, on that one table.
+data "aws_iam_policy_document" "rate_limit_table" {
+  statement {
+    sid       = "RateLimitTable"
+    actions   = ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:PutItem"]
+    resources = ["arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.rate_limit_dynamodb_table}"]
+  }
+}
+
+resource "aws_iam_role_policy" "instance_rate_limit" {
+  name   = "tims-ats-ratelimit"
+  role   = aws_iam_role.instance.id
+  policy = data.aws_iam_policy_document.rate_limit_table.json
 }
 
 resource "aws_iam_role_policy" "instance_secrets" {

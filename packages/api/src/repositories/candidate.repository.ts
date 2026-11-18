@@ -2,6 +2,8 @@ import { tenantDb as db, runTenantTransaction } from '@tims/db';
 import { cursorPageArgs, cursorRowMatches } from '../lib/cursor-page';
 import type { Prisma } from '@tims/db';
 import { candidateConsentRepository } from './candidate-consent.repository';
+import { fitOverallRangeWhere } from '@tims/ai';
+import { APPLICATION_REJECTED_AUDIT_ACTION } from './pipeline.repository';
 
 // ---------------------------------------------------------------------------
 // Explicit select objects — never return full records (CLAUDE.md §4)
@@ -35,7 +37,7 @@ const buildCandidateListSelect = (appScopeWhere: Prisma.ApplicationWhereInput, v
       where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
       orderBy: { calculatedAt: 'desc' as const },
       take: 1,
-      select: { id: true, overallScore: true, calculatedAt: true },
+      select: { id: true, overallScore: true, restrictedOverallScore: true, calculatedAt: true },
     },
     _count: { select: { applications: { where: appScopeWhere } } },
   }) satisfies Prisma.CandidateSelect;
@@ -94,16 +96,22 @@ const buildCandidateDetailSelect = (appScopeWhere: Prisma.ApplicationWhereInput,
         status: true,
         source: true,
         appliedAt: true,
+        // A rejection stays visible on the 360: when, why and the internal note (A-05). Who rejected comes
+        // from the rejection's audit row (findRejectionAuthors).
+        rejectedAt: true,
+        rejectedReason: true,
+        feedback: true,
         // salary: the posted range of an IN-SCOPE vacancy — the offer form uses its
         // period + midpoint as a placeholder so the offer amount is entered in the same unit.
-        vacancy: { select: { id: true, title: true, status: true, salary: true } },
+        // contractType / remotePolicy prefill the offer form's contract type and modality (B-15).
+        vacancy: { select: { id: true, title: true, status: true, salary: true, contractType: true, remotePolicy: true } },
         currentStage: { select: { id: true, name: true, order: true } },
       },
     },
     fitScores: {
       where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
       orderBy: { calculatedAt: 'desc' as const },
-      select: { id: true, overallScore: true, breakdown: true, calculatedAt: true },
+      select: { id: true, overallScore: true, breakdown: true, weights: true, calculatedAt: true },
     },
     assessmentAssignments: {
       where: appScopeWhere as Prisma.AssessmentAssignmentWhereInput,
@@ -185,6 +193,7 @@ export const candidateRepository = {
       fitMin?: number;
       fitMax?: number;
     },
+    hideBelowMinimum = false,
   ) {
     const { cursor, limit, search, poolType, source, tags, skills, fitMin, fitMax } = filters;
 
@@ -214,12 +223,11 @@ export const candidateRepository = {
       filterClause.fitScores = {
         some: {
           AND: [
-            {
-              overallScore: {
-                ...(fitMin !== undefined ? { gte: fitMin } : {}),
-                ...(fitMax !== undefined ? { lte: fitMax } : {}),
-              },
-            },
+            // FIT owner default D6: a narrow-scoped reader filters on the overall it sees (@tims/ai fit-visibility).
+            fitOverallRangeWhere(
+              { ...(fitMin !== undefined ? { gte: fitMin } : {}), ...(fitMax !== undefined ? { lte: fitMax } : {}) },
+              hideBelowMinimum,
+            ),
             appScopeWhere as Prisma.FitScoreWhereInput,
             visibleFit,
           ],
@@ -356,9 +364,45 @@ export const candidateRepository = {
     });
   },
 
+  // Staff download: the document only if it belongs to THIS candidate AND this org. Both predicates are
+  // explicit (not left to RLS alone) so a document id from another candidate or tenant resolves to null.
+  async findCandidateDocumentFile(orgId: string, candidateId: string, documentId: string) {
+    return db.candidateDocument.findFirst({
+      where: { id: documentId, candidateId, organizationId: orgId },
+      select: { id: true, fileName: true, fileUrl: true },
+    });
+  },
+
   // The CV document already recorded for this candidate + uploaded object key, if any —
   // public apply records it unparsed in the application transaction; processing reuses it,
   // and a retry never duplicates the row or the AI call.
+  // Staff upload: records the document only if no row of this org holds the key yet. The check and the insert
+  // run in one transaction under an advisory lock on the key, so two concurrent requests cannot both record it
+  // (the table has no unique constraint on file_url, and this change adds no schema). Null when already on record.
+  async createDocumentOnce(
+    orgId: string,
+    data: { candidateId: string; type: string; fileName: string; fileUrl: string; fileSize: number },
+  ) {
+    return runTenantTransaction(orgId, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`candidate_document_key:${orgId}:${data.fileUrl}`}, 0))`;
+      const existing = await tx.candidateDocument.findFirst({
+        where: { organizationId: orgId, fileUrl: data.fileUrl },
+        select: { id: true },
+      });
+      if (existing) return null;
+      return tx.candidateDocument.create({ data: { organizationId: orgId, ...data }, select: documentSelect });
+    });
+  },
+
+  // Any document of this org already stored under this key (fast refusal before the S3 HEAD; the authoritative
+  // check is the locked one in createDocumentOnce).
+  async findDocumentByFileKey(orgId: string, fileUrl: string) {
+    return db.candidateDocument.findFirst({
+      where: { organizationId: orgId, fileUrl },
+      select: { id: true },
+    });
+  },
+
   async findCvDocumentByKey(orgId: string, candidateId: string, fileUrl: string) {
     return db.candidateDocument.findFirst({
       where: { organizationId: orgId, candidateId, type: 'cv', fileUrl },
@@ -518,6 +562,24 @@ export const candidateRepository = {
   // Codex F1: application/assessment child loads are scope-filtered via the
   // threaded appScopeWhere ({vacancy: frag}) so out-of-scope rows never surface
   // in the timeline. At org scope appScopeWhere is {} → no behavior change.
+  // Who rejected each application: the audit row pipelineRepository.rejectApplication writes in the same
+  // transaction as the rejection (the applications table has no "rejected by" column). Newest row first, so
+  // the first match per application is the rejection that stands. Only the account's display name leaves.
+  async findRejectionAuthors(orgId: string, applicationIds: string[]) {
+    if (applicationIds.length === 0) return [];
+    return db.auditLog.findMany({
+      where: {
+        organizationId: orgId,
+        entity: 'application',
+        action: APPLICATION_REJECTED_AUDIT_ACTION,
+        entityId: { in: applicationIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      select: { entityId: true, createdAt: true, user: { select: { firstName: true, lastName: true } } },
+    });
+  },
+
   async getTimelineData(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
     return Promise.all([
       db.application.findMany({
@@ -527,6 +589,8 @@ export const candidateRepository = {
           status: true,
           source: true,
           appliedAt: true,
+          rejectedAt: true,
+          rejectedReason: true,
           vacancy: { select: { id: true, title: true } },
           movements: {
             select: {
@@ -611,7 +675,7 @@ export const candidateRepository = {
           where: { AND: [appScopeWhere as Prisma.FitScoreWhereInput, visibleFit] },
           orderBy: { calculatedAt: 'desc' as const },
           take: 1,
-          select: { overallScore: true },
+          select: { overallScore: true, restrictedOverallScore: true },
         },
       },
     });

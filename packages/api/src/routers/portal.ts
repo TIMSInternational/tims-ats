@@ -11,11 +11,15 @@ import {
   APPLICATION_CONSENT_LOCALES,
   APPLICATION_CONSENT_TEXT_VERSION,
   APPLICATION_CONSENT_TYPE,
+  getAppUrl,
   logger,
 } from '@tims/shared';
 import { buildApplicationConsentEvidence, writeConsentEvidence } from '../lib/application-consent-evidence';
 import { emailService } from '../services/email.service';
-import { consumeApplicationEmailQuota } from '../middleware/rate-limit';
+import { candidateContactEmail } from '../services/candidate-contact';
+import { runAfterResponse } from '../lib/after-response';
+import { publicCompetencyNames } from '@tims/shared';
+import { checkRateLimit, consumeApplicationEmailQuota } from '../middleware/rate-limit';
 
 // The ONE public response of portal.applyToVacancy, whatever happened server-side.
 const APPLY_ACKNOWLEDGMENT = { received: true } as const;
@@ -49,6 +53,17 @@ async function findCandidatesByExactEmail(
 
 function isUniqueViolation(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === 'P2002';
+}
+
+// Absolute link to the organization's candidate portal for the application-received email, or
+// undefined (the email then simply has no link) when the slug or the public app origin is unusable.
+function candidatePortalUrl(orgSlug: string | undefined): string | undefined {
+  if (!orgSlug) return undefined;
+  try {
+    return new URL(`/careers/${encodeURIComponent(orgSlug)}/dashboard`, getAppUrl()).toString();
+  } catch {
+    return undefined;
+  }
 }
 
 // Verify a Cloudflare Turnstile token on the public apply form. In production the
@@ -161,9 +176,8 @@ export const portalRouter = router({
           salary: true,
           positions: true,
           priority: true,
-          settings: true,
           createdAt: true,
-          company: { select: { id: true, name: true } },
+          company: { select: { name: true } },
           unit: { select: { name: true } },
           organization: { select: { name: true, logo: true } },
           jobProfile: {
@@ -171,14 +185,54 @@ export const portalRouter = router({
           },
         },
       });
-      if (!vacancy) return null;
+      if (!vacancy) {
+        // A shared link to a vacancy of THIS organization that was closed (or frozen) says so instead
+        // of "not found" — the candidate learns it no longer takes applications. Nothing else about
+        // the vacancy is returned. Drafts and other organizations' ids stay indistinguishable (null).
+        const closed = await db.vacancy.findFirst({
+          where: {
+            id: input.id,
+            status: { in: ['closed', 'frozen'] },
+            deletedAt: null,
+            organization: { is: { slug: input.orgSlug } },
+          },
+          select: { id: true },
+        });
+        return closed ? ({ closed: true } as const) : null;
+      }
       const applicantCount = await db.application.count({ where: { vacancyId: vacancy.id } });
-      return { ...vacancy, applicantCount };
+      // Anonymous endpoint: return ONLY the fields the public careers page renders, built
+      // explicitly so internal columns (e.g. vacancy `settings`) can never ride along.
+      return {
+        id: vacancy.id,
+        organizationId: vacancy.organizationId,
+        title: vacancy.title,
+        description: vacancy.description,
+        location: vacancy.location,
+        remotePolicy: vacancy.remotePolicy,
+        contractType: vacancy.contractType,
+        salary: vacancy.salary,
+        positions: vacancy.positions,
+        priority: vacancy.priority,
+        createdAt: vacancy.createdAt,
+        company: vacancy.company ? { name: vacancy.company.name } : null,
+        unit: vacancy.unit ? { name: vacancy.unit.name } : null,
+        organization: { name: vacancy.organization.name, logo: vacancy.organization.logo },
+        // Competency NAMES only: their target levels and descriptions are the staff's evaluation rubric.
+        jobProfile: vacancy.jobProfile
+          ? {
+              competencies: publicCompetencyNames(vacancy.jobProfile.competencies),
+              requirements: vacancy.jobProfile.requirements,
+            }
+          : null,
+        applicantCount,
+      };
     }),
 
   // Get a presigned S3 POST for the candidate to upload a CV directly, before
   // applying. Server-enforced size cap + content-type via the POST policy's
-  // conditions (not merely trusted from the client).
+  // conditions (not merely trusted from the client). Rate limited per client by
+  // publicProcedure's `cvUpload` tier, and per vacancy below.
   getCvUploadUrl: publicProcedure
     .input(
       z.object({
@@ -188,6 +242,8 @@ export const portalRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
+      // Lowercased: Postgres treats UUID case variants as one vacancy, so the quota key must too.
+      await checkRateLimit(`vacancy:${input.vacancyId.toLowerCase()}`, 'cvUploadVacancy');
       const vacancy = await db.vacancy.findFirstOrThrow({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
         select: { organizationId: true },
@@ -217,10 +273,10 @@ export const portalRouter = router({
         // Explicit, prior data-processing authorization (Ley 1581). Required: a submission
         // without it — or against a superseded consent text — is rejected before any write.
         consentAccepted: z.literal(true, {
-          errorMap: () => ({ message: 'Debes autorizar el tratamiento de tus datos personales para aplicar.' }),
+          error: 'Debe autorizar el tratamiento de sus datos personales para postularse.',
         }),
         consentTextVersion: z.literal(APPLICATION_CONSENT_TEXT_VERSION, {
-          errorMap: () => ({ message: 'El texto de autorización cambió. Recarga la página e intenta de nuevo.' }),
+          error: 'El texto de autorización cambió. Recargue la página e intente de nuevo.',
         }),
         // Locale the consent text was shown in; the server hashes ITS canonical copy (#313).
         consentLocale: z.enum(APPLICATION_CONSENT_LOCALES).default('es'),
@@ -230,7 +286,7 @@ export const portalRouter = router({
       if (!(await verifyCaptcha(input.captchaToken))) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Verificacion de seguridad fallida. Recarga la pagina e intenta de nuevo.',
+          message: 'Verificación de seguridad fallida. Recargue la página e intente de nuevo.',
         });
       }
 
@@ -238,8 +294,7 @@ export const portalRouter = router({
         where: { id: input.vacancyId, status: 'published', deletedAt: null },
         include: {
           stages: { where: { isDefault: true }, take: 1 },
-          organization: { select: { name: true } },
-          company: { select: { language: true } },
+          organization: { select: { name: true, slug: true, settings: true, billingEmail: true } },
         },
       });
 
@@ -465,14 +520,20 @@ export const portalRouter = router({
       // address per 24h platform-wide; a capped or unavailable limiter skips the email
       // (never the application).
       if (outcome.kind === 'new') {
+        const portalUrl = candidatePortalUrl(vacancy.organization?.slug);
         const confirmation = {
           candidateEmail: outcome.recipient.email,
           candidateName: outcome.recipient.firstName,
           vacancyTitle: vacancy.title,
           companyName: vacancy.organization?.name ?? '',
-          locale: vacancy.company?.language?.startsWith('en') ? ('en' as const) : ('es' as const),
+          // The language the candidate applied in (the consent text locale the form sent), not the company's.
+          locale: input.consentLocale,
+          contactEmail: candidateContactEmail(vacancy.organization),
+          ...(portalUrl ? { portalUrl } : {}),
         };
-        void Promise.resolve()
+        // After the response (see lib/after-response.ts): a bare `void` promise is frozen by the
+        // serverless runtime once the response is sent, so the email was never delivered.
+        runAfterResponse(ctx, () => Promise.resolve()
           .then(async () => {
             let allowed = false;
             try {
@@ -494,7 +555,7 @@ export const portalRouter = router({
               { component: 'portal', vacancyId: vacancy.id, errName: error instanceof Error ? error.name : 'UnknownError' },
               'Application confirmation email failed — application unaffected',
             );
-          });
+          }));
       }
 
       // Only NEW applications get CV processing — duplicates, the P2002 race-catch and
@@ -518,12 +579,7 @@ export const portalRouter = router({
             logger.warn({ component: 'portal', vacancyId: vacancy.id }, 'Post-response CV processing failed');
           }
         };
-        try {
-          if (ctx.runAfterResponse) ctx.runAfterResponse(task);
-          else void Promise.resolve().then(task);
-        } catch {
-          void Promise.resolve().then(task);
-        }
+        runAfterResponse(ctx, task);
       }
 
       // New, duplicate, withdrawn- and deleted-refused submissions all get the SAME public

@@ -9,9 +9,12 @@ namespace Tims.Infrastructure.OrgProvisioning;
 /// <c>platform_organizations_create_slice21</c>.</para>
 ///
 /// <para><b>Columns that carry a DB default and are never sent are deliberately NOT MAPPED at all</b> —
-/// <c>created_at</c>, <c>settings</c>, <c>is_active</c>, <c>currency</c>, <c>timezone</c>, <c>language</c>,
-/// <c>activated_at</c>, <c>unit_price</c>. Mapping them would let EF start emitting values Prisma leaves to
-/// the database, which is exactly the kind of drift a parity diff would surface at step 5. <c>updated_at</c>
+/// <c>created_at</c>, <c>settings</c>, <c>is_active</c>, <c>language</c>, <c>activated_at</c>,
+/// <c>unit_price</c>. Mapping them would let EF start emitting values Prisma leaves to the database, which is
+/// exactly the kind of drift a parity diff would surface at step 5. <c>companies.currency</c> and
+/// <c>companies.timezone</c> are the one exception: a creation input with a locale profile now sets them (as
+/// the TS <c>provisionOrgDefaults(..., profile)</c> does), so they are mapped as <c>ValueGeneratedOnAdd</c> —
+/// EF sends them only when non-null and otherwise still leaves them to the column default. <c>updated_at</c>
 /// is the opposite case and IS mapped everywhere: it is <c>NOT NULL</c> with no DB default (Prisma fills it
 /// client-side via <c>@updatedAt</c>), so an INSERT that omits it fails <c>23502</c>.</para>
 /// </summary>
@@ -24,10 +27,16 @@ public sealed class CompanyWriteEntity
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Hard-coded <c>'CO'</c> by the TS helper (<c>org-provisioning.ts:19</c>) regardless of the
-    /// organization, which is a real defect for a non-Colombian tenant. Reproduced, not fixed.
+    /// The locale profile's country, else <see cref="OrgProvisioningWriter.DefaultCountry"/> (TS
+    /// <c>DEFAULT_COMPANY_COUNTRY</c>) for a creation input without one.
     /// </summary>
     public string Country { get; set; } = string.Empty;
+
+    /// <summary>The locale profile's currency; null = not sent, the column default (<c>'USD'</c>) applies.</summary>
+    public string? Currency { get; set; }
+
+    /// <summary>The locale profile's time zone; null = not sent, the column default applies.</summary>
+    public string? Timezone { get; set; }
 
     public DateTime UpdatedAt { get; set; }
 }

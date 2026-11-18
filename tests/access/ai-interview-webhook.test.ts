@@ -364,6 +364,7 @@ describe('(b) valid signed payload', () => {
           costUsd: expect.closeTo(EXPECTED_COST, 6),
           billableUsd: 1.0,
         }),
+        select: { id: true },
       }),
     );
   });

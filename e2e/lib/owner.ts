@@ -24,7 +24,7 @@ function serviceRoleKey(): string {
  * Platform owners are provisioned out of band in production — there is no UI for it — so the
  * journey starts from one. Each run (and each retry attempt) gets a fresh one (a copy of the seeded owner's `users` row and
  * roles, with a new local auth user) because the tRPC rate limiter is per user: a single owner
- * shared by back-to-back runs, or by a retry, exhausts its 100-queries/minute budget and the next
+ * shared by back-to-back runs, or by a retry, exhausts its 300-queries/minute budget and the next
  * run's first page shows "Error inesperado".
  */
 export async function provisionRunOwner(stack: Stack, runId: string): Promise<void> {

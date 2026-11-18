@@ -3,7 +3,7 @@ import { router, protectedProcedure, permissionProcedure } from '../../trpc';
 import { tenantDb as db } from '@tims/db';
 import { cursorPageArgs, takeCursorPage, cursorRowMatches } from '../../lib/cursor-page';
 import type { Prisma } from '@tims/db';
-import { scopeWhereFor } from '../../access';
+import { assertUsersInOrg, scopeWhereFor } from '../../access';
 
 export const performanceFeedbackRouter = router({
   // 11.12 — Submit feedback
@@ -21,6 +21,7 @@ export const performanceFeedbackRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertUsersInOrg(ctx.user.organizationId, [input.toUserId]);
       return db.feedback.create({
         data: {
           ...input,
@@ -94,6 +95,7 @@ export const performanceFeedbackRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertUsersInOrg(ctx.user.organizationId, [input.toUserId]);
       return db.recognition.create({
         data: {
           ...input,

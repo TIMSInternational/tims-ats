@@ -4,6 +4,11 @@
 -- Server version:  17.6
 -- Schemas:         public, supabase_migrations
 -- Command:         bash scripts/db/schema-baseline.sh capture
+-- Re-baselined:    2026-11-03, NOT by capture: the drift check 16 reported (nightly run 41656817104)
+--                  plus the backup_drill_reader grants, read from pg_class.relacl / pg_default_acl, were
+--                  applied to the body. Equality with the live dump was proven by check 16 itself, run by
+--                  nightly-db-controls dispatched on branch chore/schema-baseline-2026-11-03. The next
+--                  'capture' replaces this header.
 --
 -- This file is GROUND TRUTH for what production actually looks like — not what the
 -- migrations say it should look like. #111 proved those are different things.
@@ -373,7 +378,8 @@ CREATE TABLE public.ai_agent_usage_logs (
     latency_ms integer DEFAULT 0 NOT NULL,
     cached boolean DEFAULT false NOT NULL,
     created_at timestamp(3) without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    billable_usd double precision DEFAULT 0 NOT NULL
+    billable_usd double precision DEFAULT 0 NOT NULL,
+    success boolean
 );
 
 ALTER TABLE ONLY public.ai_agent_usage_logs FORCE ROW LEVEL SECURITY;
@@ -2275,7 +2281,6 @@ ALTER TABLE public.qrtz_paused_trigger_grps OWNER TO postgres;
 --
 -- Name: qrtz_scheduler_state; Type: TABLE; Schema: public; Owner: postgres
 --
-
 CREATE TABLE public.qrtz_scheduler_state (
     sched_name text NOT NULL,
     instance_name text NOT NULL,
@@ -8176,6 +8181,7 @@ ALTER TABLE public.webhooks ENABLE ROW LEVEL SECURITY;
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO app_tenant;
 GRANT USAGE ON SCHEMA public TO ci_readonly;
+GRANT USAGE ON SCHEMA public TO ci_rls_probe;
 
 --
 -- Name: SCHEMA supabase_migrations; Type: ACL; Schema: -; Owner: postgres
@@ -8189,6 +8195,8 @@ GRANT USAGE ON SCHEMA supabase_migrations TO ci_readonly;
 
 GRANT SELECT ON TABLE public."__EFMigrationsHistory" TO app_tenant;
 GRANT SELECT ON TABLE public."__EFMigrationsHistory" TO ci_readonly;
+GRANT SELECT ON TABLE public."__EFMigrationsHistory" TO ci_rls_probe;
+GRANT SELECT ON TABLE public."__EFMigrationsHistory" TO backup_drill_reader;
 
 --
 -- Name: TABLE access_reviews; Type: ACL; Schema: public; Owner: postgres
@@ -8196,6 +8204,8 @@ GRANT SELECT ON TABLE public."__EFMigrationsHistory" TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.access_reviews TO app_tenant;
 GRANT SELECT ON TABLE public.access_reviews TO ci_readonly;
+GRANT SELECT ON TABLE public.access_reviews TO ci_rls_probe;
+GRANT SELECT ON TABLE public.access_reviews TO backup_drill_reader;
 
 --
 -- Name: TABLE action_plans; Type: ACL; Schema: public; Owner: postgres
@@ -8203,6 +8213,8 @@ GRANT SELECT ON TABLE public.access_reviews TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.action_plans TO app_tenant;
 GRANT SELECT ON TABLE public.action_plans TO ci_readonly;
+GRANT SELECT ON TABLE public.action_plans TO ci_rls_probe;
+GRANT SELECT ON TABLE public.action_plans TO backup_drill_reader;
 
 --
 -- Name: TABLE ai_agent_org_configs; Type: ACL; Schema: public; Owner: postgres
@@ -8210,6 +8222,8 @@ GRANT SELECT ON TABLE public.action_plans TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.ai_agent_org_configs TO app_tenant;
 GRANT SELECT ON TABLE public.ai_agent_org_configs TO ci_readonly;
+GRANT SELECT ON TABLE public.ai_agent_org_configs TO ci_rls_probe;
+GRANT SELECT ON TABLE public.ai_agent_org_configs TO backup_drill_reader;
 
 --
 -- Name: TABLE ai_agent_usage_logs; Type: ACL; Schema: public; Owner: postgres
@@ -8217,6 +8231,8 @@ GRANT SELECT ON TABLE public.ai_agent_org_configs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.ai_agent_usage_logs TO app_tenant;
 GRANT SELECT ON TABLE public.ai_agent_usage_logs TO ci_readonly;
+GRANT SELECT ON TABLE public.ai_agent_usage_logs TO ci_rls_probe;
+GRANT SELECT ON TABLE public.ai_agent_usage_logs TO backup_drill_reader;
 
 --
 -- Name: TABLE ai_agents; Type: ACL; Schema: public; Owner: postgres
@@ -8224,6 +8240,8 @@ GRANT SELECT ON TABLE public.ai_agent_usage_logs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.ai_agents TO app_tenant;
 GRANT SELECT ON TABLE public.ai_agents TO ci_readonly;
+GRANT SELECT ON TABLE public.ai_agents TO ci_rls_probe;
+GRANT SELECT ON TABLE public.ai_agents TO backup_drill_reader;
 
 --
 -- Name: TABLE ai_interview_sessions; Type: ACL; Schema: public; Owner: postgres
@@ -8231,6 +8249,8 @@ GRANT SELECT ON TABLE public.ai_agents TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.ai_interview_sessions TO app_tenant;
 GRANT SELECT ON TABLE public.ai_interview_sessions TO ci_readonly;
+GRANT SELECT ON TABLE public.ai_interview_sessions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.ai_interview_sessions TO backup_drill_reader;
 
 --
 -- Name: TABLE alert_rules; Type: ACL; Schema: public; Owner: postgres
@@ -8238,6 +8258,8 @@ GRANT SELECT ON TABLE public.ai_interview_sessions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.alert_rules TO app_tenant;
 GRANT SELECT ON TABLE public.alert_rules TO ci_readonly;
+GRANT SELECT ON TABLE public.alert_rules TO ci_rls_probe;
+GRANT SELECT ON TABLE public.alert_rules TO backup_drill_reader;
 
 --
 -- Name: TABLE alerts; Type: ACL; Schema: public; Owner: postgres
@@ -8245,6 +8267,8 @@ GRANT SELECT ON TABLE public.alert_rules TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.alerts TO app_tenant;
 GRANT SELECT ON TABLE public.alerts TO ci_readonly;
+GRANT SELECT ON TABLE public.alerts TO ci_rls_probe;
+GRANT SELECT ON TABLE public.alerts TO backup_drill_reader;
 
 --
 -- Name: TABLE api_keys; Type: ACL; Schema: public; Owner: postgres
@@ -8252,6 +8276,8 @@ GRANT SELECT ON TABLE public.alerts TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.api_keys TO app_tenant;
 GRANT SELECT ON TABLE public.api_keys TO ci_readonly;
+GRANT SELECT ON TABLE public.api_keys TO ci_rls_probe;
+GRANT SELECT ON TABLE public.api_keys TO backup_drill_reader;
 
 --
 -- Name: TABLE application_consent_evidence; Type: ACL; Schema: public; Owner: postgres
@@ -8259,6 +8285,8 @@ GRANT SELECT ON TABLE public.api_keys TO ci_readonly;
 
 GRANT SELECT,INSERT ON TABLE public.application_consent_evidence TO app_tenant;
 GRANT SELECT ON TABLE public.application_consent_evidence TO ci_readonly;
+GRANT SELECT ON TABLE public.application_consent_evidence TO ci_rls_probe;
+GRANT SELECT ON TABLE public.application_consent_evidence TO backup_drill_reader;
 
 --
 -- Name: TABLE applications; Type: ACL; Schema: public; Owner: postgres
@@ -8266,6 +8294,8 @@ GRANT SELECT ON TABLE public.application_consent_evidence TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.applications TO app_tenant;
 GRANT SELECT ON TABLE public.applications TO ci_readonly;
+GRANT SELECT ON TABLE public.applications TO ci_rls_probe;
+GRANT SELECT ON TABLE public.applications TO backup_drill_reader;
 
 --
 -- Name: TABLE assessment_assignments; Type: ACL; Schema: public; Owner: postgres
@@ -8273,6 +8303,8 @@ GRANT SELECT ON TABLE public.applications TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_assignments TO app_tenant;
 GRANT SELECT ON TABLE public.assessment_assignments TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_assignments TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_assignments TO backup_drill_reader;
 
 --
 -- Name: TABLE assessment_consents; Type: ACL; Schema: public; Owner: postgres
@@ -8280,6 +8312,8 @@ GRANT SELECT ON TABLE public.assessment_assignments TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_consents TO app_tenant;
 GRANT SELECT ON TABLE public.assessment_consents TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_consents TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_consents TO backup_drill_reader;
 
 --
 -- Name: TABLE assessment_questions; Type: ACL; Schema: public; Owner: postgres
@@ -8287,6 +8321,8 @@ GRANT SELECT ON TABLE public.assessment_consents TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_questions TO app_tenant;
 GRANT SELECT ON TABLE public.assessment_questions TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_questions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_questions TO backup_drill_reader;
 
 --
 -- Name: TABLE assessment_responses; Type: ACL; Schema: public; Owner: postgres
@@ -8294,6 +8330,8 @@ GRANT SELECT ON TABLE public.assessment_questions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_responses TO app_tenant;
 GRANT SELECT ON TABLE public.assessment_responses TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_responses TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_responses TO backup_drill_reader;
 
 --
 -- Name: TABLE assessment_results; Type: ACL; Schema: public; Owner: postgres
@@ -8301,6 +8339,8 @@ GRANT SELECT ON TABLE public.assessment_responses TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_results TO app_tenant;
 GRANT SELECT ON TABLE public.assessment_results TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_results TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_results TO backup_drill_reader;
 
 --
 -- Name: TABLE assessment_types; Type: ACL; Schema: public; Owner: postgres
@@ -8308,6 +8348,8 @@ GRANT SELECT ON TABLE public.assessment_results TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.assessment_types TO app_tenant;
 GRANT SELECT ON TABLE public.assessment_types TO ci_readonly;
+GRANT SELECT ON TABLE public.assessment_types TO ci_rls_probe;
+GRANT SELECT ON TABLE public.assessment_types TO backup_drill_reader;
 
 --
 -- Name: TABLE audit_logs; Type: ACL; Schema: public; Owner: postgres
@@ -8315,6 +8357,8 @@ GRANT SELECT ON TABLE public.assessment_types TO ci_readonly;
 
 GRANT SELECT,INSERT ON TABLE public.audit_logs TO app_tenant;
 GRANT SELECT ON TABLE public.audit_logs TO ci_readonly;
+GRANT SELECT ON TABLE public.audit_logs TO ci_rls_probe;
+GRANT SELECT ON TABLE public.audit_logs TO backup_drill_reader;
 
 --
 -- Name: TABLE benefit_enrollments; Type: ACL; Schema: public; Owner: postgres
@@ -8322,6 +8366,8 @@ GRANT SELECT ON TABLE public.audit_logs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.benefit_enrollments TO app_tenant;
 GRANT SELECT ON TABLE public.benefit_enrollments TO ci_readonly;
+GRANT SELECT ON TABLE public.benefit_enrollments TO ci_rls_probe;
+GRANT SELECT ON TABLE public.benefit_enrollments TO backup_drill_reader;
 
 --
 -- Name: TABLE benefit_plans; Type: ACL; Schema: public; Owner: postgres
@@ -8329,6 +8375,8 @@ GRANT SELECT ON TABLE public.benefit_enrollments TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.benefit_plans TO app_tenant;
 GRANT SELECT ON TABLE public.benefit_plans TO ci_readonly;
+GRANT SELECT ON TABLE public.benefit_plans TO ci_rls_probe;
+GRANT SELECT ON TABLE public.benefit_plans TO backup_drill_reader;
 
 --
 -- Name: TABLE billing_profiles; Type: ACL; Schema: public; Owner: postgres
@@ -8336,6 +8384,8 @@ GRANT SELECT ON TABLE public.benefit_plans TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.billing_profiles TO app_tenant;
 GRANT SELECT ON TABLE public.billing_profiles TO ci_readonly;
+GRANT SELECT ON TABLE public.billing_profiles TO ci_rls_probe;
+GRANT SELECT ON TABLE public.billing_profiles TO backup_drill_reader;
 
 --
 -- Name: TABLE business_units; Type: ACL; Schema: public; Owner: postgres
@@ -8343,6 +8393,8 @@ GRANT SELECT ON TABLE public.billing_profiles TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.business_units TO app_tenant;
 GRANT SELECT ON TABLE public.business_units TO ci_readonly;
+GRANT SELECT ON TABLE public.business_units TO ci_rls_probe;
+GRANT SELECT ON TABLE public.business_units TO backup_drill_reader;
 
 --
 -- Name: TABLE calibration_members; Type: ACL; Schema: public; Owner: postgres
@@ -8350,6 +8402,8 @@ GRANT SELECT ON TABLE public.business_units TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.calibration_members TO app_tenant;
 GRANT SELECT ON TABLE public.calibration_members TO ci_readonly;
+GRANT SELECT ON TABLE public.calibration_members TO ci_rls_probe;
+GRANT SELECT ON TABLE public.calibration_members TO backup_drill_reader;
 
 --
 -- Name: TABLE calibration_sessions; Type: ACL; Schema: public; Owner: postgres
@@ -8357,6 +8411,8 @@ GRANT SELECT ON TABLE public.calibration_members TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.calibration_sessions TO app_tenant;
 GRANT SELECT ON TABLE public.calibration_sessions TO ci_readonly;
+GRANT SELECT ON TABLE public.calibration_sessions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.calibration_sessions TO backup_drill_reader;
 
 --
 -- Name: TABLE calibration_votes; Type: ACL; Schema: public; Owner: postgres
@@ -8364,6 +8420,8 @@ GRANT SELECT ON TABLE public.calibration_sessions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.calibration_votes TO app_tenant;
 GRANT SELECT ON TABLE public.calibration_votes TO ci_readonly;
+GRANT SELECT ON TABLE public.calibration_votes TO ci_rls_probe;
+GRANT SELECT ON TABLE public.calibration_votes TO backup_drill_reader;
 
 --
 -- Name: TABLE candidate_documents; Type: ACL; Schema: public; Owner: postgres
@@ -8371,6 +8429,8 @@ GRANT SELECT ON TABLE public.calibration_votes TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.candidate_documents TO app_tenant;
 GRANT SELECT ON TABLE public.candidate_documents TO ci_readonly;
+GRANT SELECT ON TABLE public.candidate_documents TO ci_rls_probe;
+GRANT SELECT ON TABLE public.candidate_documents TO backup_drill_reader;
 
 --
 -- Name: TABLE candidate_tags; Type: ACL; Schema: public; Owner: postgres
@@ -8378,6 +8438,8 @@ GRANT SELECT ON TABLE public.candidate_documents TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.candidate_tags TO app_tenant;
 GRANT SELECT ON TABLE public.candidate_tags TO ci_readonly;
+GRANT SELECT ON TABLE public.candidate_tags TO ci_rls_probe;
+GRANT SELECT ON TABLE public.candidate_tags TO backup_drill_reader;
 
 --
 -- Name: TABLE candidates; Type: ACL; Schema: public; Owner: postgres
@@ -8385,6 +8447,8 @@ GRANT SELECT ON TABLE public.candidate_tags TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.candidates TO app_tenant;
 GRANT SELECT ON TABLE public.candidates TO ci_readonly;
+GRANT SELECT ON TABLE public.candidates TO ci_rls_probe;
+GRANT SELECT ON TABLE public.candidates TO backup_drill_reader;
 
 --
 -- Name: TABLE certificates; Type: ACL; Schema: public; Owner: postgres
@@ -8392,6 +8456,8 @@ GRANT SELECT ON TABLE public.candidates TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.certificates TO app_tenant;
 GRANT SELECT ON TABLE public.certificates TO ci_readonly;
+GRANT SELECT ON TABLE public.certificates TO ci_rls_probe;
+GRANT SELECT ON TABLE public.certificates TO backup_drill_reader;
 
 --
 -- Name: TABLE coaching_sessions; Type: ACL; Schema: public; Owner: postgres
@@ -8399,6 +8465,8 @@ GRANT SELECT ON TABLE public.certificates TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.coaching_sessions TO app_tenant;
 GRANT SELECT ON TABLE public.coaching_sessions TO ci_readonly;
+GRANT SELECT ON TABLE public.coaching_sessions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.coaching_sessions TO backup_drill_reader;
 
 --
 -- Name: TABLE commitments; Type: ACL; Schema: public; Owner: postgres
@@ -8406,6 +8474,8 @@ GRANT SELECT ON TABLE public.coaching_sessions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.commitments TO app_tenant;
 GRANT SELECT ON TABLE public.commitments TO ci_readonly;
+GRANT SELECT ON TABLE public.commitments TO ci_rls_probe;
+GRANT SELECT ON TABLE public.commitments TO backup_drill_reader;
 
 --
 -- Name: TABLE companies; Type: ACL; Schema: public; Owner: postgres
@@ -8413,6 +8483,8 @@ GRANT SELECT ON TABLE public.commitments TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.companies TO app_tenant;
 GRANT SELECT ON TABLE public.companies TO ci_readonly;
+GRANT SELECT ON TABLE public.companies TO ci_rls_probe;
+GRANT SELECT ON TABLE public.companies TO backup_drill_reader;
 
 --
 -- Name: TABLE connector_syncs; Type: ACL; Schema: public; Owner: postgres
@@ -8420,6 +8492,8 @@ GRANT SELECT ON TABLE public.companies TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.connector_syncs TO app_tenant;
 GRANT SELECT ON TABLE public.connector_syncs TO ci_readonly;
+GRANT SELECT ON TABLE public.connector_syncs TO ci_rls_probe;
+GRANT SELECT ON TABLE public.connector_syncs TO backup_drill_reader;
 
 --
 -- Name: TABLE connectors; Type: ACL; Schema: public; Owner: postgres
@@ -8427,6 +8501,8 @@ GRANT SELECT ON TABLE public.connector_syncs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.connectors TO app_tenant;
 GRANT SELECT ON TABLE public.connectors TO ci_readonly;
+GRANT SELECT ON TABLE public.connectors TO ci_rls_probe;
+GRANT SELECT ON TABLE public.connectors TO backup_drill_reader;
 
 --
 -- Name: TABLE courses; Type: ACL; Schema: public; Owner: postgres
@@ -8434,6 +8510,8 @@ GRANT SELECT ON TABLE public.connectors TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.courses TO app_tenant;
 GRANT SELECT ON TABLE public.courses TO ci_readonly;
+GRANT SELECT ON TABLE public.courses TO ci_rls_probe;
+GRANT SELECT ON TABLE public.courses TO backup_drill_reader;
 
 --
 -- Name: TABLE critical_roles; Type: ACL; Schema: public; Owner: postgres
@@ -8441,6 +8519,8 @@ GRANT SELECT ON TABLE public.courses TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.critical_roles TO app_tenant;
 GRANT SELECT ON TABLE public.critical_roles TO ci_readonly;
+GRANT SELECT ON TABLE public.critical_roles TO ci_rls_probe;
+GRANT SELECT ON TABLE public.critical_roles TO backup_drill_reader;
 
 --
 -- Name: TABLE data_access_logs; Type: ACL; Schema: public; Owner: postgres
@@ -8448,6 +8528,8 @@ GRANT SELECT ON TABLE public.critical_roles TO ci_readonly;
 
 GRANT SELECT,INSERT ON TABLE public.data_access_logs TO app_tenant;
 GRANT SELECT ON TABLE public.data_access_logs TO ci_readonly;
+GRANT SELECT ON TABLE public.data_access_logs TO ci_rls_probe;
+GRANT SELECT ON TABLE public.data_access_logs TO backup_drill_reader;
 
 --
 -- Name: TABLE data_consents; Type: ACL; Schema: public; Owner: postgres
@@ -8455,6 +8537,8 @@ GRANT SELECT ON TABLE public.data_access_logs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.data_consents TO app_tenant;
 GRANT SELECT ON TABLE public.data_consents TO ci_readonly;
+GRANT SELECT ON TABLE public.data_consents TO ci_rls_probe;
+GRANT SELECT ON TABLE public.data_consents TO backup_drill_reader;
 
 --
 -- Name: TABLE data_subject_requests; Type: ACL; Schema: public; Owner: postgres
@@ -8462,6 +8546,8 @@ GRANT SELECT ON TABLE public.data_consents TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.data_subject_requests TO app_tenant;
 GRANT SELECT ON TABLE public.data_subject_requests TO ci_readonly;
+GRANT SELECT ON TABLE public.data_subject_requests TO ci_rls_probe;
+GRANT SELECT ON TABLE public.data_subject_requests TO backup_drill_reader;
 
 --
 -- Name: TABLE employee_compensations; Type: ACL; Schema: public; Owner: postgres
@@ -8469,6 +8555,8 @@ GRANT SELECT ON TABLE public.data_subject_requests TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.employee_compensations TO app_tenant;
 GRANT SELECT ON TABLE public.employee_compensations TO ci_readonly;
+GRANT SELECT ON TABLE public.employee_compensations TO ci_rls_probe;
+GRANT SELECT ON TABLE public.employee_compensations TO backup_drill_reader;
 
 --
 -- Name: TABLE employee_demographics; Type: ACL; Schema: public; Owner: postgres
@@ -8476,6 +8564,8 @@ GRANT SELECT ON TABLE public.employee_compensations TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.employee_demographics TO app_tenant;
 GRANT SELECT ON TABLE public.employee_demographics TO ci_readonly;
+GRANT SELECT ON TABLE public.employee_demographics TO ci_rls_probe;
+GRANT SELECT ON TABLE public.employee_demographics TO backup_drill_reader;
 
 --
 -- Name: TABLE enrollments; Type: ACL; Schema: public; Owner: postgres
@@ -8483,6 +8573,8 @@ GRANT SELECT ON TABLE public.employee_demographics TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.enrollments TO app_tenant;
 GRANT SELECT ON TABLE public.enrollments TO ci_readonly;
+GRANT SELECT ON TABLE public.enrollments TO ci_rls_probe;
+GRANT SELECT ON TABLE public.enrollments TO backup_drill_reader;
 
 --
 -- Name: TABLE feature_flags; Type: ACL; Schema: public; Owner: postgres
@@ -8490,6 +8582,8 @@ GRANT SELECT ON TABLE public.enrollments TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.feature_flags TO app_tenant;
 GRANT SELECT ON TABLE public.feature_flags TO ci_readonly;
+GRANT SELECT ON TABLE public.feature_flags TO ci_rls_probe;
+GRANT SELECT ON TABLE public.feature_flags TO backup_drill_reader;
 
 --
 -- Name: TABLE feedbacks; Type: ACL; Schema: public; Owner: postgres
@@ -8497,6 +8591,8 @@ GRANT SELECT ON TABLE public.feature_flags TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.feedbacks TO app_tenant;
 GRANT SELECT ON TABLE public.feedbacks TO ci_readonly;
+GRANT SELECT ON TABLE public.feedbacks TO ci_rls_probe;
+GRANT SELECT ON TABLE public.feedbacks TO backup_drill_reader;
 
 --
 -- Name: TABLE fit_scores; Type: ACL; Schema: public; Owner: postgres
@@ -8504,6 +8600,8 @@ GRANT SELECT ON TABLE public.feedbacks TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.fit_scores TO app_tenant;
 GRANT SELECT ON TABLE public.fit_scores TO ci_readonly;
+GRANT SELECT ON TABLE public.fit_scores TO ci_rls_probe;
+GRANT SELECT ON TABLE public.fit_scores TO backup_drill_reader;
 
 --
 -- Name: TABLE fx_rates; Type: ACL; Schema: public; Owner: postgres
@@ -8511,6 +8609,8 @@ GRANT SELECT ON TABLE public.fit_scores TO ci_readonly;
 
 GRANT SELECT ON TABLE public.fx_rates TO app_tenant;
 GRANT SELECT ON TABLE public.fx_rates TO ci_readonly;
+GRANT SELECT ON TABLE public.fx_rates TO ci_rls_probe;
+GRANT SELECT ON TABLE public.fx_rates TO backup_drill_reader;
 
 --
 -- Name: TABLE hire_predictions; Type: ACL; Schema: public; Owner: postgres
@@ -8518,6 +8618,8 @@ GRANT SELECT ON TABLE public.fx_rates TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.hire_predictions TO app_tenant;
 GRANT SELECT ON TABLE public.hire_predictions TO ci_readonly;
+GRANT SELECT ON TABLE public.hire_predictions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.hire_predictions TO backup_drill_reader;
 
 --
 -- Name: TABLE hris_connectors; Type: ACL; Schema: public; Owner: postgres
@@ -8525,6 +8627,8 @@ GRANT SELECT ON TABLE public.hire_predictions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.hris_connectors TO app_tenant;
 GRANT SELECT ON TABLE public.hris_connectors TO ci_readonly;
+GRANT SELECT ON TABLE public.hris_connectors TO ci_rls_probe;
+GRANT SELECT ON TABLE public.hris_connectors TO backup_drill_reader;
 
 --
 -- Name: TABLE hris_external_employees; Type: ACL; Schema: public; Owner: postgres
@@ -8532,6 +8636,8 @@ GRANT SELECT ON TABLE public.hris_connectors TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.hris_external_employees TO app_tenant;
 GRANT SELECT ON TABLE public.hris_external_employees TO ci_readonly;
+GRANT SELECT ON TABLE public.hris_external_employees TO ci_rls_probe;
+GRANT SELECT ON TABLE public.hris_external_employees TO backup_drill_reader;
 
 --
 -- Name: TABLE hris_sync_record_errors; Type: ACL; Schema: public; Owner: postgres
@@ -8539,6 +8645,8 @@ GRANT SELECT ON TABLE public.hris_external_employees TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.hris_sync_record_errors TO app_tenant;
 GRANT SELECT ON TABLE public.hris_sync_record_errors TO ci_readonly;
+GRANT SELECT ON TABLE public.hris_sync_record_errors TO ci_rls_probe;
+GRANT SELECT ON TABLE public.hris_sync_record_errors TO backup_drill_reader;
 
 --
 -- Name: TABLE hris_sync_runs; Type: ACL; Schema: public; Owner: postgres
@@ -8546,6 +8654,8 @@ GRANT SELECT ON TABLE public.hris_sync_record_errors TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.hris_sync_runs TO app_tenant;
 GRANT SELECT ON TABLE public.hris_sync_runs TO ci_readonly;
+GRANT SELECT ON TABLE public.hris_sync_runs TO ci_rls_probe;
+GRANT SELECT ON TABLE public.hris_sync_runs TO backup_drill_reader;
 
 --
 -- Name: TABLE interview_evaluators; Type: ACL; Schema: public; Owner: postgres
@@ -8553,6 +8663,8 @@ GRANT SELECT ON TABLE public.hris_sync_runs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.interview_evaluators TO app_tenant;
 GRANT SELECT ON TABLE public.interview_evaluators TO ci_readonly;
+GRANT SELECT ON TABLE public.interview_evaluators TO ci_rls_probe;
+GRANT SELECT ON TABLE public.interview_evaluators TO backup_drill_reader;
 
 --
 -- Name: TABLE interview_scorecards; Type: ACL; Schema: public; Owner: postgres
@@ -8560,6 +8672,8 @@ GRANT SELECT ON TABLE public.interview_evaluators TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.interview_scorecards TO app_tenant;
 GRANT SELECT ON TABLE public.interview_scorecards TO ci_readonly;
+GRANT SELECT ON TABLE public.interview_scorecards TO ci_rls_probe;
+GRANT SELECT ON TABLE public.interview_scorecards TO backup_drill_reader;
 
 --
 -- Name: TABLE interview_summaries; Type: ACL; Schema: public; Owner: postgres
@@ -8567,6 +8681,8 @@ GRANT SELECT ON TABLE public.interview_scorecards TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.interview_summaries TO app_tenant;
 GRANT SELECT ON TABLE public.interview_summaries TO ci_readonly;
+GRANT SELECT ON TABLE public.interview_summaries TO ci_rls_probe;
+GRANT SELECT ON TABLE public.interview_summaries TO backup_drill_reader;
 
 --
 -- Name: TABLE interviews; Type: ACL; Schema: public; Owner: postgres
@@ -8574,6 +8690,8 @@ GRANT SELECT ON TABLE public.interview_summaries TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.interviews TO app_tenant;
 GRANT SELECT ON TABLE public.interviews TO ci_readonly;
+GRANT SELECT ON TABLE public.interviews TO ci_rls_probe;
+GRANT SELECT ON TABLE public.interviews TO backup_drill_reader;
 
 --
 -- Name: TABLE invoice_line_items; Type: ACL; Schema: public; Owner: postgres
@@ -8581,6 +8699,8 @@ GRANT SELECT ON TABLE public.interviews TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.invoice_line_items TO app_tenant;
 GRANT SELECT ON TABLE public.invoice_line_items TO ci_readonly;
+GRANT SELECT ON TABLE public.invoice_line_items TO ci_rls_probe;
+GRANT SELECT ON TABLE public.invoice_line_items TO backup_drill_reader;
 
 --
 -- Name: TABLE invoices; Type: ACL; Schema: public; Owner: postgres
@@ -8588,12 +8708,15 @@ GRANT SELECT ON TABLE public.invoice_line_items TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.invoices TO app_tenant;
 GRANT SELECT ON TABLE public.invoices TO ci_readonly;
+GRANT SELECT ON TABLE public.invoices TO ci_rls_probe;
+GRANT SELECT ON TABLE public.invoices TO backup_drill_reader;
 
 --
 -- Name: SEQUENCE invoices_invoice_number_seq; Type: ACL; Schema: public; Owner: postgres
 --
 
 GRANT SELECT,USAGE ON SEQUENCE public.invoices_invoice_number_seq TO app_tenant;
+GRANT SELECT ON SEQUENCE public.invoices_invoice_number_seq TO backup_drill_reader;
 
 --
 -- Name: TABLE job_profiles; Type: ACL; Schema: public; Owner: postgres
@@ -8601,6 +8724,8 @@ GRANT SELECT,USAGE ON SEQUENCE public.invoices_invoice_number_seq TO app_tenant;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.job_profiles TO app_tenant;
 GRANT SELECT ON TABLE public.job_profiles TO ci_readonly;
+GRANT SELECT ON TABLE public.job_profiles TO ci_rls_probe;
+GRANT SELECT ON TABLE public.job_profiles TO backup_drill_reader;
 
 --
 -- Name: TABLE key_results; Type: ACL; Schema: public; Owner: postgres
@@ -8608,6 +8733,8 @@ GRANT SELECT ON TABLE public.job_profiles TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.key_results TO app_tenant;
 GRANT SELECT ON TABLE public.key_results TO ci_readonly;
+GRANT SELECT ON TABLE public.key_results TO ci_rls_probe;
+GRANT SELECT ON TABLE public.key_results TO backup_drill_reader;
 
 --
 -- Name: TABLE leader_commitments; Type: ACL; Schema: public; Owner: postgres
@@ -8615,6 +8742,8 @@ GRANT SELECT ON TABLE public.key_results TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.leader_commitments TO app_tenant;
 GRANT SELECT ON TABLE public.leader_commitments TO ci_readonly;
+GRANT SELECT ON TABLE public.leader_commitments TO ci_rls_probe;
+GRANT SELECT ON TABLE public.leader_commitments TO backup_drill_reader;
 
 --
 -- Name: TABLE learning_path_courses; Type: ACL; Schema: public; Owner: postgres
@@ -8622,6 +8751,8 @@ GRANT SELECT ON TABLE public.leader_commitments TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.learning_path_courses TO app_tenant;
 GRANT SELECT ON TABLE public.learning_path_courses TO ci_readonly;
+GRANT SELECT ON TABLE public.learning_path_courses TO ci_rls_probe;
+GRANT SELECT ON TABLE public.learning_path_courses TO backup_drill_reader;
 
 --
 -- Name: TABLE learning_paths; Type: ACL; Schema: public; Owner: postgres
@@ -8629,6 +8760,8 @@ GRANT SELECT ON TABLE public.learning_path_courses TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.learning_paths TO app_tenant;
 GRANT SELECT ON TABLE public.learning_paths TO ci_readonly;
+GRANT SELECT ON TABLE public.learning_paths TO ci_rls_probe;
+GRANT SELECT ON TABLE public.learning_paths TO backup_drill_reader;
 
 --
 -- Name: TABLE legal_checks; Type: ACL; Schema: public; Owner: postgres
@@ -8636,6 +8769,8 @@ GRANT SELECT ON TABLE public.learning_paths TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.legal_checks TO app_tenant;
 GRANT SELECT ON TABLE public.legal_checks TO ci_readonly;
+GRANT SELECT ON TABLE public.legal_checks TO ci_rls_probe;
+GRANT SELECT ON TABLE public.legal_checks TO backup_drill_reader;
 
 --
 -- Name: TABLE modules; Type: ACL; Schema: public; Owner: postgres
@@ -8643,6 +8778,8 @@ GRANT SELECT ON TABLE public.legal_checks TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.modules TO app_tenant;
 GRANT SELECT ON TABLE public.modules TO ci_readonly;
+GRANT SELECT ON TABLE public.modules TO ci_rls_probe;
+GRANT SELECT ON TABLE public.modules TO backup_drill_reader;
 
 --
 -- Name: TABLE nine_box_evaluations; Type: ACL; Schema: public; Owner: postgres
@@ -8650,6 +8787,8 @@ GRANT SELECT ON TABLE public.modules TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.nine_box_evaluations TO app_tenant;
 GRANT SELECT ON TABLE public.nine_box_evaluations TO ci_readonly;
+GRANT SELECT ON TABLE public.nine_box_evaluations TO ci_rls_probe;
+GRANT SELECT ON TABLE public.nine_box_evaluations TO backup_drill_reader;
 
 --
 -- Name: TABLE notification_preferences; Type: ACL; Schema: public; Owner: postgres
@@ -8657,6 +8796,8 @@ GRANT SELECT ON TABLE public.nine_box_evaluations TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.notification_preferences TO app_tenant;
 GRANT SELECT ON TABLE public.notification_preferences TO ci_readonly;
+GRANT SELECT ON TABLE public.notification_preferences TO ci_rls_probe;
+GRANT SELECT ON TABLE public.notification_preferences TO backup_drill_reader;
 
 --
 -- Name: TABLE notifications; Type: ACL; Schema: public; Owner: postgres
@@ -8664,6 +8805,8 @@ GRANT SELECT ON TABLE public.notification_preferences TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.notifications TO app_tenant;
 GRANT SELECT ON TABLE public.notifications TO ci_readonly;
+GRANT SELECT ON TABLE public.notifications TO ci_rls_probe;
+GRANT SELECT ON TABLE public.notifications TO backup_drill_reader;
 
 --
 -- Name: TABLE offer_approvals; Type: ACL; Schema: public; Owner: postgres
@@ -8671,6 +8814,8 @@ GRANT SELECT ON TABLE public.notifications TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.offer_approvals TO app_tenant;
 GRANT SELECT ON TABLE public.offer_approvals TO ci_readonly;
+GRANT SELECT ON TABLE public.offer_approvals TO ci_rls_probe;
+GRANT SELECT ON TABLE public.offer_approvals TO backup_drill_reader;
 
 --
 -- Name: TABLE offers; Type: ACL; Schema: public; Owner: postgres
@@ -8678,6 +8823,8 @@ GRANT SELECT ON TABLE public.offer_approvals TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.offers TO app_tenant;
 GRANT SELECT ON TABLE public.offers TO ci_readonly;
+GRANT SELECT ON TABLE public.offers TO ci_rls_probe;
+GRANT SELECT ON TABLE public.offers TO backup_drill_reader;
 
 --
 -- Name: TABLE okrs; Type: ACL; Schema: public; Owner: postgres
@@ -8685,6 +8832,8 @@ GRANT SELECT ON TABLE public.offers TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.okrs TO app_tenant;
 GRANT SELECT ON TABLE public.okrs TO ci_readonly;
+GRANT SELECT ON TABLE public.okrs TO ci_rls_probe;
+GRANT SELECT ON TABLE public.okrs TO backup_drill_reader;
 
 --
 -- Name: TABLE onboarding_check_ins; Type: ACL; Schema: public; Owner: postgres
@@ -8692,6 +8841,8 @@ GRANT SELECT ON TABLE public.okrs TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.onboarding_check_ins TO app_tenant;
 GRANT SELECT ON TABLE public.onboarding_check_ins TO ci_readonly;
+GRANT SELECT ON TABLE public.onboarding_check_ins TO ci_rls_probe;
+GRANT SELECT ON TABLE public.onboarding_check_ins TO backup_drill_reader;
 
 --
 -- Name: TABLE onboarding_plans; Type: ACL; Schema: public; Owner: postgres
@@ -8699,6 +8850,8 @@ GRANT SELECT ON TABLE public.onboarding_check_ins TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.onboarding_plans TO app_tenant;
 GRANT SELECT ON TABLE public.onboarding_plans TO ci_readonly;
+GRANT SELECT ON TABLE public.onboarding_plans TO ci_rls_probe;
+GRANT SELECT ON TABLE public.onboarding_plans TO backup_drill_reader;
 
 --
 -- Name: TABLE onboarding_tasks; Type: ACL; Schema: public; Owner: postgres
@@ -8706,6 +8859,8 @@ GRANT SELECT ON TABLE public.onboarding_plans TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.onboarding_tasks TO app_tenant;
 GRANT SELECT ON TABLE public.onboarding_tasks TO ci_readonly;
+GRANT SELECT ON TABLE public.onboarding_tasks TO ci_rls_probe;
+GRANT SELECT ON TABLE public.onboarding_tasks TO backup_drill_reader;
 
 --
 -- Name: TABLE org_entitlements; Type: ACL; Schema: public; Owner: postgres
@@ -8713,6 +8868,8 @@ GRANT SELECT ON TABLE public.onboarding_tasks TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.org_entitlements TO app_tenant;
 GRANT SELECT ON TABLE public.org_entitlements TO ci_readonly;
+GRANT SELECT ON TABLE public.org_entitlements TO ci_rls_probe;
+GRANT SELECT ON TABLE public.org_entitlements TO backup_drill_reader;
 
 --
 -- Name: TABLE organizations; Type: ACL; Schema: public; Owner: postgres
@@ -8720,6 +8877,8 @@ GRANT SELECT ON TABLE public.org_entitlements TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.organizations TO app_tenant;
 GRANT SELECT ON TABLE public.organizations TO ci_readonly;
+GRANT SELECT ON TABLE public.organizations TO ci_rls_probe;
+GRANT SELECT ON TABLE public.organizations TO backup_drill_reader;
 
 --
 -- Name: TABLE permissions; Type: ACL; Schema: public; Owner: postgres
@@ -8727,6 +8886,8 @@ GRANT SELECT ON TABLE public.organizations TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.permissions TO app_tenant;
 GRANT SELECT ON TABLE public.permissions TO ci_readonly;
+GRANT SELECT ON TABLE public.permissions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.permissions TO backup_drill_reader;
 
 --
 -- Name: TABLE pipeline_stages; Type: ACL; Schema: public; Owner: postgres
@@ -8734,6 +8895,8 @@ GRANT SELECT ON TABLE public.permissions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.pipeline_stages TO app_tenant;
 GRANT SELECT ON TABLE public.pipeline_stages TO ci_readonly;
+GRANT SELECT ON TABLE public.pipeline_stages TO ci_rls_probe;
+GRANT SELECT ON TABLE public.pipeline_stages TO backup_drill_reader;
 
 --
 -- Name: TABLE plan_modules; Type: ACL; Schema: public; Owner: postgres
@@ -8741,6 +8904,8 @@ GRANT SELECT ON TABLE public.pipeline_stages TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.plan_modules TO app_tenant;
 GRANT SELECT ON TABLE public.plan_modules TO ci_readonly;
+GRANT SELECT ON TABLE public.plan_modules TO ci_rls_probe;
+GRANT SELECT ON TABLE public.plan_modules TO backup_drill_reader;
 
 --
 -- Name: TABLE plans; Type: ACL; Schema: public; Owner: postgres
@@ -8748,6 +8913,8 @@ GRANT SELECT ON TABLE public.plan_modules TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.plans TO app_tenant;
 GRANT SELECT ON TABLE public.plans TO ci_readonly;
+GRANT SELECT ON TABLE public.plans TO ci_rls_probe;
+GRANT SELECT ON TABLE public.plans TO backup_drill_reader;
 
 --
 -- Name: TABLE platform_invitations; Type: ACL; Schema: public; Owner: postgres
@@ -8755,6 +8922,8 @@ GRANT SELECT ON TABLE public.plans TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.platform_invitations TO app_tenant;
 GRANT SELECT ON TABLE public.platform_invitations TO ci_readonly;
+GRANT SELECT ON TABLE public.platform_invitations TO ci_rls_probe;
+GRANT SELECT ON TABLE public.platform_invitations TO backup_drill_reader;
 
 --
 -- Name: TABLE platform_owner_emails; Type: ACL; Schema: public; Owner: postgres
@@ -8762,6 +8931,8 @@ GRANT SELECT ON TABLE public.platform_invitations TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.platform_owner_emails TO app_tenant;
 GRANT SELECT ON TABLE public.platform_owner_emails TO ci_readonly;
+GRANT SELECT ON TABLE public.platform_owner_emails TO ci_rls_probe;
+GRANT SELECT ON TABLE public.platform_owner_emails TO backup_drill_reader;
 
 --
 -- Name: TABLE preemployment_validations; Type: ACL; Schema: public; Owner: postgres
@@ -8769,6 +8940,8 @@ GRANT SELECT ON TABLE public.platform_owner_emails TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.preemployment_validations TO app_tenant;
 GRANT SELECT ON TABLE public.preemployment_validations TO ci_readonly;
+GRANT SELECT ON TABLE public.preemployment_validations TO ci_rls_probe;
+GRANT SELECT ON TABLE public.preemployment_validations TO backup_drill_reader;
 
 --
 -- Name: TABLE proctoring_sessions; Type: ACL; Schema: public; Owner: postgres
@@ -8776,6 +8949,8 @@ GRANT SELECT ON TABLE public.preemployment_validations TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.proctoring_sessions TO app_tenant;
 GRANT SELECT ON TABLE public.proctoring_sessions TO ci_readonly;
+GRANT SELECT ON TABLE public.proctoring_sessions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.proctoring_sessions TO backup_drill_reader;
 
 --
 -- Name: TABLE publication_channels; Type: ACL; Schema: public; Owner: postgres
@@ -8783,6 +8958,8 @@ GRANT SELECT ON TABLE public.proctoring_sessions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.publication_channels TO app_tenant;
 GRANT SELECT ON TABLE public.publication_channels TO ci_readonly;
+GRANT SELECT ON TABLE public.publication_channels TO ci_rls_probe;
+GRANT SELECT ON TABLE public.publication_channels TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_blob_triggers; Type: ACL; Schema: public; Owner: postgres
@@ -8790,6 +8967,8 @@ GRANT SELECT ON TABLE public.publication_channels TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_blob_triggers TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_blob_triggers TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_blob_triggers TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_blob_triggers TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_calendars; Type: ACL; Schema: public; Owner: postgres
@@ -8797,6 +8976,8 @@ GRANT SELECT ON TABLE public.qrtz_blob_triggers TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_calendars TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_calendars TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_calendars TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_calendars TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_cron_triggers; Type: ACL; Schema: public; Owner: postgres
@@ -8804,6 +8985,8 @@ GRANT SELECT ON TABLE public.qrtz_calendars TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_cron_triggers TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_cron_triggers TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_cron_triggers TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_cron_triggers TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_fired_triggers; Type: ACL; Schema: public; Owner: postgres
@@ -8811,6 +8994,8 @@ GRANT SELECT ON TABLE public.qrtz_cron_triggers TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_fired_triggers TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_fired_triggers TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_fired_triggers TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_fired_triggers TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_job_details; Type: ACL; Schema: public; Owner: postgres
@@ -8818,6 +9003,8 @@ GRANT SELECT ON TABLE public.qrtz_fired_triggers TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_job_details TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_job_details TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_job_details TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_job_details TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_locks; Type: ACL; Schema: public; Owner: postgres
@@ -8825,6 +9012,8 @@ GRANT SELECT ON TABLE public.qrtz_job_details TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_locks TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_locks TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_locks TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_locks TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_paused_trigger_grps; Type: ACL; Schema: public; Owner: postgres
@@ -8832,6 +9021,8 @@ GRANT SELECT ON TABLE public.qrtz_locks TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_paused_trigger_grps TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_paused_trigger_grps TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_paused_trigger_grps TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_paused_trigger_grps TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_scheduler_state; Type: ACL; Schema: public; Owner: postgres
@@ -8839,6 +9030,8 @@ GRANT SELECT ON TABLE public.qrtz_paused_trigger_grps TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_scheduler_state TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_scheduler_state TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_scheduler_state TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_scheduler_state TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_simple_triggers; Type: ACL; Schema: public; Owner: postgres
@@ -8846,6 +9039,8 @@ GRANT SELECT ON TABLE public.qrtz_scheduler_state TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_simple_triggers TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_simple_triggers TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_simple_triggers TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_simple_triggers TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_simprop_triggers; Type: ACL; Schema: public; Owner: postgres
@@ -8853,6 +9048,8 @@ GRANT SELECT ON TABLE public.qrtz_simple_triggers TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_simprop_triggers TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_simprop_triggers TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_simprop_triggers TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_simprop_triggers TO backup_drill_reader;
 
 --
 -- Name: TABLE qrtz_triggers; Type: ACL; Schema: public; Owner: postgres
@@ -8860,6 +9057,8 @@ GRANT SELECT ON TABLE public.qrtz_simprop_triggers TO ci_readonly;
 
 GRANT SELECT ON TABLE public.qrtz_triggers TO app_tenant;
 GRANT SELECT ON TABLE public.qrtz_triggers TO ci_readonly;
+GRANT SELECT ON TABLE public.qrtz_triggers TO ci_rls_probe;
+GRANT SELECT ON TABLE public.qrtz_triggers TO backup_drill_reader;
 
 --
 -- Name: TABLE rater_assignments; Type: ACL; Schema: public; Owner: postgres
@@ -8867,6 +9066,8 @@ GRANT SELECT ON TABLE public.qrtz_triggers TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.rater_assignments TO app_tenant;
 GRANT SELECT ON TABLE public.rater_assignments TO ci_readonly;
+GRANT SELECT ON TABLE public.rater_assignments TO ci_rls_probe;
+GRANT SELECT ON TABLE public.rater_assignments TO backup_drill_reader;
 
 --
 -- Name: TABLE rater_responses; Type: ACL; Schema: public; Owner: postgres
@@ -8874,6 +9075,8 @@ GRANT SELECT ON TABLE public.rater_assignments TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.rater_responses TO app_tenant;
 GRANT SELECT ON TABLE public.rater_responses TO ci_readonly;
+GRANT SELECT ON TABLE public.rater_responses TO ci_rls_probe;
+GRANT SELECT ON TABLE public.rater_responses TO backup_drill_reader;
 
 --
 -- Name: TABLE recognitions; Type: ACL; Schema: public; Owner: postgres
@@ -8881,6 +9084,8 @@ GRANT SELECT ON TABLE public.rater_responses TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.recognitions TO app_tenant;
 GRANT SELECT ON TABLE public.recognitions TO ci_readonly;
+GRANT SELECT ON TABLE public.recognitions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.recognitions TO backup_drill_reader;
 
 --
 -- Name: TABLE referrals; Type: ACL; Schema: public; Owner: postgres
@@ -8888,6 +9093,8 @@ GRANT SELECT ON TABLE public.recognitions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.referrals TO app_tenant;
 GRANT SELECT ON TABLE public.referrals TO ci_readonly;
+GRANT SELECT ON TABLE public.referrals TO ci_rls_probe;
+GRANT SELECT ON TABLE public.referrals TO backup_drill_reader;
 
 --
 -- Name: TABLE review_cycles; Type: ACL; Schema: public; Owner: postgres
@@ -8895,6 +9102,8 @@ GRANT SELECT ON TABLE public.referrals TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.review_cycles TO app_tenant;
 GRANT SELECT ON TABLE public.review_cycles TO ci_readonly;
+GRANT SELECT ON TABLE public.review_cycles TO ci_rls_probe;
+GRANT SELECT ON TABLE public.review_cycles TO backup_drill_reader;
 
 --
 -- Name: TABLE role_family_weight_profiles; Type: ACL; Schema: public; Owner: postgres
@@ -8902,6 +9111,8 @@ GRANT SELECT ON TABLE public.review_cycles TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.role_family_weight_profiles TO app_tenant;
 GRANT SELECT ON TABLE public.role_family_weight_profiles TO ci_readonly;
+GRANT SELECT ON TABLE public.role_family_weight_profiles TO ci_rls_probe;
+GRANT SELECT ON TABLE public.role_family_weight_profiles TO backup_drill_reader;
 
 --
 -- Name: TABLE role_permissions; Type: ACL; Schema: public; Owner: postgres
@@ -8909,6 +9120,8 @@ GRANT SELECT ON TABLE public.role_family_weight_profiles TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.role_permissions TO app_tenant;
 GRANT SELECT ON TABLE public.role_permissions TO ci_readonly;
+GRANT SELECT ON TABLE public.role_permissions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.role_permissions TO backup_drill_reader;
 
 --
 -- Name: TABLE roles; Type: ACL; Schema: public; Owner: postgres
@@ -8916,6 +9129,8 @@ GRANT SELECT ON TABLE public.role_permissions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.roles TO app_tenant;
 GRANT SELECT ON TABLE public.roles TO ci_readonly;
+GRANT SELECT ON TABLE public.roles TO ci_rls_probe;
+GRANT SELECT ON TABLE public.roles TO backup_drill_reader;
 
 --
 -- Name: TABLE salary_adjustments; Type: ACL; Schema: public; Owner: postgres
@@ -8923,6 +9138,8 @@ GRANT SELECT ON TABLE public.roles TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.salary_adjustments TO app_tenant;
 GRANT SELECT ON TABLE public.salary_adjustments TO ci_readonly;
+GRANT SELECT ON TABLE public.salary_adjustments TO ci_rls_probe;
+GRANT SELECT ON TABLE public.salary_adjustments TO backup_drill_reader;
 
 --
 -- Name: TABLE salary_bands; Type: ACL; Schema: public; Owner: postgres
@@ -8930,6 +9147,8 @@ GRANT SELECT ON TABLE public.salary_adjustments TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.salary_bands TO app_tenant;
 GRANT SELECT ON TABLE public.salary_bands TO ci_readonly;
+GRANT SELECT ON TABLE public.salary_bands TO ci_rls_probe;
+GRANT SELECT ON TABLE public.salary_bands TO backup_drill_reader;
 
 --
 -- Name: TABLE sessions; Type: ACL; Schema: public; Owner: postgres
@@ -8937,6 +9156,8 @@ GRANT SELECT ON TABLE public.salary_bands TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.sessions TO app_tenant;
 GRANT SELECT ON TABLE public.sessions TO ci_readonly;
+GRANT SELECT ON TABLE public.sessions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.sessions TO backup_drill_reader;
 
 --
 -- Name: TABLE stage_movements; Type: ACL; Schema: public; Owner: postgres
@@ -8944,6 +9165,8 @@ GRANT SELECT ON TABLE public.sessions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.stage_movements TO app_tenant;
 GRANT SELECT ON TABLE public.stage_movements TO ci_readonly;
+GRANT SELECT ON TABLE public.stage_movements TO ci_rls_probe;
+GRANT SELECT ON TABLE public.stage_movements TO backup_drill_reader;
 
 --
 -- Name: TABLE subscriptions; Type: ACL; Schema: public; Owner: postgres
@@ -8951,6 +9174,8 @@ GRANT SELECT ON TABLE public.stage_movements TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.subscriptions TO app_tenant;
 GRANT SELECT ON TABLE public.subscriptions TO ci_readonly;
+GRANT SELECT ON TABLE public.subscriptions TO ci_rls_probe;
+GRANT SELECT ON TABLE public.subscriptions TO backup_drill_reader;
 
 --
 -- Name: TABLE successors; Type: ACL; Schema: public; Owner: postgres
@@ -8958,6 +9183,8 @@ GRANT SELECT ON TABLE public.subscriptions TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.successors TO app_tenant;
 GRANT SELECT ON TABLE public.successors TO ci_readonly;
+GRANT SELECT ON TABLE public.successors TO ci_rls_probe;
+GRANT SELECT ON TABLE public.successors TO backup_drill_reader;
 
 --
 -- Name: TABLE survey_responses; Type: ACL; Schema: public; Owner: postgres
@@ -8965,6 +9192,8 @@ GRANT SELECT ON TABLE public.successors TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.survey_responses TO app_tenant;
 GRANT SELECT ON TABLE public.survey_responses TO ci_readonly;
+GRANT SELECT ON TABLE public.survey_responses TO ci_rls_probe;
+GRANT SELECT ON TABLE public.survey_responses TO backup_drill_reader;
 
 --
 -- Name: TABLE surveys; Type: ACL; Schema: public; Owner: postgres
@@ -8972,6 +9201,8 @@ GRANT SELECT ON TABLE public.survey_responses TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.surveys TO app_tenant;
 GRANT SELECT ON TABLE public.surveys TO ci_readonly;
+GRANT SELECT ON TABLE public.surveys TO ci_rls_probe;
+GRANT SELECT ON TABLE public.surveys TO backup_drill_reader;
 
 --
 -- Name: TABLE sync_errors; Type: ACL; Schema: public; Owner: postgres
@@ -8979,6 +9210,8 @@ GRANT SELECT ON TABLE public.surveys TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.sync_errors TO app_tenant;
 GRANT SELECT ON TABLE public.sync_errors TO ci_readonly;
+GRANT SELECT ON TABLE public.sync_errors TO ci_rls_probe;
+GRANT SELECT ON TABLE public.sync_errors TO backup_drill_reader;
 
 --
 -- Name: TABLE teams; Type: ACL; Schema: public; Owner: postgres
@@ -8986,6 +9219,8 @@ GRANT SELECT ON TABLE public.sync_errors TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.teams TO app_tenant;
 GRANT SELECT ON TABLE public.teams TO ci_readonly;
+GRANT SELECT ON TABLE public.teams TO ci_rls_probe;
+GRANT SELECT ON TABLE public.teams TO backup_drill_reader;
 
 --
 -- Name: TABLE user_business_units; Type: ACL; Schema: public; Owner: postgres
@@ -8993,6 +9228,8 @@ GRANT SELECT ON TABLE public.teams TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.user_business_units TO app_tenant;
 GRANT SELECT ON TABLE public.user_business_units TO ci_readonly;
+GRANT SELECT ON TABLE public.user_business_units TO ci_rls_probe;
+GRANT SELECT ON TABLE public.user_business_units TO backup_drill_reader;
 
 --
 -- Name: TABLE user_roles; Type: ACL; Schema: public; Owner: postgres
@@ -9000,6 +9237,8 @@ GRANT SELECT ON TABLE public.user_business_units TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.user_roles TO app_tenant;
 GRANT SELECT ON TABLE public.user_roles TO ci_readonly;
+GRANT SELECT ON TABLE public.user_roles TO ci_rls_probe;
+GRANT SELECT ON TABLE public.user_roles TO backup_drill_reader;
 
 --
 -- Name: TABLE user_teams; Type: ACL; Schema: public; Owner: postgres
@@ -9007,6 +9246,8 @@ GRANT SELECT ON TABLE public.user_roles TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.user_teams TO app_tenant;
 GRANT SELECT ON TABLE public.user_teams TO ci_readonly;
+GRANT SELECT ON TABLE public.user_teams TO ci_rls_probe;
+GRANT SELECT ON TABLE public.user_teams TO backup_drill_reader;
 
 --
 -- Name: TABLE users; Type: ACL; Schema: public; Owner: postgres
@@ -9014,6 +9255,8 @@ GRANT SELECT ON TABLE public.user_teams TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.users TO app_tenant;
 GRANT SELECT ON TABLE public.users TO ci_readonly;
+GRANT SELECT ON TABLE public.users TO ci_rls_probe;
+GRANT SELECT ON TABLE public.users TO backup_drill_reader;
 
 --
 -- Name: TABLE vacancies; Type: ACL; Schema: public; Owner: postgres
@@ -9021,6 +9264,8 @@ GRANT SELECT ON TABLE public.users TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.vacancies TO app_tenant;
 GRANT SELECT ON TABLE public.vacancies TO ci_readonly;
+GRANT SELECT ON TABLE public.vacancies TO ci_rls_probe;
+GRANT SELECT ON TABLE public.vacancies TO backup_drill_reader;
 
 --
 -- Name: TABLE vacancy_approvals; Type: ACL; Schema: public; Owner: postgres
@@ -9028,6 +9273,8 @@ GRANT SELECT ON TABLE public.vacancies TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.vacancy_approvals TO app_tenant;
 GRANT SELECT ON TABLE public.vacancy_approvals TO ci_readonly;
+GRANT SELECT ON TABLE public.vacancy_approvals TO ci_rls_probe;
+GRANT SELECT ON TABLE public.vacancy_approvals TO backup_drill_reader;
 
 --
 -- Name: TABLE webhooks; Type: ACL; Schema: public; Owner: postgres
@@ -9035,6 +9282,8 @@ GRANT SELECT ON TABLE public.vacancy_approvals TO ci_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.webhooks TO app_tenant;
 GRANT SELECT ON TABLE public.webhooks TO ci_readonly;
+GRANT SELECT ON TABLE public.webhooks TO ci_rls_probe;
+GRANT SELECT ON TABLE public.webhooks TO backup_drill_reader;
 
 --
 -- Name: TABLE schema_migrations; Type: ACL; Schema: supabase_migrations; Owner: postgres
@@ -9047,6 +9296,7 @@ GRANT SELECT ON TABLE supabase_migrations.schema_migrations TO ci_readonly;
 --
 
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT,USAGE ON SEQUENCES TO app_tenant;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON SEQUENCES TO backup_drill_reader;
 
 --
 -- Name: DEFAULT PRIVILEGES FOR TABLES; Type: DEFAULT ACL; Schema: public; Owner: postgres
@@ -9054,6 +9304,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT,USAGE O
 
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT,INSERT,DELETE,UPDATE ON TABLES TO app_tenant;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO ci_readonly;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO ci_rls_probe;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO backup_drill_reader;
 
 --
 -- PostgreSQL database dump complete

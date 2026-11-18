@@ -1,11 +1,47 @@
 // Pure Content-Security-Policy builder used by `middleware.ts`. Kept free of
 // Next.js imports so every directive can be unit-tested per pathname.
 
+import { CSP_IMG_SRC_HOSTS } from './csp-img-src';
+
 export interface CspOrigins {
   /** C# Platform API origin, or '' when unset. */
   platformApi: string;
   /** Origin the browser POSTs CV files to (S3 presigned POST), or '' when unset. */
   cvUpload: string;
+  /**
+   * The TIMS hosted assessment player's https origin (owner default D16), or '' when unset. Added to `frame-src` only:
+   * the candidate portal frames the player when this site's origin is one of the player's registered frame ancestors,
+   * and otherwise links out to it.
+   */
+  assessmentPlayer?: string;
+  /**
+   * The https origin of a link-out provider's own site (PCA), from `assessmentProviderFrameOrigin`, or '' when framing
+   * is turned off. Added to `frame-src` only: the portal frames that provider's page in a sandboxed frame, as
+   * timssuite.com does.
+   */
+  assessmentProviderFrame?: string;
+}
+
+/**
+ * PCA's own site. The portal frames it by default: timshr.com sends no X-Frame-Options and no `frame-ancestors`
+ * (checked 2026-11-14), and timssuite.com frames its /surveys the same way.
+ */
+export const DEFAULT_ASSESSMENT_PROVIDER_FRAME_ORIGIN = 'https://timshr.com';
+
+/**
+ * The origin the candidate portal frames PCA from, the ONE value both the CSP `frame-src` and the portal's launch read
+ * (so the two can never disagree). NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN overrides the default; unset or empty
+ * keeps timshr.com; any value that is not an https URL (for example `off`) turns framing off ('') and PCA links out.
+ */
+export function assessmentProviderFrameOrigin(value: string | undefined): string {
+  if (value === undefined || value.trim() === '') return DEFAULT_ASSESSMENT_PROVIDER_FRAME_ORIGIN;
+  return httpsOriginOf(value.trim());
+}
+
+/** The https origin of an absolute URL, or '' when unset, invalid or not https. */
+export function httpsOriginOf(url: string | undefined): string {
+  const origin = originOf(url);
+  return origin.startsWith('https://') ? origin : '';
 }
 
 /** Origin of an absolute URL, or '' when unset/invalid. */
@@ -137,9 +173,15 @@ export function buildCsp(nonce: string, pathname: string, origins: CspOrigins, i
     scriptSrc,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.cloudfront.net",
+    `img-src 'self' data: blob: ${CSP_IMG_SRC_HOSTS.join(' ')}`,
     connectSrc,
-    "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
+    [
+      "frame-src 'self' https://accounts.google.com https://login.microsoftonline.com https://*.daily.co https://challenges.cloudflare.com",
+      origins.assessmentPlayer ?? '',
+      origins.assessmentProviderFrame ?? '',
+    ]
+      .filter(Boolean)
+      .join(' '),
     "media-src 'self' blob: https://*.daily.co https://*.elevenlabs.io",
     // ElevenLabs Conversational AI loads its audio-processing AudioWorklet from a
     // blob URL; without worker-src blob: the live voice call fails to initialise.

@@ -3,55 +3,47 @@
 import { useState } from 'react';
 import { useMonitoringExecutiveKpis } from '../../../lib/platform-api/monitoring';
 import { useI18n } from '../../../lib/i18n';
-import { toast } from '../../../lib/toast';
+import { PageHeader } from '../../../components/page-header';
+import { Button } from '../../../components/button';
 import { MonitoringKpis } from './monitoring-kpis';
 import { ModuleHealthGrid } from './monitoring-modules';
 import { AlertsPanel } from './monitoring-alerts';
 import { ActionPlanAlerts } from './monitoring-action-plans';
-import { CrossModuleTrend, QuickActions } from './monitoring-bottom';
+import { CrossModuleTrend } from './monitoring-bottom';
 import { AlertRulesModal } from './alert-rules-modal';
 
+function BellIcon() {
+  return (
+    <svg className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+    </svg>
+  );
+}
+
+/**
+ * Strategic monitoring. The page scrolls at every width (no fixed-height rows that clip content), and its
+ * one real command, "Configurar alertas…", is the single primary action. The export and quick-action
+ * buttons that only answered "próximamente" are gone until those commands exist (feedback.md).
+ */
 export default function MonitoringPage() {
   const { t } = useI18n();
   const kpis = useMonitoringExecutiveKpis();
   const [showRules, setShowRules] = useState(false);
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 h-full">
-      {/* Top Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 md:px-6 min-h-16 py-2 bg-white border-b border-[#EDEDED] shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-[#8B8B8B]">{t.monitoring.breadcrumbParent}</span>
-          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="m9 18 6-6-6-6" />
-          </svg>
-          <span className="text-sm font-medium text-[#1F114C]">{t.sidebar.monitoring}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => toast(`${t.common.export}: ${t.common.comingSoon}`, { type: 'info' })}
-            className="flex items-center gap-1.5 border border-[#EDEDED] text-[#585858] px-3 h-8 rounded-lg text-[12px]"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            {t.common.export}
-          </button>
-          <button
-            onClick={() => setShowRules(true)}
-            className="flex items-center gap-1.5 bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-            </svg>
+    <div className="flex h-full min-w-0 flex-1 flex-col">
+      <PageHeader
+        title={t.monitoring.title}
+        description={t.monitoring.subtitle}
+        actions={
+          <Button icon={<BellIcon />} onClick={() => setShowRules(true)}>
             {t.monitoring.configureAlerts}
-          </button>
-        </div>
-      </div>
+          </Button>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto md:overflow-hidden p-5">
-        <div className="flex flex-col md:h-full gap-4">
+      <div className="flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6">
+        <div className="space-y-6">
           <MonitoringKpis
             data={kpis.data ?? null}
             loading={kpis.isLoading}
@@ -59,18 +51,14 @@ export default function MonitoringPage() {
             onRetry={() => kpis.refetch()}
           />
 
-          {/* Row 2: Module Health + Alerts + Climate Action Plans */}
-          <div className="flex flex-col md:flex-row gap-4 md:flex-1 min-h-0">
-            <ModuleHealthGrid />
+          <ModuleHealthGrid />
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <AlertsPanel />
             <ActionPlanAlerts />
           </div>
 
-          {/* Row 3: Trend + Quick Actions */}
-          <div className="flex flex-col md:flex-row gap-4 shrink-0 md:h-[165px]">
-            <CrossModuleTrend />
-            <QuickActions />
-          </div>
+          <CrossModuleTrend />
         </div>
       </div>
 

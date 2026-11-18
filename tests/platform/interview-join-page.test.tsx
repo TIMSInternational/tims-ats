@@ -87,7 +87,7 @@ describe('InterviewJoin page', () => {
     expect(screen.getByRole('button')).toBeDisabled();
     for (let i = 0; i < 10; i++) {
       await act(async () => {
-        vi.advanceTimersByTime(1000);
+        await vi.advanceTimersByTimeAsync(1000);
       });
     }
     const retry = screen.getByRole('button');

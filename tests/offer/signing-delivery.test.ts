@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { OFFER_LINK_VALIDITY_DAYS } from '@tims/shared';
 
 // #312 consent-withdrawal guard: a candidate with ACTIVE consent unless a test says otherwise.
 const consentWithdrawn = vi.hoisted(() => vi.fn(async () => false));
@@ -10,8 +11,9 @@ vi.mock('../../packages/api/src/repositories/candidate-consent.repository', () =
   },
 }));
 
-const ORG_ID = '11111111-1111-1111-1111-111111111111';
-const OFFER_ID = '22222222-2222-2222-2222-222222222222';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const ORG_ID = '11111111-1111-4111-8111-111111111111';
+const OFFER_ID = '22222222-2222-4222-8222-222222222222';
 const updatedAt = new Date('2026-09-28T10:00:00Z');
 const findOffer = vi.fn();
 const updateOffer = vi.fn();
@@ -19,14 +21,29 @@ const findOrg = vi.fn();
 const countRejected = vi.fn();
 const sendOffer = vi.fn();
 
-vi.mock('@tims/db', () => ({
-  tenantDb: {
-    offer: { findFirst: findOffer, updateMany: updateOffer },
+// The rejected-application guard has its own tests (tests/offer/rejected-application-guard.test.ts); stub it here.
+// The send also moves the candidate to the "Oferta" stage; that is tested in tests/offer/offer-sent-stage-advance.test.ts.
+vi.mock('../../packages/api/src/services/offer-stage-advance.service', () => ({
+  prepareOfferStageAdvance: vi.fn(async () => ({ advance: vi.fn(async () => 'moved') })),
+}));
+vi.mock('../../packages/api/src/routers/offer/rejected-application-guard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../packages/api/src/routers/offer/rejected-application-guard')>()),
+  assertApplicationNotRejected: vi.fn(async () => undefined),
+  lockAndAssertApplicationNotRejected: vi.fn(async () => undefined),
+}));
+
+vi.mock('@tims/db', () => {
+  const tenantDb = {
+    offer: { findFirst: findOffer, updateMany: updateOffer, count: vi.fn(async () => 1) },
     offerApproval: { count: countRejected },
     organization: { findFirst: findOrg },
-  },
-  runWithTenant: (_org: string, fn: () => unknown) => fn(),
-}));
+  };
+  return {
+    tenantDb,
+    runTenantTransaction: async (_org: string, fn: (tx: unknown) => Promise<unknown>) => fn(tenantDb),
+    runWithTenant: (_org: string, fn: () => unknown) => fn(),
+  };
+});
 vi.mock('../../packages/api/src/access', () => ({
   buildAccessForUser: vi.fn().mockResolvedValue({ allowed: true, scope: 'organization', roles: ['hr_admin'] }),
   createAnchorLoader: vi.fn().mockReturnValue(null),
@@ -46,7 +63,7 @@ async function caller() {
   const { offerSigningRouter } = await import('../../packages/api/src/routers/offer/signing');
   return createCallerFactory(router({ offer: offerSigningRouter }))({
     user: {
-      id: '33333333-3333-3333-3333-333333333333',
+      id: '33333333-3333-4333-8333-333333333333',
       organizationId: ORG_ID,
       roles: ['hr_admin'],
       isPlatformOwner: false,
@@ -78,21 +95,74 @@ beforeEach(() => {
   sendOffer.mockResolvedValue(true);
   countRejected.mockResolvedValue(0);
 });
-afterEach(() => { delete process.env.NEXT_PUBLIC_APP_URL; vi.unstubAllEnvs(); });
+afterEach(() => {
+  delete process.env.NEXT_PUBLIC_APP_URL;
+  vi.unstubAllEnvs();
+});
 
 describe('offer signing-link delivery', () => {
   it('returns provider acceptance only after awaiting email send', async () => {
     const result = await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
     expect(result.emailDeliveryAccepted).toBe(true);
     expect(result.candidateEmail).toBe('qa@example.test');
-    expect(updateOffer).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: OFFER_ID, organizationId: ORG_ID, status: 'approved', updatedAt }),
-    }));
-    expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({
-      candidateEmail: 'qa@example.test',
-      signingUrl: `https://example.test${result.signingUrl}`,
-      expiresAt: null,
-    }));
+    expect(updateOffer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: OFFER_ID,
+          organizationId: ORG_ID,
+          status: 'approved',
+          updatedAt,
+          OR: expect.any(Array),
+        }),
+      }),
+    );
+    // B-04: a first send gives an offer without an expiry the default validity (it used to live forever),
+    // and the email states that same date.
+    const transition = updateOffer.mock.calls[0]![0] as { data: { expiresAt: Date } };
+    const validForMs = transition.data.expiresAt.getTime() - Date.now();
+    expect(validForMs).toBeGreaterThan(OFFER_LINK_VALIDITY_DAYS * DAY_MS - 60_000);
+    expect(validForMs).toBeLessThanOrEqual(OFFER_LINK_VALIDITY_DAYS * DAY_MS);
+    expect(sendOffer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidateEmail: 'qa@example.test',
+        signingUrl: `https://example.test${result.signingUrl}`,
+        expiresAt: transition.data.expiresAt,
+      }),
+    );
+  });
+
+  it('keeps an expiry the offer already has on its first send', async () => {
+    const expiresAt = new Date(Date.now() + 3 * DAY_MS);
+    findOffer.mockResolvedValueOnce({
+      id: OFFER_ID,
+      status: 'approved',
+      settings: {},
+      updatedAt,
+      sentAt: null,
+      expiresAt,
+      candidate: { firstName: 'QA', lastName: 'Candidate', email: 'qa@example.test' },
+      vacancy: { title: 'QA role' },
+    });
+    await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
+    expect(updateOffer).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ expiresAt }) }));
+    expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({ expiresAt }));
+  });
+
+  it("formats the email in the organization's time zone and replies to its candidate contact", async () => {
+    findOrg.mockResolvedValueOnce({
+      name: 'Example Company',
+      settings: { timezone: 'America/Costa_Rica', candidateContactEmail: 'Talento@Example.test' },
+      billingEmail: 'billing@example.test',
+    });
+    await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
+    expect(sendOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ timeZone: 'America/Costa_Rica', contactEmail: 'talento@example.test' }),
+    );
+  });
+
+  it('falls back to UTC and no contact when the organization has neither', async () => {
+    await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
+    expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({ timeZone: 'UTC', contactEmail: null }));
   });
 
   it('reuses an active token on retry and reports unconfirmed delivery', async () => {
@@ -130,7 +200,12 @@ describe('offer signing-link delivery', () => {
   it('refuses every status other than approved/sent before touching the offer', async () => {
     for (const status of ['draft', 'pending_approval', 'rejected', 'accepted', 'declined', 'withdrawn']) {
       findOffer.mockResolvedValueOnce({
-        id: OFFER_ID, status, settings: {}, updatedAt, sentAt: null, expiresAt: null,
+        id: OFFER_ID,
+        status,
+        settings: {},
+        updatedAt,
+        sentAt: null,
+        expiresAt: null,
         candidate: { firstName: 'QA', lastName: 'Candidate', email: 'qa@example.test' },
         vacancy: { title: 'QA role' },
       });
@@ -144,13 +219,17 @@ describe('offer signing-link delivery', () => {
 
   it('does not email a link if the conditional transition lost a race', async () => {
     updateOffer.mockResolvedValueOnce({ count: 0 });
-    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    });
     expect(sendOffer).not.toHaveBeenCalled();
   });
 
   it('fails before transition if the public app URL is missing', async () => {
     delete process.env.NEXT_PUBLIC_APP_URL;
-    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({ code: 'INTERNAL_SERVER_ERROR' });
+    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+    });
     expect(updateOffer).not.toHaveBeenCalled();
     expect(sendOffer).not.toHaveBeenCalled();
   });
@@ -197,20 +276,29 @@ const baseOffer = () => ({
 
 describe('offer signing-link delivery — negative paths (#322)', () => {
   it('refuses when the candidate has no email', async () => {
-    findOffer.mockResolvedValueOnce({ ...baseOffer(), candidate: { firstName: 'QA', lastName: 'Candidate', email: null } });
-    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    findOffer.mockResolvedValueOnce({
+      ...baseOffer(),
+      candidate: { firstName: 'QA', lastName: 'Candidate', email: null },
+    });
+    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
     expectNothingSent();
   });
 
   it('refuses an expired offer', async () => {
     findOffer.mockResolvedValueOnce({ ...baseOffer(), expiresAt: new Date(Date.now() - 60_000) });
-    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+    });
     expectNothingSent();
   });
 
   it('refuses when the organization is not found', async () => {
     findOrg.mockResolvedValueOnce(null);
-    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect((await caller()).offer.generateSigningLink({ offerId: OFFER_ID })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
     expectNothingSent();
   });
 
@@ -237,9 +325,11 @@ describe('offer signing-link delivery — negative paths (#322)', () => {
   it('accepts https in production', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     const result = await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
-    expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({
-      signingUrl: `https://example.test${result.signingUrl}`,
-    }));
+    expect(sendOffer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signingUrl: `https://example.test${result.signingUrl}`,
+      }),
+    );
   });
 
   it.each(['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000'])(
@@ -248,7 +338,11 @@ describe('offer signing-link delivery — negative paths (#322)', () => {
       vi.stubEnv('NODE_ENV', 'production');
       process.env.NEXT_PUBLIC_APP_URL = url;
       await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
-      expect(sendOffer).toHaveBeenCalledWith(expect.objectContaining({ signingUrl: expect.stringMatching(/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):3000\/offers\/sign\//) }));
+      expect(sendOffer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          signingUrl: expect.stringMatching(/^http:\/\/(localhost|127\.0\.0\.1|\[::1\]):3000\/offers\/sign\//),
+        }),
+      );
     },
   );
 
@@ -262,11 +356,14 @@ describe('offer signing-link delivery — negative paths (#322)', () => {
   it('a SENT offer with no stored token mints a fresh token through the compare-and-set (never emails "undefined")', async () => {
     findOffer.mockResolvedValueOnce({ ...baseOffer(), status: 'sent', sentAt: updatedAt, settings: {} });
     const result = await (await caller()).offer.generateSigningLink({ offerId: OFFER_ID });
-    expect(updateOffer).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: OFFER_ID, organizationId: ORG_ID, status: 'sent', updatedAt }),
-      data: expect.objectContaining({ sentAt: updatedAt }),
-    }));
-    const minted = (updateOffer.mock.calls[0]?.[0] as { data: { settings: { signingToken: string } } }).data.settings.signingToken;
+    expect(updateOffer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: OFFER_ID, organizationId: ORG_ID, status: 'sent', updatedAt }),
+        data: expect.objectContaining({ sentAt: updatedAt }),
+      }),
+    );
+    const minted = (updateOffer.mock.calls[0]?.[0] as { data: { settings: { signingToken: string } } }).data.settings
+      .signingToken;
     expect(minted).toMatch(/^[0-9a-f-]{36}$/);
     expect(result.signingUrl).toBe(`/offers/sign/${minted}`);
     expect(sendOffer.mock.calls[0]?.[0]).toMatchObject({ signingUrl: `https://example.test/offers/sign/${minted}` });

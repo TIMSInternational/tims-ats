@@ -30,9 +30,9 @@ namespace Tims.Api.NineBox;
 /// </summary>
 public static class NineBoxReadEndpoints
 {
-    private const string EvaluationSubjectForbidden = "No puedes ver esta evaluacion";
-    private const string CalibrationNotFound = "Sesion de calibracion no encontrada";
-    private const string CommitteeForbidden = "Solo un miembro del comite puede ver esta sesion";
+    private const string EvaluationSubjectForbidden = "No puedes ver esta evaluación";
+    private const string CalibrationNotFound = "Sesión de calibración no encontrada";
+    private const string CommitteeForbidden = "Solo un miembro del comité puede ver esta sesión";
 
     public static void MapNineBoxReadEndpoints(this WebApplication app)
     {
@@ -170,7 +170,7 @@ public static class NineBoxReadEndpoints
 
                 var view = await useCase.GetAxisBreakdownAsync(
                     gate.Context!.OrganizationId, userId, validPeriod, cancellationToken);
-                return view is null ? Results.NotFound(new { message = "Evaluacion no encontrada" }) : Results.Ok(view);
+                return view is null ? Results.NotFound(new { message = "Evaluación no encontrada" }) : Results.Ok(view);
             })
             .RequireAuthorization()
             .Produces<AxisBreakdownView>(StatusCodes.Status200OK)
@@ -491,7 +491,7 @@ public static class NineBoxReadEndpoints
     }
 
     // The subject-scope gate (reads #2/#3): the target userId must be inside the caller's subject set
-    // (own/team/unit/org/company). Out-of-set → 403 "No puedes ver esta evaluacion" (the C# assertSubjectInScope).
+    // (own/team/unit/org/company). Out-of-set → 403 "No puedes ver esta evaluación" (the C# assertSubjectInScope).
     // Returns the 403 IResult on failure, or null when the subject is in scope.
     private static async Task<IResult?> AssertSubjectAsync(
         IAnchorLoaderFactory anchorLoaderFactory,

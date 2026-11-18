@@ -36,7 +36,7 @@ public static class InvitationResendEndpoints
             return result.Outcome switch
             {
                 InvitationResendOutcome.Sent => Results.Ok(result.Response),
-                InvitationResendOutcome.NotFound => Results.NotFound(new { message = "Invitacion no encontrada" }),
+                InvitationResendOutcome.NotFound => Results.NotFound(new { message = "Invitación no encontrada" }),
                 InvitationResendOutcome.InvalidStatus => Results.BadRequest(new { message = "Cannot resend accepted or revoked invitation" }),
                 InvitationResendOutcome.ChangedDuringDelivery => Results.Conflict(new { message = "Invitation changed during delivery; refresh before resending" }),
                 InvitationResendOutcome.StateUnconfirmed => Results.Json(new { message = "Email accepted but invitation status is unconfirmed; refresh before resending" }, statusCode: 503),

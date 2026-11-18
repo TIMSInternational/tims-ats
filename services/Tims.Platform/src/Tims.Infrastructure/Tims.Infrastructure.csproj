@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Tims.Infrastructure: EF Core, Npgsql, Redis clients, the RLS TenantScope.
+  <!-- Tims.Infrastructure: EF Core, Npgsql, the DynamoDB rate-limit store, the RLS TenantScope.
        Refs Application + Domain (allowed inward direction). -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -9,6 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WP2.6 rate limiter: the shared DynamoDB table the TS stack also uses, so a caller has ONE
+         budget across both (contracts/ratelimit-fixtures/dynamodb.json). -->
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.0.106" />
     <PackageReference Include="AWSSDK.SimpleEmail" Version="4.0.100.13" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <!-- WP3.1 HRIS: design-time EF tooling so `dotnet ef migrations` can build HrisDbContext (the
@@ -18,10 +21,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <!-- WP2.6 rate limiter: raw Redis (EVAL of the exact Upstash slidingWindow Lua) so buckets
-         are SHARED with the TS @upstash/ratelimit stack. Pinned to the version the Api host
-         already carries (3.0.17) for a single resolved graph. -->
-    <PackageReference Include="StackExchange.Redis" Version="3.0.17" />
     <!-- WP3.2 HRIS connector resilience: the OFFICIAL Microsoft Polly-v8 resilience stack on a typed
          HttpClient (timeout → retry+backoff+jitter on 429/5xx → circuit breaker). Pinned to 10.0.0,
          aligned to the .NET 10 shared framework (clean transitive graph: Resilience/ObjectPool/

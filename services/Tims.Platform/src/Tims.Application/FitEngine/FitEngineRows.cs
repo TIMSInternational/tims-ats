@@ -1,3 +1,6 @@
+using System.Text.Json.Nodes;
+using Tims.Domain.FitEngine;
+
 namespace Tims.Application.FitEngine;
 
 /// <summary>
@@ -14,7 +17,24 @@ public sealed record FitScoreForVacancyData(
     DateTimeOffset CalculatedAt,
     Guid CandidateId,
     string FirstName,
-    string LastName);
+    string LastName,
+    string? Weights = null);
+
+/// <summary>One of a candidate's fit_scores rows (the #312 hidden rows excluded), with its vacancy for the scope check.</summary>
+public sealed record CandidateFitScoreData(
+    Guid Id,
+    Guid VacancyId,
+    double OverallScore,
+    string Breakdown,
+    string? Weights,
+    bool IsPartial,
+    DateTimeOffset CalculatedAt);
+
+/// <summary>The review state of one fit_scores row, as returned to a caller.</summary>
+public sealed record FitReviewStateRow(string FitScoreId, bool ReviewPending);
+
+/// <summary>One fit_scores row's FIT v2 review state, with its vacancy (for the caller's scope check).</summary>
+public sealed record FitReviewStateData(Guid FitScoreId, Guid VacancyId, bool ReviewPending);
 
 /// <summary>One <c>role_family_weight_profiles</c> row — <c>Weights</c> is the raw jsonb.</summary>
 public sealed record WeightProfileData(Guid Id, string Name, string Weights);
@@ -38,3 +58,18 @@ public sealed record CandidateForFitData(int? YearsExperience, string? Education
 /// (null when the vacancy has no job profile OR the profile has no fitRequirements — the TS optional chain).
 /// </summary>
 public sealed record VacancyForFitData(string? RoleFamily, string? FitRequirements);
+
+/// <summary>The stored <c>fit_requirements</c> after a write, and what the writer dropped or changed.</summary>
+public sealed record FitRequirementsSaved(JsonNode? FitRequirements, IReadOnlyList<FitRequirementIssue> Issues);
+
+/// <summary>
+/// What a FIT v2 compute writes for one candidate, built INSIDE the write transaction from an in-lock read of the
+/// results (see <c>IFitEngineWriteRepository.UpsertFitScoreV2Async</c>).
+/// </summary>
+/// <param name="RestrictedOverallScore">
+/// Owner default D6: the overall a reader below company scope may see (the breakdown redacted by
+/// <see cref="FitV2Visibility"/>, its overall recomputed), or null when the row hides nothing. Stored in
+/// <c>fit_scores.restricted_overall_score</c> for the TS list surfaces, which cannot recompute it.
+/// </param>
+public sealed record FitScoreWrite(
+    double OverallScore, string BreakdownJson, bool IsPartial, double? RestrictedOverallScore = null);

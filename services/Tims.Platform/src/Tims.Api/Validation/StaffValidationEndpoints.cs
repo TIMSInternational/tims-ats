@@ -29,7 +29,7 @@ public static class StaffValidationEndpoints
 {
     private const string OfferModule = "offer";
     private const string UpdateAction = "update";
-    private const string ValidationNotFoundMessage = "Validacion no encontrada";
+    private const string ValidationNotFoundMessage = "Validación no encontrada";
 
     public static void MapStaffValidationEndpoints(this WebApplication app)
     {

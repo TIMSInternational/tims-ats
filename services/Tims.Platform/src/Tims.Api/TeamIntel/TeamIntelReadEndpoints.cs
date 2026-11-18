@@ -31,9 +31,9 @@ public static class TeamIntelReadEndpoints
 {
     private const string TeamNotFoundMessage = "Equipo no encontrado";
     private const string BalanceAlertsNotImplemented =
-        "Las alertas de balance con IA aun no estan disponibles (agente pendiente).";
+        "Las alertas de balance con IA aún no están disponibles (agente pendiente).";
     private const string RecommendedHiresNotImplemented =
-        "Las recomendaciones de contratacion con IA aun no estan disponibles (agente pendiente).";
+        "Las recomendaciones de contratación con IA aún no están disponibles (agente pendiente).";
 
     public static void MapTeamIntelReadEndpoints(this WebApplication app)
     {

@@ -70,7 +70,7 @@ public sealed class PlatformDashboardAttentionUseCase(IPlatformDashboardAttentio
                 $"Factura vencida - {inv.OrgName}",
                 // `$${inv.amount.toLocaleString()} ${inv.currency} vencida hace ${daysPastDue} dias` —
                 // a LOCALE-FORMATTED number baked into the payload. See JsToLocaleString.
-                $"${PlatformDashboardReadUseCase.JsToLocaleString(inv.Amount)} {inv.Currency} vencida hace {daysPastDue} dias",
+                $"${PlatformDashboardReadUseCase.JsToLocaleString(inv.Amount)} {inv.Currency} vencida hace {daysPastDue} días",
                 inv.OrgId,
                 inv.OrgName,
                 $"/platform/invoices?org={inv.OrgId}",
@@ -95,7 +95,7 @@ public sealed class PlatformDashboardAttentionUseCase(IPlatformDashboardAttentio
                 $"Trial expira pronto - {sub.OrgName}",
                 // `dia${daysLeft !== 1 ? 's' : ''}` — singular ONLY at exactly 1, so 0 and -1 both
                 // pluralise, matching the TS condition rather than a "natural" `> 1`.
-                $"El periodo de prueba expira en {daysLeft.ToString(CultureInfo.InvariantCulture)} dia{(daysLeft != 1 ? "s" : string.Empty)}",
+                $"El periodo de prueba expira en {daysLeft.ToString(CultureInfo.InvariantCulture)} día{(daysLeft != 1 ? "s" : string.Empty)}",
                 sub.OrgId,
                 sub.OrgName,
                 $"/platform/organizations/{sub.OrgId}",
@@ -116,7 +116,7 @@ public sealed class PlatformDashboardAttentionUseCase(IPlatformDashboardAttentio
                 $"Pago fallido - {sub.OrgName}",
                 // `($${price}/mes)` — a bare number interpolation, NOT toLocaleString: no grouping
                 // separator even at 2499. The two number formats sit four lines apart in the TS helper.
-                $"Suscripcion {sub.Plan} con pago pendiente (${price.ToString(CultureInfo.InvariantCulture)}/mes)",
+                $"Suscripción {sub.Plan} con pago pendiente (${price.ToString(CultureInfo.InvariantCulture)}/mes)",
                 sub.OrgId,
                 sub.OrgName,
                 $"/platform/subscriptions?org={sub.OrgId}",
@@ -137,8 +137,8 @@ public sealed class PlatformDashboardAttentionUseCase(IPlatformDashboardAttentio
                 invitation.Id,
                 "pending_invitation",
                 "info",
-                $"Invitacion sin aceptar - {invitation.Email}",
-                $"Enviada hace {daysSinceSent} dias{forOrg}",
+                $"Invitación sin aceptar - {invitation.Email}",
+                $"Enviada hace {daysSinceSent} días{forOrg}",
                 // The ONLY nulls that reach the wire: `orgId: inv.organization?.id` is a written key with
                 // an undefined value when the invitation has no organization, and superjson renders that
                 // as null. See AttentionItemJsonConverter.
@@ -157,8 +157,8 @@ public sealed class PlatformDashboardAttentionUseCase(IPlatformDashboardAttentio
                 org.Id,
                 "suspended_org",
                 "warning",
-                $"Organizacion suspendida - {org.Name}",
-                "La organizacion esta desactivada y sus usuarios no pueden acceder",
+                $"Organización suspendida - {org.Name}",
+                "La organización está desactivada y sus usuarios no pueden acceder",
                 org.Id,
                 org.Name,
                 $"/platform/organizations/{org.Id}",

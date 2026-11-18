@@ -1,9 +1,11 @@
 import { TRPCError } from '@trpc/server';
 import { consentGuard } from './consent-guard.service';
 import type { Prisma } from '@tims/db';
+import { fitOverallAsShown, fitScoreAsShown } from '@tims/ai';
 import { candidateRepository } from '../repositories/candidate.repository';
 import { takeCursorPage } from '../lib/cursor-page';
 import { candidateAiService } from './candidate-ai.service';
+import { candidateTimelineService, rejectionAuthorsById } from './candidate-timeline.service';
 
 // ---------------------------------------------------------------------------
 // Candidate Service — business logic only, no db imports.
@@ -27,11 +29,13 @@ export const candidateService = {
       fitMin?: number;
       fitMax?: number;
     },
+    hideBelowMinimum = false,
   ) {
-    const rows = await candidateRepository.list(orgId, scopeWhere, appScopeWhere, input);
+    const rows = await candidateRepository.list(orgId, scopeWhere, appScopeWhere, input, hideBelowMinimum);
     const { items, nextCursor } = takeCursorPage(rows, input.limit);
 
-    return { items, nextCursor };
+    // FIT owner default D6 (@tims/ai fit-visibility): the overall a narrow-scoped reader may see.
+    return { items: items.map((c) => ({ ...c, fitScores: c.fitScores?.map((f) => fitOverallAsShown(f, hideBelowMinimum)) })), nextCursor };
   },
 
   async getById(
@@ -39,12 +43,24 @@ export const candidateService = {
     scopeWhere: Prisma.CandidateWhereInput,
     id: string,
     appScopeWhere: Prisma.ApplicationWhereInput,
+    hideBelowMinimum = false,
   ) {
     const candidate = await candidateRepository.getById(orgId, scopeWhere, id, appScopeWhere);
     if (!candidate) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
     }
-    return candidate;
+    // Who rejected each rejected application (A-05), from the rejection's audit row; null for rejections
+    // recorded before that row existed.
+    const authors = await rejectionAuthorsById(
+      orgId,
+      candidate.applications.filter((a) => a.status === 'rejected').map((a) => a.id),
+    );
+    return {
+      ...candidate,
+      applications: candidate.applications.map((a) => ({ ...a, rejectedBy: authors.get(a.id) ?? null })),
+      // FIT owner default D6 (@tims/ai fit-visibility); weights are read for it and never returned.
+      fitScores: candidate.fitScores.map((f) => fitScoreAsShown(f, hideBelowMinimum)),
+    };
   },
 
   async create(
@@ -116,80 +132,9 @@ export const candidateService = {
     };
   },
 
-  // Timeline
+  // Timeline — built in candidate-timeline.service.ts (split per the 300-line service cap).
   async getTimeline(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
-    const [applications, assessments, documents] = await candidateRepository.getTimelineData(
-      orgId,
-      candidateId,
-      appScopeWhere,
-    );
-
-    type TimelineEvent = {
-      id: string;
-      type: string;
-      title: string;
-      description: string | null;
-      date: Date;
-      actor: string | null;
-    };
-
-    const events: TimelineEvent[] = [];
-
-    for (const app of applications) {
-      events.push({
-        id: `app-${app.id}`,
-        type: 'application',
-        title: `Applied to ${app.vacancy.title}`,
-        description: `Source: ${app.source}`,
-        date: app.appliedAt,
-        actor: null,
-      });
-      for (const mov of app.movements) {
-        events.push({
-          id: `mov-${mov.id}`,
-          type: 'stage_movement',
-          title: `${mov.fromStage?.name ?? 'Start'} → ${mov.toStage.name}`,
-          description: mov.reason,
-          date: mov.movedAt,
-          actor: mov.actor ? `${mov.actor.firstName} ${mov.actor.lastName}` : null,
-        });
-      }
-    }
-
-    for (const a of assessments) {
-      events.push({
-        id: `asn-${a.id}`,
-        type: 'assessment_assigned',
-        title: `${a.assessmentType.name} assigned`,
-        description: `Status: ${a.status}`,
-        date: a.assignedAt,
-        actor: null,
-      });
-      if (a.completedAt) {
-        events.push({
-          id: `asc-${a.id}`,
-          type: 'assessment_completed',
-          title: `${a.assessmentType.name} completed`,
-          description: a.result?.normalizedScore != null ? `Score: ${a.result.normalizedScore}` : null,
-          date: a.completedAt,
-          actor: null,
-        });
-      }
-    }
-
-    for (const doc of documents) {
-      events.push({
-        id: `doc-${doc.id}`,
-        type: 'document_uploaded',
-        title: `Document uploaded: ${doc.fileName}`,
-        description: doc.type,
-        date: doc.uploadedAt,
-        actor: null,
-      });
-    }
-
-    events.sort((a, b) => b.date.getTime() - a.date.getTime());
-    return events;
+    return candidateTimelineService.getTimeline(orgId, candidateId, appScopeWhere);
   },
 
   // Apply to vacancy
@@ -214,13 +159,13 @@ export const candidateService = {
   },
 
   // Risks
-  async getRisks(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput) {
+  async getRisks(orgId: string, candidateId: string, appScopeWhere: Prisma.ApplicationWhereInput, hideBelowMinimum = false) {
     const candidate = await candidateRepository.getCandidateForRisks(orgId, candidateId, appScopeWhere);
     if (!candidate) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
     }
 
-    const latestFit = candidate.fitScores[0];
+    const latestFit = candidate.fitScores[0] && fitOverallAsShown(candidate.fitScores[0], hideBelowMinimum);
     const rejectedCount = candidate.applications.filter((a) => a.status === 'rejected').length;
 
     return {

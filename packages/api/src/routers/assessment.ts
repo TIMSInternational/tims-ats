@@ -138,13 +138,13 @@ export const assessmentRouter = router({
         }),
       ]);
       if (!assessmentType) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluación no encontrado' });
       }
       if (!candidate) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Candidato no encontrado' });
       }
       if (!application) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene una postulacion activa para esta vacante' });
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'El candidato no tiene una postulación activa para esta vacante' });
       }
       // #312: no new processing for a candidate who revoked the data-processing authorization.
       if (await candidateConsentRepository.isRecruitmentConsentWithdrawn(orgId, input.candidateId)) {
@@ -196,13 +196,13 @@ export const assessmentRouter = router({
         db.application.count({ where: { candidateId: { in: uniqueCandidateIds }, vacancyId: input.vacancyId, organizationId: orgId, status: 'active' } }),
       ]);
       if (!assessmentType) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluacion no encontrado' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tipo de evaluación no encontrado' });
       }
       if (candidateCount !== uniqueCandidateIds.length) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o mas candidatos no encontrados en esta organizacion' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Uno o más candidatos no encontrados en esta organización' });
       }
       if (applicationCount !== uniqueCandidateIds.length) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o mas candidatos no tienen una postulacion activa para esta vacante' });
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Uno o más candidatos no tienen una postulación activa para esta vacante' });
       }
       // #312: refuse the whole batch if any candidate revoked the authorization (message carries the count).
       await consentGuard.assertAllActive(orgId, uniqueCandidateIds);
@@ -311,7 +311,7 @@ export const assessmentRouter = router({
       });
 
       if (!assignment) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Asignación no encontrada' });
       }
 
       // Audit the result read BEFORE returning (fail-closed for super_admin raw).
@@ -394,14 +394,20 @@ export const assessmentRouter = router({
       if (!assignment) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: 'Asignacion no encontrada o ya completada/cancelada',
+          message: 'Asignación no encontrada o ya completada/cancelada',
         });
       }
 
-      return db.assessmentAssignment.update({
-        where: { id: input.assignmentId },
+      // Conditional write (FIT v2 integrity): a submission that commits between the check above and this write must
+      // not leave a 'cancelled' assignment that holds a result. Only an assignment still assigned/in progress changes.
+      const cancelled = await db.assessmentAssignment.updateMany({
+        where: { id: input.assignmentId, organizationId: ctx.user.organizationId, status: { in: ['assigned', 'in_progress'] } },
         data: { status: 'cancelled' },
       });
+      if (cancelled.count === 0) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Asignación no encontrada o ya completada/cancelada' });
+      }
+      return { ...assignment, status: 'cancelled' };
     }),
 
   // 7.8 — Resend assessment invitation
@@ -432,7 +438,7 @@ export const assessmentRouter = router({
       if (!assignment) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: 'Asignacion no encontrada o no reenviar invitaciones para evaluaciones completadas',
+          message: 'Asignación no encontrada o no reenviar invitaciones para evaluaciones completadas',
         });
       }
       // #312: a candidate who revoked their data-processing authorization gets no further emails.
@@ -448,8 +454,12 @@ export const assessmentRouter = router({
         select: { slug: true, name: true },
       });
       if (!org) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Organizacion no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Organización no encontrada' });
       }
+
+      // Resolve + validate the link origin BEFORE the claim write: inside the delivery try/catch below a
+      // misconfiguration would be swallowed as "delivery unconfirmed" with the cooldown already consumed.
+      const appUrl = getAppUrl();
 
       // Claim before the external call. The conditional update is atomic across
       // concurrent requests and keeps uncertain sends in a short cooldown, while
@@ -486,7 +496,7 @@ export const assessmentRouter = router({
           candidateName: assignment.candidate.firstName,
           assessmentName: assignment.assessmentType.name,
           companyName: org.name,
-          assessmentUrl: `${getAppUrl()}/careers/${encodeURIComponent(org.slug)}/dashboard`,
+          assessmentUrl: `${appUrl}/careers/${encodeURIComponent(org.slug)}/dashboard`,
           expiresAt: assignment.expiresAt,
         });
       } catch {
@@ -542,7 +552,7 @@ export const assessmentRouter = router({
       });
 
       if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesión de proctoring no encontrada' });
       }
 
       await assertScoped(
@@ -587,7 +597,7 @@ export const assessmentRouter = router({
       });
 
       if (!session) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesion de proctoring no encontrada' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Sesión de proctoring no encontrada' });
       }
 
       await assertScoped(
@@ -633,7 +643,7 @@ export const assessmentRouter = router({
       await assertScoped('assessmentAssignment', input.assignmentId, ctx.access, ctx.user.id, ctx.user.organizationId);
       throw new TRPCError({
         code: 'NOT_IMPLEMENTED',
-        message: 'La explicabilidad con IA aun no esta disponible (agente de evaluacion pendiente).',
+        message: 'La explicabilidad con IA aún no está disponible (agente de evaluación pendiente).',
       });
     }),
 
@@ -663,7 +673,7 @@ export const assessmentRouter = router({
       if (scopedCount !== uniqueIds.length) {
         throw new TRPCError({
           code: 'NOT_FOUND',
-          message: 'Una o mas asignaciones no encontradas',
+          message: 'Una o más asignaciones no encontradas',
         });
       }
 

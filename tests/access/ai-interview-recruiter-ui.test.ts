@@ -17,6 +17,8 @@ const exists = (p: string) => existsSync(resolve(root, p));
 
 const INTERVIEWS_DIR = 'apps/web/app/(admin)/recruitment/interviews';
 const TABLE = `${INTERVIEWS_DIR}/interview-table.tsx`;
+// The row's secondary commands (AI screen included) moved into its "Más acciones" menu (HIG pass).
+const ROW_ACTIONS = `${INTERVIEWS_DIR}/interview-row-actions.tsx`;
 const PAGE = `${INTERVIEWS_DIR}/page.tsx`;
 const MODAL = `${INTERVIEWS_DIR}/ai-screen-modal.tsx`;
 const RESULT = `${INTERVIEWS_DIR}/[id]/ai-screen-result.tsx`;
@@ -57,15 +59,17 @@ describe('interview-table.tsx — Start AI screen entry point', () => {
   });
 
   it('exposes an onStartAiScreen callback prop', () => {
-    expect(read(TABLE)).toContain('onStartAiScreen');
+    expect(read(TABLE)).toContain('InterviewRowActions');
+    expect(read(ROW_ACTIONS)).toContain('onStartAiScreen');
   });
 
   it('renders the startAiScreen label from i18n', () => {
-    expect(read(TABLE)).toContain('t.interviews.startAiScreen');
+    expect(read(ROW_ACTIONS)).toContain('t.interviews.startAiScreen');
   });
 
   it('uses no inline styles', () => {
     expect(read(TABLE)).not.toContain('style={{');
+    expect(read(ROW_ACTIONS)).not.toContain('style={{');
   });
 
   it('has no any type', () => {

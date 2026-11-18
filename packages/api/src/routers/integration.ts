@@ -42,7 +42,7 @@ const CONNECTOR_PUBLIC_SELECT = {
 // Connector config is a credential-bearing blob; bound its size to prevent
 // oversized-payload abuse (the values themselves are opaque to us).
 const connectorConfigSchema = z
-  .record(z.unknown())
+  .record(z.string(), z.unknown())
   .refine((v) => JSON.stringify(v).length <= 10_000, 'config demasiado grande');
 
 export const integrationRouter = router({

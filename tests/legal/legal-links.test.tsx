@@ -17,10 +17,11 @@ const withI18n = (node: React.ReactNode) => render(<I18nProvider>{node}</I18nPro
 const hrefs = (root: HTMLElement) => [...root.querySelectorAll('a')].map((a) => a.getAttribute('href'));
 
 describe('legal links — flag off', () => {
-  it('portal footer keeps its placeholder legal labels and links nowhere', () => {
+  it('portal footer links only the organization privacy notice, never a platform legal page', () => {
     vi.stubEnv('NEXT_PUBLIC_LEGAL_PAGES_ENABLED', 'false');
-    const { container } = withI18n(<PortalFooter orgName="Acme" />);
-    expect(container.textContent).toContain(es.portal.footerCookies);
+    const { container } = withI18n(<PortalFooter orgName="Acme" orgSlug="acme" />);
+    const nav = screen.getByRole('navigation', { name: es.portal.footerLegal });
+    expect(hrefs(nav)).toEqual(['/careers/acme/privacy']);
     expect(hrefs(container).filter((h) => h?.startsWith('/legal/'))).toEqual([]);
   });
 
@@ -37,14 +38,27 @@ describe('legal links — flag off', () => {
 });
 
 describe('legal links — flag on', () => {
-  it('portal footer legal column links to the four legal pages', () => {
+  it('portal footer keeps the organization notice first, then the four platform legal pages', () => {
     vi.stubEnv('NEXT_PUBLIC_LEGAL_PAGES_ENABLED', 'true');
-    const { container } = withI18n(<PortalFooter orgName="Acme" />);
-    const legalHeading = [...container.querySelectorAll('h4')].find((h) => h.textContent === es.portal.footerLegal)!;
-    const column = legalHeading.parentElement!;
-    expect(hrefs(column)).toEqual(['/legal/terms', '/legal/privacy', '/legal/subprocessors', '/legal/ai-processing']);
-    expect(column.textContent).toContain(es.legal.termsLink);
-    expect(column.textContent).not.toContain(es.portal.footerCookies);
+    withI18n(<PortalFooter orgName="Acme" orgSlug="acme" />);
+    const nav = screen.getByRole('navigation', { name: es.portal.footerLegal });
+    expect(hrefs(nav)).toEqual([
+      '/careers/acme/privacy',
+      '/legal/terms',
+      '/legal/privacy',
+      '/legal/subprocessors',
+      '/legal/ai-processing',
+    ]);
+    expect(nav.textContent).toContain(es.legal.termsLink);
+    // The platform notice is labelled as the platform's, so it is never mistaken for the organization's.
+    expect(within(nav).getByRole('link', { name: es.legal.platformPrivacyLink })).toHaveAttribute(
+      'href',
+      '/legal/privacy',
+    );
+    expect(within(nav).getByRole('link', { name: es.portal.footerPrivacy })).toHaveAttribute(
+      'href',
+      '/careers/acme/privacy',
+    );
   });
 
   it('apply consent step links terms, privacy and AI processing in a new tab', () => {

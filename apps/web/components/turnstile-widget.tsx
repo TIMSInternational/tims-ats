@@ -77,5 +77,7 @@ export function TurnstileWidget({
     };
   }, [siteKey, onToken]);
 
-  return <div ref={containerRef} className="flex justify-center" />;
+  // min-h-18 reserves the widget's height (65 px, plus the test-key banner) before Cloudflare's script draws it,
+  // so the form below does not jump as the check finishes and the submit button turns on under the pointer.
+  return <div ref={containerRef} className="flex min-h-18 justify-center" />;
 }

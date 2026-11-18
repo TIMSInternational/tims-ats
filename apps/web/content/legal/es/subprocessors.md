@@ -10,6 +10,8 @@
 
 **TODO (counsel):** Decidir si los proveedores de identidad que los usuarios pueden elegir para iniciar sesión (Google, Microsoft) deben figurar en esta lista.
 
+**TODO (counsel):** Definir cómo se presentan los servicios de TIMS International (evaluaciones en timssuite.com y PCA en timshr.com): como subencargados o como servicios propios del operador de la plataforma, una vez confirmado quién la opera.
+
 ## Cambios a esta lista
 
 **TODO (counsel):** Cómo y cuándo se notifica a los clientes sobre nuevos subencargados, y el procedimiento de objeción, si existe.

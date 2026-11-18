@@ -28,8 +28,11 @@ public sealed class RefreshFxRatesUseCaseTests
         var written = await useCase.RunAsync(default);
 
         Assert.Equal("USD", gateway.LastBase);
-        // discovered {GBP} ∪ seed {COP,CRC,EUR,MXN}, base USD dropped, sorted ordinal.
-        Assert.Equal(new[] { "COP", "CRC", "EUR", "GBP", "MXN" }, gateway.LastQuotes);
+        // discovered {GBP} ∪ seed {CLP,COP,CRC,DOP,EUR,GTQ,HNL,MXN,NIO,PAB,PEN}, base USD dropped, sorted
+        // ordinal. The pilot countries' currencies (GTQ, HNL, NIO, PAB, DOP, PEN, CLP) are pinned from cold start.
+        Assert.Equal(
+            new[] { "CLP", "COP", "CRC", "DOP", "EUR", "GBP", "GTQ", "HNL", "MXN", "NIO", "PAB", "PEN" },
+            gateway.LastQuotes);
         // Only the positive finite rates are pinned (GBP=0 + JPY=NaN filtered out).
         Assert.Equal(2, written);
         Assert.Equal(new DateOnly(2026, 7, 21), repo.LastAsOf);

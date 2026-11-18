@@ -1,141 +1,145 @@
 'use client';
 
-import { useI18n } from '../../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
+import { formatCurrency, formatPercent } from '../../../../lib/format-utils';
 import { useDeiGenderRepresentation, useDeiPayEquity } from '../../../../lib/platform-api/dei';
-
-const GENDER_BAR: Record<string, string> = {
-  male: 'bg-blue-500',
-  female: 'bg-pink-400',
-  non_binary: 'bg-purple-400',
-  undisclosed: 'bg-gray-300',
-};
-
-function genderLabel(t: ReturnType<typeof useI18n>['t'], g: string): string {
-  return g === 'male'
-    ? t.dei.genderMale
-    : g === 'female'
-      ? t.dei.genderFemale
-      : g === 'non_binary'
-        ? t.dei.genderNonBinary
-        : g === 'undisclosed'
-          ? t.dei.genderUndisclosed
-          : g;
-}
-
-const fmtCOP = (n: number) => `$${Math.round(n / 1000).toLocaleString('es-CO')}K`;
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[13px] font-semibold text-[#1F114C] mb-3">{title}</h3>
-      {children}
-    </div>
-  );
-}
+import { EmptyState, ErrorState } from '../../../../components';
+import { DEI_CARD, DEI_CARD_TITLE, GENDER_BAR, GENDER_FALLBACK_BAR, genderLabel } from './dei-shared';
+import { DeiNoValue } from './dei-no-value';
+import { DeiCardSkeleton } from './dei-card-skeleton';
 
 export function GenderByDepartment() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useDeiGenderRepresentation();
   // round 7: distribution is now { groups, suppressed }. When suppressed (any group
   // 1..4) groups is empty + suppressed:true → render the no-demographics empty state.
   const groups = q.data?.groups ?? [];
 
   return (
-    <Card title={t.dei.genderRepresentation}>
+    <section aria-labelledby="dei-gender" className={DEI_CARD}>
+      <h2 id="dei-gender" className={DEI_CARD_TITLE}>
+        {t.dei.genderRepresentation}
+      </h2>
       {q.isLoading ? (
-        <div className="h-24 bg-gray-50 rounded animate-pulse" />
+        <DeiCardSkeleton rows={4} />
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{t.dei.errGenderRep}</p>
+        <ErrorState size="compact" title={t.dei.errGenderRep} error={q.error} onRetry={() => q.refetch()} />
       ) : groups.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.dei.noDemographics}</p>
+        <EmptyState size="compact" title={t.dei.noDemographics} />
       ) : (
         <>
-          <div className="flex h-6 rounded-full overflow-hidden mb-3">
+          {/* Shape only; the values are in the legend below (white 2px gaps between segments). */}
+          <div className="mb-3 flex h-6 gap-0.5 overflow-hidden rounded-full bg-white" aria-hidden="true">
             {groups.map((g) => (
               <div
                 key={g.gender}
-                className={`${GENDER_BAR[g.gender] ?? 'bg-gray-300'} flex items-center justify-center`}
+                className={GENDER_BAR[g.gender] ?? GENDER_FALLBACK_BAR}
                 style={{ width: `${g.percentage ?? 0}%` }}
-              >
-                {(g.percentage ?? 0) >= 8 && <span className="text-[9px] text-white font-medium">{g.percentage}%</span>}
-              </div>
+              />
             ))}
           </div>
-          <div className="space-y-1.5">
+          <ul className="space-y-1.5">
             {groups.map((g) => (
-              <div key={g.gender} className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2.5 h-2.5 rounded-sm ${GENDER_BAR[g.gender] ?? 'bg-gray-300'}`} />
-                  <span className="text-[11px] text-[#333]">{genderLabel(t, g.gender)}</span>
-                </div>
+              <li key={g.gender} className="flex items-center justify-between gap-2 text-callout">
+                <span className="flex items-center gap-1.5 text-primary">
+                  <span
+                    className={`size-2.5 rounded-sm ${GENDER_BAR[g.gender] ?? GENDER_FALLBACK_BAR}`}
+                    aria-hidden="true"
+                  />
+                  {genderLabel(t, g.gender)}
+                </span>
                 {/* min-5 mask: a group is masked when its own count is sub-floor OR
                     when a sibling group is suppressed (all counts/percentages nulled
                     to block denominator-differencing). Key off the nulled value. */}
-                <span className="text-[11px] text-[#8B8B8B]">
-                  {g.count === null || g.percentage === null ? t.dei.na : `${g.count} · ${g.percentage}%`}
+                <span className="tabular-nums text-secondary">
+                  {g.count === null || g.percentage === null ? (
+                    <DeiNoValue />
+                  ) : (
+                    `${g.count} · ${formatPercent(g.percentage, locale)}`
+                  )}
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </>
       )}
-    </Card>
+    </section>
   );
 }
 
 export function PayEquityTable() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const q = useDeiPayEquity();
   const gap = q.data?.gapPct;
+  const currency = q.data?.currency ?? 'USD';
+  const money = (n: number) => formatCurrency(n, currency, 0);
+  const gapClass =
+    gap == null ? '' : Math.abs(gap) < 3 ? 'text-success' : Math.abs(gap) <= 5 ? 'text-warning' : 'text-danger';
 
   return (
-    <Card title={t.dei.payEquityByGender}>
+    <section aria-labelledby="dei-pay" className={DEI_CARD}>
+      <h2 id="dei-pay" className={DEI_CARD_TITLE}>
+        {t.dei.payEquityByGender}
+      </h2>
       {q.isLoading ? (
-        <div className="h-24 bg-gray-50 rounded animate-pulse" />
+        <DeiCardSkeleton rows={4} />
       ) : q.isError ? (
-        <p className="text-[12px] text-[#DD0C15]">{t.dei.errPayEquity}</p>
+        <ErrorState size="compact" title={t.dei.errPayEquity} error={q.error} onRetry={() => q.refetch()} />
       ) : !q.data || q.data.results.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.dei.noComp}</p>
+        <EmptyState size="compact" title={t.dei.noComp} />
       ) : (
         <>
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="text-[#8B8B8B] border-b border-[#EDEDED]">
-                <th className="text-left py-2 font-medium">{t.dei.colGender}</th>
-                <th className="text-right py-2 font-medium">{t.dei.colEmployees}</th>
-                <th className="text-right py-2 font-medium">{t.dei.colAverage}</th>
-                <th className="text-right py-2 font-medium">{t.dei.colMedian}</th>
-              </tr>
-            </thead>
-            <tbody className="text-[#333]">
-              {q.data.results.map((row, i) => (
-                <tr key={row.group} className={i < q.data!.results.length - 1 ? 'border-b border-[#F6F6F6]' : ''}>
-                  <td className="py-2 font-medium">{genderLabel(t, row.group)}</td>
-                  {/* min-5 mask: count + salary stats are nulled either when this group
-                      is sub-floor OR when any sibling group is (all-or-nothing
-                      differencing guard). Key off the nulled value directly. */}
-                  <td className="text-right py-2">{row.count === null ? t.dei.na : row.count}</td>
-                  <td className="text-right py-2">
-                    {row.averageSalary === null ? t.dei.na : fmtCOP(row.averageSalary)}
-                  </td>
-                  <td className="text-right py-2">{row.medianSalary === null ? t.dei.na : fmtCOP(row.medianSalary)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-body">
+              <caption className="mb-2 text-left text-callout text-secondary">
+                {formatMessage(t.dei.salaryIn, { currency })}
+              </caption>
+              <thead>
+                <tr className="border-b border-border text-callout text-secondary">
+                  <th scope="col" className="py-2 text-left font-semibold">
+                    {t.dei.colGender}
+                  </th>
+                  <th scope="col" className="py-2 text-right font-semibold">
+                    {t.dei.colEmployees}
+                  </th>
+                  <th scope="col" className="py-2 text-right font-semibold">
+                    {t.dei.colAverage}
+                  </th>
+                  <th scope="col" className="py-2 text-right font-semibold">
+                    {t.dei.colMedian}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="text-primary">
+                {q.data.results.map((row) => (
+                  <tr key={row.group} className="border-b border-border-subtle last:border-b-0">
+                    <td className="py-2 font-medium">{genderLabel(t, row.group)}</td>
+                    {/* min-5 mask: count + salary stats are nulled either when this group
+                        is sub-floor OR when any sibling group is (all-or-nothing
+                        differencing guard). Key off the nulled value directly. */}
+                    <td className="py-2 text-right tabular-nums">{row.count === null ? <DeiNoValue /> : row.count}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {row.averageSalary === null ? <DeiNoValue /> : money(row.averageSalary)}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {row.medianSalary === null ? <DeiNoValue /> : money(row.medianSalary)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {gap !== null && gap !== undefined && (
-            <div className="mt-3 pt-2 border-t border-[#F0F0F0] flex items-center justify-between">
-              <span className="text-[10px] text-[#8B8B8B]">{t.dei.medianGap}</span>
-              <span
-                className={`text-[12px] font-semibold ${Math.abs(gap) < 3 ? 'text-green-600' : Math.abs(gap) <= 5 ? 'text-amber-500' : 'text-[#DD0C15]'}`}
-              >
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2">
+              <span className="text-callout text-secondary">{t.dei.medianGap}</span>
+              <span className={`text-body font-semibold tabular-nums ${gapClass}`}>
                 {gap > 0 ? '+' : ''}
-                {gap}%
+                {formatPercent(gap, locale, 1)}
               </span>
             </div>
           )}
         </>
       )}
-    </Card>
+    </section>
   );
 }
