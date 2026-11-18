@@ -37,6 +37,7 @@ using Tims.Api.RateLimiting;
 using Tims.Api.Evaluation360;
 using Tims.Api.ExternalVendor;
 using Tims.Api.Engagement;
+using Tims.Api.ErrorReporting;
 using Tims.Api.FitEngine;
 using Tims.Api.Notification;
 using Tims.Api.People;
@@ -121,6 +122,9 @@ try
     var builder = WebApplication.CreateBuilder(args);
     builder.Services.AddPlatformEmail(builder.Configuration);
 
+    // --- Error reporting (Sentry): inert unless Sentry:Dsn is set; see ErrorReportingExtensions ----
+    builder.AddErrorReporting();
+
     // --- Structured JSON logging (Pino-parity), request/tenant correlation ids -------
     // NEVER logs request bodies / tokens / PII (rule: api-security.md §Observability).
     // preserveStaticLogger: true keeps each host's fully-configured Serilog instance INDEPENDENT of the
@@ -132,7 +136,8 @@ try
         (context, services, configuration) => configuration
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
-            .WriteTo.Console(new RenderedCompactJsonFormatter()),
+            .WriteTo.Console(new RenderedCompactJsonFormatter())
+            .WriteToErrorReporting(context.Configuration),
         preserveStaticLogger: true);
 
     // --- Config: bind + validate at startup (fail-fast), the Zod-env-gate analog ------
