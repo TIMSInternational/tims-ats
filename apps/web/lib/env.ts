@@ -123,6 +123,8 @@ const baseEnvSchema = z.object({
   // Careers search surfaces (lib/careers-seo.ts): sitemap entries, robots.txt sitemap line, JobPosting data.
   // Only the exact string 'true' enables; anything else = off.
   CAREERS_SEO_ENABLED: z.string().max(16).optional(),
+  // Extra candidate-facing 404 actions (components/candidate-not-found-actions.tsx). Only 'true' enables.
+  NEXT_PUBLIC_CANDIDATE_404_LINKS_ENABLED: z.string().max(16).optional(),
 
   // Node
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

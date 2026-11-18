@@ -19,7 +19,9 @@
     "careersMessage": "The page you are looking for does not exist or is no longer available.",
     "careersPortalNotFound": "We couldn't find this job portal. Check the link you received.",
     "backToVacancies": "See vacancies",
-    "backToDashboard": "Back to dashboard"
+    "backToDashboard": "Back to dashboard",
+    "candidatePortal": "My applications",
+    "goBack": "Go back to the previous page"
   },
   "roles": {
     "platform_owner": "Platform owner",
