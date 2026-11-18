@@ -78,7 +78,11 @@
     { "name": "empty adds nothing", "input": "", "expected": [] },
     { "name": "one role", "input": "hr_admin", "expected": ["hr_admin"] },
     { "name": "comma list", "input": "hr_admin,hrbp", "expected": ["hr_admin", "hrbp"] },
-    { "name": "spaces, mixed case and duplicates", "input": " HR_ADMIN , hrbp hr_admin ", "expected": ["hr_admin", "hrbp"] },
+    {
+      "name": "spaces, mixed case and duplicates",
+      "input": " HR_ADMIN , hrbp hr_admin ",
+      "expected": ["hr_admin", "hrbp"]
+    },
     {
       "name": "unknown and non-staff tokens are ignored — fail OPEN, never a lockout",
       "input": "hr_admin,company_admin,candidate,external,super_admin,*",
