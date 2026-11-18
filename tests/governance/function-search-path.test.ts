@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 // ── Every function DDL in committed SQL pins its search_path ──────────────────
 //
@@ -31,6 +31,13 @@ import { join, relative } from 'node:path';
 //   * packages/db/baseline/ — a pg_dump OF production. It records what prod IS, not what
 //     the repo applies; it changes only by re-capture after the owner applies DDL.
 //   * the backup-drill fixture — synthetic data restored into a throwaway database.
+//   * EF Core idempotent scripts in services/Tims.Platform/db/manual (`dotnet ef migrations script
+//     --idempotent`, ddl-governance.md §2). EF wraps EVERY statement in a `DO $EF$ ... IF NOT EXISTS
+//     (... "__EFMigrationsHistory" ...)` block, which the gate classifies as dynamic SQL and reports
+//     UNVERIFIED by design, so the server-decided check cannot cover them. They are recognised by the file
+//     sharing its name with a migration class, not by their text; the tests below fail if an excluded file
+//     holds anything but EF blocks, and apply a text backstop (each EF block that creates a routine also
+//     says SET search_path) that is weaker than the server check and is labelled as such.
 // The C# builder (AuditImmutability.BuildAppendOnlySql) is pinned by its own unit test
 // and by ProdSqlMatchesBuilderTests, which keeps it byte-identical to two files below;
 // FunctionSearchPathPinTests proves the 2026-10-12 script against a real Postgres.
@@ -40,6 +47,27 @@ const SCRIPT = join(ROOT, 'scripts/db/verify-function-search-path.sh');
 const SCAN_ROOTS = ['packages/db/prisma', 'services/Tims.Platform/db', 'scripts'];
 const EXCLUDED = new Set(['scripts/backup-drill/fixtures/synthetic-source.sql']);
 const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'worktrees']);
+const EF_SCRIPT_DIR = 'services/Tims.Platform/db/manual/';
+const EF_MIGRATIONS_DIR = 'services/Tims.Platform/src/Tims.Infrastructure/Migrations';
+
+// The statement `dotnet ef migrations script --idempotent` emits ahead of the first migration's blocks.
+const EF_HISTORY_PREAMBLE =
+  /CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" \(\s*"MigrationId" character varying\(150\) NOT NULL,\s*"ProductVersion" character varying\(32\) NOT NULL,\s*CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY \("MigrationId"\)\s*\);/;
+
+/** An EF Core idempotent script: lives in the EF script directory AND is named after a migration class. */
+function isEfIdempotentScript(rel: string): boolean {
+  return rel.startsWith(EF_SCRIPT_DIR) && existsSync(join(ROOT, EF_MIGRATIONS_DIR, `${basename(rel, '.sql')}.cs`));
+}
+
+/** The `DO $EF$ ... END $EF$;` blocks of an EF idempotent script, and whatever text lies outside them. */
+function efBlocks(text: string): { blocks: string[]; outside: string } {
+  const blocks: string[] = [];
+  const outside = text.replace(/DO \$EF\$[\s\S]*?END \$EF\$;/g, (block) => {
+    blocks.push(block);
+    return '';
+  });
+  return { blocks, outside };
+}
 
 function sqlFilesUnder(dir: string): string[] {
   const out: string[] = [];
@@ -97,10 +125,12 @@ function verdicts(out: string, file: string): string[] {
 }
 
 describe('governance — committed function DDL pins search_path (decided by PostgreSQL)', () => {
-  const files = SCAN_ROOTS.flatMap((r) => sqlFilesUnder(join(ROOT, r)))
-    .filter((f) => !EXCLUDED.has(relative(ROOT, f)))
+  const all = SCAN_ROOTS.flatMap((r) => sqlFilesUnder(join(ROOT, r)))
     .map((f) => relative(ROOT, f))
+    .filter((f) => !EXCLUDED.has(f))
     .sort();
+  const efScripts = all.filter(isEfIdempotentScript);
+  const files = all.filter((f) => !isEfIdempotentScript(f));
   let repo: GateRun;
 
   beforeAll(() => {
@@ -109,6 +139,36 @@ describe('governance — committed function DDL pins search_path (decided by Pos
 
   it('scans a non-empty population (non-vacuity)', () => {
     expect(files.length).toBeGreaterThan(20);
+  });
+
+  it('an excluded EF script holds nothing but EF blocks inside one transaction', () => {
+    expect(efScripts.length).toBeGreaterThan(0);
+    for (const f of efScripts) {
+      const { blocks, outside } = efBlocks(readFileSync(join(ROOT, f), 'utf8'));
+      expect(blocks.length, f).toBeGreaterThan(0);
+      // Anything a person adds next to the generated blocks would escape the gate: refuse it. Allowed outside
+      // the blocks: whole-line `--` comments, the transaction bracket, and EF's own history-table preamble.
+      const rest = outside
+        .replace(/^[ \t]*--.*$/gm, '')
+        .replace(EF_HISTORY_PREAMBLE, '')
+        .replace(/START TRANSACTION;|COMMIT;/g, '')
+        .trim();
+      expect(rest, f).toBe('');
+    }
+  });
+
+  it('text backstop (weaker than the server check): each EF block that creates a routine also sets search_path', () => {
+    let routines = 0;
+    for (const f of efScripts) {
+      for (const block of efBlocks(readFileSync(join(ROOT, f), 'utf8')).blocks) {
+        const creates = (block.match(/\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b/gi) ?? []).length;
+        const pins = (block.match(/\bSET\s+search_path\b/gi) ?? []).length;
+        routines += creates;
+        expect(pins, `${f}: ${block.slice(0, 160)}`).toBeGreaterThanOrEqual(creates);
+      }
+    }
+    // Non-vacuity: main's EF scripts do create routines (the fit_v2 provider triggers).
+    expect(routines).toBeGreaterThan(0);
   });
 
   it('every CREATE [OR REPLACE] FUNCTION / PROCEDURE in committed SQL carries SET search_path', (ctx) => {
