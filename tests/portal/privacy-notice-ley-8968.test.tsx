@@ -88,6 +88,51 @@ describe('Ley N.° 8968 notice', () => {
   });
 });
 
+// The AI paragraph discloses what the code does with a candidate's data. Each clause is tied to the code that
+// makes it true, so the notice cannot promise less (or more) than the platform does.
+describe('AI-processing disclosure', () => {
+  it('the platform parses CVs with an AI agent, screens profiles against the vacancy, and feeds FIT with assessments', () => {
+    expect(read('packages/ai/src/agents/cv-parser.ts')).toMatch(/cv-parser/);
+    const screener = read('packages/ai/src/agents/candidate-screener.ts');
+    expect(screener).toMatch(/score: z\.number\(\)/);
+    expect(screener).toMatch(/recommendation: z\.enum/);
+    expect(
+      read('services/Tims.Platform/src/Tims.Application/FitEngine/ProviderFitResultSource.cs').length,
+    ).toBeGreaterThan(0);
+    expect(read('services/Tims.Platform/src/Tims.Api/Program.cs')).toMatch(/var providerResultsFeedFit/);
+  });
+
+  it.each([
+    [
+      'es',
+      /inteligencia artificial/,
+      /hoja de vida/,
+      /evaluación preliminar de la afinidad/,
+      /evaluaciones, sus resultados/,
+      /personas del equipo de selección/,
+    ],
+    [
+      'en',
+      /artificial intelligence/,
+      /resume/,
+      /preliminary assessment of how your profile fits/,
+      /assessments, their results/,
+      /people on the selection team/,
+    ],
+  ] as const)(
+    '%s: names AI, the CV, the fit assessment, assessment results and human decisions',
+    (locale, ...clauses) => {
+      const ai = catalogues[locale].portalPrivacyLey8968.aiBody;
+      for (const clause of clauses) expect(ai).toMatch(clause);
+      expect(ai).not.toMatch(MARKER);
+    },
+  );
+
+  it.each(['es', 'en'] as const)('%s: the consent sentence mentions automated tools', (locale) => {
+    expect(catalogues[locale].portalLey8968Consent.middle).toMatch(/herramientas automatizadas|automated tools/);
+  });
+});
+
 describe('publishing guard', () => {
   const markers = (locale: keyof typeof catalogues) => ley8968Copy(locale).match(MARKER) ?? [];
 

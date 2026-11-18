@@ -7073,7 +7073,7 @@
     "purposeHeading": "Purpose",
     "purposeBody": "Managing your participation in the organization's recruitment and selection processes: assessing your profile, coordinating interviews, contacting you about the process and, if your application is selected, starting your onboarding. Your data is not used for any other purpose and is never sold to third parties.",
     "aiHeading": "Use of automated tools",
-    "aiBody": "We use an artificial intelligence service to extract and organize the information in your resume [PENDIENTE: confirm wording — proposed: and to support the selection team with a preliminary assessment of how your profile fits the opening]. Decisions about your application are made by people on the selection team; no decision is based solely on automated processing.",
+    "aiBody": "We use an artificial intelligence service to extract and organize the information in your resume and to support the selection team with a preliminary assessment of how your profile fits the opening. If the organization assigns you assessments, their results are also used to calculate that fit. Decisions about your application are made by people on the selection team; no decision is based solely on automated processing.",
     "transferHeading": "Where your data is stored",
     "transferBody": "Your data is stored and processed on servers of technology providers located in the United States (cloud, database and email services), which act on the organization's behalf under confidentiality and security obligations.",
     "retentionHeading": "Retention period",
