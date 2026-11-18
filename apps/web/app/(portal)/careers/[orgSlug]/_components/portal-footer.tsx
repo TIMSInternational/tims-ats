@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import { useLegalLinks } from '../../../../../components/legal/use-legal-links';
 import { useI18n } from '../../../../../lib/i18n';
 import { isPilotScope } from '../../../../../lib/launch-scope';
+import { LEGAL_DOCUMENT_SLUGS, isLegalPagesEnabled } from '../../../../../lib/legal/documents';
 import { OrgLogo } from '../../../../../components/org-logo';
 
 interface PortalFooterProps {
@@ -15,6 +17,15 @@ export function PortalFooter({ orgName, orgSlug, orgLogo = null }: PortalFooterP
   const p = t.portal;
   // The vendor blurb promises "evaluaciones científicas", which the pilot launch scope does not offer.
   const showVendorBlurb = !isPilotScope();
+  // The platform's own legal documents follow the organization's notice only while
+  // NEXT_PUBLIC_LEGAL_PAGES_ENABLED is on. The platform privacy notice gets its own label, so it is
+  // never confused with the organization's candidate notice above it.
+  const platformLinks = useLegalLinks(LEGAL_DOCUMENT_SLUGS).map((link) =>
+    link.slug === 'privacy' ? { ...link, label: t.legal.platformPrivacyLink } : link,
+  );
+  const showPlatformLinks = isLegalPagesEnabled();
+  const linkClass =
+    'inline-flex min-h-7 items-center text-callout text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline pointer-coarse:min-h-11';
   return (
     <footer className="bg-brand px-4 py-8 sm:px-8">
       <div className="mx-auto max-w-5xl">
@@ -39,17 +50,22 @@ export function PortalFooter({ orgName, orgSlug, orgLogo = null }: PortalFooterP
             )}
           </div>
 
-          {/* Right: the one page that exists for candidates before they apply — the privacy notice. */}
+          {/* Right: the organization's candidate privacy notice (+ the platform legal pages when enabled). */}
           <nav aria-label={p.footerLegal}>
             <ul className="space-y-2">
               <li>
-                <Link
-                  href={`/careers/${encodeURIComponent(orgSlug)}/privacy`}
-                  className="inline-flex min-h-7 items-center text-callout text-white/70 underline-offset-2 transition-colors hover:text-white hover:underline pointer-coarse:min-h-11"
-                >
+                <Link href={`/careers/${encodeURIComponent(orgSlug)}/privacy`} className={linkClass}>
                   {p.footerPrivacy}
                 </Link>
               </li>
+              {showPlatformLinks &&
+                platformLinks.map((link) => (
+                  <li key={link.slug}>
+                    <Link href={link.href} className={linkClass}>
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
             </ul>
           </nav>
         </div>

@@ -4,7 +4,8 @@
  * It produces a plain data tree — never HTML — which `MarkdownText` renders as React elements,
  * so any markup embedded in the source (`<script>`, `<img onerror>`) stays literal text.
  *
- * Supported: `#`/`##`/`###` headings, `-`/`*`/`•` bullet lists, `1.` ordered lists,
+ * Supported: `#`/`##`/`###` headings, `-`/`*`/`•` bullet lists, `1.` ordered lists (each records its first
+ * number as `start`; `MarkdownText` renders it only when the caller passes `keepListNumbers`),
  * paragraphs separated by blank lines, single line breaks inside a paragraph,
  * `**bold**` / `__bold__` and `*italic*`.
  */
@@ -17,7 +18,7 @@ export type MdInline =
 export type MdBlock =
   | { type: 'heading'; level: 1 | 2 | 3; content: MdInline[] }
   | { type: 'paragraph'; lines: MdInline[][] }
-  | { type: 'list'; ordered: boolean; items: MdInline[][] };
+  | { type: 'list'; ordered: boolean; items: MdInline[][]; start?: number };
 
 /** Bound on parsed input: descriptions are capped server-side, this is defence in depth. */
 export const MARKDOWN_LITE_MAX_LENGTH = 20_000;
@@ -29,7 +30,7 @@ export const MARKDOWN_LITE_MAX_LENGTH = 20_000;
 // by `stripClosingHashes` instead of by the regex.
 const HEADING = /^(#{1,3})\s+(.*)$/;
 const BULLET = /^\s*[-*•]\s+(.*)$/;
-const ORDERED = /^\s*\d{1,3}[.)]\s+(.*)$/;
+const ORDERED = /^\s*(\d{1,3})[.)]\s+(.*)$/;
 const BOLD = /(\*\*[^*\n]+?\*\*|__[^_\n]+?__)/;
 const ITALIC = /(\*[^*\n]+?\*)/;
 
@@ -70,17 +71,20 @@ export function parseInline(text: string): MdInline[] {
     });
 }
 
-export function parseMarkdownLite(source: string): MdBlock[] {
-  const lines = source.slice(0, MARKDOWN_LITE_MAX_LENGTH).replace(/\r\n?/g, '\n').split('\n');
+export function parseMarkdownLite(source: string, maxLength: number = MARKDOWN_LITE_MAX_LENGTH): MdBlock[] {
+  const lines = source.slice(0, maxLength).replace(/\r\n?/g, '\n').split('\n');
   const blocks: MdBlock[] = [];
-  const open: { paragraph: MdInline[][] | null; list: { ordered: boolean; items: MdInline[][] } | null } = {
+  const open: {
+    paragraph: MdInline[][] | null;
+    list: { ordered: boolean; items: MdInline[][]; start?: number } | null;
+  } = {
     paragraph: null,
     list: null,
   };
 
   const flush = () => {
     if (open.paragraph) blocks.push({ type: 'paragraph', lines: open.paragraph });
-    if (open.list) blocks.push({ type: 'list', ordered: open.list.ordered, items: open.list.items });
+    if (open.list) blocks.push({ type: 'list', ...open.list });
     open.paragraph = null;
     open.list = null;
   };
@@ -94,17 +98,23 @@ export function parseMarkdownLite(source: string): MdBlock[] {
     const heading = HEADING.exec(line.trim());
     if (heading) {
       flush();
-      blocks.push({ type: 'heading', level: heading[1].length as 1 | 2 | 3, content: parseInline(stripClosingHashes(heading[2] ?? '')) });
+      blocks.push({
+        type: 'heading',
+        level: heading[1].length as 1 | 2 | 3,
+        content: parseInline(stripClosingHashes(heading[2] ?? '')),
+      });
       continue;
     }
     const bullet = BULLET.exec(line);
     const ordered = bullet ? null : ORDERED.exec(line);
-    const itemMatch = bullet ?? ordered;
-    if (itemMatch) {
+    if (bullet || ordered) {
       const isOrdered = ordered !== null;
       if (open.paragraph || (open.list && open.list.ordered !== isOrdered)) flush();
-      const list = open.list ?? { ordered: isOrdered, items: [] };
-      list.items.push(parseInline(itemMatch[1].trim()));
+      const list =
+        open.list ??
+        (ordered ? { ordered: true, items: [], start: Number(ordered[1]) } : { ordered: false, items: [] });
+      const text = ordered ? ordered[2] : bullet ? bullet[1] : '';
+      list.items.push(parseInline((text ?? '').trim()));
       open.list = list;
       continue;
     }

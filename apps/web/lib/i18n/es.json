@@ -7060,6 +7060,25 @@
     "bandMedium": "Media",
     "bandLow": "Baja"
   },
+  "legal": {
+    "draftBanner": "BORRADOR: texto pendiente de revisión legal. No constituye un compromiso contractual.",
+    "languageLabel": "Idioma",
+    "navLabel": "Documentos legales",
+    "termsLink": "Términos del servicio",
+    "privacyLink": "Aviso de privacidad",
+    "platformPrivacyLink": "Aviso de privacidad de la plataforma",
+    "subprocessorsLink": "Subencargados",
+    "aiProcessingLink": "Tratamiento con IA",
+    "consentLinksPrefix": "Consulte también:",
+    "subprocessorVendor": "Proveedor",
+    "subprocessorService": "Servicio",
+    "subprocessorPurpose": "Finalidad",
+    "subprocessorData": "Categorías de datos",
+    "subprocessorCondition": "Cuándo se usa",
+    "conditionAlways": "Siempre",
+    "conditionConfigured": "Solo si está configurado",
+    "conditionCustomerEnabled": "Solo si la organización cliente lo habilita"
+  },
   "portalLey8968Consent": {
     "prefix": "Autorizo de forma libre, expresa e informada a",
     "middle": "para recopilar y tratar mis datos personales, incluida mi hoja de vida, con el fin de gestionar mi participación en sus procesos de selección de personal —lo que incluye su almacenamiento en servidores ubicados fuera de Costa Rica y el uso de herramientas automatizadas para organizar la información de mi hoja de vida—, de acuerdo con su",

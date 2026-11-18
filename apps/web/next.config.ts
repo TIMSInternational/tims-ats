@@ -52,6 +52,9 @@ const nextConfig: NextConfig = {
       "../../node_modules/.pnpm/pdf-parse@*/node_modules/pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js",
       "../../node_modules/.pnpm/pdf-parse@*/node_modules/pdf-parse/lib/pdf.js/v1.10.100/build/pdf.worker.js",
     ],
+    // The legal pages read their Markdown at request time (lib/legal/content.ts); fs reads with a
+    // computed path are not traced, so ship the content directory with that route explicitly.
+    "/legal/[doc]": ["./content/legal/**/*"],
   },
   transpilePackages: [
     "@tims/api",

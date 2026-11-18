@@ -1,5 +1,6 @@
 'use client';
 
+import { LegalFooterLinks } from '../../components/legal/legal-footer-links';
 import { useI18n } from '../../lib/i18n';
 import { isPilotScope } from '../../lib/launch-scope';
 import { authHeroPills } from './auth-hero';
@@ -23,6 +24,8 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           <img src="/nexadev-logo.png" alt="" aria-hidden="true" className="h-4.5" />
           <span className="text-callout font-medium text-secondary">NexaDev™</span>
         </footer>
+        {/* Platform legal documents; renders nothing while NEXT_PUBLIC_LEGAL_PAGES_ENABLED is off. */}
+        <LegalFooterLinks className="-mt-3 pb-6" />
       </div>
 
       <aside

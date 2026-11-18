@@ -7060,6 +7060,25 @@
     "bandMedium": "Medium",
     "bandLow": "Low"
   },
+  "legal": {
+    "draftBanner": "DRAFT: text pending legal review. Not a contractual commitment.",
+    "languageLabel": "Language",
+    "navLabel": "Legal documents",
+    "termsLink": "Terms of Service",
+    "privacyLink": "Privacy Notice",
+    "platformPrivacyLink": "Platform privacy notice",
+    "subprocessorsLink": "Subprocessors",
+    "aiProcessingLink": "AI processing",
+    "consentLinksPrefix": "See also:",
+    "subprocessorVendor": "Vendor",
+    "subprocessorService": "Service",
+    "subprocessorPurpose": "Purpose",
+    "subprocessorData": "Data categories",
+    "subprocessorCondition": "When used",
+    "conditionAlways": "Always",
+    "conditionConfigured": "Only when configured",
+    "conditionCustomerEnabled": "Only when the customer organization enables it"
+  },
   "portalLey8968Consent": {
     "prefix": "I freely, expressly and knowingly authorize",
     "middle": "to collect and process my personal data, including my resume, in order to manage my participation in its recruitment and selection processes (including its storage on servers located outside Costa Rica and the use of automated tools to organize the information in my resume), in accordance with its",
