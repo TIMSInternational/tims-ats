@@ -23,6 +23,7 @@ import {
   type ApplyErrorField,
 } from '../_lib/apply-error-message';
 import { isValidApplyEmail, isValidLinkedinUrl, normalizeLinkedinUrl } from '../_lib/apply-fields';
+import { trackCareersFunnel } from '../../../../../../lib/analytics/web-analytics';
 
 interface ApplyModalProps {
   vacancyId: string;
@@ -146,6 +147,7 @@ export function ApplyModal({ vacancyId, vacancyTitle, companyName, controllerNam
         consentLocale: locale === 'EN' ? 'en' : 'es',
       });
       setSuccess(true);
+      trackCareersFunnel('application_submitted', params?.orgSlug ?? '');
       // The detail page shows "N personas aplicaron"; refetch it so the count includes this application.
       void utils.portal.getVacancy.invalidate({ id: vacancyId });
     } catch (err) {
