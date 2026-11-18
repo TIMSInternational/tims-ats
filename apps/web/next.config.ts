@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import path from "node:path";
 import { withSentryConfig } from "@sentry/nextjs";
 import { permissionsPolicy } from "./lib/security/permissions-policy";
+import { sentryBuildOptions } from "./lib/sentry-build-options";
 
 // NOTE: Content-Security-Policy is set per-request in `middleware.ts` so it can
 // carry a unique nonce (nonce-based CSP, no 'unsafe-inline' on script-src in
@@ -11,6 +12,9 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   // No `x-powered-by: Next.js` response header (do not advertise the framework).
   poweredByHeader: false,
+  // Never publish browser source maps. When Sentry upload credentials are present the Sentry plugin generates
+  // HIDDEN maps, uploads them and deletes them before deploy (lib/sentry-build-options.ts).
+  productionBrowserSourceMaps: false,
   // Mirror Vercel's server-only VERCEL_ENV into client bundles so getAppUrl()
   // (packages/shared/src/app-url.ts) can recognise a deployed environment in the
   // browser without depending on the project's "Automatically expose System
@@ -77,17 +81,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Wrap with the Sentry build plugin. Org/project/token are read from env
-// (.env.sentry-build-plugin locally, or CI/Vercel env), so no slugs are
-// hardcoded and the wrapper is a no-op for source-map upload until a token is
-// set. tunnelRoute is intentionally omitted — Sentry ingest is already allowed
-// in the CSP connect-src, and a tunnel route would need middleware/auth carve-outs.
-export default withSentryConfig(nextConfig, {
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  // Upload a wider set of client files for better stack-trace resolution.
-  widenClientFileUpload: true,
-  // Quiet during local/non-CI builds.
-  silent: !process.env.CI,
-});
+// Wrap with the Sentry build plugin. Org/project/token are read from the build
+// environment (Vercel project env, or exported in the shell for a local build),
+// so no slugs are hardcoded; source maps are only generated and uploaded when
+// all three are set (see lib/sentry-build-options.ts). tunnelRoute is intentionally omitted —
+// Sentry ingest is already allowed in the CSP connect-src, and a tunnel route
+// would need middleware/auth carve-outs.
+export default withSentryConfig(nextConfig, sentryBuildOptions(process.env));
