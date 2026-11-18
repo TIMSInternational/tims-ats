@@ -124,7 +124,8 @@ and App Runner already probes `/health` every 10 seconds. A second canary would 
 - Because the rest of this module has never been applied, apply the uptime resources with `-target`
   on their own (see the owner apply procedure for the PR), not with a full `terraform apply`.
 - `tests/governance/uptime-synthetics.test.ts` pins all of the above and runs the canary script
-  against stubbed Synthetics modules.
+  against stubbed Synthetics modules. `tests/uptime.tftest.hcl` (here) exercises the enabled path with the
+  AWS provider mocked — no AWS call, no credentials: `terraform init -backend=false && terraform test`.
 
 ## Extra alert recipients (`alarm_extra_recipients`)
 

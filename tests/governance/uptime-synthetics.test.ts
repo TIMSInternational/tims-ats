@@ -11,7 +11,8 @@ import { join, resolve } from 'node:path';
 // The module is never planned in CI (no credentials), so these tests pin the properties a reviewer would
 // otherwise have to re-derive by reading HCL: opt-in, the three targets, the schedule, a pinned runtime,
 // the bucket hardening, the role's scoping, the log retention, the alarm routing, the recipients, and that
-// no hostname is committed.
+// no hostname is committed. tests/uptime.tftest.hcl in the module exercises the enabled path with mocked
+// providers (`terraform test`, no AWS calls) for whoever has the Terraform CLI.
 
 const ROOT = resolve(__dirname, '../..');
 const TF_DIR = join(ROOT, 'services/Tims.Platform/deploy/terraform');
@@ -308,6 +309,18 @@ describe('alarms.tf — extra alert recipients', () => {
     expect(sub).toMatch(
       /condition\s*=\s*!\(var\.enable_alarms && contains\(var\.alarm_extra_recipients, var\.alarm_email\)\)/,
     );
+  });
+});
+
+describe('tests/uptime.tftest.hcl — the enabled path under `terraform test`', () => {
+  it('mocks the AWS provider, so running it can never reach an AWS account', () => {
+    const tftest = readFileSync(join(TF_DIR, 'tests/uptime.tftest.hcl'), 'utf8');
+    expect(tftest).toMatch(/^mock_provider "aws" \{/m);
+    expect(tftest).not.toMatch(/^provider "aws"/m);
+    // Placeholders only: the AWS documentation account ID and reserved .test hosts.
+    for (const account of tftest.match(/\b\d{12}\b/g) ?? []) expect(account).toBe('111122223333');
+    for (const host of tftest.match(/https:\/\/[a-z0-9.-]+/g) ?? []) expect(host).toMatch(/\.test$/);
+    expect(tftest).toMatch(/^run "enabled_external_topic" \{\n\s+command = apply/m);
   });
 });
 
