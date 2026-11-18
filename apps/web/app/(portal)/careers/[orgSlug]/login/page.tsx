@@ -19,6 +19,7 @@ import { PortalEmailStep } from './portal-email-step';
 import { PortalCodeStep } from './portal-code-step';
 import { useResendCountdown } from './use-resend-countdown';
 import { OrgLogo } from '../../../../../components/org-logo';
+import { TEXT_LINK_CLASSES } from '../../../../../components/button-styles';
 import { usePortalOrgBrand } from '../_components/portal-org-brand';
 import { useOpenSession } from './use-open-session';
 import { PortalOpenSessionNotice } from './portal-open-session-notice';
@@ -210,22 +211,26 @@ export default function PortalLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F6F6F6] px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-surface px-4 py-10">
       <div className="w-full max-w-[420px]">
-        <div className="text-center mb-6">
-          <div className="mb-4 flex justify-center">
+        <div className="mb-6 text-center">
+          <div className="mb-3 flex justify-center">
             <OrgLogo
               logo={brand?.logo}
               name={brand?.name ?? orgSlug}
               imgClassName="h-14 w-auto max-w-[180px] object-contain"
-              fallbackClassName="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1F114C] text-xl font-bold text-white"
+              fallbackClassName="inline-flex size-14 items-center justify-center rounded-2xl bg-brand text-title font-bold text-white"
+              decorative={Boolean(brand?.name)}
             />
           </div>
-          <h1 className="text-[22px] font-bold text-[#1F114C]">{m.loginTitle}</h1>
-          <p className="text-[13px] text-muted mt-1">{m.loginSubtitle}</p>
+          {/* Which company this is: a candidate often arrives here from an email. */}
+          {brand?.name && <p className="mb-2 text-subheading font-semibold text-primary">{brand.name}</p>}
+          <h1 className="font-display text-title font-bold text-brand">{m.loginTitle}</h1>
+          {/* The mechanics only matter before the email is sent; the code step has its own instructions. */}
+          {step === 'email' && <p className="mt-1 text-base text-secondary sm:text-body">{m.loginSubtitle}</p>}
         </div>
 
-        <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
+        <div className="rounded-2xl bg-white p-6 shadow-card sm:p-8">
           {session.openSession !== null && (
             <PortalOpenSessionNotice
               message={(fromCallback && !submitted ? m.openSessionFromLink : m.openSession).replace(
@@ -272,12 +277,12 @@ export default function PortalLoginPage() {
           )}
         </div>
 
-        <div className="text-center mt-5">
-          <Link href={`/careers/${orgSlug}`} className="text-[13px] text-muted hover:text-[#585858] hover:underline">
+        <div className="mt-5 text-center">
+          <Link href={`/careers/${orgSlug}`} className={`${TEXT_LINK_CLASSES} min-h-7 text-body`}>
             {m.backToJobs}
           </Link>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

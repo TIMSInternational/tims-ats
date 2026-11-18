@@ -9,8 +9,6 @@ import { EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { buildApprovalInboxItems } from './my-approvals-items';
 
-const EMPTY_ICON = <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />;
-
 interface MyApprovalsCardProps {
   /** Extra classes for the card root (spacing in the host dashboard). */
   className?: string;
@@ -40,18 +38,16 @@ export function MyApprovalsCard({ className = '' }: MyApprovalsCardProps) {
   const items = buildApprovalInboxItems(canVacancies ? vacancies.data : undefined, canOffers ? offers.data : undefined);
 
   return (
-    <section
-      aria-labelledby="my-approvals-title"
-      className={`flex-1 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 ${className}`}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h2 id="my-approvals-title" className="text-sm font-semibold text-[#1F114C]">
+    <section aria-labelledby="my-approvals-title" className={`flex-1 rounded-xl bg-white p-5 shadow-card ${className}`}>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h2 id="my-approvals-title" className="text-subheading font-semibold text-brand">
           {md.approvalsInboxTitle}
         </h2>
         {!isLoading && !isError && items.length > 0 && (
           <span
+            role="status"
             aria-label={md.approvalsInboxCount.replace('{count}', String(items.length))}
-            className="bg-[#DD0C15] text-white text-xs font-bold min-w-6 h-6 px-1.5 rounded-full flex items-center justify-center"
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-red px-1.5 text-caption font-semibold tabular-nums text-white"
           >
             {items.length}
           </span>
@@ -59,7 +55,13 @@ export function MyApprovalsCard({ className = '' }: MyApprovalsCardProps) {
       </div>
 
       {isError ? (
-        <LoadError message={md.loadError} />
+        <LoadError
+          message={md.loadError}
+          onRetry={() => {
+            if (vacancies.isError) vacancies.refetch();
+            if (offers.isError) offers.refetch();
+          }}
+        />
       ) : isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -70,27 +72,27 @@ export function MyApprovalsCard({ className = '' }: MyApprovalsCardProps) {
           ))}
         </div>
       ) : items.length === 0 ? (
-        <EmptyState icon={EMPTY_ICON} message={md.approvalsInboxEmpty} />
+        <EmptyState size="compact" message={md.approvalsInboxEmpty} />
       ) : (
         <ul className="space-y-1 max-h-80 overflow-y-auto">
           {items.map((item) => (
             <li key={item.key}>
               <Link
                 href={item.href}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 -mx-3 hover:bg-[#F6F6F6] transition"
+                className="-mx-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface"
               >
-                <span className="shrink-0 rounded-md bg-[#F0EEF6] px-2 py-0.5 text-[11px] font-medium text-[#1F114C]">
+                <span className="shrink-0 rounded-md bg-brand-tint px-2 py-0.5 text-caption font-medium text-brand">
                   {item.kind === 'vacancy' ? md.approvalKindVacancy : md.approvalKindOffer}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm text-[#333] font-medium truncate">{item.primary}</span>
-                  <span className="block text-[12px] text-[#8B8B8B] truncate">
+                  <span className="block truncate text-body font-medium text-primary">{item.primary}</span>
+                  <span className="block truncate text-callout text-muted">
                     {item.kind === 'offer'
                       ? item.secondary
                       : item.secondary && md.approvalCreatedBy.replace('{name}', item.secondary)}
                   </span>
                 </span>
-                <span className="shrink-0 text-[12px] text-[#8B8B8B]">
+                <span className="shrink-0 text-callout text-muted">
                   {md.approvalRequestedOn.replace('{date}', formatDate(item.requestedAt))}
                 </span>
               </Link>

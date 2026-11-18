@@ -15,10 +15,27 @@ export interface CspOrigins {
    */
   assessmentPlayer?: string;
   /**
-   * The https origin of a link-out provider's own site (PCA, NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN), or '' when
-   * unset. Added to `frame-src` only: the portal frames that provider's page in a sandboxed frame, as timssuite.com does.
+   * The https origin of a link-out provider's own site (PCA), from `assessmentProviderFrameOrigin`, or '' when framing
+   * is turned off. Added to `frame-src` only: the portal frames that provider's page in a sandboxed frame, as
+   * timssuite.com does.
    */
   assessmentProviderFrame?: string;
+}
+
+/**
+ * PCA's own site. The portal frames it by default: timshr.com sends no X-Frame-Options and no `frame-ancestors`
+ * (checked 2026-11-14), and timssuite.com frames its /surveys the same way.
+ */
+export const DEFAULT_ASSESSMENT_PROVIDER_FRAME_ORIGIN = 'https://timshr.com';
+
+/**
+ * The origin the candidate portal frames PCA from, the ONE value both the CSP `frame-src` and the portal's launch read
+ * (so the two can never disagree). NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN overrides the default; unset or empty
+ * keeps timshr.com; any value that is not an https URL (for example `off`) turns framing off ('') and PCA links out.
+ */
+export function assessmentProviderFrameOrigin(value: string | undefined): string {
+  if (value === undefined || value.trim() === '') return DEFAULT_ASSESSMENT_PROVIDER_FRAME_ORIGIN;
+  return httpsOriginOf(value.trim());
 }
 
 /** The https origin of an absolute URL, or '' when unset, invalid or not https. */

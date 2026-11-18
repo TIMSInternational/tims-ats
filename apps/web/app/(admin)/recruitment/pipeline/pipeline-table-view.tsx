@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { PipelineStageWithApps } from '../../../../lib/trpc-types';
+import { CHOICE_INPUT_CLASSES, SortableHeader } from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
 import type { BoardStatus } from '../../../../lib/pipeline-url-state';
@@ -9,6 +10,9 @@ import type { ScheduleRequest } from './pipeline-actions';
 import { applicationStatusMap } from './pipeline-status';
 import { PipelineBulkBar } from './pipeline-bulk-bar';
 import { PipelineTableRow } from './pipeline-table-row';
+import { PipelineTableCard } from './pipeline-table-card';
+import { useNarrowViewport } from './use-narrow-viewport';
+import { PipelineSortSelect } from './pipeline-sort-select';
 import { flattenBoard, type FlatApp } from './pipeline-table-data';
 import type { RejectableApplication } from './reject-candidate-modal';
 
@@ -34,13 +38,8 @@ interface PipelineTableViewProps {
 type SortKey = 'name' | 'stage' | 'fit' | 'days' | 'source';
 type SortDir = 'asc' | 'desc';
 
-function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
-  return (
-    <svg className={`w-3 h-3 inline ml-0.5 ${active ? 'text-[#1F114C]' : 'text-[#ccc]'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-      {dir === 'asc' ? <path d="M8 15l4-4 4 4" /> : <path d="M8 9l4 4 4-4" />}
-    </svg>
-  );
-}
+const SORT_KEYS: readonly SortKey[] = ['name', 'stage', 'fit', 'source', 'days'];
+const PLAIN_TH = 'px-3 py-2.5 text-callout font-semibold text-secondary';
 
 export function PipelineTableView({
   stages,
@@ -59,6 +58,7 @@ export function PipelineTableView({
   const [sortKey, setSortKey] = useState<SortKey>('stage');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const narrow = useNarrowViewport();
 
   const flatApps: FlatApp[] = useMemo(() => flattenBoard(stages), [stages]);
 
@@ -70,11 +70,21 @@ export function PipelineTableView({
       }
       let cmp = 0;
       switch (sortKey) {
-        case 'name': cmp = a.name.localeCompare(b.name); break;
-        case 'stage': cmp = a.stageOrder - b.stageOrder; break;
-        case 'fit': cmp = (a.fitScore ?? 0) - (b.fitScore ?? 0); break;
-        case 'days': cmp = a.days - b.days; break;
-        case 'source': cmp = a.source.localeCompare(b.source); break;
+        case 'name':
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case 'stage':
+          cmp = a.stageOrder - b.stageOrder;
+          break;
+        case 'fit':
+          cmp = (a.fitScore ?? 0) - (b.fitScore ?? 0);
+          break;
+        case 'days':
+          cmp = a.days - b.days;
+          break;
+        case 'source':
+          cmp = a.source.localeCompare(b.source);
+          break;
       }
       return sortDir === 'desc' ? -cmp : cmp;
     });
@@ -82,8 +92,12 @@ export function PipelineTableView({
   }, [flatApps, sortKey, sortDir]);
 
   const toggleSort = (key: SortKey) => {
-    if (sortKey === key) { setSortDir(sortDir === 'asc' ? 'desc' : 'asc'); }
-    else { setSortKey(key); setSortDir('asc'); }
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
   };
 
   const stageList = stages.map((s) => ({ id: s.id, name: s.name, order: s.order }));
@@ -111,22 +125,62 @@ export function PipelineTableView({
   };
   const clearSelection = () => setSelected(new Set());
 
-  const header = (label: string, key: SortKey, align: 'left' | 'center' = 'center') => (
-    <th
-      className={`text-${align} py-2.5 px-3 text-[#585858] font-medium cursor-pointer select-none`}
-      onClick={() => toggleSort(key)}
-      aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-    >
-      {label} <SortIcon active={sortKey === key} dir={sortDir} />
-    </th>
+  const sortLabels: Record<SortKey, string> = {
+    name: p.colCandidate,
+    stage: p.colStage,
+    fit: p.colFit,
+    source: p.colSource,
+    days: p.colDays,
+  };
+  const header = (key: SortKey, align: 'left' | 'center' = 'center') => (
+    <SortableHeader
+      label={sortLabels[key]}
+      direction={sortKey === key ? sortDir : null}
+      onSort={() => toggleSort(key)}
+      align={align}
+      className="px-3"
+    />
+  );
+  const count = sorted.length;
+  const countText =
+    boardStatus === 'active'
+      ? count === 1
+        ? p.tableCountActiveOne
+        : p.tableCountActive.replace('{n}', String(count))
+      : count === 1
+        ? p.tableCountAllOne
+        : p.tableCountAll.replace('{n}', String(count));
+  const emptyText = boardStatus === 'rejected' ? p.noRejectedCandidates : p.noCandidatesInPipeline;
+  const nextStageOf = (app: FlatApp) => stageList.find((s) => s.order === app.stageOrder + 1);
+
+  const selectAll = (
+    <input
+      type="checkbox"
+      aria-label={p.bulkSelectAll}
+      checked={allSelected}
+      disabled={selectable.length === 0}
+      onChange={toggleAll}
+      className={CHOICE_INPUT_CLASSES}
+    />
   );
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden h-full flex flex-col">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-[#EDEDED]">
-        <h3 className="text-[13px] font-semibold text-[#1F114C]">
-          {(boardStatus === 'active' ? p.tableCountActive : p.tableCountAll).replace('{n}', String(sorted.length))}
-        </h3>
+    <div className="bg-white rounded-xl shadow-card overflow-hidden h-full flex flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-border md:px-5">
+        <h2 className="text-subheading font-semibold text-brand">{countText}</h2>
+        {narrow && count > 1 && (
+          <PipelineSortSelect
+            keys={SORT_KEYS}
+            labels={sortLabels}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortKey={(key) => {
+              setSortKey(key);
+              setSortDir('asc');
+            }}
+            onReverse={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+          />
+        )}
       </div>
       {bulkEnabled && selectedApps.length > 0 && (
         <PipelineBulkBar
@@ -143,46 +197,84 @@ export function PipelineTableView({
                 }
               : undefined
           }
-          onReject={onBulkReject ? () => onBulkReject(selectedApps.map((app) => ({ id: app.id, vacancyTitle: app.name }))) : undefined}
-          onTag={onBulkTag ? (tag) => onBulkTag(selectedApps.map((app) => app.candidateId), tag) : undefined}
+          onReject={
+            onBulkReject
+              ? () => onBulkReject(selectedApps.map((app) => ({ id: app.id, vacancyTitle: app.name })))
+              : undefined
+          }
+          onTag={
+            onBulkTag
+              ? (tag) =>
+                  onBulkTag(
+                    selectedApps.map((app) => app.candidateId),
+                    tag,
+                  )
+              : undefined
+          }
         />
       )}
 
       <div className="overflow-auto flex-1">
-        <table className="w-full min-w-[640px] text-[11px]">
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-[#FAFAFA] border-b border-[#EDEDED]">
-              {bulkEnabled && (
-                <th className="w-8 py-2.5 pl-4">
-                  <input
-                    type="checkbox"
-                    aria-label={p.bulkSelectAll}
-                    checked={allSelected}
-                    disabled={selectable.length === 0}
-                    onChange={toggleAll}
-                    className="h-3.5 w-3.5 accent-[#1F114C]"
+        {narrow ? (
+          <>
+            {bulkEnabled && selectable.length > 0 && (
+              <label className="flex min-h-11 items-center gap-2 border-b border-border px-4 text-body text-primary">
+                {selectAll}
+                {p.bulkSelectAll}
+              </label>
+            )}
+            {count === 0 ? (
+              <p className="py-12 text-center text-body text-secondary">{emptyText}</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {sorted.map((app) => (
+                  <PipelineTableCard
+                    key={app.id}
+                    app={app}
+                    nextStage={nextStageOf(app)}
+                    statusMap={statusMap}
+                    bulkEnabled={bulkEnabled}
+                    isSelected={selected.has(app.id)}
+                    onToggleSelect={() => toggleRow(app.id)}
+                    onMove={onMove}
+                    onReject={onReject}
+                    onSchedule={onSchedule}
                   />
+                ))}
+              </ul>
+            )}
+          </>
+        ) : (
+          <table className="w-full min-w-160">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-surface-hover border-b border-border">
+                {bulkEnabled && (
+                  <th scope="col" className="w-8 py-2.5 pl-4">
+                    {selectAll}
+                  </th>
+                )}
+                {header('name', 'left')}
+                {header('stage')}
+                {header('fit')}
+                {header('source')}
+                {header('days')}
+                <th scope="col" className={`${PLAIN_TH} text-center`}>
+                  {p.colStatus}
                 </th>
-              )}
-              {header(p.colCandidate, 'name', 'left')}
-              {header(p.colStage, 'stage')}
-              {header(p.colFit, 'fit')}
-              {header(p.colSource, 'source')}
-              {header(p.colDays, 'days')}
-              <th className="text-center py-2.5 px-3 text-[#585858] font-medium">{p.colStatus}</th>
-              <th className="text-center py-2.5 px-3 text-[#585858] font-medium">{p.colSla}</th>
-              <th className="text-right py-2.5 px-4 text-[#585858] font-medium">{p.colActions}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((app, idx) => {
-              const nextStage = stageList.find((s) => s.order === app.stageOrder + 1);
-              return (
+                <th scope="col" className={`${PLAIN_TH} text-center`}>
+                  {p.colSla}
+                </th>
+                <th scope="col" className={`${PLAIN_TH} px-4 text-right`}>
+                  {p.colActions}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((app) => (
                 <PipelineTableRow
                   key={app.id}
                   app={app}
-                  nextStage={nextStage}
-                  striped={idx % 2 === 1}
+                  nextStage={nextStageOf(app)}
                   statusMap={statusMap}
                   bulkEnabled={bulkEnabled}
                   isSelected={selected.has(app.id)}
@@ -191,17 +283,17 @@ export function PipelineTableView({
                   onReject={onReject}
                   onSchedule={onSchedule}
                 />
-              );
-            })}
-            {sorted.length === 0 && (
-              <tr>
-                <td colSpan={bulkEnabled ? 9 : 8} className="py-12 text-center text-[13px] text-[#8B8B8B]">
-                  {boardStatus === 'rejected' ? p.noRejectedCandidates : p.noCandidatesInPipeline}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ))}
+              {count === 0 && (
+                <tr>
+                  <td colSpan={bulkEnabled ? 9 : 8} className="py-12 text-center text-body text-secondary">
+                    {emptyText}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

@@ -1,10 +1,58 @@
 'use client';
 
-import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { Ban, Check, Clock, Hourglass, Play } from 'lucide-react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
+import {
+  DASHBOARD_CARD,
+  DASHBOARD_EMPTY,
+  DASHBOARD_ITEM,
+  DASHBOARD_ITEM_HEAD,
+  DASHBOARD_ITEM_META,
+  DASHBOARD_ITEM_TITLE,
+  DASHBOARD_LIST,
+  DASHBOARD_TITLE,
+} from './dashboard-styles';
+import { EvalButton } from './eval-button';
+import { EvalChip } from './eval-chip';
+import type { EvalChipTone } from './eval-control-styles';
+import { EvalLoadError } from './eval-load-error';
+import { EVAL_LEAD_CLASSES, EVAL_SKELETON_CLASSES } from './eval-styles';
 
 const ACTIVE_STATUSES = new Set(['assigned', 'in_progress']);
+
+/** The status chip (PCA Chip, word + icon): waiting on the candidate is warn, done is ok, expired is danger. */
+type ChipState = 'assigned' | 'in_progress' | 'completed' | 'expired' | 'other';
+const CHIP_TONE: Record<ChipState, EvalChipTone> = {
+  assigned: 'warn',
+  in_progress: 'warn',
+  completed: 'ok',
+  expired: 'danger',
+  other: 'neutral',
+};
+const CHIP_ICON: Record<ChipState, ReactNode> = {
+  assigned: <Play aria-hidden="true" />,
+  in_progress: <Hourglass aria-hidden="true" />,
+  completed: <Check aria-hidden="true" strokeWidth={2.5} />,
+  expired: <Clock aria-hidden="true" />,
+  other: <Ban aria-hidden="true" />,
+};
+function chipState(status: string, expired: boolean): ChipState {
+  if (expired) return 'expired';
+  return status === 'assigned' || status === 'in_progress' || status === 'completed' ? status : 'other';
+}
+
+// The section in the TIMS evaluation design: a block under the PCA divider with its serif title; each assignment a PCA
+// bordered panel (title3, a caption, the chip, the result line, the action as a PCA button).
+const RESULT_CLASSES = `${EVAL_LEAD_CLASSES} mt-3`;
+const ACTION_CLASSES = 'mt-4';
+/** The loading placeholder: soft PCA blocks in the shape of one panel (the name, the duration, the chip). */
+const SKELETON_PANEL_CLASSES = `${DASHBOARD_ITEM} flex items-start justify-between gap-3`;
+const SKELETON_TEXT_CLASSES = 'flex-1 space-y-2';
+const SKELETON_TITLE_CLASSES = `${EVAL_SKELETON_CLASSES} h-[18px] w-1/3`;
+const SKELETON_LINE_CLASSES = `${EVAL_SKELETON_CLASSES} h-3 w-1/5`;
+const SKELETON_CHIP_CLASSES = 'h-7 w-24 shrink-0 animate-pulse rounded-full bg-eval-bg3 motion-reduce:animate-none';
 
 function isExpired(expiresAt: Date | null): boolean {
   return expiresAt !== null && expiresAt.getTime() < Date.now();
@@ -18,24 +66,35 @@ function isExpired(expiresAt: Date | null): boolean {
 // above it (the candidate saw "no assessments yet" right over four TIMS tests).
 export function DashboardAssessments({ orgSlug, hideWhenEmpty = false }: { orgSlug: string; hideWhenEmpty?: boolean }) {
   const { t } = useI18n();
-  const { data, isLoading, isError } = trpc.candidatePortal.getMyAssessments.useQuery({ orgSlug });
+  const { data, isLoading, isError, refetch } = trpc.candidatePortal.getMyAssessments.useQuery({ orgSlug });
 
-  const header = <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.assessments}</h2>;
+  const header = (
+    <h2 id="native-assessments-heading" className={DASHBOARD_TITLE}>
+      {t.portalDashboard.assessments}
+    </h2>
+  );
 
   if (isLoading) {
     if (hideWhenEmpty) return null;
     return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
+      <section aria-labelledby="native-assessments-heading" aria-busy="true" className={DASHBOARD_CARD}>
         {header}
-        <p className="text-[12px] text-muted">{t.portalDashboard.assessLoading}</p>
+        <span className="sr-only">{t.portalDashboard.assessLoading}</span>
+        <div aria-hidden="true" className={SKELETON_PANEL_CLASSES}>
+          <div className={SKELETON_TEXT_CLASSES}>
+            <div className={SKELETON_TITLE_CLASSES} />
+            <div className={SKELETON_LINE_CLASSES} />
+          </div>
+          <div className={SKELETON_CHIP_CLASSES} />
+        </div>
       </section>
     );
   }
   if (isError) {
     return (
-      <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
+      <section aria-labelledby="native-assessments-heading" className={DASHBOARD_CARD}>
         {header}
-        <p className="text-[12px] text-[#B42318]">{t.portalDashboard.assessError}</p>
+        <EvalLoadError title={t.portalDashboard.assessError} onRetry={() => void refetch()} />
       </section>
     );
   }
@@ -55,41 +114,41 @@ export function DashboardAssessments({ orgSlug, hideWhenEmpty = false }: { orgSl
       case 'cancelled':
         return t.portalDashboard.assessStatusCancelled;
       default:
-        return status;
+        // Never show a raw status code: anything not started reads as "not started".
+        return t.portalDashboard.assessStatusAssigned;
     }
   };
 
   return (
-    <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
+    <section aria-labelledby="native-assessments-heading" className={DASHBOARD_CARD}>
       {header}
 
       {assignments.length === 0 ? (
-        <p className="text-[12px] text-muted">{t.portalDashboard.assessEmpty}</p>
+        <p className={DASHBOARD_EMPTY}>{t.portalDashboard.assessEmpty}</p>
       ) : (
-        <ul className="space-y-3">
+        <ul className={DASHBOARD_LIST}>
           {assignments.map((assignment) => {
             const expired = ACTIVE_STATUSES.has(assignment.status) && isExpired(assignment.expiresAt);
             const active = ACTIVE_STATUSES.has(assignment.status) && !expired;
+            const chip = chipState(assignment.status, expired);
             return (
-              <li key={assignment.id} className="rounded-xl border border-[#EDEDED] p-4">
-                <div className="flex items-start justify-between gap-3">
+              <li key={assignment.id} className={DASHBOARD_ITEM}>
+                <div className={DASHBOARD_ITEM_HEAD}>
                   <div className="min-w-0">
-                    <p className="text-[14px] font-semibold text-[#1F114C] truncate">
-                      {assignment.assessmentType.name}
-                    </p>
+                    <p className={DASHBOARD_ITEM_TITLE}>{assignment.assessmentType.name}</p>
                     {assignment.assessmentType.duration !== null && (
-                      <p className="text-[11px] text-muted mt-1">
+                      <p className={DASHBOARD_ITEM_META}>
                         {assignment.assessmentType.duration} {t.portalDashboard.assessMinutes}
                       </p>
                     )}
                   </div>
-                  <span className="shrink-0 rounded-full bg-[#F4F1FF] px-2.5 py-1 text-[11px] font-medium text-[#1F114C]">
+                  <EvalChip tone={CHIP_TONE[chip]} icon={CHIP_ICON[chip]}>
                     {statusLabel(assignment.status, expired)}
-                  </span>
+                  </EvalChip>
                 </div>
 
                 {assignment.status === 'completed' && (
-                  <p className="text-[12px] text-[#585858] mt-2">
+                  <p className={RESULT_CLASSES}>
                     {assignment.result?.hasPending
                       ? t.portalDashboard.assessPendingNotice
                       : `${t.portalDashboard.assessScoreLabel}: ${assignment.result?.normalizedScore ?? '—'}`}
@@ -97,14 +156,15 @@ export function DashboardAssessments({ orgSlug, hideWhenEmpty = false }: { orgSl
                 )}
 
                 {active && (
-                  <Link
+                  <EvalButton
                     href={`/careers/${orgSlug}/dashboard/assessments/${assignment.id}`}
-                    className="mt-3 inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition"
+                    width="bar"
+                    className={ACTION_CLASSES}
                   >
                     {assignment.status === 'in_progress'
                       ? t.portalDashboard.assessContinue
                       : t.portalDashboard.assessStart}
-                  </Link>
+                  </EvalButton>
                 )}
               </li>
             );

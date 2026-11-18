@@ -2,64 +2,77 @@
 
 import React from 'react';
 import { Skeleton } from './skeleton';
+import { Pagination, type PaginationProps } from './pagination';
+import { SortableHeader, type SortDirection } from './sortable-header';
 import { useI18n } from '../lib/i18n';
 
 interface Column {
   key: string;
+  /** Sentence case, descriptive (lists-and-tables.md › Content). */
   label: string;
   align?: 'left' | 'center' | 'right';
-}
-
-interface PaginationProps {
-  page: number;
-  limit: number;
-  total: number;
-  onPageChange: (page: number) => void;
-  itemLabel?: string;
+  /** Makes the heading a sort button with aria-sort. */
+  sortDirection?: SortDirection;
+  onSort?: () => void;
+  /** Visually hidden heading (e.g. an actions column). */
+  srOnly?: boolean;
+  /** Extra classes for the heading and skeleton cells, e.g. `hidden 2xl:table-cell` for a column that only fits wide screens. */
+  className?: string;
 }
 
 interface DataTableProps {
   columns: Column[];
+  /** The table rows (<tr>). Rows are `border-b border-border hover:bg-surface-hover`, cells `px-4 py-3 text-body`. */
   children: React.ReactNode;
   loading?: boolean;
   skeletonRows?: number;
+  /** Shown full width (outside the scrolling table) when there are no rows. */
   empty?: React.ReactNode;
-  pagination?: PaginationProps;
+  pagination?: Omit<PaginationProps, 'className'>;
+  /**
+   * The same items as a stacked list for phones (foundation-spec.md §7): when given, it shows below md and
+   * the table from md up. Each item: primary text, two facts, a status chip.
+   */
+  mobileList?: React.ReactNode;
+  /** Accessible name for the table (e.g. the page title). */
+  label?: string;
 }
 
-function SkeletonRows({
-  columns,
-  count,
-}: {
-  columns: Column[];
-  count: number;
-}) {
+const ALIGN = { left: 'text-left', center: 'text-center', right: 'text-right' } as const;
+const TABLE_FROM_MD = 'hidden md:block';
+
+function renderHeader(col: Column) {
+  if (col.onSort) {
+    return (
+      <SortableHeader
+        key={col.key}
+        label={col.label}
+        direction={col.sortDirection ?? null}
+        onSort={col.onSort}
+        align={col.align}
+      />
+    );
+  }
+  return (
+    <th
+      key={col.key}
+      scope="col"
+      className={`px-4 py-2.5 text-callout font-semibold text-secondary ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}
+    >
+      {col.srOnly ? <span className="sr-only">{col.label}</span> : col.label}
+    </th>
+  );
+}
+
+function SkeletonRows({ columns, count }: { columns: Column[]; count: number }) {
   return (
     <>
       {Array.from({ length: count }).map((_, rowIdx) => (
-        <tr
-          key={rowIdx}
-          className="border-b border-[#F6F6F6] animate-pulse"
-        >
+        <tr key={rowIdx} className="border-b border-border-subtle">
           {columns.map((col) => (
-            <td
-              key={col.key}
-              className={`px-4 py-3 ${
-                col.align === 'right'
-                  ? 'text-right'
-                  : col.align === 'center'
-                    ? 'text-center'
-                    : ''
-              }`}
-            >
+            <td key={col.key} className={`px-4 py-3 ${ALIGN[col.align ?? 'left']} ${col.className ?? ''}`}>
               <Skeleton
-                className={`h-4 ${
-                  col.align === 'right'
-                    ? 'w-16 ml-auto'
-                    : col.align === 'center'
-                      ? 'w-16 mx-auto'
-                      : 'w-24'
-                } rounded`}
+                className={`h-4 ${col.align === 'right' ? 'w-16 ml-auto' : col.align === 'center' ? 'w-16 mx-auto' : 'w-24'} rounded`}
               />
             </td>
           ))}
@@ -69,6 +82,7 @@ function SkeletonRows({
   );
 }
 
+/** The shared table card (foundation-spec.md §7). */
 export function DataTable({
   columns,
   children,
@@ -76,139 +90,36 @@ export function DataTable({
   skeletonRows = 5,
   empty,
   pagination,
+  mobileList,
+  label,
 }: DataTableProps) {
   const { t } = useI18n();
-  const totalPages = pagination
-    ? Math.ceil(pagination.total / pagination.limit)
-    : 0;
-  const visiblePages = pagination
-    ? Math.min(totalPages, 5)
-    : 0;
-
-  const showEmpty = !loading && React.Children.count(children) === 0;
+  const showEmpty = !loading && React.Children.count(children) === 0 && Boolean(empty);
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
-      <div className="flex-1 overflow-auto min-h-0">
-        <table className="w-full min-w-[640px]">
-          <thead className="sticky top-0 bg-white z-10">
-            <tr className="border-b border-[#EDEDED]">
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  className={`text-xs font-semibold text-[#8B8B8B] uppercase tracking-wide px-4 py-3 ${
-                    col.align === 'right'
-                      ? 'text-right'
-                      : col.align === 'center'
-                        ? 'text-center'
-                        : 'text-left'
-                  }`}
-                >
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <SkeletonRows columns={columns} count={skeletonRows} />
-            ) : showEmpty && empty ? (
-              <tr>
-                <td colSpan={columns.length}>{empty}</td>
-              </tr>
-            ) : (
-              children
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {pagination && (
-        <div className="flex flex-wrap items-center justify-between gap-y-2 px-3 md:px-5 py-3.5 border-t border-[#EDEDED] flex-shrink-0">
-          <span className="text-xs text-[#8B8B8B]">
-            Mostrando{' '}
-            {pagination.total > 0
-              ? pagination.page * pagination.limit + 1
-              : 0}
-            -
-            {Math.min(
-              (pagination.page + 1) * pagination.limit,
-              pagination.total,
-            )}{' '}
-            de {pagination.total}{' '}
-            {pagination.itemLabel || 'registros'}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() =>
-                pagination.onPageChange(
-                  Math.max(0, pagination.page - 1),
-                )
-              }
-              disabled={pagination.page === 0}
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#8B8B8B] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-              aria-label={t.common.prevPage}
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            {Array.from({ length: visiblePages }).map((_, i) => (
-              <button
-                key={i}
-                onClick={() => pagination.onPageChange(i)}
-                className={`w-8 h-8 rounded-lg text-xs font-medium transition ${
-                  pagination.page === i
-                    ? 'bg-[#1F114C] text-white'
-                    : 'border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6]'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-            {totalPages > 5 && (
-              <>
-                <span className="text-xs text-[#8B8B8B] px-1">...</span>
-                <button
-                  onClick={() =>
-                    pagination.onPageChange(totalPages - 1)
-                  }
-                  className="w-8 h-8 rounded-lg text-xs font-medium border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6] transition"
-                >
-                  {totalPages}
-                </button>
-              </>
-            )}
-            <button
-              onClick={() =>
-                pagination.onPageChange(pagination.page + 1)
-              }
-              disabled={
-                (pagination.page + 1) * pagination.limit >=
-                pagination.total
-              }
-              className="w-8 h-8 rounded-lg border border-[#EDEDED] flex items-center justify-center text-[#585858] hover:bg-[#F6F6F6] transition disabled:opacity-40"
-              aria-label={t.common.nextPage}
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white shadow-card">
+      {loading && (
+        <span className="sr-only" role="status">
+          {t.common.loadingContent}
+        </span>
       )}
+      {showEmpty ? (
+        <div className="flex-1">{empty}</div>
+      ) : (
+        <>
+          {mobileList && !loading && <div className="divide-y divide-border md:hidden">{mobileList}</div>}
+          <div className={`min-h-0 flex-1 overflow-auto ${mobileList && !loading ? TABLE_FROM_MD : ''}`}>
+            <table className="w-full min-w-[640px]" aria-label={label} aria-busy={loading || undefined}>
+              <thead className="sticky top-0 z-10 bg-white">
+                <tr className="border-b border-border">{columns.map(renderHeader)}</tr>
+              </thead>
+              <tbody>{loading ? <SkeletonRows columns={columns} count={skeletonRows} /> : children}</tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {pagination && <Pagination {...pagination} className="shrink-0" />}
     </div>
   );
 }

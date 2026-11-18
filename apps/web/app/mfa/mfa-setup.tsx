@@ -6,6 +6,14 @@ import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../lib/i18n';
 import { mfaMode, type MfaMode, type Aal } from '../../lib/mfa';
 import { takePostLoginDestination } from '../../lib/auth/post-login-destination';
+import { Button } from '../../components/button';
+import { TEXT_LINK_CLASSES } from '../../components/button-styles';
+import { Field } from '../../components/field';
+import { TextInput } from '../../components/text-input';
+import { AUTH_ERROR_CLASSES, AUTH_NOTICE_CLASSES } from '../(auth)/auth-card';
+import { MfaEnabledPanel } from './mfa-enabled-panel';
+import { MfaEnrollSecret } from './mfa-enroll-secret';
+import { MfaSuccessIcon } from './mfa-success-icon';
 
 // Two-factor (TOTP) setup + step-up, backed by Supabase Auth MFA. Three modes,
 // derived purely in lib/mfa.ts:
@@ -128,142 +136,98 @@ export function MfaSetup({ returnTo, required }: { returnTo?: string; required: 
   // out. A plain <a> (not next/link): /logout is a GET route handler and must never be prefetched.
   const exitLink =
     required || returnTo ? (
-      <a href="/logout" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">
+      <a href="/logout" className={`${TEXT_LINK_CLASSES} min-h-7`}>
         {t.mfa.signOut}
       </a>
     ) : (
-      <a href="/dashboard" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] hover:underline">
+      <a href="/dashboard" className={`${TEXT_LINK_CLASSES} min-h-7`}>
         {t.mfa.backToDashboard}
       </a>
     );
 
-  const successIcon = (
-    <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-      <svg
-        className="w-6 h-6 text-green-600"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-      >
-        <path d="M5 13l4 4L19 7" />
-      </svg>
-    </div>
-  );
+  // Enrollment could not create a factor: no QR to scan, so no code field either — say so and offer a
+  // retry of the same load (feedback.md › Best practices).
+  const enrollFailed = mode === 'enroll' && !qr;
 
   return (
-    <div className="w-full max-w-[440px]">
-      <div className="text-center mb-6">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1F114C] mb-4">
-          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+    <div className="w-full max-w-md">
+      <div className="mb-6 text-center">
+        <div className="mb-4 inline-flex size-14 items-center justify-center rounded-2xl bg-brand">
+          <svg
+            className="size-7 text-white"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
             <path d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
           </svg>
         </div>
-        <h1 className="text-[22px] font-bold text-[#1F114C]">{t.mfa.title}</h1>
-        <p className="text-[13px] text-[#8B8B8B] mt-1">{t.mfa.subtitle}</p>
+        <h1 className="font-display text-title font-semibold text-brand">{t.mfa.title}</h1>
+        <p className="mx-auto mt-1 max-w-prose text-body text-muted">{t.mfa.subtitle}</p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.08)] p-8">
+      <div className="rounded-2xl bg-white p-6 shadow-card sm:p-8">
         {loading ? (
-          <p className="text-center text-[13px] text-[#585858]">{t.mfa.loading}</p>
+          <div aria-busy="true" className="flex flex-col items-center gap-4">
+            <p role="status" className="sr-only">
+              {t.mfa.loading}
+            </p>
+            <div className="size-44 animate-pulse rounded-xl bg-surface motion-reduce:animate-none" />
+            <div className="h-11 w-full animate-pulse rounded-lg bg-surface motion-reduce:animate-none" />
+          </div>
         ) : redirecting ? (
           <div className="text-center" role="status">
-            {successIcon}
-            <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">{t.mfa.enabledTitle}</h3>
-            <p className="text-[13px] text-[#585858]">{t.mfa.redirecting}</p>
+            <MfaSuccessIcon />
+            <h2 className="mb-1 text-heading font-semibold text-brand">{t.mfa.enabledTitle}</h2>
+            <p className="text-body text-secondary">{t.mfa.redirecting}</p>
           </div>
         ) : mode === 'enabled' ? (
-          <div className="text-center">
-            {successIcon}
-            <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">{t.mfa.enabledTitle}</h3>
-            <p className="text-[13px] text-[#585858] mb-6">{t.mfa.enabledDesc}</p>
-            <a
-              href="/dashboard"
-              className="flex w-full h-11 items-center justify-center rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] transition mb-4"
-            >
-              {t.mfa.backToDashboard}
-            </a>
-            {error && (
-              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700 mb-3">
-                {error}
-              </div>
-            )}
-            {required ? (
-              <p className="text-[12px] text-[#8B8B8B]">{t.mfa.requiredCannotDisable}</p>
-            ) : confirmingDisable ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-left">
-                <p className="text-[13px] text-red-700 mb-3">{t.mfa.disableConfirm}</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDisable(false)}
-                    disabled={busy}
-                    className="flex-1 h-10 rounded-xl border border-[#EDEDED] bg-white text-[13px] font-medium text-[#333] hover:bg-[#FAFAFA] disabled:opacity-50 transition"
-                  >
-                    {t.mfa.cancel}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void disable()}
-                    disabled={busy}
-                    className="flex-1 h-10 rounded-xl bg-red-600 text-white text-[13px] font-semibold hover:bg-red-700 disabled:opacity-50 transition"
-                  >
-                    {busy ? t.mfa.disabling : t.mfa.disableConfirmBtn}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmingDisable(true)}
-                className="text-[13px] font-medium text-red-600 hover:underline"
-              >
-                {t.mfa.disable}
-              </button>
-            )}
+          <MfaEnabledPanel
+            required={required}
+            error={error}
+            busy={busy}
+            confirming={confirmingDisable}
+            onConfirming={setConfirmingDisable}
+            onDisable={() => void disable()}
+          />
+        ) : enrollFailed ? (
+          <div className="space-y-4 text-center">
+            <div role="alert">
+              <h2 className="mb-1 text-heading font-semibold text-primary">{t.mfa.enrollFailedTitle}</h2>
+              <p className="text-body text-secondary">{t.mfa.enrollFailedDesc}</p>
+            </div>
+            <Button variant="secondary" size="lg" fullWidth disabled={loading} onClick={() => void refresh()}>
+              {t.common.retry}
+            </Button>
+            <div>{exitLink}</div>
           </div>
         ) : (
           <div className="space-y-4">
             {required && (
-              <div
-                role="status"
-                className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-800"
-              >
+              <div role="status" className={AUTH_NOTICE_CLASSES}>
                 {t.mfa.enforcedNotice}
               </div>
             )}
             <div>
-              <h3 className="text-[15px] font-semibold text-[#1F114C] mb-1">
+              <h2 className="mb-1 text-heading font-semibold text-brand">
                 {mode === 'enroll' ? t.mfa.enrollTitle : t.mfa.challengeTitle}
-              </h3>
-              <p className="text-[13px] text-[#585858]">{mode === 'enroll' ? t.mfa.enrollScan : t.mfa.challengeDesc}</p>
+              </h2>
+              <p className="text-body text-secondary">{mode === 'enroll' ? t.mfa.enrollScan : t.mfa.challengeDesc}</p>
             </div>
 
-            {mode === 'enroll' && qr && (
-              <div className="flex flex-col items-center gap-3">
-                {/* Supabase returns the QR as an SVG data URI — render directly. */}
-                <img src={qr} alt="" className="w-44 h-44 rounded-xl border border-[#EDEDED]" />
-                {secret && (
-                  <div className="w-full">
-                    <p className="text-[11px] text-[#8B8B8B] mb-1">{t.mfa.secretLabel}</p>
-                    <code className="block w-full text-center text-[12px] font-mono tracking-wider text-[#333] bg-[#F6F6F6] rounded-lg px-3 py-2 break-all">
-                      {secret}
-                    </code>
-                  </div>
-                )}
-              </div>
-            )}
+            {mode === 'enroll' && qr && <MfaEnrollSecret qr={qr} secret={secret} />}
 
             {error && (
-              <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[13px] text-red-700">
+              <div role="alert" className={AUTH_ERROR_CLASSES}>
                 {error}
               </div>
             )}
 
-            <div>
-              <label className="block text-[12px] font-medium text-[#585858] mb-1.5">{t.mfa.codeLabel}</label>
-              <input
+            <Field label={t.mfa.codeLabel} id="mfa-code">
+              <TextInput
+                size="lg"
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 value={code}
@@ -271,19 +235,21 @@ export function MfaSetup({ returnTo, required }: { returnTo?: string; required: 
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void submitCode();
                 }}
-                className="w-full h-12 px-4 rounded-xl border border-[#EDEDED] text-center text-[18px] font-mono tracking-[0.4em] text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] transition"
+                className="text-center font-mono tracking-[0.4em]"
                 placeholder="000000"
-                aria-label={t.mfa.codeLabel}
               />
-            </div>
+            </Field>
 
-            <button
-              onClick={submitCode}
-              disabled={busy || code.length < 6}
-              className="w-full h-11 rounded-xl bg-[#1F114C] text-white text-[13px] font-semibold hover:bg-[#2a1a5e] disabled:opacity-50 transition"
+            <Button
+              size="lg"
+              fullWidth
+              onClick={() => void submitCode()}
+              loading={busy}
+              loadingLabel={t.mfa.verifying}
+              disabled={code.length < 6}
             >
-              {busy ? t.mfa.verifying : mode === 'enroll' ? t.mfa.verify : t.mfa.continueBtn}
-            </button>
+              {mode === 'enroll' ? t.mfa.verify : t.mfa.continueBtn}
+            </Button>
 
             <div className="text-center">{exitLink}</div>
           </div>

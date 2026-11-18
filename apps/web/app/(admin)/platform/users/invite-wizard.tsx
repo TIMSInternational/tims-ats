@@ -6,7 +6,21 @@ import { useUserInvitationCreate } from '../../../../lib/platform-api/user-invit
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { Modal, ErrorState } from '../../../../components';
+import { formatMessage } from '../../../../lib/i18n/format';
+import {
+  BUTTON_GROUP_CLASSES,
+  Button,
+  DialogCancelButton,
+  ErrorState,
+  FIELD_ERROR_CLASSES,
+  FIELD_LABEL_CLASSES,
+  Modal,
+  SegmentedControl,
+  buttonClasses,
+  inputClasses,
+  selectClasses,
+  textareaClasses,
+} from '../../../../components';
 import { isInviteRoleValid, rowsMissingRole } from '../../../../lib/invitations/invite-role';
 import { parseCSV, autoMap, type Mode, type BulkStep, type ParsedRow } from './invite-wizard.helpers';
 import { useBulkInvitationCreate, type BulkInvitationResponse } from '../../../../lib/platform-api/bulk-invitation-create';
@@ -49,7 +63,7 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
         { type: delivery === 'accepted' ? 'success' : 'warning' });
       onSuccess();
     },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => { toast(err.message || t.invitations.creationFailed, { type: 'error' }); },
   });
   const bulkInvite = useBulkInvitationCreate({
     onSuccess: (data) => {
@@ -127,36 +141,61 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
   const setActiveOrgId = mode === 'single' ? setOrgId : setBulkOrgId;
   const setActiveOrgSearch = mode === 'single' ? setOrgSearch : setBulkOrgSearch;
 
+  const inv = t.invitations;
+  const modeOptions = [
+    { value: 'single' as const, label: inv.singleMode },
+    { value: 'bulk' as const, label: inv.bulkMode },
+  ];
+  const orgResults = orgs.data?.organizations ?? [];
+
   return (
-    <Modal title={t.invitations.inviteUsersTitle} onClose={onClose} maxWidth="max-w-2xl">
-      {/* Mode tabs */}
-      <div className="flex gap-1 p-1 bg-[#F6F6F6] rounded-lg mb-5">
-        <button onClick={() => setMode('single')} className={`flex-1 py-2 text-xs font-medium rounded-md transition ${mode === 'single' ? 'bg-white shadow-sm text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
-          {t.invitations.singleMode}
-        </button>
-        <button onClick={() => { setMode('bulk'); setBulkStep('upload'); }} className={`flex-1 py-2 text-xs font-medium rounded-md transition ${mode === 'bulk' ? 'bg-white shadow-sm text-[#1F114C]' : 'text-[#8B8B8B]'}`}>
-          {t.invitations.bulkMode}
-        </button>
-      </div>
+    <Modal title={inv.inviteUserTitle} onClose={onClose} size="lg" dirty={Boolean(email) || parsedUsers.length > 0}>
+      {/* Mode switch: the same task, one person or a file (segmented-controls.md) */}
+      <SegmentedControl
+        label={inv.modeLabel}
+        options={modeOptions}
+        value={mode}
+        fullWidth
+        className="mb-5"
+        onChange={(next) => {
+          setMode(next);
+          if (next === 'bulk') setBulkStep('upload');
+        }}
+      />
 
       {/* Org selector (shared) */}
       {((mode === 'single') || (mode === 'bulk' && bulkStep === 'upload')) && (
         <div className="mb-4">
-          <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.organizationRequired}</label>
-          <input type="text" value={activeOrgSearch} onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); setRoleSlug(''); }} placeholder={t.invitations.searchOrganization} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" />
+          <label htmlFor="invite-wizard-org" className={FIELD_LABEL_CLASSES}>{inv.organizationRequired}</label>
+          <input
+            id="invite-wizard-org"
+            type="text"
+            autoComplete="off"
+            value={activeOrgSearch}
+            onChange={(e) => { setActiveOrgSearch(e.target.value); setActiveOrgId(''); setRoleSlug(''); }}
+            placeholder={inv.searchOrganization}
+            aria-describedby="invite-wizard-org-status"
+            className={inputClasses('md')}
+          />
           {activeOrgSearch && !activeOrgId && orgs.isError && (
-            <ErrorState onRetry={() => orgs.refetch()} error={orgs.error} />
+            <ErrorState size="inline" className="mt-2" onRetry={() => orgs.refetch()} error={orgs.error} />
           )}
-          {activeOrgSearch && !activeOrgId && orgs.data && (
-            <div className="mt-1 bg-white border border-[#EDEDED] rounded-lg shadow-lg max-h-32 overflow-y-auto">
-              {orgs.data.organizations.map((org) => (
-                <button key={org.id} type="button" onClick={() => { setActiveOrgId(org.id); setActiveOrgSearch(org.name); setRoleSlug(''); }} className="w-full text-left px-3 py-2 text-sm hover:bg-[#F6F6F6] transition">
-                  {org.name} <span className="text-[#8B8B8B] text-xs">({org.slug})</span>
+          {activeOrgSearch && !activeOrgId && orgs.data && orgResults.length > 0 && (
+            <div className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-border bg-white shadow-popover">
+              {orgResults.map((org) => (
+                <button key={org.id} type="button" onClick={() => { setActiveOrgId(org.id); setActiveOrgSearch(org.name); setRoleSlug(''); }} className="w-full px-3 py-2 text-left text-body text-primary transition-colors hover:bg-surface pointer-coarse:min-h-11">
+                  {org.name} <span className="text-callout text-secondary">({org.slug})</span>
                 </button>
               ))}
             </div>
           )}
-          {activeOrgId && <p className="text-[10px] text-green-600 mt-1">{t.invitations.organizationSelected}</p>}
+          <p id="invite-wizard-org-status" role="status" className="mt-1.5 text-callout">
+            {activeOrgId ? (
+              <span className="font-medium text-success">{formatMessage(inv.orgChosen, { name: activeOrgSearch })}</span>
+            ) : activeOrgSearch && orgs.data && orgResults.length === 0 ? (
+              <span className="text-secondary">{t.common.noResults}</span>
+            ) : null}
+          </p>
         </div>
       )}
 
@@ -164,23 +203,30 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
       {mode === 'single' && (
         <form onSubmit={(e) => { e.preventDefault(); setRoleTouched(true); if (email && orgId && isInviteRoleValid(roleSlug)) createSingle.mutate({ email, organizationId: orgId, roleSlug: roleSlug.trim() }); }} className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.emailRequired}</label>
-            <input type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+            <label htmlFor="invite-wizard-email" className={FIELD_LABEL_CLASSES}>{inv.emailRequired}</label>
+            <input id="invite-wizard-email" type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@empresa.com" className={inputClasses('md')} required />
           </div>
           <div>
-            <label htmlFor="invite-wizard-role" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.role} *</label>
-            {invitationRoles.isError && <ErrorState onRetry={() => invitationRoles.refetch()} />}
-            <select id="invite-wizard-role" aria-invalid={roleError || undefined} value={roleSlug} onChange={(e) => { setRoleSlug(e.target.value); setRoleTouched(true); }} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
-              <option value="">{t.invitations.selectRole}</option>
+            <label htmlFor="invite-wizard-role" className={FIELD_LABEL_CLASSES}>{inv.role} *</label>
+            {invitationRoles.isError && <ErrorState size="inline" className="mb-2" onRetry={() => invitationRoles.refetch()} />}
+            <select
+              id="invite-wizard-role"
+              aria-invalid={roleError || undefined}
+              aria-describedby={roleError ? 'invite-wizard-role-error' : undefined}
+              value={roleSlug}
+              onChange={(e) => { setRoleSlug(e.target.value); setRoleTouched(true); }}
+              className={selectClasses('md')}
+            >
+              <option value="">{inv.selectRole}</option>
               {invitationRoles.roles.map(r => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
-            {roleError && <p role="alert" className="mt-1 text-xs text-[#DD0C15]">{t.invitations.roleRequired}</p>}
+            {roleError && <p id="invite-wizard-role-error" role="alert" className={FIELD_ERROR_CLASSES}>{inv.roleRequired}</p>}
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
-            <button type="submit" disabled={!email || !orgId || createSingle.isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">
-              {createSingle.isPending ? t.common.saving : 'Enviar Invitación'}
-            </button>
+          <div className={`${BUTTON_GROUP_CLASSES} pt-2`}>
+            <DialogCancelButton onCancel={onClose} />
+            <Button type="submit" disabled={!email || !orgId} loading={createSingle.isPending} loadingLabel={inv.sending}>
+              {inv.sendInvitation}
+            </Button>
           </div>
         </form>
       )}
@@ -188,29 +234,31 @@ export function InviteWizard({ onClose, onSuccess }: InviteWizardProps) {
       {/* === BULK MODE === */}
       {mode === 'bulk' && bulkStep === 'upload' && (
         <div className="space-y-4">
-          <div className="border-2 border-dashed border-[#EDEDED] rounded-xl p-8 text-center hover:border-[#1F114C]/30 transition">
-            <svg className="w-10 h-10 mx-auto mb-3 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
-            <p className="text-sm text-[#585858] mb-1">{t.invitations.dragCsvHere}</p>
-            <p className="text-xs text-[#8B8B8B] mb-3">{t.invitations.clickToSelect}</p>
-            <label className="inline-block h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition cursor-pointer leading-9">
-              {t.invitations.selectFile}
-              <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={handleFileUpload} className="hidden" />
+          <div className="rounded-xl border-2 border-dashed border-field-border p-6 text-center md:p-8">
+            <svg className="mx-auto mb-3 size-8 text-muted" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+            <p className="mb-3 text-body text-primary">{inv.dragCsvHere}</p>
+            <label className={buttonClasses({ variant: 'secondary' })}>
+              {inv.selectFile}
+              <input type="file" accept=".csv,.tsv,.txt,.xlsx" onChange={handleFileUpload} className="sr-only" />
             </label>
           </div>
           <div className="relative">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-[#EDEDED]" /></div>
-            <div className="relative flex justify-center"><span className="px-3 bg-white text-xs text-[#8B8B8B]">{t.invitations.pasteDataDirectly}</span></div>
+            <div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-border" /></div>
+            <div className="relative flex justify-center"><span className="bg-white px-3 text-callout text-secondary">{inv.pasteDataDirectly}</span></div>
           </div>
+          <label htmlFor="invite-wizard-paste" className="sr-only">{inv.pasteLabel}</label>
           <textarea
+            id="invite-wizard-paste"
             rows={4}
+            aria-describedby="invite-wizard-format"
             placeholder={"email,nombre,apellido,rol\njuan@empresa.com,Juan,Perez,recruiter\nmaria@empresa.com,Maria,Lopez,hr_admin"}
-            className="w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-xs font-mono text-[#585858] placeholder:text-[#BABABA] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 resize-none"
+            className={textareaClasses('resize-none font-mono')}
             onPaste={(e) => { const text = e.clipboardData.getData('text'); if (text.includes('\n') || text.includes('\t')) { e.preventDefault(); handlePaste(text); } }}
             onChange={(e) => { if (e.target.value.includes('\n')) handlePaste(e.target.value); }}
           />
-          <div className="p-3 rounded-lg bg-blue-50 text-xs text-blue-700">
-            <strong>{t.invitations.expectedFormat}</strong> {t.invitations.csvColumnsHelp}
-          </div>
+          <p id="invite-wizard-format" className="rounded-lg bg-info-bg p-3 text-callout text-info">
+            <strong>{inv.expectedFormat}</strong> {inv.csvColumnsHelp}
+          </p>
         </div>
       )}
 

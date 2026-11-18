@@ -14,6 +14,10 @@ import {
   type PortalStatus,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
 import { canEmbedPlayer, chooseLaunchTarget, openTopLevel } from '../../../../../lib/assessment-player-launch';
+import { assessmentProviderFrameOrigin } from '../../../../../lib/security/csp';
+import { DASHBOARD_CARD, DASHBOARD_EMPTY, DASHBOARD_ITEM, DASHBOARD_LIST, DASHBOARD_TITLE } from './dashboard-styles';
+import { EvalLoadError } from './eval-load-error';
+import { EVAL_SKELETON_CLASSES } from './eval-styles';
 import { ProviderAssessmentFrame } from './provider-assessment-frame';
 import { frameMessages } from './provider-frame-messages';
 import { ProviderAssessmentItem, portalInstrumentName, type PortalMessages } from './provider-assessment-item';
@@ -25,16 +29,30 @@ import { ProviderAssessmentItem, portalInstrumentName, type PortalMessages } fro
 // include this site and its origin is the configured player origin; otherwise a top-level link-out. The URL carries a
 // single-use launch code: it is opened at once and never stored, logged or shown.
 const PLAYER_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN;
-// PCA is answered on the provider's own site: framed (sandboxed) when that site is the configured provider frame origin,
-// as timssuite.com frames it; otherwise a top-level link-out.
-const PROVIDER_FRAME_ORIGIN = process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN;
+// PCA is answered on the provider's own site (timshr.com): framed (sandboxed) on this page by default, as timssuite.com
+// frames it, in the same frame and bar as the other tests. The env overrides the origin or turns framing off, read
+// through the resolver the CSP frame-src uses; a page on any other origin links out top-level.
+const PROVIDER_FRAME_ORIGIN = assessmentProviderFrameOrigin(process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN);
 /** timssuite.com checks its PCA page's survey every 15 s. */
 export const PCA_POLL_MS = 15_000;
 /** After a sitting ends, re-read every 2 s for at most 60 s until its result has arrived. */
 export const SETTLE_POLL_MS = 2_000;
 const SETTLE_MAX_MS = 60_000;
-const INSTRUMENT_ORDER: Record<string, number> = { lia: 0, english: 1, personality: 2, pca: 3 };
+// The order HR reads them in (the results board): LIA, English, Personality, PCA, ITC-IA, MI.
+const INSTRUMENT_ORDER: Record<string, number> = { lia: 0, english: 1, personality: 2, pca: 3, itcia: 4, mi: 5 };
+const ACTIONABLE = new Set<PortalStatus>(['consent_needed', 'ready', 'in_progress']);
 const FINISHED_STATUSES = new Set<PortalStatus>(['completed', 'needs_review', 'expired']);
+
+// The loading placeholder in the TIMS evaluation design: soft PCA blocks in the shape of a test's panel (the code tile,
+// the name and the description, the status chip).
+const SKELETON_PANEL_CLASSES = `${DASHBOARD_ITEM} flex items-start gap-3`;
+const SKELETON_TILE_CLASSES = `${EVAL_SKELETON_CLASSES} size-10 shrink-0`;
+const SKELETON_TEXT_CLASSES = 'flex-1 space-y-2 pt-0.5';
+const SKELETON_TITLE_CLASSES = `${EVAL_SKELETON_CLASSES} h-[18px] w-1/3`;
+const SKELETON_LINE_CLASSES = `${EVAL_SKELETON_CLASSES} h-3 w-2/3`;
+const SKELETON_CHIP_CLASSES = 'h-7 w-24 shrink-0 animate-pulse rounded-full bg-eval-bg3 motion-reduce:animate-none';
+/** The list-refresh error over a list that is still shown. */
+const INLINE_ERROR_CLASSES = 'mb-3';
 
 /** The message for a failed launch, from the route's stable code (or its status). */
 export function launchErrorKey(error: unknown): keyof PortalMessages {
@@ -63,7 +81,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   // attempt leaves "in progress" (not just once): otherwise the dashboard can keep offering "Continue" for a finished
   // test. A framed PCA (TIMS's page sends no message) is polled as timssuite.com polls it.
   const [settling, setSettling] = useState<{ attemptId: string; until: number } | null>(null);
-  const { data, isLoading, isError } = useMyProviderAssessments(orgSlug, {
+  const { data, isLoading, isError, refetch } = useMyProviderAssessments(orgSlug, {
     pollMs: settling ? SETTLE_POLL_MS : frame?.sandboxed ? PCA_POLL_MS : false,
   });
   // The same (cached) read as "My applications": the consent notice names the vacancy of each assessment.
@@ -72,6 +90,9 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   const [consentFor, setConsentFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ attemptId: string; key: keyof PortalMessages } | null>(null);
+  // Provider pages (PCA) the candidate closed in this session: until the result arrives the card says it may be on its
+  // way instead of inviting a second sitting. UI state only: no data or polling change.
+  const [closedPages, setClosedPages] = useState<ReadonlySet<string>>(() => new Set());
 
   const refresh = useCallback(
     () => queryClient.invalidateQueries({ queryKey: providerAttemptsKey(orgSlug) }),
@@ -116,11 +137,13 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   };
 
   const framedAttemptId = frame?.attemptId ?? null;
+  const framedSandboxed = frame?.sandboxed === true;
   const closeFrame = useCallback(() => {
     if (framedAttemptId) setSettling({ attemptId: framedAttemptId, until: Date.now() + SETTLE_MAX_MS });
+    if (framedAttemptId && framedSandboxed) setClosedPages((current) => new Set(current).add(framedAttemptId));
     setFrame(null);
     void refresh();
-  }, [framedAttemptId, refresh]);
+  }, [framedAttemptId, framedSandboxed, refresh]);
 
   // The player says the sitting ended: keep its receipt on screen (as timssuite.com shows it) and start re-reading.
   const finishFrame = useCallback(() => {
@@ -147,12 +170,12 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     return () => window.clearTimeout(timer);
   }, [settling, settlingStatus]);
 
-  const header = (
-    <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.portalDashboard.providerAssessments}</h2>
-  );
+  // A block under the PCA divider with its serif title (no card of its own: the sheet is the one white surface).
   const section = (body: React.ReactNode) => (
-    <section className="bg-white rounded-2xl border border-[#EDEDED] p-5">
-      {header}
+    <section aria-labelledby="provider-assessments-heading" className={DASHBOARD_CARD}>
+      <h2 id="provider-assessments-heading" className={DASHBOARD_TITLE}>
+        {t.portalDashboard.providerAssessments}
+      </h2>
       {body}
     </section>
   );
@@ -171,12 +194,28 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
       onFinished={finishFrame}
     />
   );
-  const errorLine = <p className="text-[12px] text-[#B42318]">{t.portalDashboard.providerError}</p>;
+  const retry = () => void refetch();
 
   if (!data) {
     return section(
       <>
-        {isLoading ? <p className="text-[12px] text-muted">{t.portalDashboard.providerLoading}</p> : isError ? errorLine : null}
+        {isLoading ? (
+          <div aria-busy="true" className={DASHBOARD_LIST}>
+            <span className="sr-only">{t.portalDashboard.providerLoading}</span>
+            {[0, 1].map((row) => (
+              <div key={row} aria-hidden="true" className={SKELETON_PANEL_CLASSES}>
+                <div className={SKELETON_TILE_CLASSES} />
+                <div className={SKELETON_TEXT_CLASSES}>
+                  <div className={SKELETON_TITLE_CLASSES} />
+                  <div className={SKELETON_LINE_CLASSES} />
+                </div>
+                <div className={SKELETON_CHIP_CLASSES} />
+              </div>
+            ))}
+          </div>
+        ) : isError ? (
+          <EvalLoadError title={t.portalDashboard.providerError} onRetry={retry} />
+        ) : null}
         {frameNode}
       </>,
     );
@@ -191,13 +230,19 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
     timeStyle: 'short',
   });
 
+  // The next test to take (first actionable in this order) is the one filled button on the list.
+  const isAwaiting = (a: PortalProviderAttempt) => closedPages.has(a.attemptId) && a.status === 'ready';
+  const nextId = attempts.find((a) => ACTIONABLE.has(a.status) && !isAwaiting(a))?.attemptId ?? null;
+
   return section(
     <>
-      {isError && <div className="mb-3">{errorLine}</div>}
+      {isError && (
+        <EvalLoadError className={INLINE_ERROR_CLASSES} title={t.portalDashboard.providerError} onRetry={retry} />
+      )}
       {attempts.length === 0 ? (
-        <p className="text-[12px] text-muted">{t.portalDashboard.providerEmpty}</p>
+        <p className={DASHBOARD_EMPTY}>{t.portalDashboard.providerEmpty}</p>
       ) : (
-        <ul className="space-y-3">
+        <ul className={DASHBOARD_LIST}>
           {attempts.map((attempt) => (
             <ProviderAssessmentItem
               key={attempt.attemptId}
@@ -207,6 +252,8 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
               busy={busy === attempt.attemptId}
               failureKey={failure?.attemptId === attempt.attemptId ? failure.key : null}
               consentOpen={consentFor === attempt.attemptId}
+              primary={attempt.attemptId === nextId}
+              justClosed={closedPages.has(attempt.attemptId)}
               notice={{ orgName, vacancyTitle: vacancyTitles.get(attempt.vacancyId) ?? '' }}
               onOpenConsent={() => setConsentFor(attempt.attemptId)}
               onCancelConsent={() => setConsentFor(null)}

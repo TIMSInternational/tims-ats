@@ -1,14 +1,15 @@
 'use client';
 
 import { use, useState } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { ErrorState } from '../../../../../components';
+import { EmptyState, ErrorState, PageHeader, StageBadge, StatusBadge, TabPanel, Tabs } from '../../../../../components';
 import { CandidateDetailSkeleton } from './candidate-detail-skeleton';
 import { ProviderAssessmentsCard } from './provider-assessments-card';
 import { CandidateHeader } from './candidate-header';
+import { CandidateHeaderActions } from './candidate-header-actions';
+import { CARD } from './card-styles';
 import { ApplicationsCard, PersonalInfoCard, ProfileTab } from './profile-tab';
 import { AssessmentResults } from './assessment-results';
 import { FitBreakdown } from './fit-breakdown';
@@ -25,7 +26,7 @@ import { CandidateConsentCard } from './consent-card';
 import { isPilotScope } from '../../../../../lib/launch-scope';
 import { useCan } from '../../../../../lib/permissions';
 import { SCHEDULE_QUERY_PARAM } from '../../../../../lib/pipeline-next-actions';
-import { readTabParam, visibleCandidateTabs, type TabKey } from './candidate-tabs';
+import { readTabParam, replaceQuery, visibleCandidateTabs, type TabKey } from './candidate-tabs';
 import { CandidateInterviewsTab } from './candidate-interviews-tab';
 import { CandidateOffersCard } from './candidate-offers-card';
 import { CandidateNotesPanel } from './notes-panel';
@@ -34,26 +35,6 @@ import {
   useCandidateFitScoresViaCsharp,
   withCandidatePageFitScores,
 } from '../../../../../lib/platform-api/fit-engine-reads';
-
-function EmptyTabPanel({ title, message }: { title: string; message: string }) {
-  return (
-    <div className="bg-white rounded-xl p-8 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-2">{title}</h3>
-      <p className="text-[12px] text-[#8B8B8B]">{message}</p>
-    </div>
-  );
-}
-
-/** Replaces (or removes) query parameters in place: no history entry, no server round trip. */
-function replaceQuery(changes: Record<string, string | null>) {
-  const params = new URLSearchParams(window.location.search);
-  for (const [key, value] of Object.entries(changes)) {
-    if (value === null) params.delete(key);
-    else params.set(key, value);
-  }
-  const query = params.toString();
-  window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-}
 
 export default function CandidateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -84,18 +65,25 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
   if (candidate.isLoading) return <CandidateDetailSkeleton />;
 
-  if (candidate.isError) {
+  // A deleted candidate, an old link or another organisation's record cannot be fixed by retrying: say so and
+  // offer the way back (writing.md › Best practices). Other failures keep the retry.
+  if (candidate.data == null && (!candidate.isError || candidate.error?.data?.code === 'NOT_FOUND')) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <ErrorState onRetry={() => candidate.refetch()} error={candidate.error} />
+      <div className="flex h-full items-center justify-center">
+        <ErrorState
+          variant="notFound"
+          title={t.candidates.notFoundTitle}
+          description={t.candidates.notFoundDesc}
+          back={{ href: '/recruitment/candidates', label: t.candidates.backToCandidates }}
+        />
       </div>
     );
   }
 
-  if (!candidate.data) {
+  if (candidate.isError || !candidate.data) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-[#8B8B8B]">{t.common.noResults}</p>
+      <div className="flex h-full items-center justify-center">
+        <ErrorState message={t.candidates.loadError} onRetry={() => candidate.refetch()} error={candidate.error} />
       </div>
     );
   }
@@ -105,7 +93,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const appCount = c.applications?.length ?? 0;
   const tabLabels: Record<string, string> = {
     tabProfile: t.candidates.tabProfile,
-    tabApplications: `${t.candidates.tabApplications} (${appCount})`,
+    tabApplications: t.candidates.tabApplications,
     tabAssessments: t.candidates.tabAssessments,
     tabInterviews: t.candidates.tabInterviews,
     tabFitGaps: t.candidates.tabFitGaps,
@@ -115,7 +103,11 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
     tabNotes: t.candidates.tabNotes,
   };
 
-  const empty = t.common.noResults;
+  const emptyCard = (title: string, description?: string) => (
+    <section className={CARD}>
+      <EmptyState size="compact" title={title} description={description} />
+    </section>
+  );
   const activeApplications = c.applications.filter((application) => application.status === 'active');
   const canSchedule = can('interview', 'create') && activeApplications.length > 0;
   const openSchedule = canSchedule ? () => setScheduleFor(activeApplications[0]?.id ?? '') : undefined;
@@ -135,11 +127,11 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
     switch (activeTab) {
       case 'tabProfile':
         return (
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:flex-[60] space-y-4">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-4">
               <ProfileTab candidate={c} />
             </div>
-            <div className="w-full md:flex-[40] space-y-4">
+            <div className="min-w-0 space-y-4">
               {showAssessments && c.assessmentAssignments.length > 0 && (
                 <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
               )}
@@ -150,9 +142,6 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                   onSeeDetails={openAssessmentsTab}
                 />
               )}
-              {c.fitScores.length > 0 && <FitBreakdown fitScores={c.fitScores} />}
-              <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
-              <CvParseCard candidateId={id} />
               <StageTimeline applications={c.applications} />
               <CandidateOffersCard candidateId={id} />
               <TagsCard tags={c.tags} candidateId={id} />
@@ -162,6 +151,9 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
                 events={timeline.data ?? []}
                 isLoading={timeline.isLoading}
                 isError={timeline.isError}
+                onRetry={() => timeline.refetch()}
+                maxItems={5}
+                onViewAll={openTimelineTab}
               />
             </div>
           </div>
@@ -170,19 +162,19 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         return c.applications.length > 0 ? (
           <ApplicationsCard applications={c.applications} />
         ) : (
-          <EmptyTabPanel title={tabLabels.tabApplications} message={empty} />
+          emptyCard(t.candidates.noApplications)
         );
       case 'tabAssessments':
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <ProviderResultsBoard candidateId={id} />
+              <ProviderResultsBoard candidateId={id} applications={c.applications} />
               <ProviderAssessmentsCard candidateId={id} applications={c.applications} />
             </div>
             {c.assessmentAssignments.length > 0 ? (
               <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
             ) : (
-              <EmptyTabPanel title={tabLabels.tabAssessments} message={empty} />
+              emptyCard(t.candidates.noAssessments)
             )}
           </div>
         );
@@ -190,36 +182,44 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         return <CandidateInterviewsTab key={interviewsVersion} candidateId={id} onSchedule={openSchedule} />;
       case 'tabFitGaps':
         return (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
             {c.fitScores.length > 0 ? (
               <FitBreakdown fitScores={c.fitScores} />
             ) : (
-              <EmptyTabPanel title={tabLabels.tabFitGaps} message={empty} />
+              emptyCard(t.candidates.noFitYet, t.candidates.noFitYetDesc)
             )}
             <ScreenCandidateCard candidateId={id} vacancies={c.applications.map((a) => a.vacancy)} />
           </div>
         );
       case 'tabDocuments':
-        return <DocumentsCard documents={c.documents} candidateId={id} />;
+        return (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <DocumentsCard documents={c.documents} candidateId={id} />
+            <CvParseCard candidateId={id} />
+          </div>
+        );
       case 'tabValidations':
         return (
           <div className="space-y-4">
             <RiskFlags />
-            <EmptyTabPanel title={tabLabels.tabValidations} message={empty} />
+            {emptyCard(t.candidates.noValidations)}
           </div>
         );
       case 'tabTimeline':
         return (
-          <CandidateTimeline events={timeline.data ?? []} isLoading={timeline.isLoading} isError={timeline.isError} />
+          <CandidateTimeline
+            events={timeline.data ?? []}
+            isLoading={timeline.isLoading}
+            isError={timeline.isError}
+            onRetry={() => timeline.refetch()}
+          />
         );
       case 'tabNotes':
         return <CandidateNotesPanel candidateId={id} notes={c.notes} />;
       default:
         return (
-          <div className="flex flex-col md:flex-row gap-6">
-            <div className="w-full md:flex-[60] space-y-4">
-              <PersonalInfoCard candidate={c} />
-            </div>
+          <div className="min-w-0 space-y-4">
+            <PersonalInfoCard candidate={c} />
           </div>
         );
     }
@@ -227,53 +227,54 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
   // After the tab switch on purpose: the tab keys' first mention order is pinned (candidate-detail-tabs test).
   const openAssessmentsTab = () => selectTab('tabAssessments');
+  const openTimelineTab = () => selectTab('tabTimeline');
+  const visibleTabs = visibleCandidateTabs(!showAssessments).map((tab) => ({
+    id: tab,
+    label: tabLabels[tab],
+    count: tab === 'tabApplications' ? appCount : undefined,
+  }));
+  const currentStage = activeApplications[0]?.currentStage;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Top Bar breadcrumb */}
-      <div className="flex items-center justify-between px-6 h-16 bg-white border-b border-[#EDEDED] shrink-0">
-        <div className="flex items-center gap-2">
-          <Link href="/recruitment/candidates" className="text-[13px] text-[#8B8B8B] hover:text-[#585858] transition">
-            {t.candidates.title}
-          </Link>
-          <svg className="w-3 h-3 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="m9 18 6-6-6-6" />
-          </svg>
-          <span className="text-sm font-medium text-[#1F114C]">
-            {c.firstName} {c.lastName}
-          </span>
-        </div>
-        {showAssessments && (
-          <CandidateAssignActions
-            candidateId={id}
-            applications={c.applications}
-            onOpenAssessmentsTab={openAssessmentsTab}
-          />
-        )}
-      </div>
+    <div className="flex flex-col md:h-full md:overflow-hidden">
+      <PageHeader
+        back={{ href: '/recruitment/candidates', label: t.candidates.title }}
+        title={`${c.firstName} ${c.lastName}`}
+        meta={
+          <>
+            {currentStage && <StageBadge name={currentStage.name} order={currentStage.order} />}
+            {c.isActive && <StatusBadge tone="success">{t.candidates.active}</StatusBadge>}
+          </>
+        }
+        actions={
+          <>
+            {showAssessments && (
+              <CandidateAssignActions
+                candidateId={id}
+                applications={c.applications}
+                onOpenAssessmentsTab={openAssessmentsTab}
+              />
+            )}
+            <CandidateHeaderActions candidate={c} onScheduleInterview={openSchedule} />
+          </>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {/* Header Card */}
-        <CandidateHeader candidate={c} onScheduleInterview={openSchedule} />
+      <div className="min-w-0 flex-1 px-4 py-5 md:overflow-y-auto md:px-6 md:py-6">
+        <CandidateHeader candidate={c} />
 
-        {/* Tabs */}
-        <div className="flex gap-1 mb-6 border-b border-[#EDEDED] overflow-x-auto">
-          {visibleCandidateTabs(!showAssessments).map((tab) => (
-            <button
-              type="button"
-              key={tab}
-              onClick={() => selectTab(tab)}
-              className={`px-4 py-2.5 text-[13px] font-medium transition shrink-0 whitespace-nowrap ${
-                activeTab === tab ? 'text-[#1F114C] border-b-2 border-[#DD0C15]' : 'text-[#8B8B8B] hover:text-[#585858]'
-              }`}
-            >
-              {tabLabels[tab]}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          label={t.candidates.sectionsLabel}
+          tabs={visibleTabs}
+          selectedId={activeTab}
+          onSelect={(tab) => selectTab(tab as TabKey)}
+          idPrefix="candidate"
+          className="mb-6"
+        />
 
-        {renderActiveTab()}
+        <TabPanel idPrefix="candidate" tabId={activeTab}>
+          {renderActiveTab()}
+        </TabPanel>
       </div>
       {schedulePrefill && (
         <ScheduleModal

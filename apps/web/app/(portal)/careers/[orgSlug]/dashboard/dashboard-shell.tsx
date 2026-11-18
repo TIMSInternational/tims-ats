@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { Inbox } from 'lucide-react';
 import { createSupabaseBrowserClient } from '@tims/auth/client';
 import { useI18n } from '../../../../../lib/i18n';
 import { isPilotScope } from '../../../../../lib/launch-scope';
@@ -14,12 +14,28 @@ import { DashboardOffer } from './dashboard-offer';
 import { DashboardFaqChat } from './dashboard-faq-chat';
 import { DashboardPrivacy } from './dashboard-privacy';
 import { DashboardProfile, type CandidateProfileView } from './dashboard-profile';
+import { usePortalOrgBrand } from '../_components/portal-org-brand';
+import { EvalPage } from './eval-page';
+import { EvalBigIcon } from './eval-big-icon';
+import { EvalButton } from './eval-button';
+import { FRAME_LEAVE_CLASSES } from './provider-frame-styles';
+import {
+  DASHBOARD_EYEBROW,
+  DASHBOARD_GREETING,
+  DASHBOARD_SECTIONS,
+  DASHBOARD_STATE,
+  DASHBOARD_STATE_ACTION,
+  DASHBOARD_STATE_LEAD,
+  DASHBOARD_STATE_TITLE,
+} from './dashboard-styles';
 
-// Candidate dashboard shell. Renders the authenticated frame with the full
-// dashboard: My Applications (Wave 1 Slice 2), My Interviews (Wave 1 Slice 3),
-// My Offer (Wave 1 Slice 4), My Assessments (Wave 1.5a Slice 4), and the account actions of audit C-33:
-// "Mis datos" (correct name/phone/location), "Retirar mi postulación" and an always-visible privacy panel.
-// If the signed-in email has no Candidate at this org, shows an empty state instead.
+// Candidate dashboard shell, in the TIMS evaluation design (round 5: the PCA respondent app's look, so the candidate
+// goes from here to a test inside one look): the navy page, the PCA header (the organization's logo back to its job
+// board, the TIMS mark, "Sign out"), one white sheet with the eyebrow "Portal del candidato" and the serif greeting,
+// then the sections — My Applications (Wave 1 Slice 2), My Interviews (Wave 1 Slice 3), the assessments (Wave 1.5a
+// Slice 4; AS-5 provider assessments), My Offer (Wave 1 Slice 4), the FAQ assistant, and the account actions of audit
+// C-33: "Mis datos" (correct name/phone/location), "Retirar mi postulación" and an always-visible privacy panel.
+// If the signed-in email has no Candidate at this org, a PCA state block says so instead.
 export function PortalDashboardShell({
   orgSlug,
   orgName,
@@ -48,6 +64,7 @@ export function PortalDashboardShell({
   const router = useRouter();
   const { t } = useI18n();
   const pilot = isPilotScope();
+  const brand = usePortalOrgBrand();
 
   const signOut = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -57,56 +74,55 @@ export function PortalDashboardShell({
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F6F6]">
-      <header className="bg-white border-b border-[#EDEDED]">
-        <div className="max-w-[900px] mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
-          <Link href={`/careers/${orgSlug}`} className="text-[14px] font-semibold text-[#1F114C] truncate">
-            {orgName}
-          </Link>
-          <button onClick={signOut} className="text-[12px] text-muted hover:text-[#585858] hover:underline shrink-0">
-            {t.portalDashboard.signOut}
-          </button>
+    <EvalPage
+      orgSlug={orgSlug}
+      orgName={orgName}
+      orgLogo={brand?.logo ?? null}
+      headerEnd={
+        <button type="button" className={FRAME_LEAVE_CLASSES} onClick={() => void signOut()}>
+          {t.portalDashboard.signOut}
+        </button>
+      }
+    >
+      <p className={DASHBOARD_EYEBROW}>{t.portalDashboard.eyebrow}</p>
+      <h1 className={DASHBOARD_GREETING}>
+        {t.portalDashboard.welcome}, {displayName}
+      </h1>
+
+      {hasCandidate ? (
+        <div className={DASHBOARD_SECTIONS}>
+          <DashboardApplications orgSlug={orgSlug} orgName={orgName} timeZone={timeZone} />
+          <DashboardInterviews orgSlug={orgSlug} timeZone={timeZone} />
+          {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
+          {!pilot && <DashboardAssessments orgSlug={orgSlug} hideWhenEmpty={isProviderAssessmentsPortalEnabled()} />}
+          {/* AS-5 / D16: provider assessments (C# only), dark unless NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP. */}
+          {!pilot && isProviderAssessmentsPortalEnabled() && (
+            <DashboardProviderAssessments orgSlug={orgSlug} orgName={orgName} />
+          )}
+          <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
+          {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
+          {profile && <DashboardProfile orgSlug={orgSlug} profile={profile} />}
+          <DashboardPrivacy
+            orgSlug={orgSlug}
+            orgName={orgName}
+            withdrawnAt={consentWithdrawnAt}
+            contactEmail={contactEmail}
+          />
         </div>
-      </header>
-
-      <main className="max-w-[900px] mx-auto px-4 md:px-6 py-8">
-        <h1 className="text-[20px] font-bold text-[#1F114C] mb-1">
-          {t.portalDashboard.welcome}, {displayName}
-        </h1>
-
-        {hasCandidate ? (
-          <div className="mt-6 space-y-4">
-            <DashboardApplications orgSlug={orgSlug} orgName={orgName} timeZone={timeZone} />
-            <DashboardInterviews orgSlug={orgSlug} timeZone={timeZone} />
-            {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
-            {!pilot && <DashboardAssessments orgSlug={orgSlug} hideWhenEmpty={isProviderAssessmentsPortalEnabled()} />}
-            {/* AS-5 / D16: provider assessments (C# only), dark unless NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP. */}
-            {!pilot && isProviderAssessmentsPortalEnabled() && (
-              <DashboardProviderAssessments orgSlug={orgSlug} orgName={orgName} />
-            )}
-            <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
-            {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}
-            {profile && <DashboardProfile orgSlug={orgSlug} profile={profile} />}
-            <DashboardPrivacy
-              orgSlug={orgSlug}
-              orgName={orgName}
-              withdrawnAt={consentWithdrawnAt}
-              contactEmail={contactEmail}
-            />
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-[#EDEDED] p-8 text-center mt-4">
-            <h2 className="text-[15px] font-semibold text-[#1F114C] mb-2">{t.portalDashboard.noCandidateTitle}</h2>
-            <p className="text-[13px] text-[#585858] mb-5">{t.portalDashboard.noCandidateDesc}</p>
-            <Link
-              href={`/careers/${orgSlug}`}
-              className="inline-flex h-10 items-center rounded-xl bg-[#1F114C] px-5 text-[13px] font-semibold text-white hover:bg-[#2a1a5e] transition"
-            >
-              {t.portalDashboard.backToJobs}
-            </Link>
-          </div>
-        )}
-      </main>
-    </div>
+      ) : (
+        <section aria-labelledby="dashboard-no-candidate-title" className={DASHBOARD_STATE}>
+          <EvalBigIcon tone="neutral">
+            <Inbox aria-hidden="true" />
+          </EvalBigIcon>
+          <h2 id="dashboard-no-candidate-title" className={DASHBOARD_STATE_TITLE}>
+            {t.portalDashboard.noCandidateTitle}
+          </h2>
+          <p className={DASHBOARD_STATE_LEAD}>{t.portalDashboard.noCandidateDesc}</p>
+          <EvalButton href={`/careers/${orgSlug}`} width="bar" className={DASHBOARD_STATE_ACTION}>
+            {t.portalDashboard.backToJobs}
+          </EvalButton>
+        </section>
+      )}
+    </EvalPage>
   );
 }

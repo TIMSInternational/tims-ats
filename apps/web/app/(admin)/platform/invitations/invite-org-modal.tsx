@@ -9,6 +9,17 @@ import { trpc } from '../../../../lib/trpc';
 import { findSimilarOrganizations } from '../../../../lib/similar-organizations';
 import { EMPTY_ORG_LOCALE_FORM, orgLocaleFormToProfile } from '../../../../lib/org-locale-form';
 import { OrgLocaleFields } from '../organizations/org-locale-fields';
+import {
+  BUTTON_GROUP_CLASSES,
+  Button,
+  DialogCancelButton,
+  CHOICE_INPUT_CLASSES,
+  CHOICE_ROW_CLASSES,
+  FIELD_LABEL_CLASSES,
+  Modal,
+  inputClasses,
+  selectClasses,
+} from '../../../../components';
 
 export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const { t } = useI18n();
@@ -47,57 +58,65 @@ export function InviteOrgModal({ onClose, onSuccess }: { onClose: () => void; on
     create.mutate({ email, organizationName: orgName, organizationSlug: orgSlug, organizationPlan: plan, localeProfile });
   };
 
+  const inv = t.invitations;
+  const blocked = !localeProfile;
+  const field = inputClasses('md');
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-[#333]">{t.invitations.inviteOrgTitle}</h2>
-          <button aria-label={t.common.close} onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-[#F6F6F6] flex items-center justify-center text-[#8B8B8B] transition">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+    <Modal title={inv.inviteOrgTitle} onClose={onClose} dirty={Boolean(email || orgName)}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="invite-org-email" className={FIELD_LABEL_CLASSES}>{inv.adminEmail} *</label>
+          <input id="invite-org-email" type="email" autoFocus maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@empresa.com" className={field} required />
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="invite-org-email" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.adminEmail} *</label>
-            <input id="invite-org-email" type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@empresa.com" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
+        <div>
+          <label htmlFor="invite-org-name" className={FIELD_LABEL_CLASSES}>{inv.orgName} *</label>
+          <input id="invite-org-name" type="text" minLength={2} maxLength={100} value={orgName} onChange={(e) => { handleNameChange(e.target.value); setConfirmNew(false); }} placeholder={inv.orgNamePlaceholder} className={field} required />
+        </div>
+        <div>
+          <label htmlFor="invite-org-slug" className={FIELD_LABEL_CLASSES}>{inv.slug} *</label>
+          <input id="invite-org-slug" type="text" minLength={2} maxLength={63} value={orgSlug} onChange={(e) => setOrgSlug(sanitizeSlugInput(e.target.value))} placeholder="mi-empresa" className={inputClasses('md', 'font-mono')} required pattern="^[a-z0-9-]+$" />
+        </div>
+        <div>
+          <label htmlFor="invite-org-plan" className={FIELD_LABEL_CLASSES}>{inv.plan}</label>
+          <select id="invite-org-plan" value={plan} onChange={(e) => setPlan(e.target.value as typeof plan)} className={selectClasses('md')}>
+            <option value="trial">{inv.trialPlan}</option>
+            <option value="starter">{inv.starterPlan}</option>
+            <option value="professional">{inv.professionalPlan}</option>
+            <option value="enterprise">{inv.enterprisePlan}</option>
+          </select>
+        </div>
+        <OrgLocaleFields idPrefix="invite-org" value={localeForm} onChange={setLocaleForm} />
+        {similar.length > 0 && (
+          <div role="alert" className="space-y-2 rounded-lg border border-warning/30 bg-warning-bg px-3 py-2 text-callout text-warning">
+            <p>{inv.similarOrgWarning.replace('{names}', similar.map((o) => o.name).join(', '))}</p>
+            <label className={`${CHOICE_ROW_CLASSES} font-medium`}>
+              <input type="checkbox" className={CHOICE_INPUT_CLASSES} checked={confirmNew} onChange={(e) => setConfirmNew(e.target.checked)} />
+              {inv.similarOrgConfirm}
+            </label>
           </div>
-          <div>
-            <label htmlFor="invite-org-name" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.orgName} *</label>
-            <input id="invite-org-name" type="text" minLength={2} maxLength={100} value={orgName} onChange={(e) => { handleNameChange(e.target.value); setConfirmNew(false); }} placeholder={t.invitations.orgNamePlaceholder} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required />
-          </div>
-          <div>
-            <label htmlFor="invite-org-slug" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.slug} *</label>
-            <input id="invite-org-slug" type="text" minLength={2} maxLength={63} value={orgSlug} onChange={(e) => setOrgSlug(sanitizeSlugInput(e.target.value))} placeholder="mi-empresa" className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm font-mono text-[#333] placeholder:text-[#8B8B8B] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20" required pattern="^[a-z0-9-]+$" />
-          </div>
-          <div>
-            <label htmlFor="invite-org-plan" className="text-xs font-medium text-[#585858] mb-1 block">{t.invitations.plan}</label>
-            <select id="invite-org-plan" value={plan} onChange={(e) => setPlan(e.target.value as typeof plan)} className="w-full h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20">
-              <option value="trial">{t.invitations.trialPlan}</option>
-              <option value="starter">{t.invitations.starterPlan}</option>
-              <option value="professional">{t.invitations.professionalPlan}</option>
-              <option value="enterprise">{t.invitations.enterprisePlan}</option>
-            </select>
-          </div>
-          <OrgLocaleFields idPrefix="invite-org" value={localeForm} onChange={setLocaleForm} />
-          {similar.length > 0 && (
-            <div role="alert" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg space-y-2">
-              <p>{t.invitations.similarOrgWarning.replace('{names}', similar.map((o) => o.name).join(', '))}</p>
-              <label className="flex items-center gap-2 font-medium">
-                <input type="checkbox" checked={confirmNew} onChange={(e) => setConfirmNew(e.target.checked)} />
-                {t.invitations.similarOrgConfirm}
-              </label>
-            </div>
+        )}
+        {create.error && (
+          <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">{create.error.message}</p>
+        )}
+        <div className="space-y-2 border-t border-border pt-4">
+          {blocked && (
+            <p id="invite-org-blocked-hint" className="text-callout text-secondary sm:text-right">{t.organizations.chooseCountryFirst}</p>
           )}
-          {create.error && (
-            <div className="text-xs text-[#DD0C15] bg-red-50 px-3 py-2 rounded-lg">{create.error.message}</div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="h-9 px-4 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.invitations.cancel}</button>
-            <button type="submit" disabled={!email || !orgName || !orgSlug || !localeProfile || needsConfirm || create.isPending} className="h-9 px-5 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition disabled:opacity-50">{create.isPending ? t.invitations.sending : t.invitations.createAndSend}</button>
+          <div className={BUTTON_GROUP_CLASSES}>
+            <DialogCancelButton onCancel={onClose}>{inv.cancel}</DialogCancelButton>
+            <Button
+              type="submit"
+              disabled={!email || !orgName || !orgSlug || blocked || needsConfirm}
+              loading={create.isPending}
+              loadingLabel={inv.sending}
+              aria-describedby={blocked ? 'invite-org-blocked-hint' : undefined}
+            >
+              {inv.createAndSend}
+            </Button>
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -27,28 +27,28 @@ export function RoomLobby({
   const { t } = useI18n();
 
   return (
-    <div className="flex-1 flex items-center justify-center bg-[#0a0a0a]">
+    <div className="flex flex-1 items-center justify-center bg-[#0a0a0a] p-6">
       <div className="text-center">
-        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#1F114C] to-[#5C4B99] flex items-center justify-center mx-auto mb-6">
+        <div className="mx-auto mb-6 flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-brand to-[#5C4B99]" aria-hidden="true">
           <span className="text-white text-3xl font-bold">{candidateInitials}</span>
         </div>
-        <p className="text-white text-[16px] font-medium mb-1">{candidateName}</p>
-        <p className="text-white/50 text-[13px] mb-6">{subtitle}</p>
+        <p className="text-white text-heading font-medium mb-1">{candidateName}</p>
+        <p className="text-white/70 text-body mb-6">{subtitle}</p>
         <button
           type="button"
           onClick={onJoin}
           disabled={isJoining}
-          className="bg-[#DD0C15] text-white px-8 py-3 rounded-xl text-[14px] font-medium shadow-[0_4px_16px_rgba(221,12,21,0.3)] hover:bg-[#c00b13] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
+          className="mx-auto flex min-h-11 items-center gap-2 rounded-xl bg-white px-8 py-3 text-subheading font-medium text-brand transition-colors hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isJoining ? (
             <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="size-4 animate-spin rounded-full border-2 border-brand/30 border-t-brand" aria-hidden="true" />
               {t.interviews.roomConnecting}
             </>
           ) : (
             <>
               <svg
-                className="w-5 h-5"
+                className="size-5"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.5"
@@ -61,18 +61,18 @@ export function RoomLobby({
             </>
           )}
         </button>
-        {joinErrorMessage && <p className="text-red-400 text-[12px] mt-3">{joinErrorMessage}</p>}
+        {joinErrorMessage && <p role="alert" className="text-red-300 text-callout mt-3">{joinErrorMessage}</p>}
         <div className="mt-6">
           <button
             type="button"
             onClick={onScoreWithoutVideo}
             // Disabled while a join is in flight, so a late token cannot race this switch.
             disabled={isJoining}
-            className="text-white/80 border border-white/20 px-5 py-2 rounded-lg text-[13px] font-medium hover:bg-white/10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="min-h-9 rounded-lg border border-white/40 px-5 py-2 text-body font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:min-h-11"
           >
             {t.interviewRoom.scoreWithoutVideo}
           </button>
-          <p className="text-white/40 text-[11px] mt-2">{t.interviewRoom.scoreWithoutVideoHint}</p>
+          <p className="text-white/70 text-caption mt-2">{t.interviewRoom.scoreWithoutVideoHint}</p>
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@ import {
   isValidInterviewJoinToken,
   type InterviewJoinViewResult,
 } from '../../../../lib/interview-join';
+import { Button } from '../../../../components/button';
 
 type ViewState = { kind: 'checking' } | { kind: 'redirecting' } | { kind: 'result'; result: InterviewJoinViewResult };
 
@@ -126,32 +127,30 @@ export function InterviewJoin({ token }: { token: string }) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#F6F6F6] px-4 py-12">
-      <section className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-sm" aria-live="polite">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">{copy.title}</p>
-        <h1 className="mt-3 text-xl font-semibold text-[#1F114C]">{title}</h1>
-        {text && <p className="mt-3 text-sm text-slate-600">{text}</p>}
+    <main className="flex min-h-dvh items-center justify-center bg-surface px-4 py-12">
+      <section className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-card sm:p-8" aria-labelledby="interview-join-title">
+        <p className="text-callout font-semibold uppercase tracking-wide text-brand">{copy.title}</p>
+        {/* Only the state message is a live region: the retry countdown is not announced every second. */}
+        <div role="status" aria-live="polite">
+          <h1 id="interview-join-title" className="mt-3 font-display text-title font-semibold text-brand">{title}</h1>
+          {text && <p className="mx-auto mt-3 max-w-prose text-base text-secondary sm:text-body">{text}</p>}
+        </div>
         {details.length > 0 && (
-          <dl className="mt-6 space-y-3 rounded-xl bg-slate-50 p-4 text-left text-sm">
+          <dl className="mt-6 space-y-3 rounded-xl bg-surface p-4 text-left text-base sm:text-body">
             {details.map((detail) => (
               <div key={detail.label}>
-                <dt className="text-slate-500">{detail.label}</dt>
-                <dd className="font-medium text-slate-800">{detail.value}</dd>
+                <dt className="text-secondary">{detail.label}</dt>
+                <dd className="font-medium text-primary tabular-nums">{detail.value}</dd>
               </div>
             ))}
           </dl>
         )}
         {canRetry && (
-          <button
-            type="button"
-            onClick={() => void check()}
-            disabled={cooldown > 0}
-            className="mt-6 w-full rounded-xl bg-[#1F114C] px-4 py-3 text-sm font-semibold text-white hover:bg-violet-900 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <Button size="lg" fullWidth className="mt-6" onClick={() => void check()} disabled={cooldown > 0}>
             {cooldown > 0 ? copy.retryIn.replace('{seconds}', String(cooldown)) : copy.retry}
-          </button>
+          </Button>
         )}
-        <p className="mt-6 text-xs text-slate-400">{copy.privacy}</p>
+        <p className="mt-6 text-callout text-muted">{copy.privacy}</p>
       </section>
     </main>
   );

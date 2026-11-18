@@ -1,7 +1,13 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
-import { CANDIDATE_POOL_TYPES, CANDIDATE_SOURCES, candidatePoolLabel, candidateSourceLabel } from '../../../../lib/candidate-labels';
+import { Button, inputClasses, selectClasses } from '../../../../components';
+import {
+  CANDIDATE_POOL_TYPES,
+  CANDIDATE_SOURCES,
+  candidatePoolLabel,
+  candidateSourceLabel,
+} from '../../../../lib/candidate-labels';
 
 interface FilterBarProps {
   search: string;
@@ -12,63 +18,83 @@ interface FilterBarProps {
   onSourceChange: (v: string) => void;
   onClearFilters: () => void;
   hasFilters: boolean;
-  onCreateClick: () => void;
 }
 
+/** Search and filters for the candidate list. Every control is named (accessibility.md › Vision). */
 export function FilterBar({
-  search, onSearchChange, poolFilter, onPoolChange,
-  sourceFilter, onSourceChange, onClearFilters, hasFilters, onCreateClick,
+  search,
+  onSearchChange,
+  poolFilter,
+  onPoolChange,
+  sourceFilter,
+  onSourceChange,
+  onClearFilters,
+  hasFilters,
 }: FilterBarProps) {
   const { t } = useI18n();
 
   return (
-    <div className="flex flex-wrap items-center gap-3 gap-y-2 mb-4 flex-shrink-0">
-      <div className="relative flex-1 max-w-sm">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B8B8B]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+    <div className="mb-4 flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+      <div className="relative w-full sm:max-w-sm sm:flex-1">
+        <label htmlFor="cand-search" className="sr-only">
+          {t.candidates.searchLabel}
+        </label>
+        <svg
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
         <input
-          type="text"
+          id="cand-search"
+          type="search"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={t.candidates.searchCandidate}
-          className="w-full h-9 pl-9 pr-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]"
+          className={inputClasses('md', 'pl-9')}
         />
       </div>
 
-      <select
-        value={poolFilter}
-        onChange={(e) => onPoolChange(e.target.value)}
-        className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-      >
-        <option value="">{t.candidates.allPools}</option>
-        {CANDIDATE_POOL_TYPES.map((pool) => (
-          <option key={pool} value={pool}>{candidatePoolLabel(pool, t.candidates)}</option>
-        ))}
-      </select>
+      <div className="grid grid-cols-1 gap-2 sm:flex sm:gap-3">
+        <select
+          value={poolFilter}
+          onChange={(e) => onPoolChange(e.target.value)}
+          aria-label={t.candidates.colPool}
+          className={selectClasses('md', 'sm:w-auto')}
+        >
+          <option value="">{t.candidates.allPools}</option>
+          {CANDIDATE_POOL_TYPES.map((pool) => (
+            <option key={pool} value={pool}>
+              {candidatePoolLabel(pool, t.candidates)}
+            </option>
+          ))}
+        </select>
 
-      <select
-        value={sourceFilter}
-        onChange={(e) => onSourceChange(e.target.value)}
-        className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
-      >
-        <option value="">{t.candidates.allSources}</option>
-        {CANDIDATE_SOURCES.map((source) => (
-          <option key={source} value={source}>{candidateSourceLabel(source, t.candidates)}</option>
-        ))}
-      </select>
+        <select
+          value={sourceFilter}
+          onChange={(e) => onSourceChange(e.target.value)}
+          aria-label={t.candidates.colSource}
+          className={selectClasses('md', 'sm:w-auto')}
+        >
+          <option value="">{t.candidates.allSources}</option>
+          {CANDIDATE_SOURCES.map((source) => (
+            <option key={source} value={source}>
+              {candidateSourceLabel(source, t.candidates)}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {hasFilters && (
-        <button onClick={onClearFilters} className="h-9 px-3 rounded-lg border border-[#EDEDED] text-xs text-[#8B8B8B] hover:bg-[#F6F6F6] transition">
-          {t.subscriptions.clearFilters}
-        </button>
+        <Button variant="tertiary" size="sm" onClick={onClearFilters} className="self-start sm:self-auto">
+          {t.common.clearFilters}
+        </Button>
       )}
-
-      <button
-        onClick={onCreateClick}
-        className="h-9 px-4 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition flex items-center gap-2 ml-auto"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-        {t.candidates.newCandidate}
-      </button>
     </div>
   );
 }

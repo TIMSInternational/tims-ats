@@ -5,7 +5,18 @@ import type { QuestionType, QuestionOption } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { EmptyState, ErrorState, Skeleton } from '../../../../components';
+import { formatMessage } from '../../../../lib/i18n/format';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Field,
+  PageHeader,
+  Select,
+  Skeleton,
+  StatusBadge,
+} from '../../../../components';
 import { QuestionModal, type EditableQuestion } from './question-modal';
 import { AssessmentTypeToolbar } from './assessment-type-toolbar';
 import type { AssessmentTypeRow } from '../../../../lib/platform-api/assessment-types';
@@ -15,6 +26,7 @@ export default function AssessmentAuthoringPage() {
   const [typeId, setTypeId] = useState<string>('');
   const [editing, setEditing] = useState<EditableQuestion | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [deleting, setDeleting] = useState<EditableQuestion | null>(null);
 
   const types = trpc.assessment.listTypes.useQuery();
 
@@ -43,12 +55,9 @@ export default function AssessmentAuthoringPage() {
       refresh();
     },
     onError: (err) =>
-      toast(
-        err.message === 'question_has_responses'
-          ? t.assessments.cannotDeleteWithResponses
-          : err.message,
-        { type: 'error' },
-      ),
+      toast(err.message === 'question_has_responses' ? t.assessments.cannotDeleteWithResponses : err.message, {
+        type: 'error',
+      }),
   });
 
   const openCreate = () => {
@@ -59,10 +68,6 @@ export default function AssessmentAuthoringPage() {
   const openEdit = (q: EditableQuestion) => {
     setEditing(q);
     setShowModal(true);
-  };
-
-  const handleDelete = (id: string) => {
-    if (window.confirm(t.assessments.confirmDelete)) deleteM.mutate({ id });
   };
 
   const onSaved = () => {
@@ -84,69 +89,69 @@ export default function AssessmentAuthoringPage() {
     }),
   );
 
+  const hasTypes = !!types.data && types.data.length > 0;
+
   return (
-    <div className="h-full flex flex-col overflow-hidden p-6">
-      <div className="flex items-start justify-between mb-5 flex-shrink-0">
-        <div>
-          <h1 className="text-lg font-semibold text-[#1F114C]">{t.assessments.title}</h1>
-          <p className="text-sm text-[#8B8B8B] mt-0.5">{t.assessments.subtitle}</p>
-        </div>
-        {typeId && (
-          <button
-            onClick={openCreate}
-            className="h-9 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#2a1866] transition"
-          >
-            {t.assessments.addQuestion}
-          </button>
-        )}
-      </div>
+    <div className="flex h-full flex-col overflow-hidden">
+      <PageHeader
+        title={t.assessments.title}
+        description={t.assessments.subtitle}
+        actions={
+          typeId ? (
+            <Button variant="primary" onClick={openCreate}>
+              {t.assessments.addQuestion}
+            </Button>
+          ) : undefined
+        }
+      />
 
-      {/* Type selector */}
-      <div className="mb-5 max-w-md flex-shrink-0">
-        <label className="block text-xs font-medium text-[#8B8B8B] mb-1.5">{t.assessments.selectType}</label>
-        {types.isLoading ? (
-          <Skeleton className="h-10 w-full" />
-        ) : types.isError ? (
-          <ErrorState onRetry={() => types.refetch()} />
-        ) : types.data && types.data.length > 0 ? (
-          <select
-            value={typeId}
-            onChange={(e) => setTypeId(e.target.value)}
-            className="w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:border-[#1F114C]"
-          >
-            {types.data.map((tp) => (
-              <option key={tp.id} value={tp.id}>
-                {tp.name}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div>
-            <p className="text-sm text-[#1A1A1A]">{t.assessments.noTypes}</p>
-            <p className="text-xs text-[#8B8B8B] mt-0.5">{t.assessments.typeAuthoring.emptyCta}</p>
+      <div className="flex-1 overflow-auto px-4 py-5 md:px-6 md:py-6">
+        {/* Type selector */}
+        <div className="mb-6 max-w-md">
+          {types.isLoading ? (
+            <Skeleton className="h-9 w-full" />
+          ) : types.isError ? (
+            <ErrorState onRetry={() => types.refetch()} />
+          ) : hasTypes ? (
+            <Field label={t.assessments.selectType} id="assessment-type-select">
+              <Select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+                {types.data.map((tp) => (
+                  <option key={tp.id} value={tp.id}>
+                    {tp.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+          {!types.isLoading && !types.isError && !hasTypes && (
+            <EmptyState
+              icon={<QuizIcon />}
+              title={t.assessments.typeAuthoring.emptyTitle}
+              description={t.assessments.typeAuthoring.emptyCta}
+            />
+          )}
+          <div className={hasTypes ? 'mt-3' : 'mt-3 flex justify-center'}>
+            <AssessmentTypeToolbar
+              selected={
+                selectedType
+                  ? {
+                      id: selectedType.id,
+                      name: selectedType.name,
+                      description: selectedType.description,
+                      duration: selectedType.duration,
+                    }
+                  : null
+              }
+              createVariant={hasTypes || types.isLoading ? 'secondary' : 'primary'}
+              onChanged={onTypeChanged}
+            />
           </div>
-        )}
-        <div className="mt-3">
-          <AssessmentTypeToolbar
-            selected={
-              selectedType
-                ? {
-                    id: selectedType.id,
-                    name: selectedType.name,
-                    description: selectedType.description,
-                    duration: selectedType.duration,
-                  }
-                : null
-            }
-            onChanged={onTypeChanged}
-          />
         </div>
-      </div>
 
-      {/* Question list */}
-      <div className="flex-1 overflow-auto">
+        {/* Question list */}
         {!typeId ? null : questions.isLoading ? (
-          <div className="space-y-2">
+          <div className="space-y-2" aria-busy="true">
+            <span className="sr-only">{t.common.loadingContent}</span>
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-16 w-full" />
             ))}
@@ -155,50 +160,42 @@ export default function AssessmentAuthoringPage() {
           <ErrorState onRetry={() => questions.refetch()} />
         ) : items.length === 0 ? (
           <EmptyState
-            icon={<span className="text-3xl">📝</span>}
-            message={t.assessments.noQuestions}
+            icon={<QuizIcon />}
+            title={t.assessments.noQuestions}
             description={t.assessments.noQuestionsDesc}
-            action={{ label: t.assessments.addQuestion, onClick: openCreate }}
+            action={{ label: t.assessments.addQuestion, onClick: openCreate, variant: 'secondary' }}
           />
         ) : (
           <ul className="space-y-2">
             {items.map((q) => (
               <li
                 key={q.id}
-                className="flex items-start justify-between gap-4 p-4 rounded-xl border border-[#EDEDED] bg-white"
+                className="flex flex-col gap-3 rounded-xl border border-border bg-white p-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
               >
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#F0EDF7] text-[#1F114C]">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <StatusBadge tone="brand" icon="none">
                       {t.assessments.types[q.type]}
+                    </StatusBadge>
+                    <span className="text-caption text-secondary tabular-nums">
+                      {formatMessage(t.assessments.pointsShort, { n: q.points })}
                     </span>
-                    <span className="text-[11px] text-[#8B8B8B]">{q.points} pts</span>
-                    {!q.isActive && (
-                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#FBE9E9] text-[#B42318]">
-                        {t.assessments.inactive}
-                      </span>
-                    )}
+                    {!q.isActive && <StatusBadge tone="neutral">{t.assessments.inactive}</StatusBadge>}
                   </div>
-                  <p className="text-sm text-[#1A1A1A] truncate">{q.prompt}</p>
+                  <p className="truncate text-body text-primary">{q.prompt}</p>
                   {q.type !== 'free_text' && (
-                    <p className="text-xs text-[#8B8B8B] mt-0.5">
-                      {q.options.length} {t.assessments.fields.options.toLowerCase()}
+                    <p className="mt-0.5 text-callout text-secondary">
+                      {formatMessage(t.assessments.optionCount, { n: q.options.length })}
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => openEdit(q)}
-                    className="h-8 px-3 rounded-lg border border-[#EDEDED] text-xs font-medium text-[#585858] hover:bg-[#F5F5F5]"
-                  >
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => openEdit(q)}>
                     {t.assessments.editTitle}
-                  </button>
-                  <button
-                    onClick={() => handleDelete(q.id)}
-                    className="h-8 px-3 rounded-lg border border-[#EDEDED] text-xs font-medium text-[#B42318] hover:bg-[#FBE9E9]"
-                  >
+                  </Button>
+                  <Button variant="destructive-secondary" size="sm" onClick={() => setDeleting(q)}>
                     {t.assessments.delete}
-                  </button>
+                  </Button>
                 </div>
               </li>
             ))}
@@ -217,6 +214,39 @@ export default function AssessmentAuthoringPage() {
           onSaved={onSaved}
         />
       )}
+      {deleting && (
+        <ConfirmDialog
+          title={t.assessments.deleteConfirmTitle}
+          description={formatMessage(t.assessments.deleteConfirmBody, { prompt: firstLine(deleting.prompt) })}
+          confirmLabel={t.assessments.deleteConfirm}
+          confirmingLabel={t.assessments.deleting}
+          destructive
+          loading={deleteM.isPending}
+          onConfirm={() => deleteM.mutate({ id: deleting.id }, { onSettled: () => setDeleting(null) })}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/** The first line of a prompt, shortened, to name the question in the delete confirmation. */
+function firstLine(prompt: string): string {
+  const line = prompt.split('\n')[0].trim();
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line;
+}
+
+function QuizIcon() {
+  return (
+    <svg
+      className="size-8 text-muted"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path d="M9 12h6m-6 4h6M9 4.5h6a1.5 1.5 0 011.5 1.5v.75h-9V6A1.5 1.5 0 019 4.5zM7.5 6.75H6A1.5 1.5 0 004.5 8.25v11.25A1.5 1.5 0 006 21h12a1.5 1.5 0 001.5-1.5V8.25A1.5 1.5 0 0018 6.75h-1.5" />
+    </svg>
   );
 }

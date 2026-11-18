@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { inputClasses, selectClasses } from '../../../../components';
 import { COMPETENCY_DESCRIPTION_MAX, COMPETENCY_NAME_MAX, type CompetencyDraft } from './competencies-model';
 
 interface CompetencyRowProps {
@@ -16,10 +17,9 @@ interface CompetencyRowProps {
   onRemove: () => void;
 }
 
-const fieldCls =
-  'w-full h-9 px-3 rounded-lg border text-[13px] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] disabled:bg-[#F6F6F6]';
+const fieldCls = inputClasses('md');
 const iconBtnCls =
-  'h-8 w-8 rounded-lg border border-[#EDEDED] text-[#585858] hover:bg-[#F6F6F6] disabled:opacity-40 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1F114C]';
+  'flex size-8 items-center justify-center rounded-lg border border-field-border text-secondary transition-colors hover:bg-surface disabled:opacity-40 pointer-coarse:size-11';
 
 /** One editable competency: name, short description, expected level, reorder and remove. */
 export function CompetencyRow({
@@ -39,7 +39,7 @@ export function CompetencyRow({
   const levels = Array.from({ length: draft.scaleMax }, (_, i) => i + 1);
 
   return (
-    <li className="rounded-lg border border-[#EDEDED] bg-white p-2.5 space-y-2" data-testid="competency-row">
+    <li className="space-y-2 rounded-lg border border-border bg-white p-2.5" data-testid="competency-row">
       <div className="flex items-center gap-2">
         <input
           type="text"
@@ -52,10 +52,10 @@ export function CompetencyRow({
           readOnly={draft.code !== null}
           disabled={disabled}
           autoFocus={autoFocus}
-          className={`${fieldCls} flex-1 ${invalid ? 'border-[#DD0C15]' : 'border-[#EDEDED]'} ${draft.code !== null ? 'bg-[#FAFAFA]' : ''}`}
+          className={`${fieldCls} flex-1 ${invalid ? 'border-danger' : ''} ${draft.code !== null ? 'bg-surface-hover' : ''}`}
         />
         {draft.code !== null && (
-          <span className="shrink-0 rounded-full bg-[#1F114C]/10 px-2 py-0.5 text-[10px] font-medium text-[#1F114C]">
+          <span className="shrink-0 rounded-full bg-brand-tint px-2 py-0.5 text-caption font-medium text-brand">
             {v.competencyCatalogBadge}
           </span>
         )}
@@ -64,7 +64,7 @@ export function CompetencyRow({
           onChange={(e) => onChange({ ...draft, level: Number(e.target.value) })}
           aria-label={`${v.competencyLevelLabel}: ${display}`}
           disabled={disabled}
-          className={`${fieldCls} w-24 shrink-0 border-[#EDEDED] bg-white`}
+          className={`${selectClasses('md')} w-24 shrink-0`}
         >
           {levels.map((n) => (
             <option key={n} value={n}>
@@ -82,7 +82,7 @@ export function CompetencyRow({
           aria-label={v.competencyDescriptionLabel}
           maxLength={COMPETENCY_DESCRIPTION_MAX}
           disabled={disabled}
-          className={`${fieldCls} flex-1 border-[#EDEDED]`}
+          className={`${fieldCls} flex-1`}
         />
         <button
           type="button"
@@ -92,7 +92,7 @@ export function CompetencyRow({
           className={iconBtnCls}
         >
           <svg
-            className="w-3.5 h-3.5"
+            className="size-3.5"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -110,7 +110,7 @@ export function CompetencyRow({
           className={iconBtnCls}
         >
           <svg
-            className="w-3.5 h-3.5"
+            className="size-3.5"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -128,7 +128,7 @@ export function CompetencyRow({
           className={iconBtnCls}
         >
           <svg
-            className="w-3.5 h-3.5"
+            className="size-3.5"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"

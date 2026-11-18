@@ -68,4 +68,20 @@ describe('PortalNav', () => {
     expect(screen.getByRole('link', { name: es.portal.signInNav })).toHaveAttribute('href', '/careers/acme/dashboard');
     expect(screen.getAllByText('Acme').length).toBeGreaterThan(0);
   });
+
+  it('hides the "Vacantes" primary below sm through a wrapper, not a className Button overrides', () => {
+    const { container } = render(
+      <I18nProvider>
+        <PortalNav orgName="Acme" orgSlug="acme" />
+      </I18nProvider>,
+    );
+    const vacancies = Array.from(container.querySelectorAll('a[href="#vacantes"]')).find(
+      (a) => a.textContent === es.portal.navVacancies && a.parentElement?.tagName === 'SPAN',
+    );
+    expect(vacancies).toBeDefined();
+    // Button's base classes include inline-flex, which would win over a "hidden" className.
+    expect(vacancies?.className).not.toContain('hidden');
+    const wrapper = vacancies?.parentElement;
+    expect(wrapper?.className.split(' ')).toEqual(expect.arrayContaining(['hidden', 'sm:inline-flex']));
+  });
 });

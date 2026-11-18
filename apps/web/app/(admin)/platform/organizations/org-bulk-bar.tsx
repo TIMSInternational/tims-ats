@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { csvRow } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
-import { Modal } from '../../../../components';
+import { ConfirmDialog } from '../../../../components';
 import type { OrganizationListItem } from '../../../../lib/trpc-types';
 
 const PLAN_MRR: Record<string, number> = { trial: 0, starter: 499, professional: 999, enterprise: 2499 };
@@ -21,9 +22,10 @@ export function OrgBulkBar({ selectedIds, organizations, onDeselectAll }: OrgBul
   const utils = trpc.useUtils();
   const [confirmAction, setConfirmAction] = useState<'suspend' | 'activate' | null>(null);
 
+  const o = t.organizations;
   const suspendOrg = trpc.platform.suspendOrganization.useMutation({
     onError: (err) => {
-      toast(err.message || 'Error', { type: 'error' });
+      toast(err.message || o.statusChangeError, { type: 'error' });
     },
   });
 
@@ -35,7 +37,13 @@ export function OrgBulkBar({ selectedIds, organizations, onDeselectAll }: OrgBul
         done++;
       } catch { /* error handled by onError */ }
     }
-    toast(`${t.organizations.bulkComplete}: ${done}/${selectedIds.length}`, { type: 'success' });
+    // Success only when every call landed; a partial run says how many (feedback.md › Best practices).
+    const total = selectedIds.length;
+    if (done === total) {
+      toast(formatMessage(suspend ? o.bulkSuspendedAll : o.bulkActivatedAll, { count: done }), { type: 'success' });
+    } else {
+      toast(formatMessage(suspend ? o.bulkSuspendedPartial : o.bulkActivatedPartial, { done, total }), { type: 'warning' });
+    }
     utils.platform.listOrganizations.invalidate();
     utils.platform.getOrganizationKpis.invalidate();
     onDeselectAll();
@@ -70,61 +78,61 @@ export function OrgBulkBar({ selectedIds, organizations, onDeselectAll }: OrgBul
     a.download = `organizaciones-seleccionadas-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast(t.organizations.csvExported, { type: 'success' });
+    toast(formatMessage(o.rowsExported, { count: selected.length }), { type: 'success' });
   };
 
+  const onNavy = 'h-8 px-3 rounded-lg text-callout font-medium transition-colors disabled:opacity-50 pointer-coarse:min-h-11';
   return (
-    <div className="bg-[#1F114C] rounded-xl px-5 py-3 mb-3 flex items-center justify-between flex-shrink-0">
-      <span className="text-sm text-white font-medium">
-        {selectedIds.length} {t.organizations.selected}
+    <div
+      role="region"
+      aria-label={o.bulkActionsLabel}
+      className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl bg-brand px-4 py-3 md:px-5"
+    >
+      <span className="text-body font-medium text-white" aria-live="polite">
+        {formatMessage(o.selectedCount, { count: selectedIds.length })}
       </span>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
-          onClick={handleBulkSuspend}
-          disabled={suspendOrg.isPending}
-          className="h-8 px-3 rounded-lg bg-[#DD0C15] text-xs text-white font-medium hover:bg-[#c40b13] transition disabled:opacity-50"
-        >
-          {t.organizations.suspendSelected}
-        </button>
-        <button
+          type="button"
           onClick={handleBulkActivate}
           disabled={suspendOrg.isPending}
-          className="h-8 px-3 rounded-lg bg-green-500 text-xs text-white font-medium hover:bg-green-600 transition disabled:opacity-50"
+          className={`${onNavy} bg-white/10 text-white hover:bg-white/20`}
         >
-          {t.organizations.activateSelected}
+          {o.activateSelected}
         </button>
         <button
+          type="button"
           onClick={handleExportSelected}
-          className="h-8 px-3 rounded-lg bg-white/10 text-xs text-white font-medium hover:bg-white/20 transition"
+          className={`${onNavy} bg-white/10 text-white hover:bg-white/20`}
         >
-          {t.organizations.exportSelected}
+          {o.exportSelected}
         </button>
         <button
-          onClick={onDeselectAll}
-          className="h-8 px-3 text-xs text-white/70 font-medium hover:text-white transition"
+          type="button"
+          onClick={handleBulkSuspend}
+          disabled={suspendOrg.isPending}
+          className={`${onNavy} bg-white text-brand-red hover:bg-danger-bg`}
         >
-          {t.organizations.deselectAll}
+          {o.suspendSelectedEllipsis}
+        </button>
+        <button type="button" onClick={onDeselectAll} className={`${onNavy} text-white/80 hover:text-white`}>
+          {o.deselectAll}
         </button>
       </div>
       {confirmAction && (
-        <Modal
-          title={confirmAction === 'suspend' ? t.organizations.suspendSelected : t.organizations.activateSelected}
-          onClose={() => setConfirmAction(null)}
-          maxWidth="max-w-sm"
-        >
-          <p className="text-sm text-[#585858] mb-4">
-            {confirmAction === 'suspend' ? t.organizations.confirmBulkSuspend : t.organizations.confirmBulkActivate}
-          </p>
-          <div className="flex gap-3">
-            <button onClick={() => setConfirmAction(null)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
-            <button
-              onClick={() => { setConfirmAction(null); executeBulkAction(confirmAction === 'suspend'); }}
-              className={`flex-1 h-9 rounded-lg text-sm text-white font-medium transition ${confirmAction === 'suspend' ? 'bg-[#DD0C15] hover:bg-[#c40b13]' : 'bg-green-500 hover:bg-green-600'}`}
-            >
-              {confirmAction === 'suspend' ? t.organizations.suspend : t.organizations.activate}
-            </button>
-          </div>
-        </Modal>
+        <ConfirmDialog
+          title={formatMessage(confirmAction === 'suspend' ? o.confirmBulkSuspendTitle : o.confirmBulkActivateTitle, {
+            count: selectedIds.length,
+          })}
+          description={confirmAction === 'suspend' ? o.confirmBulkSuspendBody : o.confirmBulkActivateBody}
+          confirmLabel={confirmAction === 'suspend' ? o.suspendOrgs : o.activateOrgs}
+          destructive={confirmAction === 'suspend'}
+          onConfirm={() => {
+            setConfirmAction(null);
+            executeBulkAction(confirmAction === 'suspend');
+          }}
+          onCancel={() => setConfirmAction(null)}
+        />
       )}
     </div>
   );

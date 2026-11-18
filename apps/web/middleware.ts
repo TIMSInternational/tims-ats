@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@tims/auth/middleware';
-import { buildCsp, cvUploadCspOrigin, httpsOriginOf, originOf, type CspOrigins } from './lib/security/csp';
+import {
+  assessmentProviderFrameOrigin,
+  buildCsp,
+  cvUploadCspOrigin,
+  httpsOriginOf,
+  originOf,
+  type CspOrigins,
+} from './lib/security/csp';
 import { hasSupabaseSessionCookie, staffLoginUrl } from './lib/auth/staff-login-redirect';
 
 const PUBLIC_PATHS = [
@@ -47,8 +54,9 @@ const CSP_ORIGINS: CspOrigins = {
   cvUpload: cvUploadCspOrigin(process.env.CV_UPLOADS_BUCKET, process.env.CV_UPLOADS_REGION),
   // D16: the TIMS hosted assessment player, framed by the candidate portal only when configured (https only).
   assessmentPlayer: httpsOriginOf(process.env.NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN),
-  // PCA: the provider's own survey site, framed (sandboxed) by the candidate portal only when configured (https only).
-  assessmentProviderFrame: httpsOriginOf(process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN),
+  // PCA: the provider's own survey site, framed (sandboxed) by the candidate portal. timshr.com by default; the env
+  // overrides it, and a non-https value (e.g. `off`) turns framing off. The portal's launch reads the same resolver.
+  assessmentProviderFrame: assessmentProviderFrameOrigin(process.env.NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN),
 };
 
 // Pages whose URL carries a bearer credential (?token= or a path token): never

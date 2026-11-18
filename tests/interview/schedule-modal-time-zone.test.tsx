@@ -68,7 +68,12 @@ vi.mock('../../apps/web/lib/platform-api/assignable-people', () => ({
 }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: () => undefined }));
 vi.mock('../../apps/web/components', () => ({
-  Modal: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Modal: ({ children, footer }: { children: ReactNode; footer?: ReactNode }) => (
+    <div>
+      {children}
+      {footer}
+    </div>
+  ),
   CandidateAvatar: () => null,
   ErrorState: () => null,
   AssignablePeopleError: () => null,
@@ -93,7 +98,7 @@ function openOnStep2() {
   });
   fireEvent.click(screen.getByText('Ana Mora'));
   fireEvent.click(screen.getByText('Analista'));
-  fireEvent.click(screen.getByText('Siguiente'));
+  fireEvent.click(screen.getByText(en.common.next));
 }
 
 describe('schedule modal — time zone', () => {
@@ -107,7 +112,7 @@ describe('schedule modal — time zone', () => {
     expect(dateInput.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     fireEvent.change(dateInput, { target: { value: '2026-11-10' } });
     fireEvent.change(document.querySelector('input[type="time"]') as HTMLInputElement, { target: { value: '10:00' } });
-    fireEvent.click(screen.getByText('Siguiente'));
+    fireEvent.click(screen.getByText(en.common.next));
     // The summary is a real, zoned date — not "2026-11-10 a las 10:00".
     expect(screen.getByText(/Tuesday, November 10, 2026 at 10:00 AM, Costa Rica time \(GMT-6\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
@@ -129,7 +134,7 @@ describe('schedule modal — time zone', () => {
   it('cannot continue until the zone is known', () => {
     h.zone = { data: undefined, isError: false };
     openOnStep2();
-    expect(screen.getByText('Siguiente').closest('button')).toBeDisabled();
+    expect(screen.getByText(en.common.next).closest('button')).toBeDisabled();
     h.zone = { data: { timeZone: 'America/Costa_Rica', source: 'organization' }, isError: false };
   });
 });

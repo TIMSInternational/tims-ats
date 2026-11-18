@@ -3,19 +3,18 @@
 import Link from 'next/link';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
-import { ErrorState, Skeleton, StatusBadge } from '../../../../../components';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  StatusBadge,
+  TEXT_LINK_CLASSES,
+  type StatusMapEntry,
+} from '../../../../../components';
+import { CARD, CARD_TITLE } from './card-styles';
 import { displayInterviewStatus, formatInterviewWhen } from '../../interviews/interview-status';
 import { interviewTypeLabel } from '../../interviews/[id]/room/interview-type-label';
-
-const STATUS_CLASSES: Record<string, string> = {
-  scheduled: 'bg-blue-50 text-blue-600 border border-blue-200',
-  in_progress: 'bg-amber-50 text-amber-600 border border-amber-200',
-  awaiting_scorecard: 'bg-amber-50 text-amber-700 border border-amber-200',
-  completed: 'bg-green-50 text-green-600 border border-green-200',
-  cancelled: 'bg-gray-100 text-gray-600',
-  no_show: 'bg-red-50 text-red-600 border border-red-200',
-  rescheduled: 'bg-violet-50 text-violet-600 border border-violet-200',
-};
 
 /**
  * The candidate's interviews, newest first (A-15 / journeys-27): when, what kind, status (same honest status
@@ -23,31 +22,31 @@ const STATUS_CLASSES: Record<string, string> = {
  */
 export function CandidateInterviewsTab({ candidateId, onSchedule }: { candidateId: string; onSchedule?: () => void }) {
   const { t, locale } = useI18n();
-  const interviews = trpc.interview.list.useQuery({ candidateId, sort: 'desc', pageSize: 50 }, { refetchOnMount: 'always' });
-  const statusMap: Record<string, { cls: string; label: string }> = {
-    scheduled: { cls: STATUS_CLASSES.scheduled!, label: t.interviews.statusScheduled },
-    in_progress: { cls: STATUS_CLASSES.in_progress!, label: t.interviews.statusInProgress },
-    awaiting_scorecard: { cls: STATUS_CLASSES.awaiting_scorecard!, label: t.interviews.statusAwaitingScorecard },
-    completed: { cls: STATUS_CLASSES.completed!, label: t.interviews.statusCompleted },
-    cancelled: { cls: STATUS_CLASSES.cancelled!, label: t.interviews.statusCancelled },
-    no_show: { cls: STATUS_CLASSES.no_show!, label: t.interviews.statusNoShow },
-    rescheduled: { cls: STATUS_CLASSES.rescheduled!, label: t.interviews.statusRescheduled },
+  const interviews = trpc.interview.list.useQuery(
+    { candidateId, sort: 'desc', pageSize: 50 },
+    { refetchOnMount: 'always' },
+  );
+  // Status tones (foundation-spec.md §12): a word plus an icon for outcomes, never colour alone.
+  const statusMap: Record<string, StatusMapEntry> = {
+    scheduled: { tone: 'info', label: t.interviews.statusScheduled },
+    in_progress: { tone: 'warning', label: t.interviews.statusInProgress },
+    awaiting_scorecard: { tone: 'warning', label: t.interviews.statusAwaitingScorecard },
+    completed: { tone: 'success', label: t.interviews.statusCompleted },
+    cancelled: { tone: 'neutral', label: t.interviews.statusCancelled },
+    no_show: { tone: 'danger', label: t.interviews.statusNoShow },
+    rescheduled: { tone: 'info', label: t.interviews.statusRescheduled },
   };
   const items = interviews.data?.items ?? [];
   const now = new Date();
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <h3 className="text-[14px] font-semibold text-[#1F114C]">{t.candidates.tabInterviews}</h3>
-        {onSchedule && (
-          <button
-            type="button"
-            onClick={onSchedule}
-            className="rounded-lg bg-[#1F114C] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#2a1a5c]"
-          >
+    <section className={CARD}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className={`${CARD_TITLE} mb-0`}>{t.candidates.tabInterviews}</h2>
+        {onSchedule && items.length > 0 && (
+          <Button variant="secondary" size="sm" onClick={onSchedule}>
             {t.candidates.scheduleInterview}
-          </button>
+          </Button>
         )}
       </div>
       {interviews.isLoading ? (
@@ -57,35 +56,51 @@ export function CandidateInterviewsTab({ candidateId, onSchedule }: { candidateI
           ))}
         </div>
       ) : interviews.isError ? (
-        <ErrorState message={t.candidates.interviewsLoadError} error={interviews.error} onRetry={() => interviews.refetch()} />
+        <ErrorState
+          size="compact"
+          message={t.candidates.interviewsLoadError}
+          error={interviews.error}
+          onRetry={() => interviews.refetch()}
+        />
       ) : items.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B] py-4 text-center">{t.candidates.interviewsEmpty}</p>
+        <EmptyState
+          size="compact"
+          title={t.candidates.interviewsEmpty}
+          action={
+            onSchedule
+              ? { label: t.candidates.scheduleInterview, onClick: onSchedule, variant: 'secondary' }
+              : undefined
+          }
+        />
       ) : (
         <ul className="space-y-2">
           {items.map((iv) => {
             const submitted = iv._count?.scorecards ?? 0;
             const evaluators = iv.evaluators.map((e) => `${e.user.firstName} ${e.user.lastName}`.trim()).join(', ');
             return (
-              <li key={iv.id} className="flex flex-col gap-2 rounded-lg bg-[#F6F6F6] p-3 sm:flex-row sm:items-center sm:justify-between">
+              <li
+                key={iv.id}
+                className="flex flex-col gap-2 rounded-lg bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-[#333] truncate">{iv.vacancy.title}</p>
-                  <p className="text-[11px] text-[#585858]">
+                  <p className="truncate text-body font-medium text-primary">{iv.vacancy.title}</p>
+                  <p className="text-callout text-secondary">
                     {formatInterviewWhen(iv.scheduledAt, locale)} · {interviewTypeLabel(t, iv.type)}
                   </p>
                   {evaluators && (
-                    <p className="text-[11px] text-[#8B8B8B] truncate">
+                    <p className="truncate text-callout text-secondary">
                       {t.candidates.interviewsEvaluators.replace('{names}', evaluators)}
                     </p>
                   )}
-                  <p className="text-[11px] text-[#8B8B8B]">
+                  <p className="text-callout text-secondary">
                     {t.candidates.interviewsScorecards
                       .replace('{submitted}', String(submitted))
                       .replace('{total}', String(iv.evaluators.length))}
                   </p>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex shrink-0 items-center gap-3">
                   <StatusBadge status={displayInterviewStatus(iv, now)} map={statusMap} />
-                  <Link href={`/recruitment/interviews/${iv.id}/room`} className="text-[12px] font-medium text-[#DD0C15] hover:underline">
+                  <Link href={`/recruitment/interviews/${iv.id}/room`} className={`${TEXT_LINK_CLASSES} text-callout`}>
                     {t.candidates.interviewsOpenRoom}
                   </Link>
                 </div>
@@ -94,6 +109,6 @@ export function CandidateInterviewsTab({ candidateId, onSchedule }: { candidateI
           })}
         </ul>
       )}
-    </div>
+    </section>
   );
 }

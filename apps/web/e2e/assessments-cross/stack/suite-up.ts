@@ -136,9 +136,10 @@ function supabaseProxy(): Server {
 /**
  * A local stand-in for the TIMS legacy PCA provider (timshr.com), so PCA can be
  * driven through /v1 without a TIMS sandbox key. It holds NO assessment content:
- * the "survey" is one button that marks the sitting complete, and the results
- * are fixed synthetic numbers. API over http (the suite calls it), the survey
- * page over https (the ATS only accepts an https provider URL).
+ * the "survey" is a plain questionnaire page, labelled as the local stand-in, whose
+ * two sample questions are never read; sending it marks the sitting complete, and
+ * the results are fixed synthetic numbers. API over http (the suite calls it), the
+ * survey page over https (the ATS only accepts an https provider URL).
  */
 function fakePcaServers(): Server[] {
   const done = new Set<string>();
@@ -224,9 +225,35 @@ function fakePcaServers(): Server[] {
       }
     });
   }).listen(PORTS.pcaApi, '127.0.0.1');
+  // A plain survey page, like any hosted questionnaire, under a banner that says what it is: a local stand-in for
+  // TIMS's site (no real items; the answers are not read).
   const page = (title: string, body: string) =>
-    `<!doctype html><html lang="es"><meta charset="utf-8"><title>${title}</title>` +
-    `<body style="font-family:system-ui;max-width:36rem;margin:4rem auto;line-height:1.5">${body}</body></html>`;
+    `<!doctype html><html lang="es"><head><meta charset="utf-8">` +
+    `<meta name="viewport" content="width=device-width, initial-scale=1"><title>${title} · simulación local</title>` +
+    `<style>
+      *{box-sizing:border-box}
+      body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#27272a;background:#f4f4f5}
+      .standin{margin:0;padding:10px 16px;background:#fef3c7;border-bottom:1px solid #f59e0b;color:#713f12;font-size:14px;text-align:center}
+      main{max-width:40rem;margin:24px auto;padding:0 16px}
+      .card{background:#fff;border:1px solid #e4e4e7;border-radius:8px;padding:24px}
+      h1{margin:0 0 4px;font-size:22px;line-height:1.3}
+      .lead{margin:0 0 8px;color:#52525b}
+      fieldset{margin:0;padding:16px 0;border:0;border-top:1px solid #e4e4e7}
+      legend{float:left;width:100%;margin-bottom:8px;padding:0;font-weight:600}
+      label{clear:left;display:flex;align-items:center;gap:10px;min-height:40px}
+      input[type=radio]{width:18px;height:18px;margin:0}
+      button{margin-top:8px;padding:10px 20px;border:0;border-radius:6px;background:#2563eb;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+      button:hover{background:#1d4ed8}
+      :focus-visible{outline:2px solid #1d4ed8;outline-offset:2px}
+      .meta{margin:16px 0 0;color:#71717a;font-size:13px}
+    </style></head><body>` +
+    `<p class="standin" role="note"><strong>Simulación local.</strong> Esta página reemplaza el sitio de TIMS ` +
+    `(timshr.com) en las pruebas locales: no es el cuestionario real y no guarda respuestas.</p>` +
+    `<main><div class="card">${body}</div></main></body></html>`;
+  const question = (n: number, text: string, options: string[]) =>
+    `<fieldset><legend>${n}. ${text}</legend>` +
+    options.map((o) => `<label><input type="radio" name="q${n}" value="${o}"> ${o}</label>`).join('') +
+    `</fieldset>`;
   const survey = createHttpsServer(
     { cert: readFileSync(need('TLS_CERT')), key: readFileSync(need('TLS_KEY')) },
     (req, res) => {
@@ -236,11 +263,15 @@ function fakePcaServers(): Server[] {
       if (u.pathname === '/survey' && req.method === 'GET' && code) {
         return void res.end(
           page(
-            'PCA (simulado)',
-            `<h1>PCA — proveedor simulado</h1>
-        <p>Esta página reemplaza localmente el sitio de TIMS donde la persona responde el PCA.</p>
-        <p>Código de la evaluación: <code>${code}</code></p>
-        <form method="post" action="/survey/complete?c=${code}"><button type="submit">Completar el PCA</button></form>`,
+            'Cuestionario de perfil conductual',
+            `<form method="post" action="/survey/complete?c=${code}">
+        <h1>Cuestionario de perfil conductual</h1>
+        <p class="lead">Elija la opción que mejor lo describe. Son preguntas de ejemplo.</p>
+        ${question(1, '¿Cómo prefiere organizar su trabajo?', ['Con un plan detallado', 'Según las prioridades del día', 'De acuerdo con el equipo'])}
+        ${question(2, '¿En qué ambiente trabaja mejor?', ['Tranquilo', 'Dinámico', 'Colaborativo'])}
+        <button type="submit">Enviar respuestas</button>
+        <p class="meta">Código de la evaluación: <code>${code}</code></p>
+      </form>`,
           ),
         );
       }
@@ -248,9 +279,9 @@ function fakePcaServers(): Server[] {
         done.add(code);
         return void res.end(
           page(
-            'PCA completado',
-            `<h1>PCA completado</h1>
-        <p>Listo. Puede cerrar esta pestaña y volver al portal. El resultado llega a la empresa en la próxima revisión programada.</p>`,
+            'Cuestionario enviado',
+            `<h1>Cuestionario enviado</h1>
+        <p class="lead">Gracias. Ya puede volver al portal: el resultado llega a la empresa en la próxima revisión programada.</p>`,
           ),
         );
       }

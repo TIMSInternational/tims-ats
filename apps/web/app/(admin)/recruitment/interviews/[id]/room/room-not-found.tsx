@@ -2,6 +2,7 @@
 
 import { useI18n } from '../../../../../../lib/i18n';
 import { trpcErrorCode } from './room-load-error';
+import { buttonClasses } from '../../../../../../components/button-styles';
 
 /**
  * Shown when the room's interview cannot be loaded: an unknown or foreign id
@@ -13,18 +14,19 @@ export function RoomNotFound({ error }: { error: unknown }) {
   const isMissing = code === 'NOT_FOUND' || code === 'FORBIDDEN' || code === 'BAD_REQUEST';
 
   return (
-    <div className="h-full flex items-center justify-center bg-[#0a0a0a] px-6">
-      <div role="alert" className="text-center max-w-sm">
-        <p className="text-white text-[14px] font-medium mb-2">
+    <div className="flex h-full items-center justify-center bg-surface px-6">
+      <div role="alert" className="max-w-sm text-center">
+        <svg className="mx-auto mb-3 size-8 text-muted" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+        <p className="mb-1 text-subheading font-semibold text-primary">
           {isMissing ? t.interviews.roomInterviewNotFound : t.interviews.couldNotLoadInterview}
         </p>
-        <p className="text-white/70 text-[12px] mb-5">
+        <p className="mb-5 text-callout text-secondary">
           {isMissing ? t.interviews.roomInterviewNotFoundDesc : t.interviews.roomLoadErrorDesc}
         </p>
-        <a
-          href="/recruitment/interviews"
-          className="inline-flex items-center h-9 px-4 rounded-lg bg-white text-[#1F114C] text-[12px] font-medium hover:bg-white/90 transition"
-        >
+        {/* Plain <a>: leaving the room is always a full document load (./hard-exit.ts). */}
+        <a href="/recruitment/interviews" className={buttonClasses({ variant: 'secondary' })}>
           {t.interviews.roomBackToInterviews}
         </a>
       </div>

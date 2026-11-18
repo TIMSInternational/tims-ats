@@ -2,75 +2,63 @@
 
 import Link from 'next/link';
 import { useI18n } from '../../../../lib/i18n';
-import { formatDate } from '../../../../lib/format-utils';
 import { DataTable, EmptyState, ErrorState, StatusBadge, CandidateAvatar, UpsellNotice } from '../../../../components';
+import type { StatusMapEntry } from '../../../../components/status-badge';
 import type { InterviewListItem } from '../../../../lib/trpc-types';
 import { isPilotScope } from '../../../../lib/launch-scope';
-import { isVideoInterview, ROOM_STATUSES } from './[id]/room/interview-mode';
 import { interviewTypeLabel } from './[id]/room/interview-type-label';
-import { canCancelInterview, canMarkNoShow, displayInterviewStatus } from './interview-status';
-import { canRescheduleInterview } from './interview-reschedule';
+import { displayInterviewStatus } from './interview-status';
+import { InterviewTypeIcon } from './interview-type-icon';
+import { EvaluatorStack } from './evaluator-stack';
+import { InterviewRowActions, type InterviewRowHandlers } from './interview-row-actions';
 
-interface InterviewTableProps {
+interface InterviewTableProps extends InterviewRowHandlers {
   interviews: InterviewListItem[];
   isLoading: boolean;
   isError?: boolean;
   onRetry?: () => void;
-  /** Omitted when the viewer may not cancel (e.g. committee-only) — the button is then hidden. */
-  onCancel?: (id: string) => void;
-  isCancelling: boolean;
-  /** "No se presentó" on a started, unscored row; omitted (hidden) for viewers who may not cancel. */
-  onMarkNoShow?: (id: string) => void;
-  /** "Reprogramar" on an open, unscored row; omitted (hidden) for viewers who may not manage interviews. */
-  onReschedule?: (iv: InterviewListItem) => void;
-  /** Omitted when the viewer may not manage the panel (e.g. committee-only) — the button is then hidden. */
-  onManageEvaluators?: (id: string) => void;
-  onStartAiScreen: (id: string) => void;
-  aiScreenEnabled: boolean;
-  aiScreenError?: boolean;
   /** False when the viewer has no candidate:read: the name is plain text, not a link to "Acceso denegado". */
   canViewCandidate?: boolean;
   /** Server-side paging of the current list (upcoming or past). */
   pagination?: { page: number; total: number; limit: number; onPageChange: (page: number) => void };
+  /** The empty state's "Agendar entrevista" action; omitted for viewers who may not schedule. */
+  onSchedule?: () => void;
 }
 
-const STATUS_CLASSES = {
-  scheduled: 'bg-blue-50 text-blue-600 border border-blue-200',
-  in_progress: 'bg-amber-50 text-amber-600 border border-amber-200',
-  awaiting_scorecard: 'bg-amber-50 text-amber-700 border border-amber-200',
-  completed: 'bg-green-50 text-green-600 border border-green-200',
-  cancelled: 'bg-gray-100 text-gray-600',
-  no_show: 'bg-red-50 text-red-600 border border-red-200',
-  rescheduled: 'bg-violet-50 text-violet-600 border border-violet-200',
-} as const;
+type Translations = ReturnType<typeof useI18n>['t'];
 
-const TYPE_ICONS: Record<string, React.ReactNode> = {
-  phone: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>,
-  video: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" /></svg>,
-  panel: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" /></svg>,
-  onsite: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21" /></svg>,
-  technical: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>,
-  cultural: <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>,
-};
+/** Status tones (foundation-spec.md §12): every chip passes 4.5:1 and outcome tones carry an icon. */
+function statusMap(t: Translations): Record<string, StatusMapEntry> {
+  return {
+    scheduled: { tone: 'info', label: t.interviews.statusScheduled },
+    in_progress: { tone: 'warning', label: t.interviews.statusInProgress },
+    awaiting_scorecard: { tone: 'warning', label: t.interviews.statusAwaitingScorecard },
+    completed: { tone: 'success', label: t.interviews.statusCompleted },
+    cancelled: { tone: 'neutral', label: t.interviews.statusCancelled },
+    no_show: { tone: 'danger', label: t.interviews.statusNoShow },
+    rescheduled: { tone: 'brand', label: t.interviews.statusRescheduled },
+  };
+}
 
-export function InterviewTable({ interviews, isLoading, isError, onRetry, onCancel, isCancelling, onMarkNoShow, onReschedule, onManageEvaluators, onStartAiScreen, aiScreenEnabled, aiScreenError, canViewCandidate = true, pagination }: InterviewTableProps) {
-  const { t } = useI18n();
+function timeLabel(iv: InterviewListItem, locale: 'ES' | 'EN', t: Translations): string {
+  const at = new Date(iv.scheduledAt);
+  const tag = locale === 'EN' ? 'en-US' : 'es-CR';
+  const date = at.toLocaleDateString(tag, { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = at.toLocaleTimeString(tag, { hour: '2-digit', minute: '2-digit' });
+  return `${date} · ${time} · ${iv.duration} ${t.interviews.minutes}`;
+}
+
+export function InterviewTable(props: InterviewTableProps) {
+  const { interviews, isLoading, isError, onRetry, canViewCandidate = true, pagination, onSchedule } = props;
+  const { t, locale } = useI18n();
   const now = new Date();
   // The AI voice screen is not part of the pilot: no sales upsell on every row (F-9).
-  const showAiUpsell = !isPilotScope();
-  const statusMap: Record<string, { cls: string; label: string }> = {
-    scheduled: { cls: STATUS_CLASSES.scheduled, label: t.interviews.statusScheduled },
-    in_progress: { cls: STATUS_CLASSES.in_progress, label: t.interviews.statusInProgress },
-    awaiting_scorecard: { cls: STATUS_CLASSES.awaiting_scorecard, label: t.interviews.statusAwaitingScorecard },
-    completed: { cls: STATUS_CLASSES.completed, label: t.interviews.statusCompleted },
-    cancelled: { cls: STATUS_CLASSES.cancelled, label: t.interviews.statusCancelled },
-    no_show: { cls: STATUS_CLASSES.no_show, label: t.interviews.statusNoShow },
-    rescheduled: { cls: STATUS_CLASSES.rescheduled, label: t.interviews.statusRescheduled },
-  };
+  const showAiUpsell = !isPilotScope() && !props.aiScreenEnabled && !props.aiScreenError;
+  const map = statusMap(t);
 
   if (isError) {
     return (
-      <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-white shadow-card">
         <ErrorState onRetry={onRetry} />
       </div>
     );
@@ -79,185 +67,153 @@ export function InterviewTable({ interviews, isLoading, isError, onRetry, onCanc
   const columns = [
     { key: 'candidate', label: t.interviews.colCandidate },
     { key: 'vacancy', label: t.interviews.colVacancy },
-    { key: 'type', label: t.interviews.colType },
+    // Type and the email line only fit beside the calendar rail on 2xl screens; below that the status column
+    // would be covered by the pinned actions cell (lists-and-tables.md › Best practices). The type stays on the
+    // phone list and the interview room.
+    { key: 'type', label: t.interviews.colType, className: 'hidden 2xl:table-cell' },
     { key: 'date', label: t.interviews.colDate },
     { key: 'evaluators', label: t.interviews.colEvaluators },
     { key: 'status', label: t.interviews.colStatus },
-    { key: 'actions', label: t.interviews.colActions, align: 'right' as const },
+    // Heading visually hidden: the cell is pinned to the right edge (below) and the header row is not.
+    { key: 'actions', label: t.interviews.colActions, align: 'right' as const, srOnly: true },
   ];
 
+  const candidateName = (iv: InterviewListItem) => {
+    const name = `${iv.candidate.firstName} ${iv.candidate.lastName}`;
+    return canViewCandidate ? (
+      <Link
+        href={`/recruitment/candidates/${iv.candidate.id}`}
+        className="text-body font-medium text-primary hover:underline"
+      >
+        {name}
+      </Link>
+    ) : (
+      <span className="text-body font-medium text-primary">{name}</span>
+    );
+  };
+
+  // Phones: a stacked list instead of the seven-column table (foundation-spec.md §7, layout.md › Size classes).
+  const mobileList = interviews.map((iv) => (
+    <div key={iv.id} className="flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {candidateName(iv)}
+          <p className="truncate text-callout text-secondary">{iv.vacancy.title}</p>
+        </div>
+        <StatusBadge status={displayInterviewStatus(iv, now)} map={map} />
+      </div>
+      <p className="flex items-center gap-1.5 text-callout text-secondary tabular-nums">
+        <InterviewTypeIcon type={iv.type} />
+        {interviewTypeLabel(t, iv.type)} · {timeLabel(iv, locale, t)}
+      </p>
+      <InterviewRowActions {...props} iv={iv} now={now} fullWidth />
+    </div>
+  ));
+
+  // Said once for the whole list, not on every row: per row it crowded the actions cell and broke into
+  // one-word fragments beside "Calificar" (layout.md › Visual hierarchy).
+  const upsell = showAiUpsell && (
+    <div className="mb-3 shrink-0 rounded-lg bg-surface px-3 py-2">
+      <UpsellNotice message={t.interviews.aiScreenNotIncluded} ctaLabel={t.entitlements.contactSales} />
+    </div>
+  );
+
   return (
-    <DataTable
-      columns={columns}
-      loading={isLoading}
-      skeletonRows={8}
-      pagination={pagination}
-      empty={
-        <EmptyState
-          icon={
-            <svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-              <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-          }
-          message={t.interviews.noInterviews}
-          description={t.interviews.noInterviewsDesc}
-        />
-      }
-    >
-      {interviews.map((iv) => (
-        <tr key={iv.id} className="border-b border-[#F6F6F6] hover:bg-[#FAFAFA] transition">
-          <td className="px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <CandidateAvatar
-                firstName={iv.candidate.firstName}
-                lastName={iv.candidate.lastName}
-                avatar={iv.candidate.avatar}
-                size="sm"
-              />
-              <div>
-                {canViewCandidate ? (
-                  <Link
-                    href={`/recruitment/candidates/${iv.candidate.id}`}
-                    className="text-[13px] font-medium text-[#333] hover:underline"
-                  >
-                    {iv.candidate.firstName} {iv.candidate.lastName}
-                  </Link>
-                ) : (
-                  <span className="text-[13px] font-medium text-[#333]">
-                    {iv.candidate.firstName} {iv.candidate.lastName}
-                  </span>
-                )}
-                <p className="text-[11px] text-[#8B8B8B]">{iv.candidate.email}</p>
-              </div>
-            </div>
-          </td>
-          <td className="px-4 py-3">
-            <span className="text-[12px] text-[#585858]">{iv.vacancy.title}</span>
-          </td>
-          <td className="px-4 py-3">
-            <span className="inline-flex items-center gap-1.5 text-[11px] bg-[#F6F6F6] text-[#585858] px-2 py-0.5 rounded font-medium">
-              {TYPE_ICONS[iv.type] ?? null}
-              {interviewTypeLabel(t, iv.type)}
-            </span>
-          </td>
-          <td className="px-4 py-3">
-            <div>
-              <p className="text-[12px] text-[#333]">{formatDate(iv.scheduledAt)}</p>
-              <p className="text-[10px] text-[#8B8B8B]">
-                {new Date(iv.scheduledAt).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
-                {' '}&middot;{' '}{iv.duration} {t.interviews.minutes}
-              </p>
-            </div>
-          </td>
-          <td className="px-4 py-3">
-            <div className="flex -space-x-2">
-              {iv.evaluators.slice(0, 3).map((ev) => (
+    <>
+      {upsell}
+      <DataTable
+        columns={columns}
+        loading={isLoading}
+        skeletonRows={8}
+        pagination={pagination}
+        label={t.interviews.title}
+        mobileList={interviews.length > 0 ? mobileList : undefined}
+        empty={
+          <EmptyState
+            icon={
+              <svg
+                className="size-8 text-muted"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+            }
+            title={t.interviews.noInterviews}
+            description={t.interviews.noInterviewsDesc}
+            action={
+              onSchedule ? { label: t.interviews.scheduleNew, onClick: onSchedule, variant: 'secondary' } : undefined
+            }
+          />
+        }
+      >
+        {interviews.map((iv) => (
+          <tr key={iv.id} className="group border-b border-border transition-colors hover:bg-surface-hover">
+            <td className="px-4 py-3">
+              <div className="flex items-center gap-2.5">
                 <CandidateAvatar
-                  key={ev.user.id}
-                  firstName={ev.user.firstName}
-                  lastName={ev.user.lastName}
-                  avatar={ev.user.avatar}
+                  firstName={iv.candidate.firstName}
+                  lastName={iv.candidate.lastName}
+                  avatar={iv.candidate.avatar}
                   size="sm"
+                  decorative
                 />
-              ))}
-              {iv.evaluators.length > 3 && (
-                <div className="w-7 h-7 rounded-full bg-[#F6F6F6] flex items-center justify-center text-[9px] text-[#8B8B8B] font-bold border-2 border-white">
-                  +{iv.evaluators.length - 3}
+                <div className="min-w-0 max-w-32 2xl:max-w-48">
+                  <div className="truncate">{candidateName(iv)}</div>
+                  <p className="hidden truncate text-caption text-muted 2xl:block" title={iv.candidate.email}>
+                    {iv.candidate.email}
+                  </p>
                 </div>
-              )}
-            </div>
-          </td>
-          <td className="px-4 py-3">
-            <StatusBadge status={displayInterviewStatus(iv, now)} map={statusMap} />
-          </td>
-          <td className="px-4 py-3 text-right">
-            <div className="flex items-center justify-end gap-1">
-              {onManageEvaluators && (
-                <button
-                  onClick={() => onManageEvaluators(iv.id)}
-                  className="h-7 px-2.5 rounded-md text-[11px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-                >
-                  {t.interviews.manageEvaluators}
-                </button>
-              )}
-              {aiScreenEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => onStartAiScreen(iv.id)}
-                  className="h-7 px-2.5 rounded-md text-[11px] text-[#1F114C] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-                >
-                  {t.interviews.startAiScreen}
-                </button>
-              ) : aiScreenError ? (
-                <button
-                  type="button"
-                  disabled
-                  title={t.common.error}
-                  className="h-7 px-2.5 rounded-md text-[11px] text-[#9CA3AF] border border-[#EDEDED] cursor-not-allowed"
-                >
-                  {t.interviews.startAiScreen}
-                </button>
-              ) : showAiUpsell ? (
-                <UpsellNotice message={t.entitlements.notIncluded} ctaLabel={t.entitlements.contactSales} />
-              ) : null}
-              {onReschedule && canRescheduleInterview(iv) && (
-                <button
-                  type="button"
-                  onClick={() => onReschedule(iv)}
-                  className="h-7 px-2.5 rounded-md text-[11px] text-[#1F114C] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-                >
-                  {t.interviews.reschedule}
-                </button>
-              )}
-              {onCancel && canCancelInterview(iv, now) && (
-                <button
-                  onClick={() => onCancel(iv.id)}
-                  disabled={isCancelling}
-                  className="h-7 px-2.5 rounded-md text-[11px] text-[#DD0C15] border border-red-200 hover:bg-red-50 transition"
-                >
-                  {t.interviews.cancelInterview}
-                </button>
-              )}
-              {onMarkNoShow && canMarkNoShow(iv, now) && (
-                <button
-                  type="button"
-                  onClick={() => onMarkNoShow(iv.id)}
-                  className="h-7 px-2.5 rounded-md text-[11px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-                >
-                  {t.interviews.markNoShow}
-                </button>
-              )}
-              {ROOM_STATUSES.has(iv.status) && (
-                // Plain <a>, not next/link: the room needs a FULL document load so the
-                // browser receives the room route's CSP (Daily call object). A soft
-                // navigation would keep this page's stricter CSP and the call fails.
-                // Labelled "Join" only for a video interview not yet completed; every other
-                // room opens on the scoring stage, so it is labelled "Score".
-                <a
-                  href={`/recruitment/interviews/${iv.id}/room`}
-                  className="h-7 px-2.5 rounded-md text-[11px] text-white bg-[#1F114C] hover:bg-[#2a1863] transition inline-flex items-center gap-1"
-                >
-                  {isVideoInterview(iv) && iv.status !== 'completed' ? (
-                    <>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
-                      </svg>
-                      {t.interviews.joinMeeting}
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
-                      </svg>
-                      {t.interviews.scoreInterview}
-                    </>
-                  )}
-                </a>
-              )}
-            </div>
-          </td>
-        </tr>
-      ))}
-    </DataTable>
+              </div>
+            </td>
+            <td className="px-4 py-3">
+              <span className="line-clamp-2 max-w-36 text-callout text-secondary 2xl:max-w-44" title={iv.vacancy.title}>
+                {iv.vacancy.title}
+              </span>
+            </td>
+            <td className="hidden px-4 py-3 2xl:table-cell">
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-surface px-2 py-0.5 text-caption font-medium text-secondary">
+                <InterviewTypeIcon type={iv.type} />
+                {interviewTypeLabel(t, iv.type)}
+              </span>
+            </td>
+            <td className="px-4 py-3 whitespace-nowrap tabular-nums">
+              <p className="text-callout text-primary">
+                {new Date(iv.scheduledAt).toLocaleDateString(locale === 'EN' ? 'en-US' : 'es-CR', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })}
+              </p>
+              <p className="text-caption text-muted">
+                {new Date(iv.scheduledAt).toLocaleTimeString(locale === 'EN' ? 'en-US' : 'es-CR', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+                {' · '}
+                {iv.duration} {t.interviews.minutes}
+              </p>
+            </td>
+            <td className="px-4 py-3">
+              <EvaluatorStack evaluators={iv.evaluators} />
+            </td>
+            <td className="px-4 py-3">
+              <StatusBadge status={displayInterviewStatus(iv, now)} map={map} />
+            </td>
+            {/* Pinned to the right edge of the scroller, so the row's primary action ("Calificar" / "Unirse")
+              is visible at every width without scrolling sideways (buttons.md › Best practices).
+              Sticky makes the cell a stacking context that traps the "More actions" panel, and the next
+              row's opaque sticky cell would paint over it — so the cell with an open menu is lifted
+              above its siblings (and the sticky header's z-10) while it is open. */}
+            <td className="sticky right-0 border-l border-border bg-white has-[[aria-expanded=true]]:z-20 px-4 py-3 text-right transition-colors group-hover:bg-surface-hover">
+              <InterviewRowActions {...props} iv={iv} now={now} />
+            </td>
+          </tr>
+        ))}
+      </DataTable>
+    </>
   );
 }

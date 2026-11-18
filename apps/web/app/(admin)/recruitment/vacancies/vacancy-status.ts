@@ -1,5 +1,10 @@
-// Badge style + label for each stored vacancy status. One map for the list, the detail header and the
-// SLA card, so no screen falls back to printing the raw slug ("approved").
+import { createElement } from 'react';
+import type { StatusMapEntry } from '../../../../components';
+import { PauseGlyph } from './pause-glyph';
+
+// Badge tone + label for each stored vacancy status. One map for the list, the detail header and the
+// SLA card, so no screen falls back to printing the raw slug ("approved"). Tones follow foundation §12:
+// "Cerrada" is a normal end state (neutral), not an error; colour is never the only signal (the word is shown).
 export interface VacancyStatusLabels {
   statusDraft: string;
   statusPendingApproval: string;
@@ -9,17 +14,25 @@ export interface VacancyStatusLabels {
   statusFrozen: string;
 }
 
-export function vacancyStatusMap(labels: VacancyStatusLabels): Record<string, { cls: string; label: string }> {
+export function vacancyStatusMap(labels: VacancyStatusLabels): Record<string, StatusMapEntry> {
   return {
-    draft: { cls: 'bg-gray-100 text-gray-600', label: labels.statusDraft },
-    pending_approval: { cls: 'bg-amber-50 text-amber-600 border border-amber-200', label: labels.statusPendingApproval },
-    approved: { cls: 'bg-blue-50 text-blue-600 border border-blue-200', label: labels.statusApproved },
-    published: { cls: 'bg-green-50 text-green-600 border border-green-200', label: labels.statusPublished },
-    closed: { cls: 'bg-red-50 text-red-600', label: labels.statusClosed },
-    frozen: { cls: 'bg-purple-50 text-purple-600 border border-purple-200', label: labels.statusFrozen },
+    draft: { tone: 'neutral', label: labels.statusDraft },
+    pending_approval: { tone: 'warning', label: labels.statusPendingApproval },
+    approved: { tone: 'brand', label: labels.statusApproved },
+    published: { tone: 'success', label: labels.statusPublished },
+    closed: { tone: 'neutral', label: labels.statusClosed },
+    frozen: { tone: 'info', label: labels.statusFrozen, icon: createElement(PauseGlyph) },
   };
 }
 
 export function vacancyStatusLabel(status: string, labels: VacancyStatusLabels): string {
   return vacancyStatusMap(labels)[status]?.label ?? status.replace(/_/g, ' ');
 }
+
+/** Decorative dot beside the priority word (the word carries the meaning; the dot is never alone). */
+export const VACANCY_PRIORITY_DOT: Record<string, string> = {
+  low: 'bg-muted',
+  medium: 'bg-info',
+  high: 'bg-warning',
+  urgent: 'bg-brand-red',
+};

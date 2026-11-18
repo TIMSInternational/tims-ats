@@ -2,6 +2,7 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
+import { buttonClasses } from './button-styles';
 
 // Scoped route-segment error boundary UI, rendered by the per-group error.tsx
 // files (admin / portal / assessment / auth). A thrown render error now shows a
@@ -10,27 +11,15 @@ import { useEffect } from 'react';
 // (allowlisted in the i18n gate) because an error boundary must not depend on
 // context — including I18nProvider — that may itself be what broke; if i18n is
 // the failure this component still renders, and re-throws bubble to global-error.
-export function RouteError({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+export function RouteError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#DD0C15]/10">
-        <svg
-          className="h-6 w-6 text-[#DD0C15]"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          viewBox="0 0 24 24"
-        >
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-danger-bg" aria-hidden="true">
+        <svg className="h-6 w-6 text-danger" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -38,14 +27,9 @@ export function RouteError({
           />
         </svg>
       </div>
-      <h2 className="mt-4 text-[18px] font-semibold text-[#1F114C]">Algo salió mal</h2>
-      <p className="mt-1 max-w-sm text-[14px] text-[#585858]">
-        Ocurrió un error inesperado. Intenta de nuevo.
-      </p>
-      <button
-        onClick={() => reset()}
-        className="mt-5 h-9 rounded-lg bg-[#1F114C] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#2a1a5e]"
-      >
+      <h2 className="mt-4 font-display text-title font-semibold text-brand">Algo salió mal</h2>
+      <p className="mt-1 max-w-sm text-subheading text-secondary">Ocurrió un error inesperado. Intenta de nuevo.</p>
+      <button type="button" onClick={() => reset()} className={buttonClasses({ className: 'mt-5' })}>
         Reintentar
       </button>
     </div>

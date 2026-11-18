@@ -13,16 +13,17 @@ export function MyTasksSection() {
 
   return (
     <section>
-      <h2 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.my360.tasksTitle}</h2>
+      <h2 className="mb-3 text-heading font-semibold text-primary">{t.my360.tasksTitle}</h2>
 
       {tasks.isLoading ? (
         <Skeleton className="h-40 w-full rounded-xl" />
       ) : tasks.isError ? (
-        <ErrorState onRetry={() => tasks.refetch()} />
+        <ErrorState error={tasks.error} onRetry={() => tasks.refetch()} />
       ) : (tasks.data ?? []).length === 0 ? (
         <EmptyState
+          className="rounded-xl border border-border bg-white"
           icon={
-            <svg className="w-8 h-8 text-[#B8B8B8]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+            <svg className="size-8" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           }

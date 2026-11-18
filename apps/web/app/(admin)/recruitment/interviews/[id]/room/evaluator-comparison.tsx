@@ -41,12 +41,12 @@ export function EvaluatorComparison({
   const { t } = useI18n();
 
   return (
-    <section className="bg-[#F6F6F6] rounded-lg p-3 mb-4" aria-labelledby="evaluator-comparison-title">
-      <p id="evaluator-comparison-title" className="text-[11px] font-medium text-[#1F114C] mb-2">
+    <section className="bg-surface rounded-lg p-3 mb-4" aria-labelledby="evaluator-comparison-title">
+      <h4 id="evaluator-comparison-title" className="text-callout font-semibold text-brand mb-2">
         {t.interviews.evaluatorComparison}
-      </p>
+      </h4>
       {evaluators.length === 0 ? (
-        <p className="text-[10px] text-[#8B8B8B]">{t.interviewRoom.comparisonEmpty}</p>
+        <p className="text-callout text-secondary">{t.interviewRoom.comparisonEmpty}</p>
       ) : (
         <ul className="space-y-1.5">
           {evaluators.map((ev) => {
@@ -62,12 +62,12 @@ export function EvaluatorComparison({
             // as a score, e.g. in the window between submitting and the getById refetch.
             const showScore = card !== undefined && !card.isWithheld;
             return (
-              <li key={ev.id} className="text-[10px]">
-                <div className="flex items-center gap-2">
-                  <span className="text-[#585858] truncate">
+              <li key={ev.id} className="text-callout">
+                <div className="flex flex-wrap items-center gap-x-2">
+                  <span className="text-secondary truncate">
                     {ev.user.firstName} {ev.user.lastName} {isYou ? t.interviewRoom.comparisonYou : ''}
                   </span>
-                  <span className="ml-auto text-right font-medium text-[#1F114C]">
+                  <span className="ml-auto text-right font-medium text-brand tabular-nums">
                     {!card
                       ? t.interviewRoom.comparisonPending
                       : showScore
@@ -77,21 +77,21 @@ export function EvaluatorComparison({
                 </div>
                 {showScore && competencies.length > 0 && (
                   <details className="mt-1 pl-2">
-                    <summary className="cursor-pointer text-[#8B8B8B] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1F114C] rounded">
+                    <summary className="cursor-pointer rounded text-secondary hover:text-brand pointer-coarse:min-h-11">
                       {t.interviewRoom.comparisonDetails}
                     </summary>
                     <ul className="mt-1 space-y-0.5">
                       {withStoredCompetencies(competencies, ratings).map((c) => {
                         const value = ratings[c.key];
                         return (
-                          <li key={c.key} className="flex items-center gap-2">
-                            <span className="text-[#585858] truncate">{labelFor(c)}</span>
-                            <span className="ml-auto text-right text-[#1F114C]">
+                          <li key={c.key} className="flex flex-wrap items-center gap-x-2">
+                            <span className="text-secondary truncate">{labelFor(c)}</span>
+                            <span className="ml-auto text-right text-brand">
                               {value === undefined
                                 ? t.interviewRoom.comparisonNotRated
                                 : t.interviewRoom.comparisonRating.replace('{n}', String(value))}
                               {c.targetLevel !== null && (
-                                <span className="text-[#8B8B8B]">
+                                <span className="text-muted">
                                   {' · '}
                                   {t.interviewRoom.targetLevel
                                     .replace('{n}', String(c.targetLevel))
@@ -111,7 +111,7 @@ export function EvaluatorComparison({
         </ul>
       )}
       {isViewerBlinded && evaluators.length > 1 && (
-        <p className="text-[10px] text-[#8B8B8B] mt-2">{t.interviewRoom.comparisonHidden}</p>
+        <p className="text-callout text-secondary mt-2">{t.interviewRoom.comparisonHidden}</p>
       )}
     </section>
   );

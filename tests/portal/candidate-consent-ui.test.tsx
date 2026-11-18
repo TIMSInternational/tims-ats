@@ -111,8 +111,11 @@ describe('staff consent card', () => {
     expect(await screen.findByText(m.channelRequired)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByLabelText(m.channelLabel), { target: { value: 'email' } });
-    fireEvent.change(screen.getByLabelText(m.reasonLabel), { target: { value: '  Pidió no ser contactado ' } });
+    // The channel is marked required (asterisk) and the reason "(opcional)", so the labels carry those markers.
+    fireEvent.change(screen.getByLabelText(new RegExp(`^${m.channelLabel}`)), { target: { value: 'email' } });
+    fireEvent.change(screen.getByLabelText(new RegExp(`^${m.reasonLabel}`)), {
+      target: { value: '  Pidió no ser contactado ' },
+    });
     fireEvent.click(screen.getByLabelText(m.requestDeletionLabel));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: m.submit }));
 

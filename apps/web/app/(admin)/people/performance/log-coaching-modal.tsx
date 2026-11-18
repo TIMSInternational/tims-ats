@@ -4,8 +4,10 @@ import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal, UserPicker } from '../../../../components';
+import { Field, Modal, TextInput, UserPicker } from '../../../../components';
 import type { PickedUser } from '../../../../components/user-picker';
+import { PersonField } from './person-field';
+import { ModalActions } from './modal-actions';
 
 interface LogCoachingModalProps {
   onClose: () => void;
@@ -33,8 +35,9 @@ export function LogCoachingModal({ onClose }: LogCoachingModalProps) {
     },
   });
 
-  const canSubmit =
-    !!employee && !!coach && !!scheduledAt && topic.trim().length > 0 && !submit.isPending;
+  const isComplete = !!employee && !!coach && !!scheduledAt && topic.trim().length > 0;
+  const canSubmit = isComplete && !submit.isPending;
+  const isDirty = !!employee || !!coach || !!scheduledAt || topic.length > 0 || duration.length > 0;
 
   const onSubmit = () => {
     if (!employee || !coach || !canSubmit) return;
@@ -48,30 +51,34 @@ export function LogCoachingModal({ onClose }: LogCoachingModalProps) {
   };
 
   return (
-    <Modal title={t.performance.logCoachingTitle} onClose={onClose}>
+    <Modal
+      title={t.performance.logCoachingTitle}
+      onClose={onClose}
+      dirty={isDirty && !submit.isPending}
+      footer={
+        <ModalActions
+          onCancel={onClose}
+          onSubmit={onSubmit}
+          submitLabel={t.performance.logCoachingAction}
+          isComplete={isComplete}
+          isPending={submit.isPending}
+          hint={t.performance.logCoachingHint}
+        />
+      }
+    >
       <div className="space-y-4">
-        {/* Employee */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.employeeLabel}
-          </label>
-          {employee ? (
-            <div className="flex items-center justify-between border border-[#EDEDED] rounded-lg px-3 py-2.5">
-              <span className="text-[12px] text-[#333] font-medium">
-                {employee.firstName} {employee.lastName}
-              </span>
-              <button
-                type="button"
-                onClick={() => setEmployee(null)}
-                disabled={submit.isPending}
-                className="text-[11px] text-[#DD0C15] hover:underline disabled:opacity-50"
-              >
-                {t.performance.cancel}
-              </button>
-            </div>
-          ) : (
+        <PersonField
+          label={t.performance.employeeLabel}
+          value={employee}
+          onChange={setEmployee}
+          disabled={submit.isPending}
+          required
+        >
+          {(inputId) => (
             <UserPicker
               purpose="performance_subject"
+              inputId={inputId}
+              listMode="onFocus"
               onSelect={(_userId, user) => setEmployee(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}
@@ -79,30 +86,15 @@ export function LogCoachingModal({ onClose }: LogCoachingModalProps) {
               emptyLabel={t.committee.noUsers}
             />
           )}
-        </div>
+        </PersonField>
 
-        {/* Leader / Coach */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.coachLabel}
-          </label>
-          {coach ? (
-            <div className="flex items-center justify-between border border-[#EDEDED] rounded-lg px-3 py-2.5">
-              <span className="text-[12px] text-[#333] font-medium">
-                {coach.firstName} {coach.lastName}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCoach(null)}
-                disabled={submit.isPending}
-                className="text-[11px] text-[#DD0C15] hover:underline disabled:opacity-50"
-              >
-                {t.performance.cancel}
-              </button>
-            </div>
-          ) : (
+        <PersonField label={t.performance.coachLabel} value={coach} onChange={setCoach} disabled={submit.isPending} required>
+          {(inputId) => (
             <UserPicker
               purpose="colleague"
+              inputId={inputId}
+              listMode="onFocus"
+              autoFocus={false}
               excludeIds={employee ? [employee.id] : []}
               onSelect={(_userId, user) => setCoach(user)}
               disabled={submit.isPending}
@@ -111,70 +103,36 @@ export function LogCoachingModal({ onClose }: LogCoachingModalProps) {
               emptyLabel={t.committee.noUsers}
             />
           )}
-        </div>
+        </PersonField>
 
-        {/* Scheduled At */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.dateLabel}
-          </label>
-          <input
+        <Field label={t.performance.dateLabel} required>
+          <TextInput
             type="date"
             value={scheduledAt}
             onChange={(e) => setScheduledAt(e.target.value)}
             disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
           />
-        </div>
+        </Field>
 
-        {/* Topic */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.topicLabel}
-          </label>
-          <input
-            type="text"
+        <Field label={t.performance.topicLabel} required>
+          <TextInput
             value={topic}
             onChange={(e) => setTopic(e.target.value.slice(0, 500))}
             placeholder={t.performance.topicPlaceholder}
             disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
           />
-        </div>
+        </Field>
 
-        {/* Duration (optional) */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.durationLabel}
-          </label>
-          <input
+        <Field label={t.performance.durationLabel} optional>
+          <TextInput
             type="number"
+            inputMode="numeric"
             min={1}
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
             disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
           />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submit.isPending}
-            className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition disabled:opacity-50"
-          >
-            {t.performance.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!canSubmit}
-            className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submit.isPending ? t.common.saving : t.common.save}
-          </button>
-        </div>
+        </Field>
       </div>
     </Modal>
   );

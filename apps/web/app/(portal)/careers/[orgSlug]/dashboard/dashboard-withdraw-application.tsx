@@ -1,10 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { Undo2 } from 'lucide-react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
-import { Modal } from '../../../../../components';
+import { EvalAlertDialog } from './eval-alert-dialog';
+import { EvalButton } from './eval-button';
+import { EvalCallout } from './eval-callout';
 
 export interface WithdrawErrorLabels {
   withdrawErrorNotActive: string;
@@ -25,6 +28,9 @@ export function withdrawErrorMessage(code: string | undefined, labels: WithdrawE
 
 // "Retirar mi postulación" (audit C-33) for ONE active application: a confirmation dialog, then the
 // application moves to the existing 'withdrawn' status and the list refreshes ("Retirada").
+// In the TIMS evaluation design: the trigger is the PCA secondary shape with danger text (a destructive action on the
+// page), the confirmation is the PCA AlertDialog in the danger tone (the frame's leave-dialog recipe) whose confirm is
+// the filled danger button; Cancel first in the DOM, the confirm last.
 export function DashboardWithdrawApplication({
   orgSlug,
   orgName,
@@ -55,6 +61,8 @@ export function DashboardWithdrawApplication({
       await refresh();
     },
     onError: (err) => {
+      // Said inside the dialog, beside the action that failed (the dialog stays open), and as a toast
+      // (frontend.md: onError toast on every mutation).
       const message = withdrawErrorMessage(err.data?.code, pd, orgName);
       setError(message);
       toast(message, { type: 'error' });
@@ -70,49 +78,46 @@ export function DashboardWithdrawApplication({
 
   return (
     <>
-      <button
-        type="button"
+      <EvalButton
+        variant="secondary-danger"
+        size="compact"
         onClick={() => {
           setError('');
           setOpen(true);
         }}
-        className="shrink-0 text-[12px] font-medium text-[#B42318] hover:underline"
       >
         {pd.withdrawAction}
-      </button>
+      </EvalButton>
 
       {open && (
-        <Modal title={pd.withdrawConfirmTitle} onClose={close}>
-          <p className="text-[13px] text-[#585858]">
-            {pd.withdrawConfirmBody.replace('{vacancy}', vacancyTitle).replace('{org}', orgName)}
-          </p>
+        <EvalAlertDialog
+          tone="danger"
+          icon={<Undo2 aria-hidden="true" />}
+          title={pd.withdrawConfirmTitle}
+          body={pd.withdrawConfirmBody.replace('{vacancy}', vacancyTitle).replace('{org}', orgName)}
+          onClose={close}
+          actions={
+            <>
+              <EvalButton variant="secondary" disabled={withdraw.isPending} onClick={close}>
+                {pd.withdrawCancel}
+              </EvalButton>
+              <EvalButton
+                variant="danger"
+                loading={withdraw.isPending}
+                loadingLabel={pd.withdrawSubmitting}
+                onClick={() => withdraw.mutate({ orgSlug, applicationId })}
+              >
+                {pd.withdrawConfirm}
+              </EvalButton>
+            </>
+          }
+        >
           {error && (
-            <p
-              role="alert"
-              className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700"
-            >
+            <EvalCallout tone="err" role="alert">
               {error}
-            </p>
+            </EvalCallout>
           )}
-          <div className="mt-5 flex justify-end gap-2">
-            <button
-              type="button"
-              disabled={withdraw.isPending}
-              onClick={close}
-              className="h-10 rounded-xl border border-[#EDEDED] px-4 text-[13px] text-[#585858] hover:bg-[#F6F6F6] disabled:opacity-50"
-            >
-              {pd.withdrawCancel}
-            </button>
-            <button
-              type="button"
-              disabled={withdraw.isPending}
-              onClick={() => withdraw.mutate({ orgSlug, applicationId })}
-              className="h-10 rounded-xl bg-[#DD0C15] px-5 text-[13px] font-semibold text-white hover:bg-[#b80a12] disabled:opacity-50"
-            >
-              {withdraw.isPending ? pd.withdrawSubmitting : pd.withdrawConfirm}
-            </button>
-          </div>
-        </Modal>
+        </EvalAlertDialog>
       )}
     </>
   );

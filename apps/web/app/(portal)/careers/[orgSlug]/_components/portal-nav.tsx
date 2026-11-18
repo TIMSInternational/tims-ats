@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
 import { isPilotScope } from '../../../../../lib/launch-scope';
 import { OrgLogo } from '../../../../../components/org-logo';
+import { Button } from '../../../../../components/button';
 
 interface PortalNavProps {
   orgName: string;
@@ -14,6 +14,8 @@ interface PortalNavProps {
 }
 
 type NavKey = 'navHome' | 'navVacancies' | 'navBenefits';
+// Section anchors: plain links with no "current" state, since a click-only underline told people nothing
+// about where they were (color.md › Best practices: red is reserved for attention).
 
 const navLinks: ReadonlyArray<{ key: NavKey; href: string }> = [
   { key: 'navHome', href: '#' },
@@ -26,11 +28,10 @@ const visibleNavLinks = isPilotScope() ? navLinks.filter((l) => l.href !== '#ben
 export function PortalNav({ orgName, orgSlug, orgLogo = null }: PortalNavProps) {
   const { t } = useI18n();
   const p = t.portal;
-  const [activeLink, setActiveLink] = useState<NavKey>('navHome');
 
   return (
-    <nav className="sticky top-0 z-50 h-[72px] w-full border-b border-[#EDEDED] bg-white">
-      <div className="mx-auto flex h-full max-w-7xl items-center justify-between gap-4 px-6">
+    <nav className="sticky top-0 z-50 h-14 w-full border-b border-border bg-white sm:h-[72px]">
+      <div className="mx-auto flex h-full max-w-7xl items-center justify-between gap-3 px-4 sm:gap-4 sm:px-6">
         {/* Left: organization brand + nav links */}
         <div className="flex min-w-0 items-center gap-8">
           <Link href={`/careers/${orgSlug}`} className="flex min-w-0 items-center gap-2.5">
@@ -38,10 +39,12 @@ export function PortalNav({ orgName, orgSlug, orgLogo = null }: PortalNavProps) 
               logo={orgLogo}
               name={orgName}
               imgClassName="h-9 w-auto max-w-[140px] object-contain"
-              fallbackClassName="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1F114C] text-[14px] font-bold text-white"
+              fallbackClassName="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand text-subheading font-bold text-white"
               decorative
             />
-            <span className="truncate text-[15px] font-semibold text-[#1F114C]">{orgName}</span>
+            <span className="truncate font-display text-subheading font-semibold text-brand sm:text-heading">
+              {orgName}
+            </span>
           </Link>
 
           <div className="hidden items-center gap-6 md:flex">
@@ -49,12 +52,7 @@ export function PortalNav({ orgName, orgSlug, orgLogo = null }: PortalNavProps) 
               <a
                 key={link.key}
                 href={link.href}
-                onClick={() => setActiveLink(link.key)}
-                className={`flex h-[72px] items-center text-[13px] transition-colors ${
-                  activeLink === link.key
-                    ? 'border-b-2 border-[#DD0C15] font-medium text-[#1F114C]'
-                    : 'text-[#585858] hover:text-[#1F114C]'
-                }`}
+                className="flex h-[72px] items-center border-b-2 border-transparent text-body text-secondary transition-colors hover:border-brand hover:text-brand"
               >
                 {p[link.key]}
               </a>
@@ -65,19 +63,35 @@ export function PortalNav({ orgName, orgSlug, orgLogo = null }: PortalNavProps) 
         {/* Right: the candidate's own applications (the dashboard sends a signed-out visitor to the
             portal login), then a jump to the vacancy list. */}
         <div className="flex shrink-0 items-center gap-4">
-          <Link
+          {/* Below sm the button shrinks to its icon (the label stays its accessible name), so the
+              organisation's name has the row (branding.md). */}
+          <Button
             href={`/careers/${orgSlug}/dashboard`}
-            className="rounded-lg border border-[#1F114C] px-4 py-2 text-[13px] font-medium text-[#1F114C] transition-colors hover:bg-[#1F114C] hover:text-white"
+            variant="secondary"
+            className="max-sm:min-w-11 max-sm:gap-0 max-sm:px-2.5"
+            icon={
+              <svg
+                className="size-4 shrink-0 sm:hidden"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
+              </svg>
+            }
           >
-            {p.signInNav}
-          </Link>
+            <span className="max-sm:sr-only">{p.signInNav}</span>
+          </Button>
 
-          <Link
-            href="#vacantes"
-            className="hidden rounded-lg bg-[#DD0C15] px-4 py-2 text-[13px] font-medium text-white shadow-md transition-colors hover:bg-[#c40a12] sm:block"
-          >
-            {p.navVacancies}
-          </Link>
+          {/* The page's one primary: navy, like every other primary (red means attention). Hidden below
+              sm through a wrapper: Button's own inline-flex would beat a "hidden" passed as className. */}
+          <span className="hidden sm:inline-flex">
+            <Button href="#vacantes" variant="primary">
+              {p.navVacancies}
+            </Button>
+          </span>
         </div>
       </div>
     </nav>

@@ -1,17 +1,16 @@
 'use client';
 
-import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import {
-  AssessmentConsentNotice,
-  atsNoticeAcknowledgment,
-} from '../../../../../components/assessment-consent-notice';
+import { atsNoticeAcknowledgment } from '../../../../../components/assessment-consent-notice';
 import type { NoticeAcknowledgment } from '../../../../../lib/platform-api/assessment-provider-portal';
+import { ProviderConsentGuide } from './provider-consent-guide';
+import { noticeGuideItem } from './provider-notice-guide-item';
 
 // Before a sitting that needs no provider consent any more (status "ready": the provider already holds every purpose),
-// the candidate still reads the ATS notice for this vacancy (design §6.3), so no assessment ever starts without it.
-// "Start" stays disabled until the notice is marked read, and hands back the acknowledgment (version and language) the
-// launch records.
+// the candidate still reads the ATS notice for this vacancy (design §6.3), so no assessment ever starts without it. It is
+// the consent guide with its one step (no "Paso 1 de 1", no review): the notice's title, "Leer el texto completo" and an
+// unchecked "Leí este aviso.". "Comenzar" stays disabled until it is ticked, and hands back the acknowledgment (version
+// and language) the launch records.
 export function ProviderAssessmentNoticeStep({
   notice,
   busy,
@@ -24,36 +23,14 @@ export function ProviderAssessmentNoticeStep({
   onCancel: () => void;
 }) {
   const { t, locale } = useI18n();
-  const [read, setRead] = useState(false);
+  const m = t.portalDashboard;
   return (
-    <div className="mt-3 space-y-3">
-      <AssessmentConsentNotice
-        orgName={notice.orgName}
-        vacancyTitle={notice.vacancyTitle}
-        instruments={[notice.instrumentName]}
-      />
-      <label className="flex items-start gap-2 text-[12px] text-[#1F114C]">
-        <input type="checkbox" checked={read} onChange={(event) => setRead(event.target.checked)} />
-        <span>{t.assessmentConsentNotice.readAck}</span>
-      </label>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!read || busy}
-          onClick={() => onStart(atsNoticeAcknowledgment(locale))}
-          className="inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition disabled:opacity-50"
-        >
-          {busy ? t.portalDashboard.providerOpening : t.portalDashboard.providerStart}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="inline-flex h-9 items-center rounded-xl border border-[#EDEDED] px-4 text-[12px] font-medium text-[#1F114C]"
-        >
-          {t.portalDashboard.providerCancel}
-        </button>
-      </div>
-    </div>
+    <ProviderConsentGuide
+      items={[noticeGuideItem(t, notice)]}
+      finishLabel={m.providerStart}
+      busy={busy}
+      onFinish={() => onStart(atsNoticeAcknowledgment(locale))}
+      onCancel={onCancel}
+    />
   );
 }

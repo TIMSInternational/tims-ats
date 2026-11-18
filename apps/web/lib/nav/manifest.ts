@@ -51,7 +51,7 @@ const PRECEDENCE: NavRole[] = ['super_admin', 'hr_admin', 'hrbp', 'recruiter', '
 const HOME_ITEM: NavItem = { href: '/dashboard', labelKey: 'sidebar.commandCenter', icon: 'grid', module: null };
 const COMMAND_CENTER: NavSection = {
   labelKey: null,
-  items: [HOME_ITEM, { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null }],
+  items: [HOME_ITEM, { href: '/my-360', labelKey: 'sidebar.my360', icon: 'review360', module: null }],
 };
 const PARTICIPANT_HOME: NavSection = { labelKey: null, items: [HOME_ITEM] };
 const RECRUITMENT: NavSection = {
@@ -61,8 +61,8 @@ const RECRUITMENT: NavSection = {
     { href: '/recruitment/pipeline', labelKey: 'sidebar.pipeline', icon: 'kanban', module: 'pipeline' },
     { href: '/recruitment/candidates', labelKey: 'sidebar.candidates', icon: 'user', module: 'candidate' },
     { href: '/recruitment/interviews', labelKey: 'sidebar.interviews', icon: 'video', module: 'interview' },
-    { href: '/recruitment/assessments', labelKey: 'sidebar.assessments', icon: 'clipboard', module: 'assessment' },
-    { href: '/recruitment/offers', labelKey: 'sidebar.offers', icon: 'clipboard', module: 'offer' },
+    { href: '/recruitment/assessments', labelKey: 'sidebar.assessments', icon: 'assessment', module: 'assessment' },
+    { href: '/recruitment/offers', labelKey: 'sidebar.offers', icon: 'offer', module: 'offer' },
     { href: '/recruitment/talent-pools', labelKey: 'sidebar.talentPool', icon: 'users', module: 'candidate' },
     { href: '/recruitment/analytics', labelKey: 'sidebar.analytics', icon: 'chart', module: 'vacancy' },
   ],
@@ -81,7 +81,7 @@ const TALENT: NavSection = {
     { href: '/talent/nine-box', labelKey: 'sidebar.nineBox', icon: 'ninebox', module: 'ninebox' },
     { href: '/talent/succession', labelKey: 'sidebar.succession', icon: 'succession', module: 'succession' },
     { href: '/talent/team-intelligence', labelKey: 'sidebar.teamIntel', icon: 'team', module: 'team_intel' },
-    { href: '/talent/360', labelKey: 'sidebar.evaluations360', icon: 'clipboard', module: 'evaluation360' },
+    { href: '/talent/360', labelKey: 'sidebar.evaluations360', icon: 'review360', module: 'evaluation360' },
   ],
 };
 const CULTURE: NavSection = {
@@ -110,7 +110,7 @@ const TEAM_SETTINGS_ITEM: NavItem = {
 const DATA_REQUESTS_ITEM: NavItem = {
   href: '/settings/data-requests',
   labelKey: 'dataSubjectRequests.navLabel',
-  icon: 'clipboard',
+  icon: 'shield',
   module: 'candidate',
   action: 'update',
   featureFlag: 'candidateConsent',
@@ -120,7 +120,7 @@ const DATA_REQUESTS_ITEM: NavItem = {
 const ORGANIZATION_PROFILE_ITEM: NavItem = {
   href: '/settings/organization',
   labelKey: 'sidebar.organizationProfile',
-  icon: 'settings',
+  icon: 'building',
   module: 'organization',
 };
 // /settings/assessment-security (proctoring parity with timssuite.com, 2026-11-11): the org's lockdown, alert control
@@ -129,7 +129,7 @@ const ORGANIZATION_PROFILE_ITEM: NavItem = {
 const ASSESSMENT_SECURITY_ITEM: NavItem = {
   href: '/settings/assessment-security',
   labelKey: 'sidebar.assessmentSecurity',
-  icon: 'settings',
+  icon: 'lock',
   module: 'assessment',
   action: 'update',
   featureFlag: 'providerAssessments',
@@ -142,11 +142,11 @@ const SETTINGS: NavSection = {
     TEAM_SETTINGS_ITEM,
     DATA_REQUESTS_ITEM,
     { href: '/settings/branding', labelKey: 'sidebar.branding', icon: 'image', module: 'organization' },
-    { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'settings', module: 'fit_engine' },
+    { href: '/settings/fit-weights', labelKey: 'sidebar.fitWeights', icon: 'sliders', module: 'fit_engine' },
     ASSESSMENT_SECURITY_ITEM,
     { href: '/settings/billing', labelKey: 'sidebar.billing', icon: 'dollar', module: 'billing' },
-    { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'settings', module: 'integration' },
-    { href: '/settings/audit-log', labelKey: 'sidebar.auditLog', icon: 'clipboard', module: 'audit' },
+    { href: '/settings/integrations', labelKey: 'sidebar.integrations', icon: 'puzzle', module: 'integration' },
+    { href: '/settings/audit-log', labelKey: 'sidebar.auditLog', icon: 'list', module: 'audit' },
   ],
 };
 
@@ -158,7 +158,7 @@ const LEADER_MY_HIRING: NavSection = {
     { href: '/recruitment/pipeline', labelKey: 'sidebar.pipeline', icon: 'kanban', module: 'pipeline' },
     { href: '/recruitment/candidates', labelKey: 'sidebar.finalistCandidates', icon: 'user', module: 'candidate' },
     { href: '/recruitment/interviews', labelKey: 'sidebar.interviews', icon: 'video', module: 'interview' },
-    { href: '/recruitment/offers', labelKey: 'sidebar.offersToApprove', icon: 'clipboard', module: 'offer' },
+    { href: '/recruitment/offers', labelKey: 'sidebar.offersToApprove', icon: 'offer', module: 'offer' },
   ],
 };
 const LEADER_MY_TEAM: NavSection = {
@@ -217,7 +217,7 @@ const COMMITTEE_TASKS: NavSection[] = [
     items: [
       { href: '/recruitment/interviews', labelKey: 'sidebar.myPanels', icon: 'video', module: 'interview' },
       // Fix wave (FIX C): always-allowed self-service, see COMMAND_CENTER docstring.
-      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
+      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'review360', module: null },
     ],
   },
 ];
@@ -243,7 +243,7 @@ const EMPLOYEE_HOME: NavSection[] = [
       { href: '/learning', labelKey: 'sidebar.myLearning', icon: 'book', module: 'learning' },
       // Personal view (F12) — /people/onboarding is the HR dashboard (HR actions, org KPIs).
       MY_ONBOARDING_ITEM,
-      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'target', module: null },
+      { href: '/my-360', labelKey: 'sidebar.my360', icon: 'review360', module: null },
     ],
   },
 ];

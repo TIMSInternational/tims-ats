@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useI18n } from '../lib/i18n';
 import { normalizeMoneyText, parseMoneyAmount, type MoneyAmountError } from '../lib/money-amount';
+import { FIELD_ERROR_CLASSES } from './field-styles';
 
 /**
  * The ONE input for a typed money amount (vacancy salary band, offer salary). A text field, not
@@ -75,7 +76,7 @@ export function MoneyInput({
         }}
       />
       {error && (
-        <span id={errorId} role="alert" className="mt-1 block text-[11px] text-[#991b1b]">
+        <span id={errorId} role="alert" className={FIELD_ERROR_CLASSES}>
           {error}
         </span>
       )}

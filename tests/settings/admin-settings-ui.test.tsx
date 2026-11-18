@@ -125,7 +125,11 @@ describe('members table (access-3 / ideal-78)', () => {
     const { MembersTable } = await import('../../apps/web/app/(admin)/settings/users/members-table');
     render(<MembersTable />);
   }
-  const row = (email: string) => screen.getByText(email).closest('tr')!;
+  // The members render twice: a table (md and up) and a stacked phone list hidden by CSS. Scope to the table.
+  const row = (email: string) =>
+    within(screen.getByRole('table', { name: 'Miembros' }))
+      .getByText(email)
+      .closest('tr')!;
 
   it('shows every member role in Spanish and marks the signed-in admin', async () => {
     await renderTable();
@@ -138,14 +142,15 @@ describe('members table (access-3 / ideal-78)', () => {
   it('offers no action on the admin own row', async () => {
     await renderTable();
     expect(within(row('ana@x.test')).queryByRole('button')).toBeNull();
-    expect(within(row('rita@x.test')).getByRole('button', { name: 'Cambiar rol' })).toBeInTheDocument();
+    expect(within(row('rita@x.test')).getByRole('button', { name: 'Cambiar rol…' })).toBeInTheDocument();
   });
 
   it('hides every action without user:update / user:delete', async () => {
     mocks.canUpdate = false;
     mocks.canDelete = false;
     await renderTable();
-    expect(screen.queryByRole('button', { name: 'Cambiar rol' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cambiar rol…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Acciones de/ })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Acciones' })).toBeNull();
   });
 
@@ -153,22 +158,22 @@ describe('members table (access-3 / ideal-78)', () => {
     mocks.roles = ['hr_admin'];
     await renderTable();
     expect(within(row('sofi@x.test')).queryByRole('button')).toBeNull();
-    expect(within(row('rita@x.test')).getByRole('button', { name: 'Desactivar' })).toBeInTheDocument();
+    expect(within(row('rita@x.test')).getByRole('button', { name: 'Desactivar…' })).toBeInTheDocument();
   });
 
   it('"Desactivar" asks first and only then calls user.deactivate', async () => {
     await renderTable();
-    fireEvent.click(within(row('rita@x.test')).getByRole('button', { name: 'Desactivar' }));
+    fireEvent.click(within(row('rita@x.test')).getByRole('button', { name: 'Desactivar…' }));
     expect(mocks.deactivate).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('¿Desactivar a Rita Recluta?');
-    fireEvent.click(screen.getByRole('button', { name: 'Sí, desactivar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Desactivar cuenta' }));
     expect(mocks.deactivate).toHaveBeenCalledWith({ userId: 'u2' });
   });
 
   it('"Cambiar rol" offers pilot roles only and saves the new one', async () => {
     vi.stubEnv('NEXT_PUBLIC_LAUNCH_SCOPE', 'pilot');
     await renderTable();
-    fireEvent.click(within(row('rita@x.test')).getByRole('button', { name: 'Cambiar rol' }));
+    fireEvent.click(within(row('rita@x.test')).getByRole('button', { name: 'Cambiar rol…' }));
     const select = screen.getByLabelText('Rol') as HTMLSelectElement;
     const values = Array.from(select.options).map((o) => o.value);
     expect(values).toContain('leader'); // offered in the pilot since 2026-11-06
@@ -193,10 +198,12 @@ describe('profile page (D-16)', () => {
     };
     const { default: ProfilePage } = await import('../../apps/web/app/(admin)/profile/page');
     render(<ProfilePage />);
-    expect(screen.getByLabelText('Correo')).toHaveValue('ana@x.test');
+    // The email is read-only, so it is shown as text (with its hint), not as a field that looks editable.
+    expect(screen.getByText('ana@x.test')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Correo')).toBeNull();
     fireEvent.change(screen.getByLabelText('Teléfono'), { target: { value: '+506 8888 0000' } });
     fireEvent.change(screen.getByLabelText('Zona horaria'), { target: { value: 'America/Costa_Rica' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     expect(mocks.updateProfile).toHaveBeenCalledWith({
       firstName: 'Ana',
       lastName: 'Admin',
@@ -220,7 +227,7 @@ describe('profile page (D-16)', () => {
     const { default: ProfilePage } = await import('../../apps/web/app/(admin)/profile/page');
     render(<ProfilePage />);
     fireEvent.change(screen.getByLabelText('Nombre *'), { target: { value: '  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
     expect(mocks.updateProfile).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Escribe tu nombre.');
   });
@@ -239,7 +246,7 @@ describe('organization data card (D-11)', () => {
     expect(screen.getByText('Costa Rica (CR)')).toBeInTheDocument();
     expect(screen.getByText(/^CRC · colón/)).toBeInTheDocument();
     expect(screen.getByText(/hora de Costa Rica \(GMT-6\)/)).toBeInTheDocument();
-    expect(screen.getByText(/los correos a candidatos no incluyen un correo de contacto/)).toBeInTheDocument();
+    expect(screen.getByText('Los correos a candidatos no incluyen un correo de contacto.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /\/careers\/piloto$/ })).toBeInTheDocument();
   });
 });

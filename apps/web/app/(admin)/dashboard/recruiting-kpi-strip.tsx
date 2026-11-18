@@ -6,44 +6,52 @@ import { ErrorState } from '../../../components';
 
 interface KpiItem {
   testId: string;
-  dotColor: string;
   label: string;
   value: number;
-  valueColor?: string;
+  /** Status colour for the number; applied only when the value is above zero (nothing to act on at 0). */
+  tone?: 'warning' | 'danger';
   subtitle?: string;
-  subtitleColor?: string;
+  /** Status colour for the caption, applied only when `subtitleCount` is above zero. */
+  subtitleTone?: 'warning' | 'success';
+  subtitleCount?: number;
 }
 
-function KpiCardMini({ testId, dotColor, label, value, valueColor, subtitle, subtitleColor }: KpiItem) {
+const VALUE_TONE: Record<NonNullable<KpiItem['tone']>, string> = {
+  warning: 'text-warning',
+  danger: 'text-danger',
+};
+
+const CAPTION_TONE: Record<NonNullable<KpiItem['subtitleTone']>, string> = {
+  warning: 'text-warning',
+  success: 'text-success',
+};
+
+const CARD = 'flex flex-col gap-1 rounded-xl bg-white p-4 shadow-card';
+
+function KpiCardMini({ testId, label, value, tone, subtitle, subtitleTone, subtitleCount }: KpiItem) {
+  const valueColour = tone && value > 0 ? VALUE_TONE[tone] : 'text-primary';
+  const captionColour = subtitleTone && (subtitleCount ?? 0) > 0 ? CAPTION_TONE[subtitleTone] : 'text-secondary';
   return (
-    <div data-testid={testId} className="md:min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col gap-1">
-      <div className="flex items-center gap-1.5">
-        <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
-        <span className="text-[11px] text-[#585858]">{label}</span>
-      </div>
-      <span className={`text-[22px] md:text-[28px] font-bold leading-tight ${valueColor ?? 'text-[#1F114C]'}`}>
-        {value}
-      </span>
-      {subtitle && (
-        <span className={`text-[11px] font-medium ${subtitleColor ?? 'text-[#585858]'}`}>
-          {subtitle}
-        </span>
-      )}
+    <div data-testid={testId} className={CARD}>
+      <span className="text-callout text-secondary">{label}</span>
+      <span className={`font-display text-title font-bold tabular-nums md:text-display ${valueColour}`}>{value}</span>
+      {subtitle && <span className={`text-caption font-medium ${captionColour}`}>{subtitle}</span>}
     </div>
   );
 }
 
+const GRID = 'mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5';
+
 function KpiStripSkeleton() {
+  const { t } = useI18n();
   return (
-    <div className="grid grid-cols-2 gap-3 mb-6 md:flex md:overflow-x-auto scrollbar-hide">
+    <div className={GRID} aria-busy="true">
+      <span className="sr-only">{t.common.loadingContent}</span>
       {Array.from({ length: 5 }).map((_, i) => (
-        <div
-          key={i}
-          className="md:min-w-[130px] bg-white rounded-xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] animate-pulse"
-        >
-          <div className="h-3 w-20 bg-gray-200 rounded mb-2" />
-          <div className="h-7 w-12 bg-gray-200 rounded mb-1" />
-          <div className="h-3 w-16 bg-gray-200 rounded" />
+        <div key={i} className={`${CARD} animate-pulse motion-reduce:animate-none`} aria-hidden="true">
+          <div className="mb-2 h-3 w-20 rounded bg-gray-200" />
+          <div className="mb-1 h-7 w-12 rounded bg-gray-200" />
+          <div className="h-3 w-16 rounded bg-gray-200" />
         </div>
       ))}
     </div>
@@ -58,7 +66,13 @@ interface RecruitingKpiStripProps {
   onRetry?: () => void;
 }
 
-export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading, isError, onRetry }: RecruitingKpiStripProps) {
+export function RecruitingKpiStrip({
+  vacancyKpis,
+  candidateKpis,
+  isLoading,
+  isError,
+  onRetry,
+}: RecruitingKpiStripProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
 
@@ -78,42 +92,42 @@ export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading, isEr
   // RH-02: every card is a real count from the two KPI queries, labelled for what it actually
   // counts. Cards with no backing metric (interviews today, pending offers, abandonment risk) were
   // removed rather than filled with proxies; captions are either a real count or a plain description.
+  const pendingApproval = vk?.totalPendingApproval ?? 0;
+  const slaOverdue = vk?.totalSlaOverdue ?? 0;
+  const newThisMonth = ck?.newThisMonth ?? 0;
   const cards: KpiItem[] = [
     {
       testId: 'kpi-open-vacancies',
-      dotColor: 'bg-[#DD0C15]',
       label: rd.openVacancies,
       value: vk?.totalOpen ?? 0,
-      subtitle: `${vk?.totalPendingApproval ?? 0} ${rd.pendingApproval}`,
-      subtitleColor: 'text-amber-500',
+      subtitle: `${pendingApproval} ${rd.pendingApproval}`,
+      subtitleTone: 'warning',
+      subtitleCount: pendingApproval,
     },
     {
       testId: 'kpi-sla-overdue',
-      dotColor: 'bg-amber-500',
       label: rd.slaOverdue,
-      value: vk?.totalSlaOverdue ?? 0,
-      valueColor: 'text-[#DD0C15]',
+      value: slaOverdue,
+      tone: 'danger',
       subtitle: rd.requireAction,
-      subtitleColor: 'text-amber-500',
+      subtitleTone: 'warning',
+      subtitleCount: slaOverdue,
     },
     {
       testId: 'kpi-drafts',
-      dotColor: 'bg-blue-500',
       label: rd.drafts,
       value: vk?.totalDraft ?? 0,
-      valueColor: 'text-[#8B8B8B]',
     },
     {
       testId: 'kpi-active-candidates',
-      dotColor: 'bg-green-500',
       label: rd.activeCandidates,
       value: ck?.total ?? 0,
-      subtitle: `+${ck?.newThisMonth ?? 0} ${rd.thisMonth}`,
-      subtitleColor: 'text-green-500',
+      subtitle: `+${newThisMonth} ${rd.thisMonth}`,
+      subtitleTone: 'success',
+      subtitleCount: newThisMonth,
     },
     {
       testId: 'kpi-active-applications',
-      dotColor: 'bg-violet-500',
       label: rd.activeApplications,
       value: ck?.activeApplications ?? 0,
       subtitle: rd.inPipeline,
@@ -121,7 +135,7 @@ export function RecruitingKpiStrip({ vacancyKpis, candidateKpis, isLoading, isEr
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 mb-6 md:flex md:overflow-x-auto scrollbar-hide">
+    <div className={GRID}>
       {cards.map((card) => (
         <KpiCardMini key={card.label} {...card} />
       ))}

@@ -19,13 +19,13 @@ export function MiProfile({ mi }: { mi: Mi }) {
 
   return (
     <div>
-      <p className="text-[12px] text-[#585858]">{r.headline}</p>
+      <p className="text-callout text-secondary">{r.headline}</p>
       {mi.noDifferentiation ? (
-        <p className="text-[13px] text-[#333333]">{r.noDifferentiation}</p>
+        <p className="text-body text-primary">{r.noDifferentiation}</p>
       ) : (
-        <p className="text-[17px] font-semibold text-[#1F114C]">{mi.dominant.map(nameOf).join(' · ')}</p>
+        <p className="text-[17px] font-semibold text-brand">{mi.dominant.map(nameOf).join(' · ')}</p>
       )}
-      {mi.tied && !mi.noDifferentiation && <p className="mt-1 text-[12px] text-[#585858]">{r.tied}</p>}
+      {mi.tied && !mi.noDifferentiation && <p className="mt-1 text-callout text-secondary">{r.tied}</p>}
 
       <ul className="mt-5 space-y-3" aria-label={r.chartLabel}>
         {mi.intelligences.map((i) => {
@@ -34,23 +34,25 @@ export function MiProfile({ mi }: { mi: Mi }) {
           return (
             <li
               key={i.intelligence}
-              className="grid grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto] items-center gap-3"
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto] sm:gap-y-3"
               aria-label={
                 i.sumScore === null
                   ? `${name}: ${r.notAnswered}`
                   : fill(r.intelligenceValue, { name, value: i.sumScore, band: band ?? '' })
               }
             >
-              <span className="truncate text-[13px] text-[#333333]">{name}</span>
-              <MeterBar value={i.sumScore} max={MAX_SUM} />
-              <span className="whitespace-nowrap text-right text-[12px] text-[#1F114C]">
+              <span className="text-body text-primary sm:truncate">{name}</span>
+              <div className="order-last col-span-2 sm:order-none sm:col-span-1">
+                <MeterBar value={i.sumScore} max={MAX_SUM} />
+              </div>
+              <span className="whitespace-nowrap text-right text-callout text-brand">
                 {i.sumScore === null ? r.notAnswered : `${fill(r.outOf, { value: i.sumScore })} · ${band ?? ''}`}
               </span>
             </li>
           );
         })}
       </ul>
-      {!mi.allComplete && <p className="mt-3 text-[12px] text-[#6B6B6B]">{r.incomplete}</p>}
+      {!mi.allComplete && <p className="mt-3 text-callout text-muted">{r.incomplete}</p>}
       <AdvisoryNote text={r.note} />
     </div>
   );

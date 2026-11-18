@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, Poppins } from 'next/font/google';
 import './globals.css';
+import es from '../lib/i18n/es.json';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const poppins = Poppins({ subsets: ['latin'], weight: ['500', '600', '700'], variable: '--font-poppins' });
@@ -12,21 +13,17 @@ const poppins = Poppins({ subsets: ['latin'], weight: ['500', '600', '700'], var
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'TIMS Platform',
+  // The product name, the same one the auth pages show; staff pages prefix it with the page name
+  // (navbar/index.tsx), so a tab never reads only the app name (toolbars.md › Titles).
+  title: es.auth.platformName,
   description: 'Human Capital Management by TIMS International',
   icons: { icon: '/favicon.ico' },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className={`${inter.variable} ${poppins.variable}`}>
-      <body className="font-sans antialiased bg-[#F6F6F6] text-[#333]">
-        {children}
-      </body>
+      <body className="font-sans antialiased bg-surface text-primary">{children}</body>
     </html>
   );
 }

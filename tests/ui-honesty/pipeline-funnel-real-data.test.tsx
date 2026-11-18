@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 
-type Funnel = { totalApplications: number; funnel: { stageName: string; currentCount: number; conversionRate: number }[] };
+type Funnel = {
+  totalApplications: number;
+  funnel: { stageName: string; currentCount: number; conversionRate: number }[];
+};
 const state = vi.hoisted(() => ({
   funnel: { isLoading: false, isError: false, data: undefined as Funnel | undefined },
   calls: [] as { vacancyId: string; enabled: boolean }[],
@@ -56,7 +59,11 @@ describe('PipelineFunnel shows only real pipeline data', () => {
     expect(screen.queryByText(en.recruitingDashboard.last30Days)).toBeNull();
     expect(screen.queryByText(en.recruitingDashboard.allVacancies)).toBeNull();
     // The selector names the vacancy whose funnel is shown.
-    expect(screen.getByRole('button', { name: 'Dev' })).toBeTruthy();
+    // A labelled native select (pop-up-buttons.md): its selected option is the vacancy.
+    const select = screen.getByRole('combobox', {
+      name: en.recruitingDashboard.funnelVacancyLabel,
+    }) as HTMLSelectElement;
+    expect(select.selectedOptions[0]?.textContent).toBe('Dev');
     expect(state.calls.at(-1)).toEqual({ vacancyId: 'v1', enabled: true });
   });
 });

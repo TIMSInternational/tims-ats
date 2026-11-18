@@ -5,11 +5,11 @@ import { formatDate } from '../../../../../lib/format-utils';
 import { buildOfferTimeline, type TimelineOffer, type TimelineTone } from './offer-timeline-entries';
 
 const TONE_CLASS: Record<TimelineTone, string> = {
-  brand: 'bg-[#1F114C]',
-  info: 'bg-blue-500',
-  success: 'bg-green-500',
-  danger: 'bg-red-500',
-  muted: 'bg-[#8B8B8B]',
+  brand: 'bg-brand',
+  info: 'bg-info',
+  success: 'bg-success',
+  danger: 'bg-danger',
+  muted: 'bg-field-border',
 };
 
 export function OfferTimeline({ offer }: { offer: TimelineOffer }) {
@@ -17,28 +17,28 @@ export function OfferTimeline({ offer }: { offer: TimelineOffer }) {
   const entries = buildOfferTimeline(offer, t.offers);
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.offers.offerTimeline}</h3>
-      <div className="space-y-0">
+    <section className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5" aria-labelledby="offer-timeline-title">
+      <h2 id="offer-timeline-title" className="mb-3 text-heading font-semibold text-brand">{t.offers.offerTimeline}</h2>
+      <ol>
         {entries.map((entry, i) => {
           const isLast = i === entries.length - 1;
           return (
-            <div key={i} className={`flex gap-3 ${!isLast ? 'pb-3' : ''}`}>
+            <li key={i} className={`flex gap-3 ${!isLast ? 'pb-3' : ''}`}>
               <div className="flex flex-col items-center">
-                <div className={`w-2.5 h-2.5 rounded-full ${TONE_CLASS[entry.tone]} mt-1`} />
-                {!isLast && <div className="w-0.5 flex-1 bg-[#EDEDED]" />}
+                <span aria-hidden="true" className={`mt-1 size-2.5 rounded-full ${TONE_CLASS[entry.tone]}`} />
+                {!isLast && <span aria-hidden="true" className="w-0.5 flex-1 bg-border" />}
               </div>
               <div className="min-w-0">
-                <p className="text-[12px] text-[#333] font-medium">{entry.title}</p>
+                <p className="text-callout text-primary font-medium">{entry.title}</p>
                 {entry.detail && (
-                  <p className="text-[11px] text-[#585858] whitespace-pre-line break-words">{entry.detail}</p>
+                  <p className="text-callout text-secondary whitespace-pre-line break-words">{entry.detail}</p>
                 )}
-                <p className="text-[10px] text-[#8B8B8B]">{entry.at ? formatDate(entry.at) : '—'}</p>
+                <p className="text-caption text-muted tabular-nums">{entry.at ? formatDate(entry.at) : '—'}</p>
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ol>
+    </section>
   );
 }

@@ -25,7 +25,8 @@ containers (default `assessments-cross-*`), `CROSS_STATE_DIR` moves the state di
 
 `CROSS_EMBED=1` builds the portal **embedded**, as timssuite.com does it: it frames the hosted player
 (`NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN`; the local ATS origin is the partner's registered frame ancestor) and the PCA
-provider's page in a sandboxed frame (`NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN`, the local stand-in). The spec
+provider's page in a sandboxed frame (`NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN`, here the local stand-in; in a real
+build it defaults to `https://timshr.com`, and the link-out build sets it to `off`). The spec
 reads the mode from `cross.json` (`embedded`). The player draws timssuite.com's own screens; `player-driver.ts` drives
 them as the suite's hosted e2e driver does (`data-tims-part` option | ack | submit | skip, `data-tims-key`, the lockdown
 overlay, DOM clicks while the frame is fullscreen) and names each distinct screen for the walkthrough.
@@ -57,8 +58,8 @@ a vacancy · H3 three candidates apply on the careers page · H4 HR assigns (age
 creates the subject and one `/v1` assignment per test · H4b HR turns on lockdown and alert control (warn at 3) in
 Settings > Assessment security and assigns C; only C's sittings carry that proctoring · H5 candidate A signs in with
 the mailed code, consents and completes the three sittings in the hosted player (framed: on the player's `sitting_ended` the
-frame stays on the suite's receipt and "Back to my assessments" returns to a dashboard that already shows Completed) and PCA on the provider's page (framed with timssuite.com's PCA header; leaving asks
-first) · H5b C's LIA shows the suite's lockdown overlay, enters full screen, and one tab switch draws the suite's
+frame stays on the suite's receipt and "Back to my assessments" returns to a dashboard that already shows Completed) and PCA on the provider's page (framed under the same bar as the other tests, with "Abrir en una pestaña nueva";
+leaving asks first) · H5b C's LIA shows the suite's lockdown overlay, enters full screen, and one tab switch draws the suite's
 anti-cheat warning (embedded only; headless Chromium never hides a page, so the frame reports the switch through
 `visibilitychange`) · H6 signed events reach the ATS inbox and every result is fetched (PCA: the scheduled
 run polls the provider) · H7 the provider results create the candidate's FIT v2 row, with no HR compute · H8 HR sees

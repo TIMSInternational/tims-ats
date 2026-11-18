@@ -1,10 +1,20 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Modal } from '../../../../components';
+import {
+  Button,
+  BUTTON_GROUP_CLASSES,
+  CHOICE_INPUT_CLASSES,
+  FIELD_ERROR_CLASSES,
+  FIELD_HELP_CLASSES,
+  FIELD_LABEL_CLASSES,
+  Modal,
+  selectClasses,
+  textareaClasses,
+} from '../../../../components';
 import { useI18n } from '../../../../lib/i18n';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
@@ -33,16 +43,23 @@ interface RejectCandidateModalProps {
   bulk?: boolean;
 }
 
-const FIELD_CLS =
-  'w-full rounded-lg border border-[#EDEDED] bg-white px-3 text-[13px] focus:border-[#1F114C] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20';
-const LABEL_CLS = 'mb-1.5 block text-[12px] font-medium text-[#585858]';
-
-export function RejectCandidateModal({ candidateName, applications, onClose, onRejected, bulk = false }: RejectCandidateModalProps) {
+export function RejectCandidateModal({
+  candidateName,
+  applications,
+  onClose,
+  onRejected,
+  bulk = false,
+}: RejectCandidateModalProps) {
   const { t } = useI18n();
   const m = t.rejectCandidateModal;
   const utils = trpc.useUtils();
   const [confirming, setConfirming] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
+  const confirmRef = useRef<HTMLDivElement>(null);
+  // The confirm step replaces the form inside the same dialog: move focus to it so its text is read.
+  useEffect(() => {
+    if (confirming) confirmRef.current?.focus();
+  }, [confirming]);
 
   const schema = useMemo(
     () =>
@@ -58,7 +75,12 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { applicationId: applications[0]?.id ?? '', reasonCode: undefined, note: '', notifyCandidate: false },
+    defaultValues: {
+      applicationId: applications[0]?.id ?? '',
+      reasonCode: undefined,
+      note: '',
+      notifyCandidate: false,
+    },
   });
   const { errors } = form.formState;
 
@@ -109,10 +131,14 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
     if (failed === 0) toast(m.bulkDone.replace('{n}', String(ok)), { type: 'success' });
     else
       toast(
-        m.bulkPartial.replace('{ok}', String(ok)).replace('{total}', String(applications.length)).replace('{failed}', String(failed)),
+        m.bulkPartial
+          .replace('{ok}', String(ok))
+          .replace('{total}', String(applications.length))
+          .replace('{failed}', String(failed)),
         { type: 'warning', duration: 8000 },
       );
-    if (notNotified > 0) toast(m.bulkNotNotified.replace('{n}', String(notNotified)), { type: 'warning', duration: 8000 });
+    if (notNotified > 0)
+      toast(m.bulkNotNotified.replace('{n}', String(notNotified)), { type: 'warning', duration: 8000 });
     await refresh();
     onClose();
   };
@@ -126,7 +152,9 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
       void rejectAll(v.reasonCode, v.note, v.notifyCandidate);
       return;
     }
-    reject.mutate(toRejectCandidateInput(v.applicationId, v.reasonCode, reasonLabel(v.reasonCode), v.note, v.notifyCandidate));
+    reject.mutate(
+      toRejectCandidateInput(v.applicationId, v.reasonCode, reasonLabel(v.reasonCode), v.note, v.notifyCandidate),
+    );
   });
 
   const count = String(applications.length);
@@ -141,22 +169,32 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
     <Modal title={title} onClose={onClose}>
       <form noValidate onSubmit={submit} className="space-y-4">
         {confirming && values.reasonCode ? (
-          <div role="alertdialog" aria-labelledby="reject-confirm-title" className="space-y-2">
-            <p id="reject-confirm-title" className="text-[14px] font-semibold text-[#1F114C]">
-              {m.confirmTitle}
-            </p>
-            <p className="text-[13px] text-[#585858]">{confirmText}</p>
-            <p className="text-[12px] text-[#585858]">{values.notifyCandidate ? m.confirmWithEmail : m.confirmNoEmail}</p>
+          <div aria-live="polite">
+            <div
+              ref={confirmRef}
+              tabIndex={-1}
+              role="group"
+              aria-labelledby="reject-confirm-title"
+              className="space-y-2 rounded-lg"
+            >
+              <p id="reject-confirm-title" className="text-heading font-semibold text-brand">
+                {m.confirmTitle}
+              </p>
+              <p className="text-body text-secondary">{confirmText}</p>
+              <p className="text-callout text-secondary">
+                {values.notifyCandidate ? m.confirmWithEmail : m.confirmNoEmail}
+              </p>
+            </div>
           </div>
         ) : (
           <>
-            <p className="text-[13px] text-[#585858]">{bulk ? m.bulkDescription : m.description}</p>
+            <p className="text-body text-secondary">{bulk ? m.bulkDescription : m.description}</p>
             {!bulk && applications.length > 1 && (
               <div>
-                <label htmlFor="reject-application" className={LABEL_CLS}>
+                <label htmlFor="reject-application" className={FIELD_LABEL_CLASSES}>
                   {m.applicationLabel}
                 </label>
-                <select id="reject-application" className={`${FIELD_CLS} h-9`} {...form.register('applicationId')}>
+                <select id="reject-application" className={selectClasses()} {...form.register('applicationId')}>
                   {applications.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.vacancyTitle}
@@ -166,14 +204,18 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
               </div>
             )}
             <div>
-              <label htmlFor="reject-reason" className={LABEL_CLS}>
-                {m.reasonLabel} *
+              <label htmlFor="reject-reason" className={FIELD_LABEL_CLASSES}>
+                {m.reasonLabel}
+                <span aria-hidden="true" className="ml-0.5 text-danger">
+                  *
+                </span>
               </label>
               <select
                 id="reject-reason"
+                required
                 aria-invalid={!!errors.reasonCode}
                 aria-describedby={errors.reasonCode ? 'reject-reason-error' : undefined}
-                className={`${FIELD_CLS} h-9`}
+                className={selectClasses()}
                 {...form.register('reasonCode')}
               >
                 <option value="">{m.reasonPlaceholder}</option>
@@ -184,13 +226,13 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
                 ))}
               </select>
               {errors.reasonCode && (
-                <p id="reject-reason-error" role="alert" className="mt-1 text-[11px] text-red-600">
+                <p id="reject-reason-error" role="alert" className={FIELD_ERROR_CLASSES}>
                   {errors.reasonCode.message}
                 </p>
               )}
             </div>
             <div>
-              <label htmlFor="reject-note" className={LABEL_CLS}>
+              <label htmlFor="reject-note" className={FIELD_LABEL_CLASSES}>
                 {m.noteLabel}
               </label>
               <textarea
@@ -198,11 +240,12 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
                 rows={3}
                 maxLength={REJECTION_NOTE_MAX}
                 placeholder={m.notePlaceholder}
-                className={`${FIELD_CLS} py-2`}
+                aria-invalid={!!errors.note}
+                className={textareaClasses()}
                 {...form.register('note')}
               />
               {errors.note && (
-                <p role="alert" className="mt-1 text-[11px] text-red-600">
+                <p role="alert" className={FIELD_ERROR_CLASSES}>
                   {errors.note.message}
                 </p>
               )}
@@ -212,14 +255,14 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
                 id="reject-notify"
                 type="checkbox"
                 aria-describedby="reject-notify-help"
-                className="mt-0.5 h-4 w-4 accent-[#1F114C]"
+                className={`mt-0.5 ${CHOICE_INPUT_CLASSES}`}
                 {...form.register('notifyCandidate')}
               />
               <div>
-                <label htmlFor="reject-notify" className="text-[12px] font-medium text-[#333]">
+                <label htmlFor="reject-notify" className="text-body font-medium text-primary">
                   {m.notifyLabel}
                 </label>
-                <p id="reject-notify-help" className="text-[11px] text-[#8B8B8B]">
+                <p id="reject-notify-help" className={FIELD_HELP_CLASSES}>
                   {m.notifyHelp}
                 </p>
               </div>
@@ -227,22 +270,19 @@ export function RejectCandidateModal({ candidateName, applications, onClose, onR
           </>
         )}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={confirming ? () => setConfirming(false) : onClose}
-            disabled={isPending}
-            className="h-9 rounded-lg border border-[#EDEDED] px-4 text-[13px] text-[#585858] hover:bg-[#F6F6F6]"
-          >
+        <div className={`${BUTTON_GROUP_CLASSES} pt-2`}>
+          <Button variant="secondary" onClick={confirming ? () => setConfirming(false) : onClose} disabled={isPending}>
             {confirming ? m.back : t.common.cancel}
-          </button>
-          <button
+          </Button>
+          {/* Red only on the step that destroys (alerts.md › Buttons): "Continuar" is a plain primary. */}
+          <Button
             type="submit"
-            disabled={isPending}
-            className="h-9 rounded-lg bg-[#DD0C15] px-4 text-[13px] font-semibold text-white hover:bg-[#b80a12] disabled:opacity-50"
+            variant={confirming ? 'destructive' : 'primary'}
+            loading={isPending}
+            loadingLabel={m.submitting}
           >
-            {isPending ? m.submitting : confirming ? m.confirm : m.continue}
-          </button>
+            {confirming ? (bulk ? m.bulkConfirm.replace('{n}', count) : m.confirm) : m.continue}
+          </Button>
         </div>
       </form>
     </Modal>

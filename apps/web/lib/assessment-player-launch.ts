@@ -7,8 +7,9 @@
 //   - this page's origin is one of the registered frame ancestors (otherwise the player would refuse to render),
 //   - the player URL is on the configured player origin (the only one this site's CSP `frame-src` allows).
 // A link-out provider page (PCA, on the provider's own site) is framed the way timssuite.com frames it, in a sandboxed
-// frame, only when its origin is the configured provider frame origin (NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN, the
-// other origin this site's CSP frame-src allows); `sandboxed` marks it.
+// frame, when its origin is the provider frame origin: https://timshr.com by default, overridden (or turned off) by
+// NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN through `assessmentProviderFrameOrigin` (lib/security/csp.ts), the same
+// value this site's CSP frame-src allows; `sandboxed` marks it.
 // Otherwise the candidate is sent to the URL top-level (a "link-out"), in the same tab: a new tab opened after the
 // asynchronous launch would be blocked as a pop-up. Anything that is not an https URL is never opened.
 

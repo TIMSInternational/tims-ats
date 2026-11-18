@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
   enabled: true,
@@ -34,14 +34,19 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     user: {
       list: {
-        useInfiniteQuery: (input: unknown) => (mocks.memberListInputs.push(input), {
-          isLoading: false,
-          isError: false,
-          hasNextPage: false,
-          data: {
-            pages: [{ users: [{ id: 'u1', firstName: 'Ana', lastName: 'Ruiz', email: 'ana@x.test', jobTitle: null }] }],
-          },
-        }),
+        useInfiniteQuery: (input: unknown) => (
+          mocks.memberListInputs.push(input),
+          {
+            isLoading: false,
+            isError: false,
+            hasNextPage: false,
+            data: {
+              pages: [
+                { users: [{ id: 'u1', firstName: 'Ana', lastName: 'Ruiz', email: 'ana@x.test', jobTitle: null }] },
+              ],
+            },
+          }
+        ),
       },
     },
   },
@@ -116,7 +121,8 @@ describe('/settings/users (Equipo)', () => {
     expect(screen.getByText(m.unavailableTitle)).toBeTruthy();
     expect(screen.queryByRole('button', { name: m.inviteSubmit })).toBeNull();
     expect(screen.queryByText(m.pendingTitle)).toBeNull();
-    expect(screen.getByText('ana@x.test')).toBeTruthy(); // members list still renders
+    // members list still renders (scoped to the table: the phone list repeats each row, hidden by CSS)
+    expect(within(screen.getByRole('table', { name: m.membersTitle })).getByText('ana@x.test')).toBeTruthy();
   });
 
   it('asks user.list for ACTIVE members only (hides deactivated / soft-deleted users)', () => {
@@ -173,7 +179,9 @@ describe('/settings/users (Equipo)', () => {
     render(<TeamSettingsPage />);
     const button = screen.getByRole('button', { name: m.resend }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toBe(m.resendNotGrantable);
+    // The reason is on screen and announced with the button, not only in a hover tooltip.
+    expect(button).toHaveAccessibleDescription(m.resendNotGrantable);
+    expect(screen.getAllByText(m.resendNotGrantable).length).toBeGreaterThan(0);
     fireEvent.click(button);
     expect(mocks.resend).not.toHaveBeenCalled();
     // Revoke only removes a pending grant, so it stays available.

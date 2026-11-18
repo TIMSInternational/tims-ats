@@ -56,6 +56,18 @@ describe('mobile sidebar drawer', () => {
     expect(expanded()).toBe('true');
   });
 
+  it('is a labelled modal dialog while open, and leaves the tab order when closed', () => {
+    renderShell();
+    const drawer = () => screen.getByTestId('sidebar').parentElement as HTMLElement;
+    expect(drawer().getAttribute('role')).toBeNull();
+    expect(drawer().className).toContain('invisible');
+    fireEvent.click(screen.getByText('abrir-menu'));
+    expect(drawer().getAttribute('role')).toBe('dialog');
+    expect(drawer().getAttribute('aria-modal')).toBe('true');
+    expect(drawer().getAttribute('aria-label')).toBe(es.nav.menu);
+    expect(drawer().className).not.toContain(' invisible');
+  });
+
   it('closes on Escape', () => {
     const expanded = renderShell();
     fireEvent.click(screen.getByText('abrir-menu'));
@@ -72,11 +84,11 @@ describe('mobile sidebar drawer', () => {
     expect(expanded()).toBe('false');
   });
 
-  it('the close button has a Spanish accessible name and is phone-only', () => {
+  it('the close button has a Spanish accessible name and shows only where the sidebar is a drawer (below lg)', () => {
     const onClose = vi.fn();
     render(<SidebarDrawerClose onClose={onClose} label={es.nav.closeMenu} />);
     const btn = screen.getByRole('button', { name: 'Cerrar menú' });
-    expect(btn.className).toContain('md:hidden');
+    expect(btn.className).toContain('lg:hidden');
     fireEvent.click(btn);
     expect(onClose).toHaveBeenCalledOnce();
   });

@@ -16,15 +16,15 @@ export function GuideCompetencyQuestions({ sets }: GuideCompetencyQuestionsProps
   if (sets.length === 0) return null;
 
   return (
-    <div className="pt-2 border-t border-[#EDEDED]">
-      <p className="text-[12px] font-medium text-[#1F114C] mb-1">{t.interviews.guideCompetencyHeading}</p>
+    <div className="pt-2 border-t border-border">
+      <p className="text-callout font-medium text-brand mb-1">{t.interviews.guideCompetencyHeading}</p>
       <div className="space-y-2">
         {sets.map((set) => (
           <div key={set.competency}>
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[12px] font-medium text-[#333]">{set.competency}</span>
+              <span className="text-callout font-medium text-primary">{set.competency}</span>
               {set.targetLevel !== null && (
-                <span className="text-[10px] text-[#8B8B8B] shrink-0">
+                <span className="text-caption text-muted shrink-0">
                   {t.interviews.guideTargetLevel
                     .replace('{n}', String(set.targetLevel))
                     .replace('{max}', String(set.targetScaleMax))}
@@ -33,7 +33,7 @@ export function GuideCompetencyQuestions({ sets }: GuideCompetencyQuestionsProps
             </div>
             <ul className="list-disc list-inside mt-1 space-y-0.5">
               {set.questions.map((q, qi) => (
-                <li key={qi} className="text-[11px] text-[#585858]">
+                <li key={qi} className="text-caption text-secondary">
                   {q}
                 </li>
               ))}

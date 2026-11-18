@@ -28,6 +28,7 @@ vi.mock('../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_components/a
 
 import { JobDetailView } from '../../apps/web/app/(portal)/careers/[orgSlug]/[vacancyId]/_components/job-detail-view';
 import { VacancyCard } from '../../apps/web/app/(portal)/careers/[orgSlug]/_components/vacancy-card';
+import { PortalOrgBrandProvider } from '../../apps/web/app/(portal)/careers/[orgSlug]/_components/portal-org-brand';
 
 // Intl separates es-CR digit groups with a (narrow) no-break space; compare on plain spaces.
 const plain = (text: string | null) => (text ?? '').replace(/[\u00a0\u202f]/g, ' ');
@@ -100,6 +101,9 @@ describe('public job detail', () => {
     const applyButtons = screen.getAllByRole('button', { name: es.portal.applyNow });
     expect(applyButtons).toHaveLength(2);
     expect(applyButtons[1]!.closest('div')!.className).toContain('lg:hidden');
+    // The header one is hidden below lg by a wrapper: Button's own inline-flex would beat a "hidden" class.
+    expect(applyButtons[0]!.className).not.toContain('hidden');
+    expect(applyButtons[0]!.parentElement!.className.split(' ')).toEqual(['hidden', 'lg:block']);
   });
 
   it('links the privacy notice before applying', () => {
@@ -128,6 +132,19 @@ describe('public job detail', () => {
     expect(screen.queryByText(es.portal.vacancyNotFound)).toBeNull();
     expect(screen.getByRole('link', { name: es.portal.seeOtherVacancies })).toHaveAttribute('href', '/careers/acme');
     expect(screen.queryByRole('button', { name: es.portal.applyNow })).toBeNull();
+  });
+
+  it('keeps the organization in the top bar of a closed or missing vacancy (from the careers layout)', () => {
+    for (const data of [{ closed: true }, null]) {
+      mocks.vacancy = data;
+      const { container, unmount } = render(
+        <PortalOrgBrandProvider brand={{ name: 'Andina Logística', logo: null }}>
+          <JobDetailView orgSlug="acme" vacancyId={BASE.id} />
+        </PortalOrgBrandProvider>,
+      );
+      expect(container.querySelector('header')?.textContent).toContain('Andina Logística');
+      unmount();
+    }
   });
 });
 
@@ -166,12 +183,26 @@ describe('public vacancy card', () => {
     expect(screen.getByText(es.portal.salaryNegotiable)).toBeInTheDocument();
   });
 
-  it('falls back to the organization name and initial when the vacancy has no client company', () => {
+  it('names a client company with its initial, and does not repeat the board organization', () => {
+    const client = render(<VacancyCard vacancy={{ ...BASE, company: { name: 'Cliente SA' } }} orgSlug="acme" orgName="Instituto Ejemplo" />);
+    expect(screen.getByText('Cliente SA')).toBeInTheDocument();
+    expect(screen.getByText('C')).toBeInTheDocument();
+    client.unmount();
+
+    // A single-employer board: the nav already shows the organization, so the card starts at the location.
     const { container } = render(
       <VacancyCard vacancy={{ ...BASE, company: null }} orgSlug="acme" orgName="Instituto Ejemplo" />,
     );
-    expect(screen.getByText('Instituto Ejemplo')).toBeInTheDocument();
-    expect(screen.getByText('I')).toBeInTheDocument();
+    expect(screen.queryByText('Instituto Ejemplo')).toBeNull();
+    expect(screen.getByText('Bogotá')).toBeInTheDocument();
     expect(container.textContent).not.toContain(es.portal.companyFallback);
+  });
+
+  it('is one link named by the job title, not the whole card', () => {
+    render(<VacancyCard vacancy={{ ...BASE }} orgSlug="acme" orgName="Acme" />);
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAccessibleName(BASE.title);
+    expect(links[0]).toHaveAttribute('href', `/careers/acme/${BASE.id}`);
   });
 });

@@ -1,6 +1,9 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { SegmentedControl } from '../../../../components/segmented-control';
+import { Button } from '../../../../components/button';
+import { selectClasses } from '../../../../components/field-styles';
 import { STARTED_UNSCORED_FILTER } from './interview-status';
 
 export type InterviewListView = 'upcoming' | 'past';
@@ -14,37 +17,33 @@ interface InterviewFilterBarProps {
   onTypeChange: (v: string) => void;
   onClearFilters: () => void;
   hasFilters: boolean;
-  /** Omitted when the viewer may not schedule (committee-only, or no candidate/vacancy read): no button. */
-  onSchedule?: () => void;
 }
-
-const viewButton = (active: boolean) =>
-  `h-9 px-3 text-sm transition ${active ? 'bg-[#1F114C] text-white' : 'bg-white text-[#585858] hover:bg-[#F6F6F6]'}`;
 
 export function InterviewFilterBar({
   view, onViewChange,
   statusFilter, onStatusChange,
   typeFilter, onTypeChange,
   onClearFilters, hasFilters,
-  onSchedule,
 }: InterviewFilterBarProps) {
   const { t } = useI18n();
 
   return (
-    <div className="flex flex-wrap items-center gap-3 gap-y-2 mb-4 flex-shrink-0">
-      <div role="group" aria-label={t.interviews.viewToggleLabel} className="inline-flex rounded-lg border border-[#EDEDED] overflow-hidden">
-        <button type="button" aria-pressed={view === 'upcoming'} onClick={() => onViewChange('upcoming')} className={viewButton(view === 'upcoming')}>
-          {t.interviews.viewUpcoming}
-        </button>
-        <button type="button" aria-pressed={view === 'past'} onClick={() => onViewChange('past')} className={viewButton(view === 'past')}>
-          {t.interviews.viewPast}
-        </button>
-      </div>
+    <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 gap-y-2">
+      <SegmentedControl
+        label={t.interviews.viewToggleLabel}
+        value={view}
+        onChange={onViewChange}
+        options={[
+          { value: 'upcoming', label: t.interviews.viewUpcoming },
+          { value: 'past', label: t.interviews.viewPast },
+        ]}
+      />
 
       <select
         value={statusFilter}
         onChange={(e) => onStatusChange(e.target.value)}
-        className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
+        aria-label={t.interviews.filterStatusLabel}
+        className={selectClasses('md', 'sm:w-auto max-w-full')}
       >
         <option value="">{t.interviews.allStatuses}</option>
         {/* Values filter by what the rows SHOW (interview-status.ts), not by the stored status. */}
@@ -58,7 +57,8 @@ export function InterviewFilterBar({
       <select
         value={typeFilter}
         onChange={(e) => onTypeChange(e.target.value)}
-        className="h-9 px-3 rounded-lg border border-[#EDEDED] text-sm text-[#585858] bg-white focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
+        aria-label={t.interviews.filterTypeLabel}
+        className={selectClasses('md', 'sm:w-auto max-w-full')}
       >
         <option value="">{t.interviews.allTypes}</option>
         <option value="phone">{t.interviews.typePhone}</option>
@@ -71,23 +71,9 @@ export function InterviewFilterBar({
       </select>
 
       {hasFilters && (
-        <button
-          onClick={onClearFilters}
-          className="h-9 px-3 rounded-lg border border-[#EDEDED] text-xs text-[#8B8B8B] hover:bg-[#F6F6F6] transition"
-        >
+        <Button variant="tertiary" onClick={onClearFilters}>
           {t.interviews.clearFilters}
-        </button>
-      )}
-
-      {onSchedule && (
-        <div className="ml-auto">
-          <button onClick={onSchedule} className="h-9 px-4 rounded-lg bg-[#DD0C15] text-white text-sm font-medium hover:bg-[#c00b13] transition flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            {t.interviews.scheduleNew}
-          </button>
-        </div>
+        </Button>
       )}
     </div>
   );

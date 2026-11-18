@@ -66,10 +66,13 @@ describe('ErrorState', () => {
     expect(screen.getByText(es.common.errorForbidden)).toBeTruthy();
   });
 
-  it('any other failure keeps the generic message and the retry button', () => {
+  it('any other failure says what failed and how to fix it, and keeps the retry button', () => {
     const retry = vi.fn();
     render(<ErrorState onRetry={retry} error={new Error('boom')} />);
-    expect(screen.getByText(es.common.error)).toBeTruthy();
+    // HIG alerts.md › Content: never a bare "Error" title. The default names the failure and the fix.
+    expect(screen.getByText(es.common.loadErrorTitle)).toBeTruthy();
+    expect(screen.getByText(es.common.loadErrorHint)).toBeTruthy();
+    expect(screen.queryByText(es.common.error)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: es.common.retry }));
     expect(retry).toHaveBeenCalledOnce();
   });

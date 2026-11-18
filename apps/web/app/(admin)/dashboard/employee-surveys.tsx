@@ -1,14 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useI18n } from '../../../lib/i18n';
 import { useEngagementMyPendingSurveys } from '../../../lib/platform-api/engagement';
 import { EmptyState, Skeleton } from '../../../components';
 import { LoadError } from './load-error';
 import { formatDate } from '../../../lib/format-utils';
 import { SurveyTakeModal } from './survey-take-modal';
-
-const EMPTY_ICON = <span className="w-8 h-8 rounded-full bg-[#F0F0F0] inline-block" aria-hidden />;
+import { Button } from '../../../components/button';
 
 function SkeletonRows() {
   return (
@@ -34,39 +33,45 @@ export function EmployeeSurveys() {
   const list = surveys.data ?? [];
 
   const [takingId, setTakingId] = useState<string | null>(null);
+  const titleId = useId();
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5 mb-8">
-      <h2 className="text-sm font-semibold text-[#1F114C] mb-4">{e.surveys}</h2>
+    <section aria-labelledby={titleId} className="rounded-xl bg-white p-5 shadow-card">
+      <h2 id={titleId} className="mb-4 text-heading font-semibold text-brand">
+        {e.surveys}
+      </h2>
       {surveys.isError ? (
-        <LoadError message={e.loadError} />
+        <LoadError message={e.loadError} onRetry={() => surveys.refetch()} />
       ) : surveys.isLoading ? (
         <SkeletonRows />
       ) : list.length === 0 ? (
-        <EmptyState icon={EMPTY_ICON} message={e.noSurveys} />
+        <EmptyState size="compact" message={e.noSurveys} />
       ) : (
-        <div className="space-y-1">
+        <ul className="space-y-1">
           {list.map((survey) => (
-            <div key={survey.id} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 -mx-3">
-              <span className="text-sm text-[#333] font-medium truncate">{survey.title}</span>
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="text-[13px] text-[#8B8B8B]">
+            <li
+              key={survey.id}
+              className="-mx-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-lg px-3 py-2.5"
+            >
+              <span className="min-w-0 truncate text-body font-medium text-primary">{survey.title}</span>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="text-callout text-muted">
                   {survey.endsAt ? `${e.surveyCloses} ${formatDate(survey.endsAt)}` : e.surveyNoClose}
                 </span>
-                <button
-                  type="button"
+                <Button
+                  size="sm"
                   onClick={() => setTakingId(survey.id)}
-                  className="h-8 px-3 rounded-lg text-[12px] font-medium bg-[#1F114C] text-white hover:bg-[#2A1860] transition"
+                  aria-label={`${e.respondSurvey}: ${survey.title}`}
                 >
                   {e.respondSurvey}
-                </button>
+                </Button>
               </div>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {takingId ? <SurveyTakeModal surveyId={takingId} onClose={() => setTakingId(null)} /> : null}
-    </div>
+    </section>
   );
 }

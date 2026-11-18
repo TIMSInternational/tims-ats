@@ -1,20 +1,24 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import type { VacancyListItem } from '../../../lib/trpc-types';
 import { ErrorState } from '../../../components';
+import { selectClasses } from '../../../components/field-styles';
 
 const STAGE_COLORS = [
-  'bg-[#E8E5F0] text-[#1F114C]',
-  'bg-[#D4CFE5] text-[#1F114C]',
-  'bg-[#B8AED4] text-white',
-  'bg-[#9B8DC4] text-white',
+  'bg-[#E8E5F0] text-brand',
+  'bg-[#D4CFE5] text-brand',
+  'bg-[#B8AED4] text-brand',
+  'bg-[#9B8DC4] text-brand',
   'bg-[#7B6BAA] text-white',
   'bg-[#5C4B99] text-white',
-  'bg-[#1F114C] text-white',
+  'bg-brand text-white',
 ];
+
+/** Placeholder bars that taper like a funnel, one fixed width per row. */
+const SKELETON_WIDTHS = ['w-full', 'w-11/12', 'w-4/5', 'w-2/3', 'w-3/5', 'w-1/2', 'w-2/5'];
 
 interface PipelineFunnelProps {
   vacancies: VacancyListItem[];
@@ -31,11 +35,11 @@ export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
   const rd = t.recruitingDashboard;
 
   const [selectedVacancyId, setSelectedVacancyId] = useState<string | null>(null);
-  const [vacancyDropdownOpen, setVacancyDropdownOpen] = useState(false);
+  const titleId = useId();
+  const selectId = useId();
 
   const vacancyList = vacancies ?? [];
-  const selectedVacancy =
-    vacancyList.find((v) => v.id === selectedVacancyId) ?? vacancyList[0] ?? null;
+  const selectedVacancy = vacancyList.find((v) => v.id === selectedVacancyId) ?? vacancyList[0] ?? null;
   const targetVacancyId = selectedVacancy?.id ?? null;
 
   const funnelQuery = trpc.pipeline.getFunnel.useQuery(
@@ -60,83 +64,87 @@ export function PipelineFunnel({ vacancies }: PipelineFunnelProps) {
   const maxCount = Math.max(...stages.map((s) => s.count), 1);
 
   return (
-    <div className="w-full md:flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-base font-semibold text-[#1F114C]">{rd.pipelineByStage}</span>
+    <section aria-labelledby={titleId} className="w-full rounded-xl bg-white p-5 shadow-card md:flex-[65]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 id={titleId} className="text-heading font-semibold text-brand">
+          {rd.pipelineByStage}
+        </h2>
         {selectedVacancy && (
-          <div className="relative">
-            <button
-              onClick={() => setVacancyDropdownOpen(!vacancyDropdownOpen)}
-              aria-expanded={vacancyDropdownOpen}
-              className="flex items-center gap-2 bg-[#F6F6F6] hover:bg-[#EDEDED] rounded-lg px-3 h-8 transition-colors max-w-[200px]"
+          <div className="flex items-center gap-2">
+            <label htmlFor={selectId} className="text-callout text-secondary">
+              {rd.funnelVacancyLabel}
+            </label>
+            <select
+              id={selectId}
+              value={selectedVacancy.id}
+              onChange={(e) => setSelectedVacancyId(e.target.value)}
+              className={selectClasses('md', 'w-auto max-w-60 truncate')}
             >
-              <span className="text-[12px] text-[#1F114C] truncate">{selectedVacancy.title}</span>
-              <svg aria-hidden="true" className={`w-3.5 h-3.5 text-[#1F114C] shrink-0 transition-transform ${vacancyDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                <path d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-              </svg>
-            </button>
-            {vacancyDropdownOpen && (
-              <div className="absolute right-0 top-full mt-1 w-[280px] bg-white rounded-lg shadow-lg border border-[#EDEDED] z-50 max-h-[260px] overflow-y-auto py-1">
-                {vacancyList.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => { setSelectedVacancyId(v.id); setVacancyDropdownOpen(false); }}
-                    className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#F6F6F6] transition truncate ${selectedVacancy.id === v.id ? 'text-[#1F114C] font-medium bg-[#F6F6F6]' : 'text-[#585858]'}`}
-                  >
-                    {v.title}
-                  </button>
-                ))}
-              </div>
-            )}
+              {vacancyList.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.title}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>
 
       {/* Funnel bars */}
       {!targetVacancyId ? (
-        <p className="text-[12px] text-muted py-6 text-center">{rd.noVacanciesPublished}</p>
+        <p className="py-6 text-center text-callout text-muted">{rd.noVacanciesPublished}</p>
       ) : funnelQuery.isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="h-6 bg-gray-100 rounded animate-pulse" style={{ width: `${100 - i * 12}%` }} />
+        <div className="space-y-2" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          {SKELETON_WIDTHS.map((width, i) => (
+            <div
+              key={i}
+              aria-hidden="true"
+              className={`h-6 animate-pulse rounded bg-gray-100 motion-reduce:animate-none ${width}`}
+            />
           ))}
         </div>
       ) : funnelQuery.isError ? (
-        <ErrorState onRetry={() => funnelQuery.refetch()} error={funnelQuery.error} />
+        <ErrorState size="compact" onRetry={() => funnelQuery.refetch()} error={funnelQuery.error} />
       ) : stages.length === 0 ? (
-        <p className="text-[12px] text-muted py-6 text-center">{rd.noPipelineData}</p>
+        <p className="py-6 text-center text-callout text-muted">{rd.noPipelineData}</p>
       ) : (
-        <div className="space-y-2">
+        <ol className="space-y-2">
+          {/* The stage name leads each row, next to its bar, so a short bar is never far from its label. */}
           {stages.map((stage, idx) => {
             const widthPct = Math.max((stage.count / maxCount) * 100, 3);
             return (
-              <div key={stage.label} className="flex items-center gap-4">
-                <div
-                  className={`h-6 rounded-sm flex items-center justify-center ${STAGE_COLORS[idx % STAGE_COLORS.length]}`}
-                  style={{ width: `${widthPct}%`, minWidth: 24 }}
-                >
-                  <span className="text-[11px] font-medium">{stage.count}</span>
-                </div>
-                <span className="text-xs text-[#585858] w-28 shrink-0">
-                  {stage.label}{' '}
-                  {stage.pct && <span className="text-[10px] text-muted">{stage.pct}</span>}
+              <li key={stage.label} className="flex items-center gap-3">
+                <span className="w-32 shrink-0 text-callout text-secondary sm:w-44">
+                  {stage.label} {stage.pct && <span className="text-caption tabular-nums text-muted">{stage.pct}</span>}
                 </span>
-              </div>
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={`flex h-6 min-w-6 items-center justify-center rounded-sm ${STAGE_COLORS[idx % STAGE_COLORS.length]}`}
+                    style={{ width: `${widthPct}%` }}
+                  >
+                    <span className="text-caption font-semibold tabular-nums">{stage.count}</span>
+                  </div>
+                </div>
+              </li>
             );
           })}
-        </div>
+        </ol>
       )}
-    </div>
+    </section>
   );
 }
 
 export function PipelineFunnelSkeleton() {
   return (
-    <div className="w-full md:flex-[65] bg-white rounded-xl p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] animate-pulse">
+    <div
+      aria-hidden="true"
+      className="w-full animate-pulse rounded-xl bg-white p-5 shadow-card motion-reduce:animate-none md:flex-[65]"
+    >
       <div className="h-5 w-60 bg-gray-200 rounded mb-4" />
       <div className="space-y-2">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <div key={i} className="h-6 bg-gray-200 rounded" style={{ width: `${100 - i * 12}%` }} />
+        {SKELETON_WIDTHS.map((width, i) => (
+          <div key={i} className={`h-6 rounded bg-gray-200 ${width}`} />
         ))}
       </div>
     </div>

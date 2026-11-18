@@ -4,96 +4,135 @@ import { useState } from 'react';
 import { trpc } from '../../../../../lib/trpc';
 import { useI18n } from '../../../../../lib/i18n';
 import { toast } from '../../../../../lib/toast';
+import { Button, Select, StatusBadge, type StatusTone } from '../../../../../components';
 import { AiSuggestionNotice } from '../../../../../components/ai-suggestion-notice';
+import { CARD, CARD_TITLE } from './card-styles';
 
-interface Vacancy { id: string; title: string }
+interface Vacancy {
+  id: string;
+  title: string;
+}
 
-const REC_META: Record<string, { key: 'recAdvance' | 'recReview' | 'recReject'; cls: string }> = {
-  advance: { key: 'recAdvance', cls: 'bg-green-50 text-green-700' },
-  review: { key: 'recReview', cls: 'bg-amber-50 text-amber-700' },
-  reject: { key: 'recReject', cls: 'bg-red-50 text-red-700' },
+const REC_META: Record<string, { key: 'recAdvance' | 'recReview' | 'recReject'; tone: StatusTone }> = {
+  advance: { key: 'recAdvance', tone: 'success' },
+  review: { key: 'recReview', tone: 'warning' },
+  reject: { key: 'recReject', tone: 'danger' },
 };
 
+const META_LABEL = 'mb-1 text-callout text-secondary';
+
+/**
+ * Compares the candidate with one of their vacancies and SAVES the result as a suggested FIT score. The card
+ * says so before the run, and marks the output as an AI suggestion (generative-ai.md › Transparency).
+ */
 export function ScreenCandidateCard({ candidateId, vacancies }: { candidateId: string; vacancies: Vacancy[] }) {
   const { t } = useI18n();
+  const ai = t.candidateAi;
   const utils = trpc.useUtils();
   const [vacancyId, setVacancyId] = useState(vacancies[0]?.id ?? '');
 
   const screen = trpc.candidate.screen.useMutation({
     onSuccess: () => {
-      toast(t.candidateAi.screenSaved, { type: 'success' });
+      toast(ai.screenSaved, { type: 'success' });
       // Refresh the candidate so the new FitScore shows in FitBreakdown.
       void utils.candidate.getById.invalidate({ id: candidateId });
     },
-    onError: () => toast(t.candidateAi.screenError, { type: 'error' }),
+    onError: () => toast(ai.screenError, { type: 'error' }),
   });
   const r = screen.data;
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.candidateAi.screenTitle}</h3>
+    <section className={CARD}>
+      <h2 className={`${CARD_TITLE} mb-1`}>{ai.screenTitle}</h2>
+      <p className="mb-3 text-callout text-secondary">{ai.screenDescription}</p>
 
       {vacancies.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B]">{t.candidateAi.screenNoVacancies}</p>
+        <p className="text-body text-secondary">{ai.screenNoVacancies}</p>
       ) : (
         <>
-          <div className="flex items-center gap-2">
-            <select
+          <AiSuggestionNotice className="mb-3" />
+          {/* Stacked: in the narrow record column a side-by-side row squeezes the vacancy name. */}
+          <div className="flex flex-col items-stretch gap-2 sm:items-start">
+            <label htmlFor={`screen-vacancy-${candidateId}`} className="sr-only">
+              {ai.screenVacancyLabel}
+            </label>
+            <Select
+              id={`screen-vacancy-${candidateId}`}
               value={vacancyId}
               onChange={(e) => setVacancyId(e.target.value)}
-              className="flex-1 border border-[#EDEDED] rounded-lg px-2.5 h-8 text-[12px] outline-none focus:border-[#1F114C]"
+              className="w-full min-w-0"
             >
-              {vacancies.map((v) => <option key={v.id} value={v.id}>{v.title}</option>)}
-            </select>
-            <button
+              {vacancies.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.title}
+                </option>
+              ))}
+            </Select>
+            <Button
+              variant="secondary"
               onClick={() => screen.mutate({ candidateId, vacancyId })}
-              disabled={!vacancyId || screen.isPending}
-              className="bg-[#DD0C15] text-white px-4 h-8 rounded-lg text-[12px] font-medium disabled:opacity-50 shrink-0"
+              disabled={!vacancyId}
+              loading={screen.isPending}
+              loadingLabel={ai.screening}
+              className="w-full sm:w-auto"
             >
-              {screen.isPending ? t.candidateAi.screening : t.candidateAi.screenButton}
-            </button>
+              {ai.screenButton}
+            </Button>
           </div>
 
           {r && (
-            <div className="mt-3 pt-3 border-t border-[#EDEDED] space-y-2 text-[12px]">
-              <AiSuggestionNotice />
-              <div className="flex items-center justify-between">
-                <span className="text-[#8B8B8B]">{t.candidateAi.score}</span>
+            <div className="mt-3 space-y-3 border-t border-border pt-3 text-body">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-secondary">{ai.score}</span>
                 {r.score === null ? (
-                  <span className="text-[12px] text-[#8B8B8B]">{t.candidateAi.scoreUnavailable}</span>
+                  <span className="text-secondary">{ai.scoreUnavailable}</span>
                 ) : (
-                  <span className="text-[18px] font-bold text-[#1F114C]">{r.score}<span className="text-[11px] text-[#8B8B8B] font-normal">/100</span></span>
+                  <span className="text-xl font-bold tabular-nums text-brand">
+                    {r.score}
+                    <span className="text-callout font-normal text-secondary">/100</span>
+                  </span>
                 )}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[#8B8B8B]">{t.candidateAi.recommendation}</span>
-                <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${REC_META[r.recommendation]?.cls ?? ''}`}>
-                  {t.candidateAi[REC_META[r.recommendation]?.key ?? 'recReview']}
-                </span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-secondary">{ai.recommendation}</span>
+                <StatusBadge tone={REC_META[r.recommendation]?.tone ?? 'warning'}>
+                  {ai[REC_META[r.recommendation]?.key ?? 'recReview']}
+                </StatusBadge>
               </div>
-              {r.matchedSkills.length > 0 && <SkillRow label={t.candidateAi.matchedSkills} items={r.matchedSkills} cls="text-green-700" />}
-              {r.missingSkills.length > 0 && <SkillRow label={t.candidateAi.missingSkills} items={r.missingSkills} cls="text-[#DD0C15]" />}
+              {r.matchedSkills.length > 0 && (
+                <div>
+                  <h3 className={META_LABEL}>{ai.matchedSkills}</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {r.matchedSkills.map((s) => (
+                      <StatusBadge key={s} tone="success">
+                        {s}
+                      </StatusBadge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {r.missingSkills.length > 0 && (
+                <div>
+                  <h3 className={META_LABEL}>{ai.missingSkills}</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {r.missingSkills.map((s) => (
+                      <StatusBadge key={s} tone="neutral" icon="none">
+                        {s}
+                      </StatusBadge>
+                    ))}
+                  </div>
+                </div>
+              )}
               {r.reasoning && (
                 <div>
-                  <p className="text-[10px] text-[#8B8B8B] mb-0.5">{t.candidateAi.reasoning}</p>
-                  <p className="text-[11px] text-[#585858] leading-snug">{r.reasoning}</p>
+                  <h3 className={META_LABEL}>{ai.reasoning}</h3>
+                  <p className="text-body text-primary">{r.reasoning}</p>
                 </div>
               )}
             </div>
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function SkillRow({ label, items, cls }: { label: string; items: string[]; cls: string }) {
-  return (
-    <div>
-      <p className="text-[10px] text-[#8B8B8B] mb-0.5">{label}</p>
-      <div className="flex flex-wrap gap-1">
-        {items.map((s) => <span key={s} className={`text-[10px] px-1.5 py-0.5 rounded bg-[#F6F6F6] ${cls}`}>{s}</span>)}
-      </div>
-    </div>
+    </section>
   );
 }

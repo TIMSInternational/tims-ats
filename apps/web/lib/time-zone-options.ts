@@ -4,8 +4,9 @@
 // A curated list rather than all ~400 IANA zones: the closed pilot is in Costa Rica and the product's
 // customers are in the Americas. The current value is always kept in the list, even when it is not one of
 // these, so a picker never silently shows a different zone than the one stored. Labels come from the
-// shared interview-time-zone label ("hora de Costa Rica (GMT-6)"), followed by the IANA id so two zones
-// with the same offset stay distinguishable.
+// shared interview-time-zone label, capitalised as a list item starts ("Hora de Costa Rica (GMT-6)",
+// writing.md › Best practices). The IANA id is an internal identifier: it is appended only when two
+// options would otherwise read the same, and pickers show it as the option's tooltip.
 
 import { isValidTimeZone, timeZoneLabel, type TimeZoneLabelLocale } from '@tims/shared';
 
@@ -39,8 +40,13 @@ export function timeZoneOptions(
 ): TimeZoneOption[] {
   const zones = [...COMMON_TIME_ZONES];
   if (current && isValidTimeZone(current) && !zones.includes(current)) zones.unshift(current);
-  return zones.map((value) => {
+  const labels = zones.map((value) => {
     const label = timeZoneLabel(value, locale, at);
-    return { value, label: label === value ? label : `${label} · ${value}` };
+    return label.charAt(0).toLocaleUpperCase(locale) + label.slice(1);
+  });
+  return zones.map((value, i) => {
+    const label = labels[i] ?? value;
+    const ambiguous = labels.filter((other) => other === label).length > 1;
+    return { value, label: ambiguous && label !== value ? `${label} · ${value}` : label };
   });
 }

@@ -15,6 +15,7 @@ import { CancelInterviewDialog } from './cancel-interview-dialog';
 import { NoShowDialog } from './no-show-dialog';
 import { RescheduleInterviewDialog, type RescheduleTarget } from './reschedule-interview-dialog';
 import { InterviewKpis } from './interview-kpis';
+import { InterviewsPageHeader } from './interviews-page-header';
 import { canOfferInterviewCancel, canOfferInterviewScheduling, canOfferPanelManagement } from './interview-cancel';
 import { usePermissions } from '../../../../lib/permissions';
 
@@ -108,7 +109,9 @@ export default function InterviewsPage() {
   const hasFilters = !!(statusFilter || typeFilter);
 
   return (
-    <div className="min-h-full xl:h-full flex flex-col xl:flex-row xl:overflow-hidden p-4 md:p-6 gap-6">
+    <div className="flex min-h-full flex-col xl:h-full">
+      <InterviewsPageHeader onSchedule={canSchedule ? () => setShowSchedule(true) : undefined} />
+      <div className="flex flex-1 flex-col gap-6 px-4 py-5 md:px-6 md:py-6 xl:min-h-0 xl:flex-row xl:overflow-hidden">
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 min-h-[360px] xl:min-h-0">
         {/* KPI Row */}
@@ -130,7 +133,6 @@ export default function InterviewsPage() {
           onTypeChange={(v) => { setTypeFilter(v); setPage(0); }}
           onClearFilters={clearFilters}
           hasFilters={hasFilters}
-          onSchedule={canSchedule ? () => setShowSchedule(true) : undefined}
         />
 
         {/* Interview Table */}
@@ -149,6 +151,7 @@ export default function InterviewsPage() {
           aiScreenError={aiScreenEnabledQuery.isError}
           canViewCandidate={can('candidate', 'read')}
           pagination={{ page, limit: PAGE_SIZE, total: interviews.data?.total ?? 0, onPageChange: setPage }}
+          onSchedule={canSchedule && !hasFilters ? () => setShowSchedule(true) : undefined}
         />
       </div>
 
@@ -166,6 +169,7 @@ export default function InterviewsPage() {
           isError={upcoming.isError}
           onRetry={() => upcoming.refetch()}
         />
+      </div>
       </div>
 
       {/* Schedule Modal */}

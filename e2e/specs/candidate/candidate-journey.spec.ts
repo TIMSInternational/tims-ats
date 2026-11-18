@@ -62,7 +62,7 @@ test.afterAll(async () => {
 test('careers page lists the published vacancy', async () => {
   const { page } = candidate;
   await page.goto(`/careers/${j.orgSlug}`);
-  await page.getByText(j.vacancy!.title).first().click();
+  await page.getByText(j.vacancy!.title).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(new RegExp(`/careers/${j.orgSlug}/${j.vacancy!.id}`));
   await expect(page.getByRole('heading', { name: j.vacancy!.title })).toBeVisible();
 });
@@ -70,7 +70,7 @@ test('careers page lists the published vacancy', async () => {
 test('recruiter views the empty pipeline before the candidate applies', async () => {
   const { page } = recruiter;
   await navigateStaff(page, '/recruitment/pipeline');
-  await expect(page.getByText('Postulación recibida', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Postulación recibida', { exact: true }).filter({ visible: true }).first()).toBeVisible();
   await expect(page.getByText(fullName())).toHaveCount(0);
   await navigateStaff(page, '/dashboard');
 });
@@ -79,7 +79,8 @@ test('recruiter views the empty pipeline before the candidate applies', async ()
 async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
   await page.goto(`/careers/${j.orgSlug}/${j.vacancy!.id}`);
   await page.getByRole('button', { name: 'Postularse' }).first().click();
-  const form = page.getByRole('dialog', { name: `Postularse a ${j.vacancy!.title}` });
+  // The dialog is titled "Postularse"; the vacancy title is its description line.
+  const form = page.getByRole('dialog', { name: 'Postularse', exact: true }).filter({ hasText: j.vacancy!.title });
 
   await form.getByPlaceholder('María', { exact: true }).fill(cand().firstName);
   await form.getByPlaceholder('López Rodríguez').fill(cand().lastName);
@@ -105,7 +106,7 @@ async function apply(page: Page, { cv }: { cv: boolean }): Promise<void> {
     await form.getByRole('checkbox').check();
   }
   await submit.click();
-  await expect(page.getByText(/postulaci[oó]n enviada/i).first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByText(/postulaci[oó]n enviada/i).filter({ visible: true }).first()).toBeVisible({ timeout: 45_000 });
 }
 
 test('candidate applies with a CV upload and explicit consent', async () => {
@@ -127,7 +128,7 @@ test('candidate receives the "application received" email', async () => {
 test('recruiter sees the application in the pipeline and opens the candidate', async () => {
   const { page } = recruiter;
   await navigateStaff(page, '/recruitment/pipeline');
-  await page.getByText(fullName()).first().click();
+  await page.getByText(fullName()).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/\/recruitment\/candidates\/[0-9a-f-]{36}/);
   profileUrl = page.url();
   await expect(page.getByRole('heading', { name: fullName() })).toBeVisible();
@@ -136,10 +137,10 @@ test('recruiter sees the application in the pipeline and opens the candidate', a
 /** On the candidate profile: move the (only) application to `stage`. */
 async function moveStage(page: Page, stage: string): Promise<void> {
   if (page.url() !== profileUrl) await page.goto(profileUrl);
-  await page.getByRole('button', { name: 'Mover Etapa' }).first().click();
-  const dialog = page.getByRole('dialog', { name: 'Mover Etapa' });
+  await page.getByRole('button', { name: 'Mover etapa' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Mover etapa' });
   await dialog.getByLabel('Mover a etapa').selectOption({ label: stage });
-  await dialog.getByRole('button', { name: 'Mover Etapa' }).click();
+  await dialog.getByRole('button', { name: 'Mover etapa' }).click();
   await expect(dialog).toBeHidden();
 }
 
@@ -147,14 +148,14 @@ test('recruiter moves the candidate through screening to the HR interview stage'
   await moveStage(recruiter.page, 'Preselección');
   await moveStage(recruiter.page, 'Entrevista con RR. HH.');
   await recruiter.page.reload();
-  await expect(recruiter.page.getByText('Entrevista con RR. HH.', { exact: true }).first()).toBeVisible();
+  await expect(recruiter.page.getByText('Entrevista con RR. HH.', { exact: true }).filter({ visible: true }).first()).toBeVisible();
 });
 
 /** Schedule an in-person interview (never video — no Daily in E2E) with the leader as evaluator. */
 async function scheduleInterview(page: Page): Promise<void> {
   await navigateStaff(page, '/recruitment/interviews');
   await page
-    .getByRole('button', { name: /programar entrevista/i })
+    .getByRole('button', { name: /agendar entrevista/i })
     .first()
     .click();
   const wizard = page.getByRole('dialog', { name: 'Agendar Entrevista' });
@@ -176,7 +177,7 @@ async function scheduleInterview(page: Page): Promise<void> {
   await wizard.getByPlaceholder('Oficina central — Sala 3').fill('Oficina central, San José — Sala 2');
   await wizard.getByRole('button', { name: 'Siguiente' }).click();
 
-  await wizard.getByText(`${j.leader.firstName} ${j.leader.lastName}`).first().click();
+  await wizard.getByText(`${j.leader.firstName} ${j.leader.lastName}`).filter({ visible: true }).first().click();
   await wizard.getByRole('button', { name: 'Agendar Entrevista' }).click();
   await expect(wizard).toBeHidden();
 
@@ -247,16 +248,18 @@ test('recruiter moves the candidate to Oferta and drafts an offer', async () => 
   const dialog = page.getByRole('dialog', { name: 'Crear borrador de oferta' });
   await dialog.getByLabel(/salario base/i).fill('96000000');
   const start = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  await dialog.getByLabel('Fecha Inicio').fill(start);
+  await dialog.getByLabel('Fecha de inicio').fill(start);
   // Contract type is a select of Costa Rican terms (portal.contractTypes), prefilled from the vacancy.
-  await dialog.getByLabel('Tipo Contrato').selectOption({ label: 'Plazo indefinido' });
+  await dialog.getByLabel('Tipo de contrato').selectOption({ label: 'Plazo indefinido' });
   await dialog.getByRole('button', { name: 'Crear borrador de oferta' }).click();
   await expect(dialog).toBeHidden();
   // On success the modal closes and THEN the app router-pushes to the new draft (B-16:
   // /recruitment/offers?offer=<id>). Wait for it to show the offer before the next test navigates, so its
   // navigation cannot race the in-flight client push (CI run 36754356674 once found the list without it).
   await expect(page).toHaveURL(/\/recruitment\/offers(\?offer=[^&]+)?$/);
-  await expect(page.getByText(fullName()).first()).toBeVisible();
+  // The offers list also renders a phone-only (md:hidden) stacked list BEFORE the table, so the first
+  // match at desktop width is a hidden copy: assert on the visible one.
+  await expect(page.getByText(fullName()).filter({ visible: true }).first()).toBeVisible();
 });
 
 /** Open this candidate's offer from the offers list. */
@@ -264,8 +267,9 @@ async function openOffer(page: Page): Promise<void> {
   await navigateStaff(page, '/recruitment/offers');
   const backToList = page.getByRole('button', { name: 'Volver a ofertas' });
   if (await backToList.isVisible()) await backToList.click();
-  await page.getByText(fullName()).first().click();
-  await expect(page.getByText(fullName()).first()).toBeVisible();
+  // Visible match only: the phone-only stacked list (md:hidden) precedes the table in the DOM.
+  await page.getByText(fullName()).filter({ visible: true }).first().click();
+  await expect(page.getByText(fullName()).filter({ visible: true }).first()).toBeVisible();
 }
 
 /** Request approval from `approverName`, then approve as `approverPage`. */
@@ -290,7 +294,7 @@ async function approveOffer(requester: Page, approverName: string, approverPage:
   await requester.getByRole('button', { name: 'Solicitar aprobación' }).click();
   // Wait for the request to land (the offer leaves Borrador) before anyone navigates away —
   // otherwise a fast navigation can abort the mutation (seen when requester and approver are one page).
-  await expect(requester.getByText('Pendiente', { exact: true }).first()).toBeVisible();
+  await expect(requester.getByText('Pendiente', { exact: true }).filter({ visible: true }).first()).toBeVisible();
   await openOffer(approverPage);
   const approved = approverPage.getByText('Aprobada', { exact: true });
   await expect(approved).toHaveCount(0);
@@ -346,7 +350,7 @@ test('company admin authorizes the hire; the new employee has an onboarding plan
   await dialog.getByRole('button', { name: 'Crear colaborador y plan' }).click();
   await expect(page.getByText('Colaborador y plan de onboarding creados')).toBeVisible();
   await navigateStaff(page, '/people/onboarding');
-  await expect(page.getByText(fullName()).first()).toBeVisible();
+  await expect(page.getByText(fullName()).filter({ visible: true }).first()).toBeVisible();
 });
 
 test('the onboarding plan starts with the default task template', async () => {

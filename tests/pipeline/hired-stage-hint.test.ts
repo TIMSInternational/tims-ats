@@ -3,7 +3,7 @@ import es from '../../apps/web/lib/i18n/es.json';
 import en from '../../apps/web/lib/i18n/en.json';
 
 // Pilot call 2026-11-05: moving a card to the final "Contratado" stage looks like a hire but does not record one
-// (only "Autorizar Contratación" on the accepted offer does: hire-closure.service.ts). The board and the
+// (only "Autorizar contratación" on the accepted offer does: hire-closure.service.ts). The board and the
 // Candidate 360 now say so after such a move (lib/pipeline-move-toast.ts).
 
 const toast = vi.hoisted(() => vi.fn());
@@ -20,7 +20,7 @@ describe('announceStageMove — the "Contratado" hint', () => {
       announceStageMove({ warnings: null }, name, labels, {});
       expect(toast).toHaveBeenCalledWith(es.pipeline.hiredStageHint, { type: 'info', duration: 8000 });
     }
-    expect(es.pipeline.hiredStageHint).toContain('«Autorizar Contratación»');
+    expect(es.pipeline.hiredStageHint).toContain('«Autorizar contratación»');
     expect(es.pipeline.hiredStageHint).toContain(es.offers.authorizeHiring);
     expect(en.pipeline.hiredStageHint).toContain(en.offers.authorizeHiring);
   });

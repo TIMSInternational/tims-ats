@@ -101,7 +101,10 @@ describe('org detail → Users role picker (D-14)', () => {
     const { UsersSection } =
       await import('../../apps/web/app/(admin)/platform/organizations/[id]/sections/users-section');
     render(<UsersSection organizationId="22222222-2222-4222-8222-222222222222" organizationName="Pilot" />);
-    fireEvent.change(screen.getByLabelText('Rol — Rita Recluta'), { target: { value: 'committee' } });
+    // The picker renders twice: the phone stacked list (below md) and the table (md and up); CSS picks one.
+    const pickers = screen.getAllByLabelText('Rol — Rita Recluta');
+    expect(pickers).toHaveLength(2);
+    fireEvent.change(pickers[0], { target: { value: 'committee' } });
     expect(m.changeRole).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('Pasará de Reclutador a Comité de entrevista.');
     fireEvent.click(screen.getByRole('button', { name: 'Sí, cambiar rol' }));
@@ -118,8 +121,8 @@ describe('support → send notification (D-14)', () => {
     const { QuickActions } = await import('../../apps/web/app/(admin)/platform/support/quick-actions');
     render(<QuickActions />);
     fireEvent.change(screen.getByLabelText('Título de la notificación'), { target: { value: 'Mantenimiento' } });
-    fireEvent.change(screen.getByLabelText('Mensaje de la notificación...'), { target: { value: 'Esta noche' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar Notificación/ }));
+    fireEvent.change(screen.getByLabelText('Mensaje'), { target: { value: 'Esta noche' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar notificación/ }));
     expect(m.sendNotification).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent('TODAS las organizaciones activas');
     fireEvent.click(screen.getByRole('button', { name: 'Sí, enviar' }));
@@ -157,11 +160,11 @@ describe('invitations (D-15)', () => {
   it('a new organization named like an existing one needs an explicit confirmation', async () => {
     const { InviteOrgModal } = await import('../../apps/web/app/(admin)/platform/invitations/invite-org-modal');
     render(<InviteOrgModal onClose={vi.fn()} onSuccess={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('Email del Admin *'), { target: { value: 'admin@x.test' } });
-    fireEvent.change(screen.getByLabelText('Nombre de la Organización *'), { target: { value: 'Nova Costa Rica' } });
+    fireEvent.change(screen.getByLabelText('Email del administrador *'), { target: { value: 'admin@x.test' } });
+    fireEvent.change(screen.getByLabelText('Nombre de la organización *'), { target: { value: 'Nova Costa Rica' } });
     fireEvent.change(screen.getByLabelText(/^País/), { target: { value: 'CR' } });
     expect(screen.getByRole('alert')).toHaveTextContent('nombre parecido: Nova');
-    const submit = screen.getByRole('button', { name: 'Crear & Enviar Invitación' });
+    const submit = screen.getByRole('button', { name: 'Crear y enviar invitación' });
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByLabelText('Confirmo que es una organización nueva'));
     fireEvent.click(submit);

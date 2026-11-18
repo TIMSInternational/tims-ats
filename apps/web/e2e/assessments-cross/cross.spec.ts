@@ -224,10 +224,16 @@ async function assignVacancyTests(hr: Page, candidateId: string, shots = false):
   await dialog.getByLabel('18 or older').check();
   if (shots) await shot(hr, 'hr-assign-dialog-four-tests');
   await dialog.getByRole('button', { name: 'Continue' }).click();
-  await expect(dialog.getByTestId('assessment-consent-notice')).toBeVisible();
-  await dialog.getByLabel('I have reviewed this notice.', { exact: false }).check();
+  // Step 2 of 2: the notice as a consent-guide step; its full text opens in place, inside the same dialog.
+  await expect(dialog.getByTestId('consent-step')).toBeVisible();
   if (shots) await shot(hr, 'hr-assign-dialog-notice');
-  await dialog.getByRole('button', { name: 'Assign', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Read the full text' }).click();
+  await expect(dialog.getByTestId('assessment-consent-notice')).toBeVisible();
+  if (shots) await shot(hr, 'hr-assign-dialog-notice-full-text');
+  await dialog.getByRole('button', { name: 'Close the full text' }).click();
+  await dialog.getByLabel('I have reviewed this notice.', { exact: false }).check();
+  // The submit names the count ("Assign 4 tests", round-2 HIG copy).
+  await dialog.getByRole('button', { name: /^Assign \d+ tests?$/ }).click();
   await expect(hr.getByRole('dialog')).toHaveCount(0, { timeout: 60_000 });
   await expect(card.getByTestId('provider-status-chip')).toHaveCount(4, { timeout: 60_000 });
   if (shots) await shot(hr, 'hr-candidate-four-tests-awaiting-consent');
@@ -366,16 +372,46 @@ async function consentAndOpen(
   const item = portalItem(page, instrument);
   await expect(item).toBeVisible({ timeout: 60_000 });
   await item.getByRole('button', { name: 'Read the consent' }).click();
-  if (shots) await shot(page, `candidate-${instrument}-consent`);
-  await item.getByLabel('I have read this notice.').check();
-  for (const box of await item.getByLabel('I have read this text and I accept it.').all()) await box.check();
-  const optionalSection = item.getByTestId('provider-optional-consents');
-  if (optional === 'none') await expect(optionalSection).toHaveCount(0);
-  else {
-    await expect(optionalSection).toBeVisible();
-    if (optional === 'accept')
-      for (const box of await optionalSection.getByLabel('I agree (optional).').all()) await box.check();
+  // The consent guide, one step at a time: the notice, each required consent, the optional ones, then Start (the
+  // stepper's last step). Each step's box starts unticked; only the required ones block Continue.
+  const guide = item.getByRole('group', { name: 'Consent' });
+  const stepper = guide.getByRole('navigation', { name: 'Steps' }).getByRole('listitem');
+  // The step list is screen-reader only (the eye sees the eyebrow and the progress bar): wait for it to be in the DOM,
+  // not for it to be visible (a 1px clipped box only counts as visible by accident).
+  await expect(stepper.first()).toBeAttached();
+  const total = await stepper.count();
+  let optionalSteps = 0;
+  for (let index = 0; index < total - 1; index += 1) {
+    await expect(stepper.nth(index)).toHaveAttribute('aria-current', 'step');
+    const step = guide.getByTestId('consent-step');
+    const isOptional = (await step.getAttribute('data-optional')) === 'true';
+    const label =
+      index === 0
+        ? 'I have read this notice.'
+        : isOptional
+          ? 'I agree (optional).'
+          : 'I have read this text and I accept it.';
+    const box = step.getByLabel(label);
+    await expect(box).not.toBeChecked();
+    if (shots && index === 0) await shot(page, `candidate-${instrument}-consent`);
+    if (shots && index === 1) {
+      await step.getByRole('button', { name: 'Read the full text' }).click();
+      const sheet = page.getByRole('dialog');
+      await expect(sheet).toBeVisible();
+      await shot(page, `candidate-${instrument}-consent-full-text`);
+      await sheet.getByRole('button', { name: 'Close' }).last().click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    }
+    if (isOptional) {
+      optionalSteps += 1;
+      if (optional === 'accept') await box.check();
+      if (shots) await shot(page, `candidate-${instrument}-consent-optional-${optionalSteps}`);
+    } else await box.check();
+    await guide.getByRole('button', { name: 'Continue' }).click();
   }
+  if (optional === 'none') expect(optionalSteps).toBe(0);
+  else expect(optionalSteps).toBeGreaterThan(0);
+  if (shots) await shot(page, `candidate-${instrument}-consent-review`);
   await item.getByRole('button', { name: 'Accept and start' }).click();
   // Embedded: the portal frames the player (or PCA's provider page, sandboxed). Link-out: the page itself goes there.
   if (st.embedded) await frameOn(page, instrument === 'pca' ? PCA_SURVEY : st.suite.playerOrigin);
@@ -460,24 +496,26 @@ test('H5 candidate A signs in (OTP), consents and completes LIA, Personality and
     await consentAndOpen(page, instrument, optional, true);
     seen.push(`${instrument}: ${await sitAndReturn(page, instrument, true)}`);
   }
-  // PCA: consent in the portal, then the provider's survey (link-out, same tab). The survey is created at the
-  // provider on this launch (a billable AddSurvey in production), once per assignment.
+  // PCA: consent in the portal, then the provider's survey (framed in the portal; link-out mode: the same tab). The
+  // survey is created at the provider on this launch (a billable AddSurvey in production), once per assignment.
   await consentAndOpen(page, 'pca', 'none', true);
   const survey = await sittingSurface(page, PCA_SURVEY);
   if (st.embedded) {
-    // timssuite.com's PCA header over TIMS's own page, sandboxed (no popups).
-    await expect(
-      assessmentDialog(page).getByRole('heading', { name: 'Análisis de Competencias Personales (PCA)' }),
-    ).toBeVisible();
-    await expect(assessmentDialog(page).getByText('Completa el cuestionario a continuación')).toBeVisible();
-    await expect(assessmentDialog(page).locator('iframe')).toHaveAttribute(
-      'sandbox',
-      'allow-forms allow-scripts allow-same-origin',
+    // The same ATS bar as every test (the test's name in the test's language, and the way out) over TIMS's own page,
+    // sandboxed (no popups), with a way to open the survey in a new tab; the loading state has cleared.
+    const dialog = assessmentDialog(page);
+    await expect(dialog.getByText('Perfil conductual', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Salir', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('link', { name: 'Abrir en una pestaña nueva' })).toHaveAttribute(
+      'href',
+      new RegExp(`^${PCA_SURVEY}/survey\\?c=`),
     );
+    await expect(dialog.locator('iframe')).toHaveAttribute('sandbox', 'allow-forms allow-scripts allow-same-origin');
+    await expect(dialog.getByRole('status')).toHaveCount(0, { timeout: 60_000 });
   }
   await shot(page, 'pca-provider-survey');
-  await survey.getByRole('button', { name: 'Completar el PCA' }).click();
-  await expect(survey.getByText('PCA completado')).toBeVisible();
+  await survey.getByRole('button', { name: 'Enviar respuestas' }).click();
+  await expect(survey.getByRole('heading', { name: 'Cuestionario enviado' })).toBeVisible();
   await shot(page, 'pca-provider-completed');
   const sitting = suiteSql(
     st,
@@ -653,10 +691,11 @@ test('H7 FIT v2 scores the candidate from the provider results, with no HR compu
   );
   // TIMS's job fit for 194225 (the stand-in answers Res 78), sent with the assignment and copied by the suite.
   // The PCA result is the last to arrive (the scheduled poll, H6); its recompute drains asynchronously.
-  const pcaQuery = () => atsSql(
-    st,
-    `select (e->>'use')||'|'||(e->>'status')||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
-  );
+  const pcaQuery = () =>
+    atsSql(
+      st,
+      `select (e->>'use')||'|'||(e->>'status')||'|'||coalesce(e->>'score','null')||'|'||coalesce(e->>'jobCode','null') from fit_scores f, jsonb_array_elements(f.breakdown->'assessments') e where f.candidate_id=${sqlStr(candidateA)} and f.vacancy_id=${sqlStr(vacancy.id)} and e->>'instrument'='pca'`,
+    );
   await expect.poll(pcaQuery, { timeout: 120_000, intervals: [2_000] }).toBe('scored|completed|78|194225');
   const pcaEntry = pcaQuery();
   const suiteFit = suiteSql(
@@ -732,7 +771,10 @@ test('H8 HR reads each result on the candidate (exact levels; PCA advisory)', as
     `select count(*) from audit_logs where action='assessment_provider_report_downloaded' and entity_id in (${sqlStr(attemptsA.lia)}, ${sqlStr(attemptsA.pca)})`,
   );
   expect(downloads).toBe('2');
-  record('H8 PDF reports', `${liaReport.name} (suite-rendered) and ${pcaReport.name} (TIMS variant via the stand-in), ${downloads} audit rows`);
+  record(
+    'H8 PDF reports',
+    `${liaReport.name} (suite-rendered) and ${pcaReport.name} (TIMS variant via the stand-in), ${downloads} audit rows`,
+  );
   if (shotsDir) {
     await hr.goto(`/recruitment/candidates/${candidateA}?tab=tabFitGaps`);
     await hr.waitForLoadState('networkidle').catch(() => undefined);
@@ -817,7 +859,12 @@ test('H11 HR cancels B’s English assignment; the suite cancels it', async ({ b
   await hr.goto(`/recruitment/candidates/${candidateB}`);
   const card = hr.getByRole('region', { name: 'TIMS Assessments' });
   const english = card.getByTestId('provider-attempt').filter({ hasText: 'English' });
-  await english.getByRole('button', { name: 'Cancel English' }).click();
+  // Cancelling is a deliberate step since the HIG pass: the row button opens a confirmation dialog.
+  await english.getByRole('button', { name: 'Cancel the English test…' }).click();
+  await hr
+    .getByRole('dialog', { name: 'Cancel the English test?' })
+    .getByRole('button', { name: 'Cancel test' })
+    .click();
   await expect(hr.getByText('Assessment cancelled')).toBeVisible();
   // Read the list fresh: one local run saw the post-mutation refetch answered with an empty-body 401 (see README).
   await hr.reload();

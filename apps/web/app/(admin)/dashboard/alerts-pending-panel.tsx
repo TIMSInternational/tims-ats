@@ -1,9 +1,11 @@
 'use client';
 
+import { useId } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
 import { ErrorState } from '../../../components';
+import { StatusBadge } from '../../../components/status-badge';
 import { isPilotScope } from '../../../lib/launch-scope';
 import { formatInterviewWhen } from '../recruitment/interviews/interview-status';
 
@@ -23,6 +25,7 @@ export function AlertsPendingPanel() {
   const isError = (showAssessments && pendingAssessments.isError) || pendingScorecards.isError;
 
   const totalPending = tests.length + scorecards.length;
+  const titleId = useId();
 
   const daysAgo = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
@@ -30,24 +33,30 @@ export function AlertsPendingPanel() {
   };
 
   return (
-    <div className="w-full md:flex-1 bg-white rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-sm font-semibold text-[#1F114C]">
+    <section aria-labelledby={titleId} className="w-full rounded-xl bg-white p-4 shadow-card md:flex-1">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 id={titleId} className="text-subheading font-semibold text-brand">
           {showAssessments ? rd.pendingTests : rd.pendingScorecards}
-        </span>
-        <span className="bg-amber-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">
+        </h3>
+        <StatusBadge tone={totalPending > 0 ? 'warning' : 'neutral'} icon="none" className="tabular-nums">
           {totalPending}
-        </span>
+        </StatusBadge>
       </div>
 
       {isLoading ? (
-        <div className="space-y-3 animate-pulse">
+        <div className="space-y-3" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-10 bg-gray-100 rounded" />
+            <div
+              key={i}
+              aria-hidden="true"
+              className="h-10 animate-pulse rounded bg-gray-100 motion-reduce:animate-none"
+            />
           ))}
         </div>
       ) : isError ? (
         <ErrorState
+          size="compact"
           onRetry={() => {
             if (showAssessments) pendingAssessments.refetch();
             pendingScorecards.refetch();
@@ -58,60 +67,70 @@ export function AlertsPendingPanel() {
           {showAssessments && (
             <>
               {/* Pending Assessments */}
-              <p className="text-xs text-[#585858] mb-2">
+              <h4 className="mb-2 text-callout font-medium text-secondary">
                 {rd.pendingTestsLabel} ({tests.length})
-              </p>
-              <div className="space-y-2 mb-3">
+              </h4>
+              <ul className="mb-3 space-y-2">
                 {tests.slice(0, 3).map((test) => (
-                  <div key={test.id} className="flex justify-between items-center h-10">
+                  <li key={test.id} className="flex min-h-10 items-center justify-between">
                     <div>
-                      <p className="text-[13px] text-[#333]">
+                      <p className="text-body text-primary">
                         {test.candidate.firstName} {test.candidate.lastName} — {test.assessmentType.name}
                       </p>
-                      <p className="text-[11px] text-[#8B8B8B]">
+                      <p className="text-caption text-muted">
                         {rd.assignedAgo} {daysAgo(test.assignedAt)} {rd.days}
                       </p>
                     </div>
-                  </div>
+                  </li>
                 ))}
-                {tests.length > 3 && (
-                  <span className="text-xs text-[#DD0C15]">
-                    +{tests.length - 3} {rd.more}
-                  </span>
-                )}
-                {tests.length === 0 && <p className="text-[11px] text-[#8B8B8B]">{rd.noPendingTests}</p>}
-              </div>
+              </ul>
+              {/* A count of the rest, not a link. */}
+              {tests.length > 3 && (
+                <p className="mb-3 text-callout text-secondary">
+                  +{tests.length - 3} {rd.more}
+                </p>
+              )}
+              {tests.length === 0 && <p className="mb-3 text-callout text-muted">{rd.noPendingTests}</p>}
             </>
           )}
 
           {/* Pending Scorecards */}
-          <div className={showAssessments ? 'border-t border-[#EDEDED] pt-3' : ''}>
-            <p className="text-xs text-[#585858] mb-2">
+          <div className={showAssessments ? 'border-t border-border pt-3' : ''}>
+            <h4 className="mb-2 text-callout font-medium text-secondary">
               {rd.pendingScorecards} ({scorecards.length})
-            </p>
-            <div className="space-y-2">
+            </h4>
+            <ul className="space-y-2">
               {scorecards.slice(0, 2).map((sc) => (
-                <Link key={sc.interview.id} href={`/recruitment/interviews/${sc.interview.id}/room`} aria-label={rd.openInterviewRoom.replace('{name}', () => `${sc.interview.candidate.firstName} ${sc.interview.candidate.lastName}`)} className="flex justify-between items-center h-10 rounded-lg -mx-1 px-1 hover:bg-[#F6F6F6] transition">
-                  <div>
-                    <p className="text-[13px] text-[#333]">
-                      {sc.interview.candidate.firstName} {sc.interview.candidate.lastName} —{' '}
-                      {sc.interview.vacancy.title}
-                    </p>
-                    {/* When it took place — not the raw panel role slug (B-29). */}
-                    <p className="text-[11px] text-[#8B8B8B]">{formatInterviewWhen(sc.interview.scheduledAt, locale)}</p>
-                  </div>
-                </Link>
+                <li key={sc.interview.id}>
+                  <Link
+                    href={`/recruitment/interviews/${sc.interview.id}/room`}
+                    aria-label={rd.openInterviewRoom.replace(
+                      '{name}',
+                      () => `${sc.interview.candidate.firstName} ${sc.interview.candidate.lastName}`,
+                    )}
+                    className="-mx-1 flex min-h-10 items-center justify-between rounded-lg px-1 transition-colors hover:bg-surface pointer-coarse:min-h-11"
+                  >
+                    <div>
+                      <p className="text-body text-primary">
+                        {sc.interview.candidate.firstName} {sc.interview.candidate.lastName} —{' '}
+                        {sc.interview.vacancy.title}
+                      </p>
+                      {/* When it took place — not the raw panel role slug (B-29). */}
+                      <p className="text-caption text-muted">{formatInterviewWhen(sc.interview.scheduledAt, locale)}</p>
+                    </div>
+                  </Link>
+                </li>
               ))}
-              {scorecards.length > 2 && (
-                <span className="text-xs text-[#DD0C15]">
-                  +{scorecards.length - 2} {rd.more}
-                </span>
-              )}
-              {scorecards.length === 0 && <p className="text-[11px] text-[#8B8B8B]">{rd.noPendingScorecards}</p>}
-            </div>
+            </ul>
+            {scorecards.length > 2 && (
+              <p className="mt-2 text-callout text-secondary">
+                +{scorecards.length - 2} {rd.more}
+              </p>
+            )}
+            {scorecards.length === 0 && <p className="text-callout text-muted">{rd.noPendingScorecards}</p>}
           </div>
         </>
       )}
-    </div>
+    </section>
   );
 }

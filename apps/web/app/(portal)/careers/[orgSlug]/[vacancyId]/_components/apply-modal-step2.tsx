@@ -1,18 +1,15 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useState } from 'react';
+import { Field } from '../../../../../../components/field';
+import { TextInput } from '../../../../../../components/text-input';
+import { TextArea } from '../../../../../../components/text-area';
+import { Select } from '../../../../../../components/select';
 import { CvUploadField } from './cv-upload-field';
 import { useI18n } from '../../../../../../lib/i18n';
 import { EXPERIENCE_LEVELS } from '../_lib/experience-levels';
 import { isValidLinkedinUrl, normalizeLinkedinUrl } from '../_lib/apply-fields';
 import type { CvValidationError } from '../_lib/cv-validation';
-
-// text-base below `sm`: iOS Safari zooms the page on focus for any input under 16 px.
-const inputCls =
-  'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-base sm:text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] disabled:opacity-50 disabled:bg-[#FAFAFA]';
-const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
-const textareaCls =
-  'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-base sm:text-sm text-[#333] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none disabled:opacity-50';
 
 interface ApplyModalStep2Props {
   currentTitle: string;
@@ -54,73 +51,47 @@ export function ApplyModalStep2({
 }: ApplyModalStep2Props) {
   const { t } = useI18n();
   const p = t.portal;
-  const idBase = useId();
   const [profileLinkTouched, setProfileLinkTouched] = useState(false);
   const showLinkedinError = profileLinkRejected || (profileLinkTouched && !isValidLinkedinUrl(linkedinUrl));
-  const ids = {
-    currentTitle: `${idBase}-current-title`,
-    currentCompany: `${idBase}-current-company`,
-    yearsExperience: `${idBase}-years-experience`,
-    linkedinUrl: `${idBase}-linkedin`,
-    linkedinError: `${idBase}-linkedin-error`,
-    coverLetter: `${idBase}-cover-letter`,
-  };
-
+  // Every field on this step is optional, and each label says so.
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <label htmlFor={ids.currentTitle} className={labelCls}>{p.currentTitleLabel}</label>
-          <input
-            type="text"
-            id={ids.currentTitle}
+        <Field label={p.currentTitleLabel} optional>
+          <TextInput
             value={currentTitle}
             onChange={(e) => setCurrentTitle(e.target.value)}
             maxLength={200}
-            className={inputCls}
             placeholder={p.currentTitlePlaceholder}
           />
-        </div>
-        <div>
-          <label htmlFor={ids.currentCompany} className={labelCls}>{p.currentCompanyLabel}</label>
-          <input
-            type="text"
-            id={ids.currentCompany}
+        </Field>
+        <Field label={p.currentCompanyLabel} optional>
+          <TextInput
             value={currentCompany}
             onChange={(e) => setCurrentCompany(e.target.value)}
             maxLength={200}
-            className={inputCls}
             placeholder={p.currentCompanyPlaceholder}
           />
-        </div>
+        </Field>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <label htmlFor={ids.yearsExperience} className={labelCls}>{p.yearsExpLabel}</label>
-          <select
-            id={ids.yearsExperience}
-            value={yearsExperience}
-            onChange={(e) => setYearsExperience(e.target.value)}
-            className={`${inputCls} bg-white`}
-          >
+        <Field label={p.yearsExpLabel} optional>
+          <Select value={yearsExperience} onChange={(e) => setYearsExperience(e.target.value)}>
             {EXPERIENCE_LEVELS.map((l) => (
               <option key={l.value} value={l.value}>
                 {p.experienceLevels[l.labelKey]}
               </option>
             ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor={ids.linkedinUrl} className={labelCls}>LinkedIn</label>
+          </Select>
+        </Field>
+        <Field label={p.linkedinLabel} optional error={showLinkedinError ? p.linkedinInvalid : undefined}>
           {/* type="text" + inputMode="url": the browser's own url validation never runs (there is no
               <form>), and the value is normalized to https:// on blur so "linkedin.com/in/…" is accepted. */}
-          <input
-            type="text"
+          <TextInput
             inputMode="url"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            id={ids.linkedinUrl}
             value={linkedinUrl}
             onChange={(e) => setLinkedinUrl(e.target.value)}
             onBlur={() => {
@@ -128,31 +99,28 @@ export function ApplyModalStep2({
               setLinkedinUrl(normalizeLinkedinUrl(linkedinUrl));
             }}
             maxLength={2048}
-            className={inputCls}
             placeholder={p.linkedinPlaceholder}
-            aria-invalid={showLinkedinError || undefined}
-            aria-describedby={showLinkedinError ? ids.linkedinError : undefined}
           />
-          {showLinkedinError && (
-            <p id={ids.linkedinError} className="mt-1 text-[11px] text-[#DD0C15]">
-              {p.linkedinInvalid}
+        </Field>
+      </div>
+      <Field label={p.coverLetterLabel} optional>
+        {(c) => (
+          <>
+            <TextArea
+              {...c}
+              value={coverLetter}
+              onChange={(e) => setCoverLetter(e.target.value)}
+              maxLength={5000}
+              rows={5}
+              className="resize-none"
+              placeholder={p.coverLetterPlaceholder}
+            />
+            <p className="mt-1 text-right text-caption text-muted tabular-nums" aria-hidden="true">
+              {coverLetter.length}/5000
             </p>
-          )}
-        </div>
-      </div>
-      <div>
-        <label htmlFor={ids.coverLetter} className={labelCls}>{p.coverLetterLabel}</label>
-        <textarea
-          id={ids.coverLetter}
-          value={coverLetter}
-          onChange={(e) => setCoverLetter(e.target.value)}
-          maxLength={5000}
-          rows={5}
-          className={textareaCls}
-          placeholder={p.coverLetterPlaceholder}
-        />
-        <p className="mt-1 text-right text-[10px] text-muted">{coverLetter.length}/5000</p>
-      </div>
+          </>
+        )}
+      </Field>
       <CvUploadField
         file={cvFile}
         error={cvError}

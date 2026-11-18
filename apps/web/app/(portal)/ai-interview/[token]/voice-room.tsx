@@ -12,11 +12,18 @@ function VoiceRoomInner({ candidateToken }: { candidateToken: string }) {
 
   if (call.status === 'ended') {
     return (
-      <div className="min-h-screen bg-[#0E0A1F] flex items-center justify-center p-4">
-        <div className="rounded-2xl bg-[#160f2e] p-8 max-w-md w-full text-center">
-          <p className="text-sm text-[#cfc8ea]">{t.aiInterview.completed}</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#0E0A1F] p-4">
+        <div className="flex w-full max-w-md flex-col items-center rounded-2xl bg-[#160f2e] p-6 text-center sm:p-8">
+          <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-white/10" aria-hidden="true">
+            <svg className="size-6 text-[#5fd07a]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" focusable="false">
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h1 className="font-display text-heading font-semibold text-white">{t.aiInterview.completed}</h1>
+          {/* What happens next, and that nothing else is needed here. */}
+          <p className="mt-2 text-subheading text-[#cfc8ea]">{t.aiInterview.completedNext}</p>
         </div>
-      </div>
+      </main>
     );
   }
 

@@ -691,10 +691,11 @@ The platform organization page has a **TIMS Assessments** tab (only with the con
    (the erasure sweep's per-subject interval and per-run cap); `Platform__AssessmentIdentityCheckEnabled` stays false
    until a biometric text describing the camera checks is approved.
 7. On Vercel, set `NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP=true` to show the portal section, and only if the player
-   is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin), and only if PCA is to be
-   framed as timssuite.com frames it, `NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN` (the PCA provider's own https
-   origin, the one timssuite.com's `frame-src` names). Each is added to the portal's CSP `frame-src` only; unset, that
-   instrument links out top-level. All three are build-time: a change needs a new Vercel build.
+   is to be framed, `NEXT_PUBLIC_ASSESSMENT_PLAYER_ORIGIN` (the hosted player's https origin; unset, the player links
+   out top-level). PCA is framed as timssuite.com frames it BY DEFAULT, from `https://timshr.com` (it sends no
+   X-Frame-Options or `frame-ancestors`, checked 2026-11-14); `NEXT_PUBLIC_ASSESSMENT_PROVIDER_FRAME_ORIGIN` overrides
+   that origin, and any value that is not an https URL (for example `off`) makes PCA link out instead. Each origin is
+   added to the portal's CSP `frame-src` only. All three are build-time: a change needs a new Vercel build.
 8. Team leaders (owner default D6). The seeded `leader` role has no `assessment` grant, so a team leader sees no
    assessments card at all, which is stricter than D6. To give the pilot organization's leaders the D6 view (only
    "below minimum", never the level or CEFR, for vacancies of the teams they lead), review and run, once per

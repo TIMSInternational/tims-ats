@@ -7,13 +7,17 @@ import { toast } from '../../../../../lib/toast';
 import { useCan } from '../../../../../lib/permissions';
 import { describeOfferActionError, isStateConflict } from '../../../../../lib/offer-action-error';
 import { UserPicker, type PickedUser } from '../../../../../components/user-picker';
+import { Button } from '../../../../../components/button';
+import { BUTTON_GROUP_CLASSES, TEXT_LINK_CLASSES } from '../../../../../components/button-styles';
+import { FIELD_LABEL_CLASSES, textareaClasses } from '../../../../../components/field-styles';
 
 // An open confirmation remembers the step it was opened for (Codex P1): a decision or withdrawal is
 // sent for THAT step, and the confirmation closes by itself when a refetch shows a different step.
 type Decision = { kind: 'approve' | 'reject'; stepId: string };
 
-const SECONDARY_BUTTON =
-  'rounded-lg border border-[#EDEDED] px-4 py-2 text-[12px] font-medium text-[#585858] disabled:opacity-50';
+// Decision rows put Cancel and the secondary actions first and the primary last; below sm they stack full
+// width with the primary on top (buttons.md › Style, foundation-spec.md §5).
+const ROW = `${BUTTON_GROUP_CLASSES} [&>*]:max-sm:w-full`;
 
 export function OfferApprovalActions({
   offerId,
@@ -110,33 +114,28 @@ export function OfferApprovalActions({
   // Stuck-approval unblock: whoever may request approval can take the request back and send it to someone
   // else, also when they are one of its approvers (rejecting would end the offer for good).
   const withdrawButton = canRequest && livePendingStep && (
-    <button
-      type="button"
-      disabled={isPending}
-      onClick={() => setWithdrawStepId(livePendingStep.id)}
-      className={SECONDARY_BUTTON}
-    >
+    <Button variant="secondary" disabled={isPending} onClick={() => setWithdrawStepId(livePendingStep.id)}>
       {t.offers.withdrawApproval}
-    </button>
+    </Button>
   );
 
   return (
-    <div className="rounded-xl border border-[#EDEDED] bg-white p-4">
-      <h3 className="mb-3 text-[14px] font-semibold text-[#1F114C]">{title}</h3>
+    <section className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5" aria-labelledby="offer-approval-actions-title">
+      <h2 id="offer-approval-actions-title" className="mb-3 text-heading font-semibold text-brand">{title}</h2>
       {status === 'draft' && (
         <div className="space-y-3">
-          <p className="text-[12px] font-medium text-[#585858]">{t.offers.approver}</p>
+          <p className="text-body font-medium text-primary">{t.offers.approver}</p>
           {/* Server-side search (not a fixed first page) so every eligible approver stays reachable. */}
           {approver ? (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-[#EDEDED] px-3 py-2">
-              <span className="truncate text-[13px] text-[#333]">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+              <span className="truncate text-body text-primary">
                 {approver.firstName} {approver.lastName}
               </span>
               <button
                 type="button"
                 disabled={isPending}
                 onClick={() => setApprover(null)}
-                className="text-[12px] font-medium text-[#1F114C] disabled:opacity-50"
+                className={`${TEXT_LINK_CLASSES} disabled:opacity-50`}
               >
                 {t.common.change}
               </button>
@@ -152,82 +151,73 @@ export function OfferApprovalActions({
               emptyLabel={t.assignablePeople.noEligibleApprovers}
             />
           )}
-          <button
-            type="button"
-            disabled={!approver || isPending}
-            onClick={() => approver && requestApproval(approver)}
-            className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
-          >
+          <Button disabled={!approver || isPending} onClick={() => approver && requestApproval(approver)}>
             {t.offers.requestApproval}
-          </button>
+          </Button>
         </div>
       )}
       {status === 'pending_approval' && confirmWithdrawStepId !== null && (
         <div className="space-y-3">
-          <p className="text-[12px] text-[#585858]">{t.offers.withdrawApprovalPrompt}</p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={isPending}
+          <p className="text-callout text-secondary">{t.offers.withdrawApprovalPrompt}</p>
+          <div className={ROW}>
+            <Button variant="secondary" disabled={isPending} onClick={() => setWithdrawStepId(null)}>
+              {t.common.cancel}
+            </Button>
+            <Button
+              loading={isPending}
               onClick={() =>
                 run(async () => {
                   await withdraw.mutateAsync({ id: offerId, approvalId: confirmWithdrawStepId });
                   return t.offers.withdrawApprovalSuccess;
                 })
               }
-              className="rounded-lg bg-[#1F114C] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
             >
               {t.offers.withdrawApprovalConfirm}
-            </button>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() => setWithdrawStepId(null)}
-              className={SECONDARY_BUTTON}
-            >
-              {t.common.cancel}
-            </button>
+            </Button>
           </div>
         </div>
       )}
       {status === 'pending_approval' && !confirmingWithdraw && isMyTurn && activeDecision === null && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={() => startDecision('approve')}
-            className="rounded-lg bg-green-600 px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
-          >
-            {t.offers.approve}
-          </button>
-          <button
-            type="button"
-            disabled={isPending}
-            onClick={() => startDecision('reject')}
-            className="rounded-lg border border-red-300 px-4 py-2 text-[12px] font-medium text-red-700 disabled:opacity-50"
-          >
-            {t.offers.reject}
-          </button>
+        <div className={ROW}>
           {withdrawButton}
+          <Button variant="destructive-secondary" disabled={isPending} onClick={() => startDecision('reject')}>
+            {t.offers.reject}
+          </Button>
+          <Button disabled={isPending} onClick={() => startDecision('approve')}>
+            {t.offers.approve}
+          </Button>
         </div>
       )}
       {status === 'pending_approval' && !confirmingWithdraw && activeDecision !== null && (
         <div className="space-y-3">
-          <label className="block text-[12px] font-medium text-[#585858]">
-            {activeDecision.kind === 'reject' ? `${t.offers.rejectionReason} *` : t.offers.approvalCommentOptional}
+          <div>
+            <label htmlFor="offer-decision-comment" className={FIELD_LABEL_CLASSES}>
+              {activeDecision.kind === 'reject' ? (
+                <>
+                  {t.offers.rejectionReason}
+                  <span aria-hidden="true"> *</span>
+                </>
+              ) : (
+                t.offers.approvalCommentOptional
+              )}
+            </label>
             <textarea
+              id="offer-decision-comment"
               value={comment}
               maxLength={20000}
               autoFocus
+              required={activeDecision.kind === 'reject'}
               onChange={(event) => setComment(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]"
+              className={textareaClasses()}
             />
-          </label>
-          <div className="flex gap-2">
+          </div>
+          <div className={ROW}>
+            <Button variant="secondary" disabled={isPending} onClick={closeForms}>
+              {t.common.cancel}
+            </Button>
             {activeDecision.kind === 'approve' ? (
-              <button
-                type="button"
-                disabled={isPending}
+              <Button
+                loading={isPending}
                 onClick={() =>
                   run(async () => {
                     const trimmed = comment.trim();
@@ -241,14 +231,14 @@ export function OfferApprovalActions({
                       : t.offers.approvalRecordedPartial;
                   })
                 }
-                className="rounded-lg bg-green-600 px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
               >
                 {t.offers.approveConfirm}
-              </button>
+              </Button>
             ) : (
-              <button
-                type="button"
-                disabled={isPending || !comment.trim()}
+              <Button
+                variant="destructive"
+                disabled={!comment.trim()}
+                loading={isPending}
                 onClick={() =>
                   run(async () => {
                     await reject.mutateAsync({
@@ -259,28 +249,24 @@ export function OfferApprovalActions({
                     return t.offers.offerRejectedToast;
                   })
                 }
-                className="rounded-lg border border-red-300 px-4 py-2 text-[12px] font-medium text-red-700 disabled:opacity-50"
               >
                 {t.offers.rejectConfirm}
-              </button>
+              </Button>
             )}
-            <button type="button" disabled={isPending} onClick={closeForms} className={SECONDARY_BUTTON}>
-              {t.common.cancel}
-            </button>
           </div>
         </div>
       )}
       {status === 'pending_approval' && !confirmingWithdraw && !isMyTurn && canRequest && (
         <div className="space-y-3">
-          <p className="text-[12px] text-[#585858]">{t.offers.awaitingApproverDecision}</p>
+          <p className="text-callout text-secondary">{t.offers.awaitingApproverDecision}</p>
           {withdrawButton}
         </div>
       )}
       {error && (
-        <p role="alert" className="mt-2 text-[12px] text-red-600">
+        <p role="alert" className="mt-2 text-callout text-danger">
           {error}
         </p>
       )}
-    </div>
+    </section>
   );
 }

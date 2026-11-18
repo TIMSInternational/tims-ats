@@ -432,9 +432,13 @@ describe('F3 — client wiring the room CSP depends on', () => {
   });
 
   it('enters the room with a full document load (plain <a>), so the room CSP is actually received', () => {
-    const src = readFileSync(resolve(ROOM, 'interview-table.tsx'), 'utf8');
+    // The row's room entry lives in interview-row-actions.tsx since the HIG pass (the table renders it).
+    const src = readFileSync(resolve(ROOM, 'interview-row-actions.tsx'), 'utf8');
     expect(src).toMatch(/<a\s+href=\{`\/recruitment\/interviews\/\$\{iv\.id\}\/room`\}/);
     expect(src).not.toMatch(/<Link\s+href=\{`\/recruitment\/interviews\/\$\{iv\.id\}\/room`\}/);
+    const table = readFileSync(resolve(ROOM, 'interview-table.tsx'), 'utf8');
+    expect(table).toContain('<InterviewRowActions');
+    expect(table).not.toMatch(/\/room`/);
   });
 });
 

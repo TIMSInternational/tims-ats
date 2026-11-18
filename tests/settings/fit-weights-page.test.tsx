@@ -15,7 +15,9 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     useUtils: () => ({ fitEngine: { listRoleFamilyWeightProfiles: { invalidate: vi.fn() } } }),
     fitEngine: {
-      listRoleFamilyWeightProfiles: { useQuery: () => ({ isLoading: false, isError: false, data: profiles.data, refetch: vi.fn() }) },
+      listRoleFamilyWeightProfiles: {
+        useQuery: () => ({ isLoading: false, isError: false, data: profiles.data, refetch: vi.fn() }),
+      },
       upsertRoleFamilyWeightProfile: { useMutation: () => ({ mutate: upsert, isPending: false }) },
     },
   },
@@ -39,7 +41,8 @@ describe('FIT weights settings', () => {
     const Page = await loadPage('pilot');
     render(<Page />);
     expect(screen.getByText(es.fitWeights.explainer)).toBeTruthy();
-    expect(screen.getByText(es.fitWeights.empty)).toBeTruthy();
+    expect(screen.getByText(es.fitWeights.emptyTitle)).toBeTruthy();
+    expect(screen.getByText(es.fitWeights.emptyBody)).toBeTruthy();
   });
 
   it('under the pilot, does not ask for an assessment weight and saves it as 0', async () => {
@@ -47,7 +50,9 @@ describe('FIT weights settings', () => {
     render(<Page />);
     expect(screen.queryAllByText(es.fitWeights.weightAssessment)).toHaveLength(0);
     fireEvent.click(screen.getByText(es.fitWeights.createButton));
-    fireEvent.change(screen.getByPlaceholderText(es.fitWeights.profileNamePlaceholder), { target: { value: 'ventas' } });
+    fireEvent.change(screen.getByPlaceholderText(es.fitWeights.profileNamePlaceholder), {
+      target: { value: 'ventas' },
+    });
     fireEvent.click(screen.getByText(es.fitWeights.saveButton));
     expect(upsert).toHaveBeenCalledWith({
       name: 'ventas',
@@ -59,7 +64,11 @@ describe('FIT weights settings', () => {
   // column in the pilot showed four 20 % columns and concealed the fifth.
   it('under the pilot, still shows a stored assessment weight so the columns add up, with a note', async () => {
     profiles.data = [
-      { id: 'p1', name: 'Default', weights: { assessment: 0.2, interview: 0.2, experience: 0.2, education: 0.2, languages: 0.2 } },
+      {
+        id: 'p1',
+        name: 'Default',
+        weights: { assessment: 0.2, interview: 0.2, experience: 0.2, education: 0.2, languages: 0.2 },
+      },
     ];
     const Page = await loadPage('pilot');
     render(<Page />);
@@ -70,7 +79,11 @@ describe('FIT weights settings', () => {
 
   it('under the pilot, hides the assessment column when no profile gives it weight', async () => {
     profiles.data = [
-      { id: 'p2', name: 'ventas', weights: { assessment: 0, interview: 0.25, experience: 0.25, education: 0.25, languages: 0.25 } },
+      {
+        id: 'p2',
+        name: 'ventas',
+        weights: { assessment: 0, interview: 0.25, experience: 0.25, education: 0.25, languages: 0.25 },
+      },
     ];
     const Page = await loadPage('pilot');
     render(<Page />);
@@ -81,7 +94,11 @@ describe('FIT weights settings', () => {
 
   it('shows weights as percentages, and keeps the assessment column in the full product', async () => {
     profiles.data = [
-      { id: 'p1', name: 'Default', weights: { assessment: 0.2, interview: 0.2, experience: 0.2, education: 0.2, languages: 0.2 } },
+      {
+        id: 'p1',
+        name: 'Default',
+        weights: { assessment: 0.2, interview: 0.2, experience: 0.2, education: 0.2, languages: 0.2 },
+      },
     ];
     const Page = await loadPage('');
     render(<Page />);

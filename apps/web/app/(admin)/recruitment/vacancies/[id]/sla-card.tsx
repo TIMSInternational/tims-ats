@@ -1,15 +1,15 @@
 'use client';
 
-import { useI18n } from '../../../../../lib/i18n';
+import { pluralize, useI18n } from '../../../../../lib/i18n';
+import { ProgressBar } from '../../../../../components';
 import type { VacancyDetail } from '../../../../../lib/trpc-types';
-import { vacancyStatusLabel } from '../vacancy-status';
 
 interface SlaCardProps {
   vacancy: VacancyDetail;
 }
 
 export function SlaCard({ vacancy }: SlaCardProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const settings = vacancy.settings as { slaTargetDays?: number } | null;
   const slaTarget = settings?.slaTargetDays ?? 30;
@@ -17,36 +17,63 @@ export function SlaCard({ vacancy }: SlaCardProps) {
   const now = new Date();
   const daysElapsed = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
   const isOverdue = daysElapsed > slaTarget;
+  const daysRemaining = Math.max(slaTarget - daysElapsed, 0);
+  // A closed or frozen vacancy is not counting down, so it shows no days remaining.
+  const isCounting = vacancy.status !== 'closed' && vacancy.status !== 'frozen';
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.vacancies.slaAndTimeline}</h3>
-      <div className="flex gap-3 mb-4">
-        <div className={`flex-1 rounded-lg p-3 text-center ${isOverdue ? 'bg-red-50 border border-red-200' : 'bg-[#F6F6F6]'}`}>
-          <p className={`text-[10px] ${isOverdue ? 'text-[#DD0C15]' : 'text-[#8B8B8B]'}`}>{t.vacancies.daysElapsed}</p>
-          <p className={`text-[22px] font-bold ${isOverdue ? 'text-[#DD0C15]' : 'text-[#1F114C]'}`}>{daysElapsed}</p>
-          <p className={`text-[10px] ${isOverdue ? 'text-[#DD0C15]' : 'text-[#8B8B8B]'}`}>SLA: {slaTarget} {t.vacancies.days}</p>
+    <section aria-labelledby="vacancy-sla-title" className="rounded-xl border border-border bg-white p-5 shadow-card">
+      <h2 id="vacancy-sla-title" className="mb-3 text-heading font-semibold text-brand">
+        {t.vacancies.slaAndTimeline}
+      </h2>
+      <div className="mb-4 flex gap-3">
+        <div
+          className={`flex-1 rounded-lg p-3 text-center ${isOverdue ? 'border border-danger/30 bg-danger-bg' : 'bg-surface'}`}
+        >
+          <p className="text-caption text-secondary">{t.vacancies.daysElapsed}</p>
+          <p className={`text-2xl font-semibold tabular-nums ${isOverdue ? 'text-danger' : 'text-brand'}`}>
+            {daysElapsed}
+          </p>
+          <p className="text-caption text-secondary">
+            SLA: {slaTarget} {t.vacancies.days}
+          </p>
+          {/* Overdue is said in words, with an icon, never by the red alone (color.md › Inclusive color). */}
+          {isOverdue && (
+            <p className="mt-1 inline-flex items-center gap-1 text-callout font-medium text-danger">
+              <svg
+                className="size-3 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M12 7v6m0 4h.01" strokeLinecap="round" />
+              </svg>
+              {pluralize(
+                daysElapsed - slaTarget,
+                { one: t.vacancies.slaOverdueOne, other: t.vacancies.slaOverdueMany },
+                locale,
+              )}
+            </p>
+          )}
         </div>
-        <div className="flex-1 bg-[#F6F6F6] rounded-lg p-3 text-center">
-          <p className="text-[10px] text-[#8B8B8B]">{t.vacancies.positions}</p>
-          <p className="text-[22px] font-bold text-[#1F114C]">{vacancy.positions}</p>
-          <p className="text-[10px] text-[#8B8B8B]">{vacancyStatusLabel(vacancy.status, t.vacancies)}</p>
+        <div className="flex-1 rounded-lg bg-surface p-3 text-center">
+          <p className="text-caption text-secondary">{t.vacancies.daysRemaining}</p>
+          <p className="text-2xl font-semibold tabular-nums text-brand">{isCounting ? daysRemaining : '—'}</p>
+          <p className="text-caption text-secondary">
+            {t.vacancies.positions}: {vacancy.positions}
+          </p>
         </div>
       </div>
 
-      {/* SLA Progress Bar */}
-      <div className="mt-2">
-        <div className="flex justify-between text-[10px] text-[#8B8B8B] mb-1">
-          <span>0</span>
-          <span>{slaTarget} {t.vacancies.days}</span>
-        </div>
-        <div className="w-full bg-[#F6F6F6] rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all ${isOverdue ? 'bg-[#DD0C15]' : 'bg-green-500'}`}
-            style={{ width: `${Math.min((daysElapsed / slaTarget) * 100, 100)}%` }}
-          />
-        </div>
-      </div>
-    </div>
+      <ProgressBar
+        value={Math.min(daysElapsed, slaTarget)}
+        max={slaTarget}
+        label={t.vacancies.slaProgress}
+        valueText={`${daysElapsed} / ${slaTarget} ${t.vacancies.days}`}
+        tone={isOverdue ? 'danger' : 'success'}
+      />
+    </section>
   );
 }

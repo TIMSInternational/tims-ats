@@ -65,7 +65,7 @@ beforeEach(() => {
 describe('offer form', () => {
   it('prefills contract type and modality from the vacancy (B-15)', () => {
     render(<CreateOfferModal candidateId="cand-1" applications={applications} onClose={vi.fn()} />);
-    expect((screen.getByLabelText(/Tipo Contrato/) as HTMLSelectElement).value).toBe('termino_fijo');
+    expect((screen.getByLabelText(/Tipo de contrato/) as HTMLSelectElement).value).toBe('termino_fijo');
     expect((screen.getByLabelText(new RegExp(`^${es.offers.modality}`)) as HTMLSelectElement).value).toBe('hybrid');
   });
 
@@ -146,9 +146,11 @@ describe('offer form', () => {
     // The shared money input shows the stored amount grouped (es-CR: non-breaking spaces).
     expect((screen.getByLabelText(/Salario base/) as HTMLInputElement).value).toBe('1\u00a0000\u00a0000');
     // A legacy free-text contract type stays selectable as itself.
-    expect((screen.getByLabelText(/Tipo Contrato/) as HTMLSelectElement).selectedOptions[0]!.textContent).toBe('Test');
+    expect((screen.getByLabelText(/Tipo de contrato/) as HTMLSelectElement).selectedOptions[0]!.textContent).toBe(
+      'Test',
+    );
 
-    fireEvent.change(screen.getByLabelText(/Tipo Contrato/), { target: { value: 'indefinido' } });
+    fireEvent.change(screen.getByLabelText(/Tipo de contrato/), { target: { value: 'indefinido' } });
     fireEvent.click(screen.getByRole('button', { name: es.offers.saveDraft }));
 
     await waitFor(() => expect(h.updateMutate).toHaveBeenCalledTimes(1));
@@ -216,8 +218,11 @@ describe('offer manage actions (B-04)', () => {
 
   it('a draft created without an application link can still be edited, but not copied into a new offer', () => {
     render(<OfferManageActions offer={draft} canEdit canWithdraw canCreateNew onChanged={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: es.offers.createNewOffer })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: es.offers.editDraft }));
+    // The commands live in the header's "Más acciones" menu (HIG pass): open it first.
+    fireEvent.click(screen.getByRole('button', { name: es.common.moreActions }));
+    expect(screen.getByRole('menuitem', { name: es.offers.withdrawOfferMenu })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: es.offers.createNewOfferMenu })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: es.offers.editDraftMenu }));
     expect(screen.getByText(es.offers.editDraftTitle)).toBeTruthy();
   });
 });

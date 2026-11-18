@@ -5,6 +5,7 @@ import { RECOMMENDED_COMPETENCY_COUNT } from '@tims/shared';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
+import { Button, selectClasses } from '../../../../components';
 import { CompetencyRow } from './competency-row';
 import { CompetencySuggestions } from './competency-suggestions';
 import {
@@ -56,6 +57,9 @@ export function CompetenciesSection({
   const { t } = useI18n();
   const v = t.vacancies;
   const [focusRowId, setFocusRowId] = useState<string | null>(null);
+  // The catalogue entry chosen in the select; added only on "Agregar", so arrowing through the closed select
+  // (which fires change per option in Firefox and Chrome on Windows) never adds competencies by accident.
+  const [catalogPick, setCatalogPick] = useState('');
 
   const catalog = useMemo(() => builtinCompetencyCatalog(v.competencyCatalog), [v.competencyCatalog]);
   const available = availableCatalogEntries(catalog, value);
@@ -95,17 +99,19 @@ export function CompetenciesSection({
     (value.length < RECOMMENDED_COMPETENCY_COUNT.min || value.length > RECOMMENDED_COMPETENCY_COUNT.max);
 
   return (
-    <section aria-labelledby="vacancy-competencies-title" className="rounded-lg border border-[#EDEDED] p-3 space-y-3">
+    <section aria-labelledby="vacancy-competencies-title" className="space-y-3 rounded-lg border border-border p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p id="vacancy-competencies-title" className="text-[12px] font-medium text-[#1F114C]">
+          <h3 id="vacancy-competencies-title" className="text-body font-semibold text-brand">
             {v.competenciesSectionTitle}
-          </p>
-          <p className="text-[10px] text-[#8B8B8B]">{v.competenciesSectionHelp}</p>
+          </h3>
+          <p className="text-callout text-secondary">{v.competenciesSectionHelp}</p>
         </div>
         {canSuggest && (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
+            className="shrink-0"
             onClick={() =>
               suggest.mutate({
                 title: title.trim(),
@@ -113,17 +119,15 @@ export function CompetenciesSection({
                 description: descriptionText.trim().slice(0, SUGGEST_DESCRIPTION_MAX) || undefined,
               })
             }
-            disabled={disabled || !canRunSuggest || suggest.isPending}
-            className="h-8 px-3 rounded-lg border border-[#1F114C] text-[#1F114C] text-[11px] font-medium hover:bg-[#1F114C]/5 transition disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+            disabled={disabled || !canRunSuggest}
+            loading={suggest.isPending}
+            loadingLabel={v.competencySuggesting}
           >
-            {suggest.isPending && (
-              <span className="w-3 h-3 border-2 border-[#1F114C]/30 border-t-[#1F114C] rounded-full animate-spin" />
-            )}
-            {suggest.isPending ? v.competencySuggesting : v.competencySuggestAction}
-          </button>
+            {v.competencySuggestAction}
+          </Button>
         )}
       </div>
-      {canSuggest && !canRunSuggest && <p className="text-[10px] text-[#8B8B8B]">{v.competencySuggestNeedsTitle}</p>}
+      {canSuggest && !canRunSuggest && <p className="text-callout text-secondary">{v.competencySuggestNeedsTitle}</p>}
 
       {suggestions.length > 0 && (
         <CompetencySuggestions
@@ -154,19 +158,16 @@ export function CompetenciesSection({
           ))}
         </ol>
       ) : (
-        <p className="text-[11px] text-[#8B8B8B]">{v.competenciesEmpty}</p>
+        <p className="text-callout text-secondary">{v.competenciesEmpty}</p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
         <select
-          value=""
-          onChange={(e) => {
-            const entry = available.find((c) => c.code === e.target.value);
-            if (entry) add(draftFromCatalog(entry));
-          }}
+          value={available.some((c) => c.code === catalogPick) ? catalogPick : ''}
+          onChange={(e) => setCatalogPick(e.target.value)}
           aria-label={v.competencyCatalogLabel}
           disabled={disabled || room <= 0 || available.length === 0}
-          className="h-8 px-2 rounded-lg border border-[#EDEDED] bg-white text-[12px] text-[#585858] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 disabled:opacity-50"
+          className={selectClasses('md', 'w-auto max-w-full')}
         >
           <option value="">{v.competencyCatalogPlaceholder}</option>
           {available.map((c) => (
@@ -175,16 +176,23 @@ export function CompetenciesSection({
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={() => add(customDraft())}
-          disabled={disabled || room <= 0}
-          className="h-8 px-3 rounded-lg border border-[#EDEDED] text-[#585858] text-[11px] font-medium hover:bg-[#F6F6F6] transition disabled:opacity-50"
+        <Button
+          variant="secondary"
+          onClick={() => {
+            const entry = available.find((c) => c.code === catalogPick);
+            if (!entry) return;
+            add(draftFromCatalog(entry));
+            setCatalogPick('');
+          }}
+          disabled={disabled || room <= 0 || !available.some((c) => c.code === catalogPick)}
         >
+          {v.competencyCatalogAdd}
+        </Button>
+        <Button variant="tertiary" onClick={() => add(customDraft())} disabled={disabled || room <= 0}>
           {v.competencyAddCustom}
-        </button>
+        </Button>
         {value.length > 0 && (
-          <span className={`ml-auto text-[10px] ${outsideRecommended ? 'text-amber-700' : 'text-[#8B8B8B]'}`}>
+          <span className={`ml-auto text-caption ${outsideRecommended ? 'text-warning' : 'text-secondary'}`}>
             {v.competenciesCount
               .replace('{n}', String(value.length))
               .replace('{min}', String(RECOMMENDED_COMPETENCY_COUNT.min))
@@ -192,10 +200,10 @@ export function CompetenciesSection({
           </span>
         )}
       </div>
-      <p className="text-[10px] text-[#8B8B8B]">{v.competencyLevelHint.replace('{max}', '5')}</p>
+      <p className="text-caption text-secondary">{v.competencyLevelHint.replace('{max}', '5')}</p>
 
       {errorText && (
-        <p role="alert" className="text-[11px] text-[#DD0C15]">
+        <p role="alert" className="text-callout text-danger">
           {errorText}
         </p>
       )}

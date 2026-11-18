@@ -5,6 +5,8 @@ import { STAFF_DOCUMENT_TYPES, type StaffDocumentType } from '@tims/shared';
 import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { useI18n } from '../../../../../lib/i18n';
+import { Button, FIELD_ERROR_CLASSES, FIELD_LABEL_CLASSES, selectClasses } from '../../../../../components';
+import { documentTypeLabels } from './document-type-labels';
 import {
   CV_ALLOWED_MIME_TYPES,
   validateCvFile,
@@ -29,12 +31,7 @@ export function DocumentUploadForm({ candidateId, onDone }: { candidateId: strin
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const typeLabels: Record<StaffDocumentType, string> = {
-    cv: c.documentTypeCv,
-    cover_letter: c.documentTypeCoverLetter,
-    certificate: c.documentTypeCertificate,
-    other: c.documentTypeOther,
-  };
+  const typeLabels = documentTypeLabels(c);
   const fileErrors: Record<CvValidationError, string> = {
     invalid_type: c.documentFileInvalidType,
     too_large: c.documentFileTooLarge,
@@ -74,7 +71,8 @@ export function DocumentUploadForm({ candidateId, onDone }: { candidateId: strin
       ]);
       onDone();
     } catch (err) {
-      const message = err instanceof Error && err.message === 'consent_withdrawn' ? t.consentGuard.withdrawn : c.documentUploadFailed;
+      const message =
+        err instanceof Error && err.message === 'consent_withdrawn' ? t.consentGuard.withdrawn : c.documentUploadFailed;
       setError(message);
     } finally {
       setUploading(false);
@@ -82,16 +80,16 @@ export function DocumentUploadForm({ candidateId, onDone }: { candidateId: strin
   };
 
   return (
-    <form noValidate onSubmit={submit} className="mb-4 space-y-3 rounded-lg border border-[#EDEDED] p-3">
+    <form noValidate onSubmit={submit} className="mb-4 space-y-4 rounded-lg border border-border p-3">
       <div>
-        <label htmlFor="doc-type" className="mb-1 block text-[12px] font-medium text-[#585858]">
+        <label htmlFor="doc-type" className={FIELD_LABEL_CLASSES}>
           {c.documentTypeLabel}
         </label>
         <select
           id="doc-type"
           value={type}
           onChange={(e) => setType(e.target.value as StaffDocumentType)}
-          className="h-9 w-full rounded-lg border border-[#EDEDED] bg-white px-2 text-[13px]"
+          className={selectClasses('md')}
         >
           {STAFF_DOCUMENT_TYPES.map((value) => (
             <option key={value} value={value}>
@@ -101,7 +99,8 @@ export function DocumentUploadForm({ candidateId, onDone }: { candidateId: strin
         </select>
       </div>
       <div>
-        <label htmlFor="doc-file" className="mb-1 block text-[12px] font-medium text-[#585858]">
+        {/* The label states the file rules up front (PDF or DOCX, 5 MB), before anyone picks a file. */}
+        <label htmlFor="doc-file" className={FIELD_LABEL_CLASSES}>
           {c.documentFileLabel}
         </label>
         <input
@@ -111,21 +110,21 @@ export function DocumentUploadForm({ candidateId, onDone }: { candidateId: strin
           onChange={onFile}
           aria-invalid={!!error}
           aria-describedby={error ? 'doc-error' : undefined}
-          className="block w-full text-[12px] text-[#585858]"
+          className="block w-full text-body text-secondary file:mr-3 file:h-9 file:cursor-pointer file:rounded-lg file:border file:border-solid file:border-field-border file:bg-white file:px-3 file:text-body file:font-medium file:text-brand hover:file:bg-surface"
         />
+        {error && (
+          <p id="doc-error" role="alert" className={FIELD_ERROR_CLASSES}>
+            {error}
+          </p>
+        )}
       </div>
-      {error && (
-        <p id="doc-error" role="alert" className="text-[11px] text-red-600">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onDone} disabled={uploading} className="h-8 rounded-lg border border-[#EDEDED] px-3 text-[12px] text-[#585858]">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="secondary" size="sm" onClick={onDone} disabled={uploading}>
           {t.common.cancel}
-        </button>
-        <button type="submit" disabled={uploading} className="h-8 rounded-lg bg-[#1F114C] px-3 text-[12px] font-medium text-white disabled:opacity-50">
-          {uploading ? c.documentUploading : c.documentUploadSubmit}
-        </button>
+        </Button>
+        <Button type="submit" size="sm" loading={uploading} loadingLabel={c.documentUploading}>
+          {c.documentUploadSubmit}
+        </Button>
       </div>
     </form>
   );

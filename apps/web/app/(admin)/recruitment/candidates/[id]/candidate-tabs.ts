@@ -28,3 +28,14 @@ export function visibleCandidateTabs(pilot: boolean): readonly TabKey[] {
 export function readTabParam(value: string | null | undefined, pilot: boolean): TabKey | null {
   return value && (visibleCandidateTabs(pilot) as readonly string[]).includes(value) ? (value as TabKey) : null;
 }
+
+/** Replaces (or removes) query parameters in place: no history entry, no server round trip. */
+export function replaceQuery(changes: Record<string, string | null>) {
+  const params = new URLSearchParams(window.location.search);
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === null) params.delete(key);
+    else params.set(key, value);
+  }
+  const query = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+}

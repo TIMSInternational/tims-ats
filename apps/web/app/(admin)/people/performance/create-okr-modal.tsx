@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
-import { useI18n } from '../../../../lib/i18n';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal, UserPicker } from '../../../../components';
+import { Button, Field, Modal, TextInput, UserPicker } from '../../../../components';
 import type { PickedUser } from '../../../../components/user-picker';
+import { PersonField } from './person-field';
+import { ModalActions } from './modal-actions';
 
 interface KeyResultRow {
   title: string;
@@ -37,7 +39,10 @@ export function CreateOkrModal({ onClose }: CreateOkrModalProps) {
     },
   });
 
-  const canSubmit = !!owner && title.trim().length > 0 && period.trim().length > 0 && !submit.isPending;
+  const isComplete = !!owner && title.trim().length > 0 && period.trim().length > 0;
+  const canSubmit = isComplete && !submit.isPending;
+  const isDirty =
+    !!owner || title.length > 0 || period.length > 0 || keyResults.some((kr) => kr.title || kr.targetValue);
 
   const onSubmit = () => {
     if (!owner || !canSubmit) return;
@@ -58,31 +63,31 @@ export function CreateOkrModal({ onClose }: CreateOkrModalProps) {
     setKeyResults((prev) => prev.map((kr, i) => (i === idx ? { ...kr, [field]: value } : kr)));
   };
 
+  const footer = (
+    <ModalActions
+      onCancel={onClose}
+      onSubmit={onSubmit}
+      submitLabel={t.performance.createOkrAction}
+      isComplete={isComplete}
+      isPending={submit.isPending}
+      hint={t.performance.createOkrHint}
+    />
+  );
+
   return (
-    <Modal title={t.performance.createOkrTitle} onClose={onClose}>
+    <Modal title={t.performance.createOkrTitle} onClose={onClose} footer={footer} dirty={isDirty && !submit.isPending}>
       <div className="space-y-4">
-        {/* Owner */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.ownerLabel}
-          </label>
-          {owner ? (
-            <div className="flex items-center justify-between border border-[#EDEDED] rounded-lg px-3 py-2.5">
-              <span className="text-[12px] text-[#333] font-medium">
-                {owner.firstName} {owner.lastName}
-              </span>
-              <button
-                type="button"
-                onClick={() => setOwner(null)}
-                disabled={submit.isPending}
-                className="text-[11px] text-[#DD0C15] hover:underline disabled:opacity-50"
-              >
-                {t.performance.cancel}
-              </button>
-            </div>
-          ) : (
+        <PersonField
+          label={t.performance.ownerLabel}
+          value={owner}
+          onChange={setOwner}
+          disabled={submit.isPending}
+          required
+        >
+          {(inputId) => (
             <UserPicker
               purpose="performance_subject"
+              inputId={inputId}
               onSelect={(_userId, user) => setOwner(user)}
               disabled={submit.isPending}
               searchPlaceholder={t.committee.searchUser}
@@ -90,93 +95,64 @@ export function CreateOkrModal({ onClose }: CreateOkrModalProps) {
               emptyLabel={t.committee.noUsers}
             />
           )}
-        </div>
+        </PersonField>
 
-        {/* Objective title */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.objectiveLabel}
-          </label>
-          <input
-            type="text"
+        <Field label={t.performance.objectiveLabel} required>
+          <TextInput
             value={title}
             onChange={(e) => setTitle(e.target.value.slice(0, 500))}
             placeholder={t.performance.objectivePlaceholder}
             disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
           />
-        </div>
+        </Field>
 
-        {/* Period */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.periodLabel}
-          </label>
-          <input
-            type="text"
+        <Field label={t.performance.periodLabel} required>
+          <TextInput
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
             placeholder={t.performance.periodPlaceholder}
             disabled={submit.isPending}
-            className="w-full border border-[#EDEDED] rounded-lg px-3 py-2.5 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
           />
-        </div>
+        </Field>
 
-        {/* Key Results */}
-        <div>
-          <label className="block text-[12px] font-medium text-[#333] mb-1.5">
-            {t.performance.keyResultsLabel}
-          </label>
+        <fieldset>
+          <legend className="mb-1.5 text-body font-medium text-primary">
+            {t.performance.keyResultsLabel} <span className="font-normal text-secondary">({t.common.optional})</span>
+          </legend>
           <div className="space-y-2">
             {keyResults.map((kr, idx) => (
               <div key={idx} className="flex gap-2">
-                <input
-                  type="text"
+                <TextInput
                   value={kr.title}
                   onChange={(e) => updateKr(idx, 'title', e.target.value.slice(0, 500))}
                   placeholder={t.performance.krTitlePlaceholder}
+                  aria-label={formatMessage(t.performance.krTitleAria, { n: idx + 1 })}
                   disabled={submit.isPending}
-                  className="flex-1 border border-[#EDEDED] rounded-lg px-3 py-2 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
+                  className="flex-1"
                 />
-                <input
+                <TextInput
                   type="number"
+                  inputMode="decimal"
                   value={kr.targetValue}
                   onChange={(e) => updateKr(idx, 'targetValue', e.target.value)}
                   placeholder={t.performance.krTargetPlaceholder}
+                  aria-label={formatMessage(t.performance.krTargetAria, { n: idx + 1 })}
                   disabled={submit.isPending}
-                  className="w-24 border border-[#EDEDED] rounded-lg px-3 py-2 text-[13px] text-[#333] bg-white focus:outline-none focus:border-[#1F114C]/40 disabled:opacity-50"
+                  className="w-24! shrink-0"
                 />
               </div>
             ))}
           </div>
-          <button
-            type="button"
+          <Button
+            variant="tertiary"
+            size="sm"
             onClick={addKeyResult}
             disabled={submit.isPending}
-            className="mt-2 text-[12px] text-[#1F114C] hover:underline disabled:opacity-50"
+            className="mt-2 -ml-3"
           >
             + {t.performance.addKeyResult}
-          </button>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submit.isPending}
-            className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition disabled:opacity-50"
-          >
-            {t.performance.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!canSubmit}
-            className="h-9 px-4 rounded-lg text-[12px] bg-[#DD0C15] text-white font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submit.isPending ? t.common.saving : t.common.save}
-          </button>
-        </div>
+          </Button>
+        </fieldset>
       </div>
     </Modal>
   );

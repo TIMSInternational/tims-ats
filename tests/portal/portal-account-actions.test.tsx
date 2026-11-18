@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import es from '../../apps/web/lib/i18n/es.json';
 
 // Audit C-33 — the candidate portal's account actions: "Retirar mi postulación" on an application still in
@@ -175,7 +175,10 @@ describe('Mis datos', () => {
     render(<DashboardProfile orgSlug="acme" profile={profile} />);
     fireEvent.click(screen.getByRole('button', { name: pd.profileEdit }));
     fireEvent.change(screen.getByLabelText(pd.profilePhone), { target: { value: 'llámeme' } });
-    fireEvent.change(screen.getByLabelText(`${pd.profileFirstName} *`), { target: { value: '   ' } });
+    // A required field: the label carries an aria-hidden "*" and the input is marked required.
+    const firstName = screen.getByLabelText(`${pd.profileFirstName}*`);
+    expect(firstName).toBeRequired();
+    fireEvent.change(firstName, { target: { value: '   ' } });
     fireEvent.click(screen.getByRole('button', { name: pd.profileSave }));
 
     const alerts = await screen.findAllByRole('alert');
@@ -188,7 +191,7 @@ describe('Mis datos', () => {
   it('a failed save keeps the form open and says so', async () => {
     render(<DashboardProfile orgSlug="acme" profile={profile} />);
     fireEvent.click(screen.getByRole('button', { name: pd.profileEdit }));
-    mocks.profileOptions.onError?.(new Error('boom'));
+    act(() => mocks.profileOptions.onError?.(new Error('boom')));
     expect(mocks.toast).toHaveBeenCalledWith(pd.profileError, { type: 'error' });
     expect(screen.getByRole('button', { name: pd.profileSave })).toBeTruthy();
   });

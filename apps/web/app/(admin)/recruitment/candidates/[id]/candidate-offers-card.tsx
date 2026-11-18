@@ -6,17 +6,27 @@ import { useI18n } from '../../../../../lib/i18n';
 import { useCan } from '../../../../../lib/permissions';
 import { formatDate } from '../../../../../lib/format-utils';
 import { offerDetailHref } from '../../../../../lib/offer-deep-link';
-import { ErrorState, Skeleton, StatusBadge } from '../../../../../components';
+import {
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  StatusBadge,
+  TEXT_LINK_CLASSES,
+  type StatusTone,
+} from '../../../../../components';
+import { CARD, CARD_TITLE } from './card-styles';
 
-const STATUS_CLASSES: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-600',
-  pending_approval: 'bg-amber-50 text-amber-600 border border-amber-200',
-  approved: 'bg-blue-50 text-blue-600 border border-blue-200',
-  sent: 'bg-violet-50 text-violet-600 border border-violet-200',
-  accepted: 'bg-green-50 text-green-600 border border-green-200',
-  declined: 'bg-red-50 text-red-600',
-  expired: 'bg-gray-100 text-gray-500',
-  withdrawn: 'bg-gray-100 text-gray-500',
+// Status tones (foundation-spec.md §12): outcomes carry a word and an icon, never colour alone.
+const STATUS_TONES: Record<string, StatusTone> = {
+  draft: 'neutral',
+  pending_approval: 'warning',
+  approved: 'info',
+  sent: 'brand',
+  accepted: 'success',
+  converted: 'success',
+  declined: 'danger',
+  expired: 'neutral',
+  withdrawn: 'neutral',
 };
 
 /** The candidate's offers with their status, each opening the offer itself (A-15). Needs offer:read. */
@@ -39,34 +49,44 @@ function OffersCardBody({ candidateId }: { candidateId: string }) {
     declined: o.statusDeclined,
     expired: o.statusExpired,
     withdrawn: o.statusWithdrawn,
+    converted: o.statusConverted,
   };
   const statusMap = Object.fromEntries(
-    Object.entries(STATUS_CLASSES).map(([status, cls]) => [status, { cls, label: labels[status] ?? status }]),
+    Object.entries(STATUS_TONES).map(([status, tone]) => [status, { tone, label: labels[status] ?? status }]),
   );
   const items = offers.data?.items ?? [];
 
   return (
-    <div className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 className="text-[14px] font-semibold text-[#1F114C] mb-3">{t.candidates.offersTitle}</h3>
+    <section className={CARD}>
+      <h2 className={`${CARD_TITLE} mb-3`}>{t.candidates.offersTitle}</h2>
       {offers.isLoading ? (
         <Skeleton className="h-12 w-full rounded-lg" />
       ) : offers.isError ? (
-        <ErrorState message={t.candidates.offersLoadError} error={offers.error} onRetry={() => offers.refetch()} />
+        <ErrorState
+          size="compact"
+          message={t.candidates.offersLoadError}
+          error={offers.error}
+          onRetry={() => offers.refetch()}
+        />
       ) : items.length === 0 ? (
-        <p className="text-[12px] text-[#8B8B8B] py-2 text-center">{t.candidates.offersEmpty}</p>
+        <EmptyState size="compact" title={t.candidates.offersEmpty} />
       ) : (
         <ul className="space-y-2">
           {items.map((offer) => (
-            <li key={offer.id} className="flex items-center justify-between gap-3 rounded-lg bg-[#F6F6F6] p-2.5">
+            // Stacked on every width: this card sits in the narrow record column, so a side-by-side row would
+            // clip the vacancy title (typography.md: prefer a stacked layout over truncation).
+            <li key={offer.id} className="flex flex-col gap-2 rounded-lg bg-surface p-2.5">
               <div className="min-w-0">
-                <p className="text-[12px] font-medium text-[#333] truncate">{offer.vacancy.title}</p>
-                <p className="text-[10px] text-[#8B8B8B]">
+                <p className="line-clamp-2 break-words text-body font-medium text-primary" title={offer.vacancy.title}>
+                  {offer.vacancy.title}
+                </p>
+                <p className="text-caption text-muted">
                   {t.candidates.offersCreatedOn.replace('{date}', formatDate(offer.createdAt))}
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <StatusBadge status={offer.status} map={statusMap} />
-                <Link href={offerDetailHref(offer.id)} className="text-[11px] font-medium text-[#DD0C15] hover:underline">
+                <Link href={offerDetailHref(offer.id)} className={`${TEXT_LINK_CLASSES} text-callout`}>
                   {t.candidates.offersOpen}
                 </Link>
               </div>
@@ -74,6 +94,6 @@ function OffersCardBody({ candidateId }: { candidateId: string }) {
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }

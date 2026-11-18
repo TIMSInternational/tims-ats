@@ -5,6 +5,7 @@ import { trpc } from '../../../../../lib/trpc';
 import { toast } from '../../../../../lib/toast';
 import { useCan } from '../../../../../lib/permissions';
 import { buildPublicVacancyUrl, resolvePublicOrigin } from '../../../../../lib/public-vacancy-url';
+import { Button, Skeleton } from '../../../../../components';
 
 interface PublicUrlCardProps {
   vacancyId: string;
@@ -27,7 +28,9 @@ export function PublicUrlCard({ vacancyId, vacancyStatus }: PublicUrlCardProps) 
       utils.vacancy.list.invalidate();
       toast(v.publishedToPortal, { type: 'success' });
     },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+    },
   });
 
   if (vacancyStatus !== 'published' && vacancyStatus !== 'approved') return null;
@@ -46,47 +49,47 @@ export function PublicUrlCard({ vacancyId, vacancyStatus }: PublicUrlCardProps) 
   };
 
   return (
-    <section aria-labelledby="public-url-title" className="bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-      <h3 id="public-url-title" className="text-[14px] font-semibold text-[#1F114C] mb-1">{v.publicUrlTitle}</h3>
+    <section aria-labelledby="public-url-title" className="rounded-xl border border-border bg-white p-5 shadow-card">
+      <h2 id="public-url-title" className="mb-1 text-heading font-semibold text-brand">
+        {v.publicUrlTitle}
+      </h2>
       {vacancyStatus === 'published' ? (
         <>
-          <p className="text-[12px] text-[#8B8B8B] mb-3">{v.publicUrlDesc}</p>
+          <p className="mb-3 text-callout text-secondary">{v.publicUrlDesc}</p>
           {url ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 readOnly
                 value={url}
                 aria-label={v.publicUrlLabel}
                 data-testid="public-vacancy-url"
                 onFocus={(e) => e.currentTarget.select()}
-                className="flex-1 min-w-0 h-9 rounded-lg border border-[#EDEDED] bg-[#F6F6F6] px-3 text-[12px] text-[#333]"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-field-border bg-surface px-3 text-base text-primary sm:text-body pointer-coarse:h-11"
               />
-              <button
-                type="button"
-                onClick={copy}
-                className="h-9 shrink-0 rounded-lg bg-[#1F114C] px-4 text-[12px] font-medium text-white hover:bg-[#2a1866] transition"
-              >
+              <Button variant="secondary" onClick={copy} className="shrink-0">
                 {v.copyLink}
-              </button>
+              </Button>
             </div>
           ) : session.isLoading ? (
-            <div className="h-9 w-full rounded-lg bg-[#ECECEC] animate-pulse" />
+            <Skeleton className="h-9 w-full rounded-lg" />
           ) : (
-            <p role="alert" className="text-[12px] text-[#DD0C15]">{v.publicUrlUnavailable}</p>
+            <p role="alert" className="text-callout text-danger">
+              {v.publicUrlUnavailable}
+            </p>
           )}
         </>
       ) : (
         <>
-          <p className="text-[12px] text-[#8B8B8B] mb-3">{v.notPublishedDesc}</p>
+          <p className="mb-3 text-callout text-secondary">{v.notPublishedDesc}</p>
+          {/* An approved vacancy's one primary action: the page header holds none for this status. */}
           {can('vacancy', 'publish') && (
-            <button
-              type="button"
+            <Button
               onClick={() => publish.mutate({ vacancyId, channelName: v.channelTypeInternal, channelType: 'internal' })}
-              disabled={publish.isPending}
-              className="h-9 rounded-lg bg-[#DD0C15] px-4 text-[12px] font-medium text-white hover:bg-[#c00b13] transition disabled:opacity-50"
+              loading={publish.isPending}
+              loadingLabel={v.publishing}
             >
-              {publish.isPending ? v.publishing : v.publishToPortal}
-            </button>
+              {v.publishToPortal}
+            </Button>
           )}
         </>
       )}

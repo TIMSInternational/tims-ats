@@ -18,24 +18,24 @@ export function CycleReportCard({ cycleId }: CycleReportCardProps) {
   const report = useEvaluation360MyReport(cycleId);
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
+    <article className="rounded-xl border border-border bg-white p-4 shadow-card md:p-5">
       {report.isLoading ? (
         <Skeleton className="h-24 w-full rounded-lg" />
       ) : report.isError ? (
-        <ErrorState onRetry={() => report.refetch()} />
+        <ErrorState size="compact" error={report.error} onRetry={() => report.refetch()} />
       ) : (
         <>
-          <p className="text-[13px] font-semibold text-[#1F114C] mb-3">{report.data?.cycleName}</p>
+          <h3 className="mb-3 text-subheading font-semibold text-primary">{report.data?.cycleName}</h3>
           <div className="space-y-3">
             {(report.data?.buckets ?? []).map((bucket) => (
               <ReportBucketCard key={bucket.relationship} bucket={bucket} />
             ))}
           </div>
           {(report.data?.buckets.length ?? 0) === 0 && (
-            <p className="text-[12px] text-[#8B8B8B]">{t.my360.cycleReportEmpty}</p>
+            <p className="text-body text-secondary">{t.my360.cycleReportEmpty}</p>
           )}
         </>
       )}
-    </div>
+    </article>
   );
 }

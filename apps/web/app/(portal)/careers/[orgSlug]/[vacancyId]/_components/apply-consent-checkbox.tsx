@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../../../lib/i18n';
+import { CHOICE_INPUT_CLASSES } from '../../../../../../components/field-styles';
 
 interface ApplyConsentCheckboxProps {
   // The organization (data controller) — see ApplyModal's controllerName.
@@ -27,23 +28,23 @@ export function ApplyConsentCheckbox({
 
   return (
     <div>
-      <label className="flex cursor-pointer items-start gap-2.5">
+      <label className="flex cursor-pointer items-start gap-2.5 pointer-coarse:min-h-11">
         <input
           type="checkbox"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
           disabled={disabled}
           aria-describedby={checked ? undefined : 'apply-consent-hint'}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#EDEDED] accent-[#DD0C15]"
+          className={`mt-0.5 ${CHOICE_INPUT_CLASSES}`}
         />
-        <span className="text-[12px] leading-relaxed text-[#585858]">
-          {p.consentCheckboxPrefix} <span className="font-medium text-[#333]">{controllerName}</span>{' '}
+        <span className="text-callout leading-relaxed text-secondary">
+          {p.consentCheckboxPrefix} <span className="font-medium text-primary">{controllerName}</span>{' '}
           {p.consentCheckboxMiddle}{' '}
           <a
             href={privacyHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-[#1F114C] underline hover:text-[#DD0C15]"
+            className="font-medium text-brand underline hover:text-brand-hover"
           >
             {p.consentPolicyLink}
           </a>
@@ -51,7 +52,7 @@ export function ApplyConsentCheckbox({
         </span>
       </label>
       {!checked && (
-        <p id="apply-consent-hint" className="mt-1.5 pl-6 text-[11px] text-muted">
+        <p id="apply-consent-hint" className="mt-1.5 pl-6 text-caption text-secondary">
           {p.consentRequiredHint}
         </p>
       )}

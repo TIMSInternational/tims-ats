@@ -11,15 +11,15 @@ export function AssessmentProviderOpenWork({ work }: { work: ProviderOpenWork })
   const pa = t.providerAdmin;
   return (
     <div data-testid="provider-open-work">
-      <h5 className="text-[12px] font-semibold text-[#1F114C]">{pa.openWorkTitle}</h5>
+      <h5 className="text-callout font-semibold text-brand">{pa.openWorkTitle}</h5>
       {hasOpenWork(work) ? (
-        <ul className="list-disc pl-5 text-[12px]">
+        <ul className="list-disc pl-5 text-callout">
           {KEYS.filter((key) => work[key] > 0).map((key) => (
             <li key={key}>{pa.openWork[key].replace('{n}', String(work[key]))}</li>
           ))}
         </ul>
       ) : (
-        <p className="text-[12px]">{pa.noOpenWork}</p>
+        <p className="text-callout">{pa.noOpenWork}</p>
       )}
     </div>
   );

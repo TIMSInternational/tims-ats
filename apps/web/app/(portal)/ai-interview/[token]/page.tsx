@@ -15,11 +15,11 @@ export default function AiInterviewPage() {
 
   if (!candidateToken) {
     return (
-      <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full text-center">
-          <p className="text-sm text-[#585858]">{t.aiInterview.invalidToken}</p>
+      <main className="flex min-h-screen items-center justify-center bg-surface p-4">
+        <div className="w-full max-w-lg rounded-2xl bg-white p-6 text-center shadow-card sm:p-8">
+          <p role="alert" className="text-base text-secondary sm:text-body">{t.aiInterview.invalidToken}</p>
         </div>
-      </div>
+      </main>
     );
   }
 

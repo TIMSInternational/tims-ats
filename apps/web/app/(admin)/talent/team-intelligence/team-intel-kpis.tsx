@@ -1,40 +1,35 @@
 'use client';
 
-import { ErrorState, KpiCardSkeleton } from '../../../../components';
-
-// A KPI value is either a real number or the honest-unavailable marker.
-// Keep this union explicit so a future numeric formatter can't silently break on 'N/D'.
-type KpiValue = number | 'N/D';
+import { ErrorState, KpiCard, KpiCardSkeleton } from '../../../../components';
+import { useI18n, pluralize } from '../../../../lib/i18n';
+import { formatNumber } from '../../../../lib/format-utils';
 
 interface TeamIntelKpisProps {
-  data: {
-    totalTeams: number;
-    totalMembers: number;
-    avgTeamSize: number;
-    teamsWithoutLeader: number;
-    avgTenureYears: number;
-    diversityIndex: number;
-  } | undefined;
+  data:
+    | {
+        totalTeams: number;
+        totalMembers: number;
+        avgTeamSize: number;
+        teamsWithoutLeader: number;
+        avgTenureYears: number;
+        diversityIndex: number;
+      }
+    | undefined;
   loading: boolean;
-  isError: boolean;
-  t: {
-    kpiTeamSize: string;
-    kpiAvgTenure: string;
-    kpiPcaBalance: string;
-    kpiDiversity: string;
-    kpiAvgPerformance: string;
-    activeMembers: string;
-    years: string;
-    score100: string;
-    diversityRoles: string;
-    outOf10: string;
-  };
+  error: unknown;
+  onRetry: () => void;
 }
 
-export function TeamIntelKpis({ data, loading, isError, t }: TeamIntelKpisProps) {
+const GRID = 'mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5';
+
+/** Organisation-wide team KPIs. Figures not computed yet show "—" with a reason, never a placeholder number. */
+export function TeamIntelKpis({ data, loading, error, onRetry }: TeamIntelKpisProps) {
+  const { t, locale } = useI18n();
+
   if (loading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+      <div className={GRID} aria-busy="true">
+        <span className="sr-only">{t.common.loadingContent}</span>
         {Array.from({ length: 5 }).map((_, i) => (
           <KpiCardSkeleton key={i} />
         ))}
@@ -42,53 +37,37 @@ export function TeamIntelKpis({ data, loading, isError, t }: TeamIntelKpisProps)
     );
   }
 
-  if (isError) {
+  if (error) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <div className="col-span-2 md:col-span-5 bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-4">
-          <ErrorState />
-        </div>
+      <div className="mb-4 rounded-xl border border-border bg-white shadow-card">
+        <ErrorState size="compact" error={error} onRetry={onRetry} />
       </div>
     );
   }
 
-  const kpis: { label: string; value: KpiValue; sub: string }[] = [
-    {
-      label: t.kpiTeamSize,
-      value: data?.totalMembers ?? 0,
-      sub: t.activeMembers,
-    },
-    {
-      label: t.kpiAvgTenure,
-      value: data?.avgTenureYears ?? 0,
-      sub: t.years,
-    },
-    {
-      label: t.kpiPcaBalance,
-      value: 'N/D',
-      sub: t.score100,
-    },
-    {
-      label: t.kpiDiversity,
-      value: data?.diversityIndex ?? 0,
-      sub: t.diversityRoles,
-    },
-    {
-      label: t.kpiAvgPerformance,
-      value: 'N/D',
-      sub: t.outOf10,
-    },
-  ];
+  const members = data?.totalMembers ?? 0;
+  const tenure = data?.avgTenureYears ?? 0;
+  const diversity = data?.diversityIndex ?? 0;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-      {kpis.map((kpi) => (
-        <div key={kpi.label} className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-center">
-          <p className="text-[11px] text-[#8B8B8B] mb-1">{kpi.label}</p>
-          <p className="text-[22px] font-bold text-[#1F114C]">{kpi.value}</p>
-          <p className="text-[10px] text-[#8B8B8B]">{kpi.sub}</p>
-        </div>
-      ))}
+    <div className={GRID}>
+      <KpiCard
+        label={t.teamIntel.kpiTeamSize}
+        value={formatNumber(members, locale)}
+        subtitle={pluralize(members, t.teamIntel.activeMembersForms, locale)}
+      />
+      <KpiCard
+        label={t.teamIntel.kpiAvgTenure}
+        value={formatNumber(tenure, locale, { maximumFractionDigits: 1 })}
+        subtitle={t.teamIntel.years}
+      />
+      <KpiCard label={t.teamIntel.kpiPcaBalance} value="—" unavailableReason={t.teamIntel.noDataYet} />
+      <KpiCard
+        label={t.teamIntel.kpiDiversity}
+        value={formatNumber(diversity, locale, { maximumFractionDigits: 2 })}
+        subtitle={t.teamIntel.diversityRoles}
+      />
+      <KpiCard label={t.teamIntel.kpiAvgPerformance} value="—" unavailableReason={t.teamIntel.noDataYet} />
     </div>
   );
 }

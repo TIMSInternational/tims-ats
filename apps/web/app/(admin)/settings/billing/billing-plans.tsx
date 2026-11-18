@@ -1,15 +1,28 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { formatMessage } from '../../../../lib/i18n/format';
 import { toast } from '../../../../lib/toast';
 import { useBillingCreateCheckoutSession } from '../../../../lib/platform-api/billing';
+import { Button, Skeleton, StatusBadge } from '../../../../components';
 
 type CheckoutPlan = 'starter' | 'professional';
+type PlanId = CheckoutPlan | 'enterprise';
 
-// Self-serve plan cards. Upgrade → createCheckoutSession → redirect to Stripe's
-// hosted checkout. Buttons are disabled when billing is not configured (the UI
+// starter < professional < enterprise: the button says which way the change goes (buttons.md › Content).
+const PLAN_RANK: Record<string, number> = { starter: 1, professional: 2, enterprise: 3 };
+
+interface BillingPlansProps {
+  currentPlan: string | null;
+  configured: boolean;
+  /** The current plan is still loading: no card may claim (or deny) being current yet. */
+  loading?: boolean;
+}
+
+// Self-serve plan cards. Change → createCheckoutSession → redirect to Stripe's
+// hosted checkout. Buttons are hidden when billing is not configured (the UI
 // gate; the endpoint also fails closed server-side).
-export function BillingPlans({ currentPlan, configured }: { currentPlan: string | null; configured: boolean }) {
+export function BillingPlans({ currentPlan, configured, loading = false }: BillingPlansProps) {
   const { t } = useI18n();
 
   const checkout = useBillingCreateCheckoutSession({
@@ -19,54 +32,66 @@ export function BillingPlans({ currentPlan, configured }: { currentPlan: string 
     onError: () => toast(t.billing.checkoutError, { type: 'error' }),
   });
 
-  const cards: { plan: CheckoutPlan; name: string; desc: string }[] = [
+  const cards: { plan: PlanId; name: string; desc: string }[] = [
     { plan: 'starter', name: t.billing.planStarter, desc: t.billing.starterDesc },
     { plan: 'professional', name: t.billing.planProfessional, desc: t.billing.professionalDesc },
+    { plan: 'enterprise', name: t.billing.enterpriseTitle, desc: t.billing.enterpriseDesc },
   ];
+  const currentRank = currentPlan ? (PLAN_RANK[currentPlan] ?? 0) : 0;
+
+  function action(plan: PlanId, name: string) {
+    if (loading) return <Skeleton className="h-9 w-full rounded-lg" />;
+    if (plan === 'enterprise') {
+      return (
+        <Button variant="secondary" fullWidth href="mailto:ventas@nexadev.ai?subject=TIMS%20ATS%20Enterprise">
+          {t.billing.contactSales}
+        </Button>
+      );
+    }
+    if (!configured) return <p className="text-callout text-secondary">{t.billing.notAvailableYet}</p>;
+    const isPending = checkout.isPending && checkout.variables?.plan === plan;
+    const label = formatMessage(PLAN_RANK[plan] > currentRank ? t.billing.upgradeTo : t.billing.switchTo, {
+      plan: name,
+    });
+    return (
+      <Button
+        variant="secondary"
+        fullWidth
+        disabled={checkout.isPending && !isPending}
+        loading={isPending}
+        loadingLabel={t.billing.redirecting}
+        onClick={() => checkout.mutate({ plan })}
+      >
+        {label}
+      </Button>
+    );
+  }
 
   return (
-    <div className="bg-white border border-[#EDEDED] rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-[#1F114C]">{t.billing.choosePlanTitle}</h2>
-      <p className="text-[12px] text-[#8B8B8B] mt-0.5 mb-4">{t.billing.choosePlanSubtitle}</p>
+    <section aria-labelledby="billing-plans-title" className="rounded-xl border border-border bg-white p-5">
+      <h2 id="billing-plans-title" className="text-subheading font-semibold text-primary">
+        {t.billing.choosePlanTitle}
+      </h2>
+      <p className="mb-4 mt-0.5 text-callout text-secondary">{t.billing.choosePlanSubtitle}</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {cards.map((c) => {
-          const isCurrent = currentPlan === c.plan;
-          const isPending = checkout.isPending && checkout.variables?.plan === c.plan;
+          const isCurrent = !loading && currentPlan === c.plan;
           return (
-            <div key={c.plan} className="flex flex-col border border-[#EDEDED] rounded-lg p-4">
-              <div className="text-sm font-semibold text-[#1F114C]">{c.name}</div>
-              <p className="text-[12px] text-[#585858] mt-1 flex-1">{c.desc}</p>
-              {isCurrent ? (
-                <span className="mt-4 inline-flex items-center justify-center h-9 rounded-lg bg-[#F3F1FA] text-[#1F114C] text-[12px] font-medium">
-                  {t.billing.currentBadge}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  disabled={!configured || checkout.isPending}
-                  onClick={() => checkout.mutate({ plan: c.plan })}
-                  className="mt-4 h-9 rounded-lg bg-[#DD0C15] text-white text-[12px] font-medium disabled:opacity-50"
-                >
-                  {isPending ? t.billing.redirecting : t.billing.upgrade}
-                </button>
-              )}
+            <div
+              key={c.plan}
+              className={`flex flex-col rounded-lg border p-4 ${isCurrent ? 'border-brand' : 'border-border'}`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-subheading font-semibold text-brand">{c.name}</h3>
+                {isCurrent && <StatusBadge tone="brand">{t.billing.currentBadge}</StatusBadge>}
+              </div>
+              <p className="mt-1 flex-1 text-callout text-secondary">{c.desc}</p>
+              {!isCurrent && <div className="mt-4">{action(c.plan, c.name)}</div>}
             </div>
           );
         })}
-
-        {/* Enterprise = negotiated; no self-serve checkout. */}
-        <div className="flex flex-col border border-[#EDEDED] rounded-lg p-4">
-          <div className="text-sm font-semibold text-[#1F114C]">{t.billing.enterpriseTitle}</div>
-          <p className="text-[12px] text-[#585858] mt-1 flex-1">{t.billing.enterpriseDesc}</p>
-          <a
-            href="mailto:ventas@nexadev.ai?subject=TIMS%20ATS%20Enterprise"
-            className="mt-4 h-9 inline-flex items-center justify-center rounded-lg border border-[#EDEDED] text-[#585858] text-[12px] font-medium"
-          >
-            {t.billing.contactSales}
-          </a>
-        </div>
       </div>
-    </div>
+    </section>
   );
 }

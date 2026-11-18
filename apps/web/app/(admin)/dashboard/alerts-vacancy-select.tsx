@@ -1,6 +1,8 @@
 'use client';
 
+import { useId } from 'react';
 import { useI18n } from '../../../lib/i18n';
+import { selectClasses } from '../../../components/field-styles';
 
 interface AlertsVacancySelectProps {
   vacancies: ReadonlyArray<{ id: string; title: string }>;
@@ -15,14 +17,18 @@ interface AlertsVacancySelectProps {
 export function AlertsVacancySelect({ vacancies, selectedId, onSelect }: AlertsVacancySelectProps) {
   const { t } = useI18n();
   const rd = t.recruitingDashboard;
+  const id = useId();
   if (vacancies.length === 0) return null;
   return (
-    <label className="flex items-center gap-2 text-[12px] text-[#585858]">
-      <span>{rd.alertsVacancyLabel}</span>
+    <div className="flex flex-wrap items-center gap-2">
+      <label htmlFor={id} className="text-callout text-secondary">
+        {rd.alertsVacancyLabel}
+      </label>
       <select
+        id={id}
         value={selectedId ?? ''}
         onChange={(e) => onSelect(e.target.value)}
-        className="h-8 max-w-[240px] truncate rounded-lg border border-[#EDEDED] bg-white px-2 text-[12px] text-[#1F114C] focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20"
+        className={selectClasses('md', 'w-auto max-w-60 truncate')}
       >
         {vacancies.map((v) => (
           <option key={v.id} value={v.id}>
@@ -30,6 +36,6 @@ export function AlertsVacancySelect({ vacancies, selectedId, onSelect }: AlertsV
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }

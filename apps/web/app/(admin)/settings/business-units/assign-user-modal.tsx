@@ -3,7 +3,7 @@
 import { trpc } from '../../../../lib/trpc';
 import { useI18n } from '../../../../lib/i18n';
 import { toast } from '../../../../lib/toast';
-import { Modal, UserPicker } from '../../../../components';
+import { Button, Modal, UserPicker } from '../../../../components';
 
 interface AssignUserModalProps {
   businessUnitId: string;
@@ -20,14 +20,21 @@ export function AssignUserModal({ businessUnitId, excludeIds, onClose, onAssigne
       toast(t.units.assigned, { type: 'success' });
       onAssigned();
     },
-    onError: (err) => {
-      toast(err.message, { type: 'error' });
-    },
+    // Project rule: every mutation toasts its failure; the dialog keeps its inline copy too.
+    onError: () => toast(t.units.errorGeneric, { type: 'error' }),
   });
 
   return (
-    <Modal title={t.units.assignUser} onClose={onClose}>
-      <p className="text-[12px] text-[#8B8B8B] mb-3">{t.units.pickUser}</p>
+    <Modal
+      title={t.units.assignUser}
+      description={t.units.pickUser}
+      onClose={onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          {t.units.cancel}
+        </Button>
+      }
+    >
       <UserPicker
         purpose="org_structure_member"
         excludeIds={excludeIds}
@@ -36,15 +43,14 @@ export function AssignUserModal({ businessUnitId, excludeIds, onClose, onAssigne
         searchPlaceholder={t.units.searchUser}
         loadingLabel={t.units.loadingUsers}
         emptyLabel={t.units.noUsers}
+        ariaLabel={t.units.assignUser}
       />
-      <div className="flex justify-end gap-2 mt-5">
-        <button
-          onClick={onClose}
-          className="h-9 px-4 rounded-lg text-[12px] text-[#585858] border border-[#EDEDED] hover:bg-[#F6F6F6] transition"
-        >
-          {t.units.cancel}
-        </button>
-      </div>
+      {/* Translated copy only, inside the open dialog: the server's own text never reaches the screen. */}
+      {assign.error && (
+        <p role="alert" className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">
+          {t.units.errorGeneric}
+        </p>
+      )}
     </Modal>
   );
 }

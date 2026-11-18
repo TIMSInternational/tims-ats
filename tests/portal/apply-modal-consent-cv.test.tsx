@@ -25,9 +25,23 @@ vi.mock('../../apps/web/lib/trpc', () => ({
   },
 }));
 vi.mock('../../apps/web/components', () => ({
-  Modal: ({ title, children }: { title: string; children: React.ReactNode }) => (
+  // The action row is the Modal's pinned `footer`; render it after the body as the real Modal does.
+  Modal: ({
+    title,
+    description,
+    children,
+    footer,
+  }: {
+    title: string;
+    description?: React.ReactNode;
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+  }) => (
     <div role="dialog" aria-label={title}>
+      <h2>{title}</h2>
+      {description && <p data-testid="modal-description">{description}</p>}
       {children}
+      {footer}
     </div>
   ),
 }));
@@ -90,6 +104,14 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('apply modal — header', () => {
+  it('has a short title that never truncates, with the vacancy title in full beneath it', () => {
+    renderModal();
+    expect(screen.getByRole('dialog', { name: p.applyDialogTitle })).toBeInTheDocument();
+    expect(screen.getByTestId('modal-description')).toHaveTextContent('Backend Engineer');
+  });
 });
 
 describe('apply modal — explicit consent (F14)', () => {
@@ -258,6 +280,8 @@ describe('apply modal — submit error copy', () => {
       { data: { code: 'BAD_REQUEST' } },
     );
 
+  // Every failed submit toasts once (frontend.md: onError toast on every mutation); a field the server
+  // rejected is also shown under that field.
   async function submitWith(error: unknown) {
     mocks.applyMutateAsync.mockRejectedValue(error);
     goToReview();
@@ -291,7 +315,11 @@ describe('apply modal — submit error copy', () => {
 
   it('a vacancy that closed while the form was open says so (NOT_FOUND), not "try again"', async () => {
     const closed = Object.assign(new Error('No se encontró el recurso solicitado.'), { data: { code: 'NOT_FOUND' } });
-    expect(await submitWith(closed)).toBe(p.applyVacancyClosed);
+    mocks.applyMutateAsync.mockRejectedValue(closed);
+    goToReview();
+    fireEvent.click(consentBox());
+    fireEvent.click(submitButton());
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(p.applyVacancyClosed, { type: 'error' }));
   });
 
   it('a deliberate BAD_REQUEST message (captcha) is shown as-is', async () => {

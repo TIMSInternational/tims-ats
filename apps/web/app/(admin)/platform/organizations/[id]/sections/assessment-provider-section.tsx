@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useI18n } from '../../../../../../lib/i18n';
 import { isProviderAssessmentsStaffEnabled } from '../../../../../../lib/platform-api/assessment-providers-staff';
 import { useProviderBindingState } from '../../../../../../lib/platform-api/assessment-provider-admin';
+import { Button, ErrorState, Skeleton } from '../../../../../../components';
 import { AssessmentProviderBindingForm } from './assessment-provider-binding-form';
 import { AssessmentProviderDsarPanel } from './assessment-provider-dsar-panel';
 import { AssessmentProviderOpenWork } from './assessment-provider-open-work';
@@ -26,18 +27,26 @@ export function AssessmentProviderSection({
   const [unbinding, setUnbinding] = useState(false);
 
   if (!isProviderAssessmentsStaffEnabled()) {
-    return <p className="text-[13px] text-[#8B8B8B]">{pa.notEnabled}</p>;
+    return <p className="text-body text-secondary">{pa.notEnabled}</p>;
   }
 
-  const card = 'bg-white rounded-xl p-5 shadow-[0_1px_4px_rgba(0,0,0,0.06)] space-y-3';
+  const card = 'space-y-3 rounded-xl bg-white p-4 shadow-card md:p-5';
   const body = () => {
-    if (state.isLoading) return <p className="text-[12px] text-[#8B8B8B]">{pa.loading}</p>;
-    if (state.isError || !state.data) {
+    if (state.isLoading) {
       return (
-        <p role="alert" className="text-[12px] text-[#B42318]">
-          {pa.loadError}
-        </p>
+        <div aria-busy="true" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <span className="sr-only">{pa.loading}</span>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} aria-hidden="true">
+              <Skeleton className="mb-1 h-3 w-24" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+          ))}
+        </div>
       );
+    }
+    if (state.isError || !state.data) {
+      return <ErrorState size="compact" title={pa.loadError} error={state.error} onRetry={() => state.refetch()} />;
     }
 
     const s = state.data;
@@ -49,26 +58,26 @@ export function AssessmentProviderSection({
       : null;
     return (
       <>
-        <dl className="grid grid-cols-1 gap-2 text-[12px] sm:grid-cols-2" data-testid="provider-binding-state">
+        <dl className="grid grid-cols-1 gap-2 text-callout sm:grid-cols-2" data-testid="provider-binding-state">
           <div>
-            <dt className="font-medium text-[#8B8B8B]">{pa.stateTitle}</dt>
-            <dd className="text-[#1F114C] font-semibold">{label}</dd>
+            <dt className="font-medium text-secondary">{pa.stateTitle}</dt>
+            <dd className="font-semibold text-brand">{label}</dd>
           </div>
           <div>
-            <dt className="font-medium text-[#8B8B8B]">{pa.tenantLabel}</dt>
-            <dd className="font-mono text-[#585858]">{s.providerTenantId ?? pa.none}</dd>
+            <dt className="font-medium text-secondary">{pa.tenantLabel}</dt>
+            <dd className="break-all font-mono text-primary">{s.providerTenantId ?? pa.none}</dd>
           </div>
           <div>
-            <dt className="font-medium text-[#8B8B8B]">{pa.instrumentsLabel}</dt>
-            <dd className="text-[#585858]">
+            <dt className="font-medium text-secondary">{pa.instrumentsLabel}</dt>
+            <dd className="text-primary">
               {s.enabledInstruments.length > 0
                 ? s.enabledInstruments.map((instrument) => pa.instrument[instrument]).join(', ')
                 : pa.none}
             </dd>
           </div>
           <div>
-            <dt className="font-medium text-[#8B8B8B]">{pa.updatedLabel}</dt>
-            <dd className="text-[#585858]">{updated ?? pa.none}</dd>
+            <dt className="font-medium text-secondary">{pa.updatedLabel}</dt>
+            <dd className="text-primary">{updated ?? pa.none}</dd>
           </div>
         </dl>
         <AssessmentProviderOpenWork work={s.openWork} />
@@ -78,16 +87,12 @@ export function AssessmentProviderSection({
           state={s}
         />
         {s.active && (
-          <div className="space-y-2 border-t border-[#EDEDED] pt-3">
-            <h4 className="text-[13px] font-semibold text-[#1F114C]">{pa.unbindTitle}</h4>
-            <p className="text-[12px] text-[#585858]">{pa.unbindHelp}</p>
-            <button
-              type="button"
-              onClick={() => setUnbinding(true)}
-              className="h-9 rounded-lg border border-red-200 px-4 text-[12px] font-semibold text-[#DD0C15]"
-            >
+          <div className="space-y-2 border-t border-border pt-3">
+            <h4 className="text-body font-semibold text-primary">{pa.unbindTitle}</h4>
+            <p className="text-callout text-secondary">{pa.unbindHelp}</p>
+            <Button variant="destructive-secondary" onClick={() => setUnbinding(true)}>
               {pa.unbindButton}
-            </button>
+            </Button>
           </div>
         )}
         {unbinding && (
@@ -105,10 +110,10 @@ export function AssessmentProviderSection({
   return (
     <div className="space-y-4" data-testid="assessment-provider-section">
       <section aria-labelledby="provider-admin-title" className={card}>
-        <h3 id="provider-admin-title" className="text-[14px] font-semibold text-[#1F114C]">
+        <h2 id="provider-admin-title" className="text-subheading font-semibold text-primary">
           {pa.title}
-        </h3>
-        <p className="text-[12px] text-[#585858]">{pa.intro}</p>
+        </h2>
+        <p className="text-callout text-secondary">{pa.intro}</p>
         {body()}
       </section>
       <div className={card}>

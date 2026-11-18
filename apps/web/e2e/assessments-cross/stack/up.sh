@@ -241,8 +241,9 @@ until curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$API_PORT/health"; do 
 # CROSS_EMBED=1: the portal frames the hosted player (this origin is the partner's registered frame ancestor) and the
 # PCA provider's page (the local stand-in, sandboxed), as timssuite.com does. Off by default: in the frame, an English
 # reading question that shares its passage with the one before does not advance (open, 2026-11-10).
+# The provider frame origin defaults to https://timshr.com when unset, so the link-out build turns it off explicitly.
 if [ "${CROSS_EMBED:-0}" = 1 ]; then EMBED_PLAYER="$PLAYER"; EMBED_PROVIDER="https://localhost:57480"; else
-  EMBED_PLAYER=""; EMBED_PROVIDER=""; fi
+  EMBED_PLAYER=""; EMBED_PROVIDER="off"; fi
 cat >"$STATE/web.env" <<EOF
 NODE_ENV=production
 NEXT_TELEMETRY_DISABLED=1

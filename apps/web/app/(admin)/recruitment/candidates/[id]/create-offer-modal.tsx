@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { OFFER_LINK_VALIDITY_DAYS } from '@tims/shared';
-import { Modal } from '../../../../../components';
+import { Button, FIELD_ERROR_CLASSES, Modal, inputClasses, selectClasses } from '../../../../../components';
 import { useI18n } from '../../../../../lib/i18n';
 import { trpc } from '../../../../../lib/trpc';
 import { parseVacancySalary, type SalaryPeriod } from '../../../../../lib/offer-salary';
@@ -50,8 +50,8 @@ type FormValues = OfferTermsValues & {
  */
 type FormState = Omit<FormValues, 'currency'> & { currency: string | null };
 
-const INPUT = 'mt-1 w-full rounded-lg border border-[#EDEDED] p-2 text-[13px]';
-const LABEL = 'block text-[12px] font-medium text-[#585858]';
+const LABEL = 'block text-body font-medium text-primary';
+const START_ERROR_ID = 'offer-start-error';
 
 /**
  * The offer form. `mode="create"` (default) creates a draft, optionally starting from `source` (an earlier
@@ -111,7 +111,8 @@ export function CreateOfferModal({
   const values: FormValues = {
     ...state,
     currency:
-      state.currency ?? defaultOfferCurrency(parseVacancySalary(application?.vacancy.salary)?.currency, tenant.currency),
+      state.currency ??
+      defaultOfferCurrency(parseVacancySalary(application?.vacancy.salary)?.currency, tenant.currency),
   };
   const { annualSalary } = offerSalaryState(values, application?.vacancy.salary);
   const contractType = choiceText(values.contractType, contractLabels);
@@ -185,13 +186,27 @@ export function CreateOfferModal({
         forbidden: t.offers.errorForbiddenAction,
         generic: t.offers.errorOfferAction,
       });
+      // Shown inline above the buttons, and as a toast (frontend.md: onError toast on every mutation).
       setError(message);
       toast(message, { type: 'error' });
     }
   };
 
   return (
-    <Modal title={mode === 'edit' ? t.offers.editDraftTitle : t.offers.createOffer} onClose={onClose}>
+    <Modal
+      title={mode === 'edit' ? t.offers.editDraftTitle : t.offers.createOffer}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={isSaving}>
+            {t.common.cancel}
+          </Button>
+          <Button onClick={handleSubmit} disabled={!isValid} loading={isSaving}>
+            {mode === 'edit' ? t.offers.saveDraft : t.offers.createOffer}
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-4">
         <label className={LABEL}>
           {t.offers.colVacancy} *
@@ -199,7 +214,7 @@ export function CreateOfferModal({
             value={values.applicationId}
             disabled={mode === 'edit' || applications.length < 2}
             onChange={(event) => selectApplication(event.target.value)}
-            className={`${INPUT} bg-white text-[#333] disabled:bg-[#FAFAFA]`}
+            className={selectClasses('md', 'mt-1.5')}
           >
             {applications.map((item) => (
               <option key={item.id} value={item.id}>
@@ -210,16 +225,25 @@ export function CreateOfferModal({
         </label>
         <CreateOfferSalaryFields values={values} vacancySalary={application?.vacancy.salary} onChange={patch} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className={LABEL}>
-            {t.offers.startDate} *
-            <input
-              type="date"
-              min={today}
-              value={values.startDate}
-              onChange={(event) => patch({ startDate: event.target.value })}
-              className={INPUT}
-            />
-          </label>
+          <div>
+            <label className={LABEL}>
+              {t.offers.startDate} *
+              <input
+                type="date"
+                min={today}
+                value={values.startDate}
+                onChange={(event) => patch({ startDate: event.target.value })}
+                aria-invalid={startDateInPast || undefined}
+                aria-describedby={startDateInPast ? START_ERROR_ID : undefined}
+                className={inputClasses('md', 'mt-1.5')}
+              />
+            </label>
+            {startDateInPast && (
+              <p id={START_ERROR_ID} role="alert" className={FIELD_ERROR_CLASSES}>
+                {t.offers.startDatePast}
+              </p>
+            )}
+          </div>
           <label className={LABEL}>
             {t.offers.contractType} *
             <select
@@ -227,7 +251,7 @@ export function CreateOfferModal({
               onChange={(event) =>
                 patch({ contractType: { value: event.target.value, legacy: values.contractType.legacy } })
               }
-              className={`${INPUT} bg-white`}
+              className={selectClasses('md', 'mt-1.5')}
             >
               <option value="">{t.offers.contractTypePlaceholder}</option>
               {slugs.map((slug) => (
@@ -240,10 +264,10 @@ export function CreateOfferModal({
           </label>
         </div>
         <CreateOfferTermsFields values={values} onChange={patch} />
-        <p className="text-[11px] text-[#8B8B8B]">
+        <p className="text-callout text-secondary">
           {t.offers.linkValidityHint.replace('{days}', String(OFFER_LINK_VALIDITY_DAYS))}
         </p>
-        <p data-testid="offer-form-hint" className="text-[11px] text-[#585858]">
+        <p data-testid="offer-form-hint" className="text-callout text-secondary">
           {startDateInPast
             ? t.offers.startDatePast
             : isValid
@@ -251,28 +275,10 @@ export function CreateOfferModal({
               : t.offers.missingFieldsHint.replace('{fields}', missing.join(', '))}
         </p>
         {error && (
-          <p role="alert" className="text-[12px] text-[#DD0C15]">
+          <p role="alert" className="rounded-lg bg-danger-bg px-3 py-2 text-callout text-danger">
             {error}
           </p>
         )}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="rounded-lg border border-[#EDEDED] px-4 py-2 text-[12px]"
-          >
-            {t.common.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!isValid || isSaving}
-            className="rounded-lg bg-[#DD0C15] px-4 py-2 text-[12px] font-medium text-white disabled:opacity-50"
-          >
-            {mode === 'edit' ? t.offers.saveDraft : t.offers.createOffer}
-          </button>
-        </div>
       </div>
     </Modal>
   );

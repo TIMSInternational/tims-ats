@@ -1,6 +1,7 @@
 'use client';
 
 import { useI18n } from '../../../../lib/i18n';
+import { buttonClasses } from '../../../../components';
 import type { CompetencySuggestion } from './competencies-model';
 
 interface CompetencySuggestionsProps {
@@ -31,14 +32,14 @@ export function CompetencySuggestions({
 
   return (
     <div
-      className="rounded-lg border border-dashed border-[#5C4B99]/40 bg-[#5C4B99]/5 p-2.5 space-y-2"
+      className="space-y-2 rounded-lg border border-dashed border-brand/30 bg-brand-tint p-2.5"
       role="region"
       aria-label={v.competencySuggestionsTitle}
     >
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-[12px] font-medium text-[#1F114C]">{v.competencySuggestionsTitle}</p>
-          <p className="text-[10px] text-[#8B8B8B]">
+          <p className="text-callout font-semibold text-brand">{v.competencySuggestionsTitle}</p>
+          <p className="text-caption text-secondary">
             {pending.length > 0 ? v.competencySuggestionsHelp : v.competencySuggestionsNone}
           </p>
         </div>
@@ -48,7 +49,7 @@ export function CompetencySuggestions({
               type="button"
               onClick={onAddAll}
               disabled={disabled || !canAdd}
-              className="h-7 px-2.5 rounded-lg bg-[#1F114C] text-white text-[11px] font-medium hover:bg-[#2a1a5c] transition disabled:opacity-50"
+              className={buttonClasses({ variant: 'secondary', size: 'sm' })}
             >
               {v.competencySuggestionAddAll}
             </button>
@@ -57,7 +58,7 @@ export function CompetencySuggestions({
             type="button"
             onClick={onDismiss}
             disabled={disabled}
-            className="h-7 px-2.5 rounded-lg border border-[#EDEDED] bg-white text-[#585858] text-[11px] font-medium hover:bg-[#F6F6F6] transition disabled:opacity-50"
+            className={buttonClasses({ variant: 'tertiary', size: 'sm' })}
           >
             {v.competencySuggestionsDismiss}
           </button>
@@ -68,23 +69,23 @@ export function CompetencySuggestions({
           {pending.map((s) => (
             <li
               key={s.name}
-              className="flex items-start justify-between gap-2 rounded-lg bg-white border border-[#EDEDED] px-2.5 py-2"
+              className="flex items-start justify-between gap-2 rounded-lg border border-border bg-white px-2.5 py-2"
             >
               <div className="min-w-0">
-                <p className="text-[12px] font-medium text-[#333] break-words">
+                <p className="break-words text-callout font-medium text-primary">
                   {s.name}{' '}
-                  <span className="text-[10px] font-normal text-[#8B8B8B]">
+                  <span className="text-caption font-normal text-secondary">
                     {v.competencyLevelBadge.replace('{n}', String(s.level)).replace('{max}', '5')}
                   </span>
                 </p>
-                {s.description && <p className="text-[11px] text-[#585858] break-words">{s.description}</p>}
+                {s.description && <p className="break-words text-callout text-secondary">{s.description}</p>}
               </div>
               <button
                 type="button"
                 onClick={() => onAdd(s)}
                 disabled={disabled || !canAdd}
                 aria-label={v.competencySuggestionAddNamed.replace('{name}', s.name)}
-                className="h-7 px-2.5 rounded-lg border border-[#1F114C] text-[#1F114C] text-[11px] font-medium hover:bg-[#1F114C]/5 transition shrink-0 disabled:opacity-50"
+                className={buttonClasses({ variant: 'secondary', size: 'sm', className: 'shrink-0' })}
               >
                 {v.competencySuggestionAdd}
               </button>

@@ -5,20 +5,21 @@ import { useSearchParams } from 'next/navigation';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
 import { useI18n } from '../../../../lib/i18n';
-import { EmptyState, ErrorState } from '../../../../components';
 import { KanbanBoard } from './kanban-board';
 import { PipelineListView } from './pipeline-list-view';
 import { PipelineTableView } from './pipeline-table-view';
-import { applyFilters, type PipelineFilterState } from './pipeline-filters';
-import { AddCandidateModal } from './add-candidate-modal';
+import { applyFilters, EMPTY_FILTERS, activeFilterCount, type PipelineFilterState } from './pipeline-filters';
 import { moveApplicationOptimistic } from './pipeline-optimistic';
 import { useCan } from '../../../../lib/permissions';
-import { RejectCandidateModal, type RejectableApplication } from './reject-candidate-modal';
+import type { RejectableApplication } from './reject-candidate-modal';
+import { PipelineDialogs } from './pipeline-dialogs';
 import { usePipelineVacancySelection } from './use-pipeline-vacancy-selection';
 import { PipelineToolbar } from './pipeline-toolbar';
+import { PipelineNotices } from './pipeline-notices';
 import { PipelineBoardSkeleton } from './pipeline-board-skeleton';
+import { PipelineBoardPlaceholder, boardPlaceholderKind } from './pipeline-board-placeholder';
 import type { ScheduleRequest } from './pipeline-actions';
-import { ScheduleModal, type SchedulePrefill } from '../interviews/schedule-modal';
+import type { SchedulePrefill } from '../interviews/schedule-modal';
 import { announceStageMove } from '../../../../lib/pipeline-move-toast';
 import { boardUrlQuery, readBoardUrlState, type BoardStatus, type BoardView } from '../../../../lib/pipeline-url-state';
 
@@ -37,8 +38,14 @@ export default function PipelinePage() {
   const [filters, setFilters] = useState<PipelineFilterState>(initialUrl.filters);
   const [showAddCandidate, setShowAddCandidate] = useState(false);
 
-  const { vacancies, options: vacancyList, selectedVacancyId, setSelectedVacancyId, isLoading: vacanciesLoading, showUnavailableNotice } =
-    usePipelineVacancySelection(requestedVacancyId);
+  const {
+    vacancies,
+    options: vacancyList,
+    selectedVacancyId,
+    setSelectedVacancyId,
+    isLoading: vacanciesLoading,
+    showUnavailableNotice,
+  } = usePipelineVacancySelection(requestedVacancyId);
   const boardInput = { vacancyId: selectedVacancyId ?? '', status: boardStatus };
   const board = trpc.pipeline.getBoard.useQuery(boardInput, {
     enabled: !!selectedVacancyId,
@@ -146,7 +153,9 @@ export default function PipelinePage() {
     onSuccess: () => {
       if (selectedVacancyId) utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
     },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+    },
   });
 
   const handleToggleChecklistItem = (applicationId: string, stageId: string, itemKey: string, completed: boolean) =>
@@ -165,17 +174,35 @@ export default function PipelinePage() {
           setScheduleTarget({
             candidateId: request.candidateId,
             candidateName: request.candidateName,
-            applications: [{ id: request.applicationId, vacancyId: selectedVacancyId, vacancyTitle: selectedVacancyTitle }],
+            applications: [
+              { id: request.applicationId, vacancyId: selectedVacancyId, vacancyTitle: selectedVacancyTitle },
+            ],
           })
       : undefined;
 
   const filteredStages = useMemo(() => {
     if (!board.data?.stages) return [];
-    return applyFilters(board.data.stages as Parameters<typeof applyFilters>[0], filters) as NonNullable<typeof board.data>['stages'];
+    return applyFilters(board.data.stages as Parameters<typeof applyFilters>[0], filters) as NonNullable<
+      typeof board.data
+    >['stages'];
   }, [board.data?.stages, filters]);
   const shownCount = filteredStages.reduce((n, stage) => n + stage.applications.length, 0);
+  const totalCount = (board.data?.stages ?? []).reduce((n, stage) => n + stage.applications.length, 0);
   const showEmptyState = !!board.data && shownCount === 0 && (viewMode === 'list' || boardStatus === 'rejected');
+  // Candidates exist but the filters hide every one of them: say so, and offer to clear them (writing.md).
+  const hiddenByFilters = totalCount > 0 && activeFilterCount(filters) > 0;
+  // Leaders read the pipeline but cannot create candidates: no button (UX only, the API is the boundary).
+  const canAddCandidate = can('candidate', 'create');
+  const openAddCandidate = canAddCandidate && selectedVacancyId ? () => setShowAddCandidate(true) : undefined;
 
+  const placeholder = boardPlaceholderKind({
+    vacanciesError: vacancies.isError,
+    loading: vacanciesLoading || (!!selectedVacancyId && board.isLoading),
+    vacancyCount: vacancyList.length,
+    hasSelection: !!selectedVacancyId,
+    boardError: board.isError,
+    empty: showEmptyState,
+  });
   const changeView = (view: BoardView) => {
     userSetViewMode.current = true;
     setViewMode(view);
@@ -194,45 +221,25 @@ export default function PipelinePage() {
         onStatusChange={setBoardStatus}
         view={viewMode}
         onViewChange={changeView}
-        onAddCandidate={() => (selectedVacancyId ? setShowAddCandidate(true) : toast(t.pipeline.selectVacancyFirst, { type: 'info' }))}
+        onAddCandidate={canAddCandidate ? () => setShowAddCandidate(true) : undefined}
       />
 
-      {showUnavailableNotice && (
-        <div role="status" className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-[12px] text-amber-800 shrink-0">
-          {t.pipeline.requestedVacancyUnavailable}
-        </div>
-      )}
-      {boardStatus !== 'active' && (
-        <div role="status" className="px-6 py-2 bg-[#F6F6F6] border-b border-[#EDEDED] text-[12px] text-[#585858] shrink-0">
-          {t.pipeline.readOnlyNotice}
-        </div>
-      )}
-      {/* Content area */}
-      <div className={`flex-1 ${viewMode === 'kanban' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-y-auto'} p-4`}>
-        {vacancies.isError ? (
-          <div className="h-full flex items-center justify-center">
-            <ErrorState onRetry={() => vacancies.refetch()} />
-          </div>
-        ) : !selectedVacancyId ? (
-          <div className="h-full flex items-center justify-center">
-            <EmptyState
-              icon={<svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18M15 3v18" /></svg>}
-              message={t.pipeline.noVacancySelected}
-            />
-          </div>
-        ) : board.isLoading ? (
+      <PipelineNotices unavailable={showUnavailableNotice} readOnly={boardStatus !== 'active'} />
+      <div
+        className={`flex-1 ${viewMode === 'kanban' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-y-auto'} px-4 py-4 md:px-6`}
+      >
+        {placeholder ? (
+          <PipelineBoardPlaceholder
+            kind={placeholder}
+            onRetry={placeholder === 'vacanciesError' ? () => vacancies.refetch() : () => board.refetch()}
+            error={board.error}
+            boardStatus={boardStatus}
+            hiddenByFilters={hiddenByFilters}
+            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+            onAddCandidate={openAddCandidate}
+          />
+        ) : vacanciesLoading || board.isLoading ? (
           <PipelineBoardSkeleton kanban={viewMode === 'kanban'} />
-        ) : board.isError ? (
-          <div className="h-full flex items-center justify-center">
-            <ErrorState onRetry={() => board.refetch()} error={board.error} />
-          </div>
-        ) : showEmptyState ? (
-          <div className="h-full flex items-center justify-center">
-            <EmptyState
-              icon={<svg className="w-10 h-10 text-[#ccc]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z" /></svg>}
-              message={boardStatus === 'rejected' ? t.pipeline.noRejectedCandidates : t.pipeline.noCandidatesInPipeline}
-            />
-          </div>
         ) : board.data ? (
           viewMode === 'kanban' ? (
             <KanbanBoard
@@ -243,7 +250,12 @@ export default function PipelinePage() {
               onToggleChecklistItem={handleToggleChecklistItem}
             />
           ) : viewMode === 'list' ? (
-            <PipelineListView stages={filteredStages} onMove={handleMove} onReject={openReject} onSchedule={openSchedule} />
+            <PipelineListView
+              stages={filteredStages}
+              onMove={handleMove}
+              onReject={openReject}
+              onSchedule={openSchedule}
+            />
           ) : (
             <PipelineTableView
               stages={filteredStages}
@@ -251,41 +263,37 @@ export default function PipelinePage() {
               onMove={handleMove}
               onReject={openReject}
               onSchedule={openSchedule}
-              onBulkMove={canUpdatePipeline ? (applicationIds, toStageId) => bulkMove.mutate({ applicationIds, toStageId }) : undefined}
+              onBulkMove={
+                canUpdatePipeline
+                  ? (applicationIds, toStageId) => bulkMove.mutate({ applicationIds, toStageId })
+                  : undefined
+              }
               onBulkReject={canUpdatePipeline ? (targets) => setBulkRejectTargets(targets) : undefined}
-              onBulkTag={can('candidate', 'update') ? (candidateIds, tag) => bulkTag.mutate({ candidateIds, tag }) : undefined}
+              onBulkTag={
+                can('candidate', 'update') ? (candidateIds, tag) => bulkTag.mutate({ candidateIds, tag }) : undefined
+              }
               isBulkPending={bulkMove.isPending || bulkTag.isPending}
             />
           )
         ) : null}
       </div>
 
-      {rejectTarget && (
-        <RejectCandidateModal
-          candidateName={rejectTarget.candidateName}
-          applications={[{ id: rejectTarget.applicationId, vacancyTitle: selectedVacancyTitle }]}
-          onClose={() => setRejectTarget(null)}
-        />
-      )}
-      {bulkRejectTargets && (
-        <RejectCandidateModal bulk candidateName="" applications={bulkRejectTargets} onClose={() => setBulkRejectTargets(null)} />
-      )}
-      {scheduleTarget && (
-        <ScheduleModal prefill={scheduleTarget} onClose={() => setScheduleTarget(null)} onSuccess={() => setScheduleTarget(null)} />
-      )}
-
-      {/* Add Candidate Modal */}
-      {showAddCandidate && selectedVacancyId && (
-        <AddCandidateModal
-          vacancyId={selectedVacancyId}
-          vacancyTitle={selectedVacancyTitle}
-          onClose={() => setShowAddCandidate(false)}
-          onSuccess={() => {
-            setShowAddCandidate(false);
-            utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
-          }}
-        />
-      )}
+      <PipelineDialogs
+        vacancyId={selectedVacancyId}
+        vacancyTitle={selectedVacancyTitle}
+        rejectTarget={rejectTarget}
+        onCloseReject={() => setRejectTarget(null)}
+        bulkRejectTargets={bulkRejectTargets}
+        onCloseBulkReject={() => setBulkRejectTargets(null)}
+        scheduleTarget={scheduleTarget}
+        onCloseSchedule={() => setScheduleTarget(null)}
+        showAddCandidate={showAddCandidate}
+        onCloseAddCandidate={() => setShowAddCandidate(false)}
+        onCandidateAdded={() => {
+          setShowAddCandidate(false);
+          if (selectedVacancyId) utils.pipeline.getBoard.invalidate({ vacancyId: selectedVacancyId });
+        }}
+      />
     </div>
   );
 }

@@ -32,11 +32,14 @@ describe('interview room status', () => {
     expect(view.container.textContent).not.toContain('Grabando');
     // Localized chrome (default locale ES outside an I18nProvider).
     expect(view.container.textContent).toContain(es.interviewRoom.topBarLabel);
-    expect(view.container.textContent).toContain(es.interviewRoom.endCall);
-    expect(en.interviewRoom.endCall).toBeTruthy();
+    // No call running: the exit only leaves the room, and says so (HIG pass, finding -10).
+    expect(view.container.textContent).toContain(es.interviewRoom.leaveRoom);
+    expect(view.container.textContent).not.toContain(es.interviewRoom.endCall);
+    expect(en.interviewRoom.leaveRoom).toBeTruthy();
 
     view.rerender(createElement(InterviewTopBar, { ...props, isCallActive: true }));
     expect(view.container.textContent).toContain('00:00');
+    expect(view.container.textContent).toContain(es.interviewRoom.endCall);
     view.unmount();
   });
 

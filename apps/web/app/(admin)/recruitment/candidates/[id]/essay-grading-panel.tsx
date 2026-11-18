@@ -21,7 +21,7 @@ export function EssayGradingPanel({ assignmentId }: { assignmentId: string }) {
   const canGrade = can('assessment', 'update');
   return (
     <div className="mt-2 space-y-2" data-testid="essay-grading-panel">
-      <p className="text-[11px] font-semibold text-amber-700">{t.candidates.essayGradingTitle}</p>
+      <h3 className="text-callout font-semibold text-warning">{t.candidates.essayGradingTitle}</h3>
       {essays.data.map((essay) => (
         <EssayGradeRow key={essay.questionId} assignmentId={assignmentId} essay={essay} canGrade={canGrade} />
       ))}

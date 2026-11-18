@@ -4,16 +4,36 @@ export type Step = 1 | 2 | 3;
 // Pool types come from the same module (CANDIDATE_STAFF_POOL_TYPES), so the forms and the tables agree.
 export const SOURCES = ['manual', 'linkedin', 'referral', 'portal', 'job_board', 'university', 'internal'] as const;
 
+/** Experience bands for the picker; the label is an i18n key under `candidates`. */
 export const EXPERIENCE_LEVELS = [
-  { value: 0, label: 'Sin experiencia' },
-  { value: 1, label: '1 año' },
-  { value: 2, label: '2 años' },
-  { value: 3, label: '3-4 años' },
-  { value: 5, label: '5-7 años' },
-  { value: 8, label: '8-10 años' },
-  { value: 12, label: '10+ años' },
-];
+  { value: 0, labelKey: 'experienceNone' },
+  { value: 1, labelKey: 'experience1' },
+  { value: 2, labelKey: 'experience2' },
+  { value: 3, labelKey: 'experience3to4' },
+  { value: 5, labelKey: 'experience5to7' },
+  { value: 8, labelKey: 'experience8to10' },
+  { value: 12, labelKey: 'experience10Plus' },
+] as const;
 
-export const inputCls = 'w-full h-10 px-3 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C]';
-export const labelCls = 'block text-xs font-medium text-[#585858] mb-1';
-export const textareaCls = 'w-full px-3 py-2 rounded-lg border border-[#EDEDED] text-sm focus:outline-none focus:ring-2 focus:ring-[#1F114C]/20 focus:border-[#1F114C] resize-none';
+export type ExperienceLabelKey = (typeof EXPERIENCE_LEVELS)[number]['labelKey'];
+
+/** A selectable row in the wizard's choice groups: the whole row is the label (≥ 44px on touch). */
+export const CHOICE_CARD_CLASSES =
+  'flex min-h-9 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-body transition-colors pointer-coarse:min-h-11 has-[:checked]:border-brand has-[:checked]:bg-brand-tint has-[:checked]:font-medium has-[:checked]:text-brand border-border text-primary hover:bg-surface';
+
+export const LEGEND_CLASSES = 'mb-2 text-subheading font-semibold text-primary';
+
+interface CreateErrorCopy {
+  emailTaken: string;
+  createErrorForbidden: string;
+  createErrorInvalid: string;
+  createError: string;
+}
+
+/** The message for a failed create, by tRPC error code: the same words in the toast and in the dialog. */
+export function createErrorMessage(code: string | undefined, copy: CreateErrorCopy): string {
+  if (code === 'CONFLICT') return copy.emailTaken;
+  if (code === 'FORBIDDEN') return copy.createErrorForbidden;
+  if (code === 'BAD_REQUEST') return copy.createErrorInvalid;
+  return copy.createError;
+}

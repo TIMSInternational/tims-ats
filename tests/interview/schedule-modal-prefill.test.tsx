@@ -8,7 +8,10 @@ import es from '../../apps/web/lib/i18n/es.json';
 
 const h = vi.hoisted(() => ({ mutateAsync: vi.fn(), searchCalls: 0 }));
 
-vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: es, locale: 'ES' }) }));
+vi.mock('../../apps/web/lib/i18n', async () => ({
+  ...(await vi.importActual<typeof import('../../apps/web/lib/i18n/format')>('../../apps/web/lib/i18n/format')),
+  useI18n: () => ({ t: es, locale: 'ES' }),
+}));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
     candidate: {
@@ -38,7 +41,12 @@ vi.mock('../../apps/web/lib/platform-api/assignable-people', () => ({
 }));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: () => undefined }));
 vi.mock('../../apps/web/components', () => ({
-  Modal: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Modal: ({ children, footer }: { children: ReactNode; footer?: ReactNode }) => (
+    <div>
+      {children}
+      {footer}
+    </div>
+  ),
   CandidateAvatar: () => null,
   ErrorState: () => null,
   AssignablePeopleError: () => null,
@@ -76,7 +84,7 @@ describe('schedule modal — prefilled from a candidate', () => {
     expect(screen.queryByPlaceholderText(es.interviews.scheduleFieldCandidatePlaceholder)).toBeNull();
     expect(screen.getByText('Ana Mora · Analista')).toBeTruthy();
     // Step 1 is not offered: no way "back" to retyping the candidate.
-    expect(screen.queryByText('Anterior')).toBeNull();
+    expect(screen.queryByRole('button', { name: es.common.back })).toBeNull();
     const input = await finish();
     expect(input).toMatchObject({ candidateId: CANDIDATE, vacancyId: APP_A.vacancyId, applicationId: APP_A.id });
   });

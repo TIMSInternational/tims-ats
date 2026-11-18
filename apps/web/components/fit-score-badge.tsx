@@ -1,29 +1,49 @@
 'use client';
 
+import { useI18n } from '../lib/i18n';
+import { formatMessage } from '../lib/i18n/format';
+import { fitBand, type FitBand } from '../lib/pipeline-fit';
+
 interface FitScoreBadgeProps {
   score: number;
   size?: 'sm' | 'md' | 'lg';
+  /** Show the band word ("Alta", "Media", "Baja") beside the circle, so the band never rests on colour alone. */
+  showBand?: boolean;
 }
 
 const SIZES = {
-  sm: 'w-7 h-7 text-[9px]',
-  md: 'w-9 h-9 text-[11px]',
-  lg: 'w-12 h-12 text-[14px]',
+  sm: 'size-8 text-caption',
+  md: 'size-10 text-callout',
+  lg: 'size-12 text-subheading',
 };
 
-function getColor(score: number): string {
-  if (score >= 70) return 'bg-emerald-100 text-emerald-700 border-emerald-300';
-  if (score >= 40) return 'bg-amber-100 text-amber-700 border-amber-300';
-  return 'bg-red-100 text-red-700 border-red-300';
-}
+// Status token pairs (each ≥ 4.79:1); the same bands as the header, pipeline and filters (A-23).
+const BAND_CLASSES: Record<FitBand, string> = {
+  high: 'bg-success-bg text-success border-success/40',
+  medium: 'bg-warning-bg text-warning border-warning/40',
+  low: 'bg-danger-bg text-danger border-danger/40',
+};
 
-export function FitScoreBadge({ score, size = 'md' }: FitScoreBadgeProps) {
+export function FitScoreBadge({ score, size = 'md', showBand = false }: FitScoreBadgeProps) {
+  const { t } = useI18n();
+  const band = fitBand(score);
+  const copy = t.fitScoreBadge;
+  const bandWord = band === 'high' ? copy.high : band === 'medium' ? copy.medium : copy.low;
+  const bandLabel = band === 'high' ? copy.bandHigh : band === 'medium' ? copy.bandMedium : copy.bandLow;
   return (
-    <div
-      className={`${SIZES[size]} rounded-full border flex items-center justify-center font-bold shrink-0 ${getColor(score)}`}
-      title={`FIT Score: ${score}`}
-    >
-      {score}
-    </div>
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        role="img"
+        aria-label={formatMessage(copy.label, { score, band: bandWord })}
+        className={`${SIZES[size]} inline-flex shrink-0 items-center justify-center rounded-full border font-semibold tabular-nums ${BAND_CLASSES[band]}`}
+      >
+        <span aria-hidden="true">{score}</span>
+      </span>
+      {showBand && (
+        <span aria-hidden="true" className="text-callout text-secondary">
+          {bandLabel}
+        </span>
+      )}
+    </span>
   );
 }

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { canEmbedPlayer, chooseLaunchTarget } from '../../apps/web/lib/assessment-player-launch';
 import { permissionsPolicy } from '../../apps/web/lib/security/permissions-policy';
-import { buildCsp, httpsOriginOf } from '../../apps/web/lib/security/csp';
+import {
+  DEFAULT_ASSESSMENT_PROVIDER_FRAME_ORIGIN,
+  assessmentProviderFrameOrigin,
+  buildCsp,
+  httpsOriginOf,
+} from '../../apps/web/lib/security/csp';
 
 // D16: the portal opens a hosted launch top-level ("link-out") and frames it ONLY when the player's registered frame
 // ancestors include this site AND the URL is on the configured player origin (the only one the CSP frame-src allows).
@@ -57,6 +62,24 @@ describe('chooseLaunchTarget', () => {
     expect(chooseLaunchTarget(launch, PORTAL, PLAYER, provider)).toEqual({ kind: 'navigate', url: launch.hostedUrl });
   });
 
+  it('frames PCA on timshr.com by default (env unset), sandboxed', () => {
+    const provider = assessmentProviderFrameOrigin(undefined);
+    expect(chooseLaunchTarget(linkOut('https://timshr.com/surveys/?SCId=1'), PORTAL, PLAYER, provider)).toEqual({
+      kind: 'iframe',
+      url: 'https://timshr.com/surveys/?SCId=1',
+      sandboxed: true,
+    });
+    // A PCA link on any other host still leaves top-level, default or not.
+    expect(chooseLaunchTarget(linkOut('https://www.timshr.com/surveys/1'), PORTAL, PLAYER, provider)).toEqual({
+      kind: 'navigate',
+      url: 'https://www.timshr.com/surveys/1',
+    });
+    // Turned off: it links out.
+    expect(
+      chooseLaunchTarget(linkOut('https://timshr.com/surveys/1'), PORTAL, PLAYER, assessmentProviderFrameOrigin('off')),
+    ).toEqual({ kind: 'navigate', url: 'https://timshr.com/surveys/1' });
+  });
+
   it('never frames a native launch on the provider frame origin', () => {
     expect(chooseLaunchTarget(native(`${PROVIDER}/launch/c1`, [PORTAL]), PORTAL, PLAYER, PROVIDER)).toEqual({
       kind: 'navigate',
@@ -105,6 +128,36 @@ describe('framing the player is allowed only for the configured https origin', (
     expect(directive(withProvider, 'frame-src').split(' ')).toContain(provider);
     expect(directive(withProvider, 'frame-src')).not.toContain('player');
     expect(withProvider).toContain("frame-ancestors 'none'");
+  });
+
+  it('frames PCA from timshr.com by default; the env overrides the origin or turns framing off', () => {
+    expect(DEFAULT_ASSESSMENT_PROVIDER_FRAME_ORIGIN).toBe('https://timshr.com');
+    expect(assessmentProviderFrameOrigin(undefined)).toBe('https://timshr.com');
+    expect(assessmentProviderFrameOrigin('')).toBe('https://timshr.com');
+    expect(assessmentProviderFrameOrigin('  ')).toBe('https://timshr.com');
+    expect(assessmentProviderFrameOrigin('https://timshr.example.test/surveys/')).toBe('https://timshr.example.test');
+    expect(assessmentProviderFrameOrigin(' https://localhost:57480 ')).toBe('https://localhost:57480');
+    // Anything that is not an https URL turns framing off (never a wider or an http source).
+    expect(assessmentProviderFrameOrigin('off')).toBe('');
+    expect(assessmentProviderFrameOrigin('http://timshr.com')).toBe('');
+    expect(assessmentProviderFrameOrigin('*')).toBe('');
+  });
+
+  it('allows the default PCA origin in frame-src, and nothing once framing is off', () => {
+    const csp = (value: string | undefined) =>
+      buildCsp(
+        'n',
+        '/careers/acme/dashboard',
+        { platformApi: '', cvUpload: '', assessmentProviderFrame: assessmentProviderFrameOrigin(value) },
+        true,
+      );
+    expect(directive(csp(undefined), 'frame-src').split(' ')).toContain('https://timshr.com');
+    expect(directive(csp('off'), 'frame-src')).not.toContain('timshr');
+    expect(directive(csp('https://timshr.example.test'), 'frame-src').split(' ')).toEqual(
+      expect.arrayContaining(['https://timshr.example.test']),
+    );
+    expect(directive(csp('https://timshr.example.test'), 'frame-src')).not.toContain('https://timshr.com');
+    expect(csp(undefined)).toContain("frame-ancestors 'none'");
   });
 
   it('takes only an https origin from the env value', () => {

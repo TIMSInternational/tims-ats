@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { trpc } from '../../../../../../lib/trpc';
 import { Skeleton, ErrorState } from '../../../../../../components';
+import { Button } from '../../../../../../components/button';
+import { TEXT_LINK_CLASSES } from '../../../../../../components/button-styles';
+import { StatusBadge } from '../../../../../../components/status-badge';
 import { ApplyModal } from './apply-modal';
 import { JobDescription } from './job-description';
-import { JobSidebarItem } from './job-sidebar-item';
+import { JobSidebar } from './job-sidebar';
+import { JobPageBar } from './job-page-bar';
 import { DetailItem } from './detail-item';
 import { enumLabel, formatPortalSalary, formatTimeAgo, parsePortalSalary, profileItemLabels } from '../../_lib/vacancy-display';
 import { useI18n } from '../../../../../../lib/i18n';
@@ -21,31 +25,22 @@ interface JobDetailViewProps {
 export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   const { t, locale } = useI18n();
   const p = t.portal;
-  const [search, setSearch] = useState('');
   const [showApply, setShowApply] = useState(false);
   const vacancy = trpc.portal.getVacancy.useQuery({ id: vacancyId, orgSlug });
   const openVacancy = vacancy.data && !('closed' in vacancy.data) ? vacancy.data : null;
-  const vacancies = trpc.portal.listVacancies.useQuery(
-    { organizationId: openVacancy?.organizationId ?? '', take: 20 },
-    { enabled: !!openVacancy?.organizationId },
-  );
-
-  const sidebarItems = vacancies.data?.items ?? [];
-  const filtered = useMemo(() => {
-    if (!search.trim()) return sidebarItems;
-    const q = search.toLowerCase();
-    return sidebarItems.filter(
-      (item) => item.title.toLowerCase().includes(q) || item.location?.toLowerCase().includes(q),
-    );
-  }, [sidebarItems, search]);
+  const boardHref = `/careers/${orgSlug}`;
 
   if (vacancy.isLoading) {
     return (
-      <div className="flex h-dvh items-center justify-center">
-        <div className="w-full lg:w-[400px] space-y-4">
-          <Skeleton className="h-8 w-3/4 rounded" />
-          <Skeleton className="h-4 w-1/2 rounded" />
-          <Skeleton className="h-32 w-full rounded" />
+      <div className="flex h-dvh flex-col bg-white">
+        <JobPageBar orgSlug={orgSlug} />
+        <div className="flex flex-1 items-center justify-center px-4" aria-busy="true">
+          <span className="sr-only">{t.common.loadingContent}</span>
+          <div className="w-full space-y-4 lg:w-[400px]">
+            <Skeleton className="h-8 w-3/4 rounded" />
+            <Skeleton className="h-4 w-1/2 rounded" />
+            <Skeleton className="h-32 w-full rounded" />
+          </div>
         </div>
       </div>
     );
@@ -53,30 +48,37 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
 
   if (vacancy.isError) {
     return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-2">
-        <ErrorState onRetry={() => vacancy.refetch()} error={vacancy.error} />
-        <Link href={`/careers/${orgSlug}`} className="text-sm text-[#1F114C] hover:underline">{p.backToVacancies}</Link>
+      <div className="flex h-dvh flex-col bg-white">
+        <JobPageBar orgSlug={orgSlug} />
+        <main className="flex flex-1 flex-col items-center justify-center gap-2 px-4">
+          <ErrorState onRetry={() => vacancy.refetch()} error={vacancy.error} />
+        </main>
       </div>
     );
   }
 
   if (vacancy.data && 'closed' in vacancy.data) {
     return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
-        <h1 className="text-[18px] font-semibold text-[#1F114C]">{p.vacancyClosedTitle}</h1>
-        <p className="max-w-sm text-[13px] text-[#585858]">{p.vacancyClosedDesc}</p>
-        <Link href={`/careers/${orgSlug}`} className="mt-2 inline-flex h-10 items-center rounded-lg bg-[#1F114C] px-5 text-[13px] font-medium text-white hover:bg-[#2a1a5c]">
-          {p.seeOtherVacancies}
-        </Link>
+      <div className="flex h-dvh flex-col bg-white">
+        <JobPageBar orgSlug={orgSlug} />
+        <main className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+          <h1 className="font-display text-title font-semibold text-brand">{p.vacancyClosedTitle}</h1>
+          <p className="max-w-sm text-base text-secondary sm:text-body">{p.vacancyClosedDesc}</p>
+          <Button href={boardHref} size="lg" className="mt-2">
+            {p.seeOtherVacancies}
+          </Button>
+        </main>
       </div>
     );
   }
 
   if (!openVacancy) {
     return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-2 text-muted">
-        <p className="text-sm">{p.vacancyNotFound}</p>
-        <Link href={`/careers/${orgSlug}`} className="text-sm text-[#1F114C] hover:underline">{p.backToVacancies}</Link>
+      <div className="flex h-dvh flex-col bg-white">
+        <JobPageBar orgSlug={orgSlug} />
+        <main className="flex flex-1 items-center justify-center px-4">
+          <ErrorState variant="notFound" title={p.vacancyNotFound} back={{ href: boardHref, label: p.backToVacancies }} />
+        </main>
       </div>
     );
   }
@@ -94,80 +96,51 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
   const remote = enumLabel(v.remotePolicy, p.remotePolicies);
   const pilot = isPilotScope();
   const openApply = () => setShowApply(true);
+  const sectionTitle = 'mb-3 text-heading font-semibold text-brand';
 
   return (
     <div className="flex h-dvh flex-col bg-white">
-      {/* Sticky nav */}
-      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-[#EDEDED] bg-white px-6">
-        <Link href={`/careers/${orgSlug}`} className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-[#585858] hover:text-[#1F114C]">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          {p.backToVacancies}
-        </Link>
-        <span className="ml-auto truncate text-[13px] font-bold tracking-tight text-[#1F114C]">{orgName}</span>
-      </div>
+      <JobPageBar orgSlug={orgSlug} orgName={orgName} orgLogo={v.organization.logo} />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar */}
-        <aside className="hidden w-[380px] shrink-0 flex-col border-r border-[#EDEDED] bg-[#FAFAFA] lg:flex">
-          <div className="border-b border-[#EDEDED] p-4">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={p.searchVacanciesPlaceholder}
-              className="w-full rounded-lg border border-[#EDEDED] bg-white px-3 py-2 text-[13px] text-[#333] outline-none placeholder:text-muted focus:border-[#1F114C]"
-            />
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {vacancies.isLoading ? (
-              <div className="space-y-3 p-4">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}</div>
-            ) : vacancies.isError ? (
-              <div className="p-4">
-                <ErrorState onRetry={() => vacancies.refetch()} error={vacancies.error} />
-              </div>
-            ) : (
-              filtered.map((item) => (
-                <JobSidebarItem key={item.id} orgSlug={orgSlug} isActive={item.id === vacancyId} item={item} orgName={orgName} />
-              ))
-            )}
-          </div>
-        </aside>
+        <JobSidebar orgSlug={orgSlug} organizationId={v.organizationId} vacancyId={vacancyId} orgName={orgName} />
 
-        {/* Right panel */}
         <main className="flex-1 overflow-y-auto">
           {/* Header */}
-          <div className="border-b border-[#EDEDED] bg-white px-8 py-6">
+          <div className="border-b border-border bg-white px-4 py-6 sm:px-8">
             <div className="mb-3 flex items-start gap-4">
               <OrgLogo
                 logo={headerLogo}
                 name={companyName}
-                imgClassName="h-12 w-12 shrink-0 rounded-lg object-contain"
-                fallbackClassName="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#1F114C] text-lg font-bold text-white"
+                imgClassName="size-12 shrink-0 rounded-lg object-contain"
+                fallbackClassName="flex size-12 shrink-0 items-center justify-center rounded-lg bg-brand text-heading font-bold text-white"
                 decorative
               />
               <div className="min-w-0">
-                <p className="text-[13px] text-muted">{companyName}</p>
-                <h1 className="text-[22px] font-bold leading-tight text-[#1F114C]">{v.title}</h1>
+                <p className="text-body text-secondary">{companyName}</p>
+                <h1 className="font-display text-title font-bold leading-tight text-brand sm:text-display">{v.title}</h1>
               </div>
             </div>
-            <div className="mb-3 flex flex-wrap items-center gap-4 text-[13px] text-[#585858]">
+            {salaryText && <p className="mb-2 text-subheading font-semibold text-brand tabular-nums">{salaryText}</p>}
+            <p className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-body text-secondary">
               {v.location && (
-                <span className="flex items-center gap-1">
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                <span className="inline-flex items-center gap-1">
+                  <svg className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
                   {v.location}{remote ? ` (${remote})` : ''}
                 </span>
               )}
+              {v.location && <span aria-hidden="true">·</span>}
               <span>{p.postedLabel} {formatTimeAgo(v.createdAt, p)}</span>
+              <span aria-hidden="true">·</span>
               <span>{v.applicantCount} {v.applicantCount === 1 ? p.oneApplicant : p.manyApplicants}</span>
-            </div>
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              {remote && <span className="rounded-md bg-blue-50 px-2.5 py-1 text-[12px] font-medium text-blue-700">{remote}</span>}
-              {contract && <span className="rounded-md bg-green-50 px-2.5 py-1 text-[12px] font-medium text-green-700">{contract}</span>}
-              {v.priority === 'urgent' && <span className="rounded-md bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700">{p.urgentBadge}</span>}
-              {salaryText && <span className="rounded-md bg-[#F6F6F6] px-2.5 py-1 text-[12px] font-semibold text-[#1F114C]">{salaryText}</span>}
-            </div>
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={openApply} className="h-11 rounded-lg bg-[#DD0C15] px-8 text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">{p.applyNow}</button>
+              {v.priority === 'urgent' && <StatusBadge tone="warning">{p.urgentBadge}</StatusBadge>}
+            </p>
+            {/* Phones/tablets use the pinned bar below instead, so the first screen has one "Postularse". The
+                wrapper does the hiding: Button's own inline-flex would beat a "hidden" passed in className. */}
+            <div className="hidden lg:block">
+              <Button size="lg" onClick={openApply} className="px-8">
+                {p.applyNow}
+              </Button>
             </div>
             {showApply && (
               <ApplyModal
@@ -181,21 +154,21 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
           </div>
 
           {/* Content */}
-          <div className="max-w-3xl space-y-8 px-8 py-6">
+          <div className="max-w-3xl space-y-8 px-4 py-6 sm:px-8">
             {v.description && (
               <section>
-                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.aboutPosition}</h2>
+                <h2 className={sectionTitle}>{p.aboutPosition}</h2>
                 <JobDescription description={v.description} />
               </section>
             )}
 
             {requirements.length > 0 && (
               <section>
-                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.requirementsTitle}</h2>
+                <h2 className={sectionTitle}>{p.requirementsTitle}</h2>
                 <ul className="space-y-2">
                   {requirements.map((req, i) => (
-                    <li key={i} className="flex items-start gap-2 text-[14px] text-[#585858]">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#DD0C15]" />{req}
+                    <li key={i} className="flex items-start gap-2 text-base text-secondary sm:text-subheading">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-brand/40" aria-hidden="true" />{req}
                     </li>
                   ))}
                 </ul>
@@ -204,48 +177,48 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
 
             {competencies.length > 0 && (
               <section>
-                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.competenciesTitle}</h2>
-                <div className="flex flex-wrap gap-2">
+                <h2 className={sectionTitle}>{p.competenciesTitle}</h2>
+                <ul className="flex flex-wrap gap-2">
                   {competencies.map((c, i) => (
-                    <span key={i} className="rounded-full border border-[#EDEDED] bg-[#F6F6F6] px-3 py-1.5 text-[12px] font-medium text-[#1F114C]">{c}</span>
+                    <li key={i} className="rounded-full border border-border bg-surface px-3 py-1.5 text-callout font-medium text-brand">{c}</li>
                   ))}
-                </div>
+                </ul>
               </section>
             )}
 
             <section>
-              <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.detailsTitle}</h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <h2 className={sectionTitle}>{p.detailsTitle}</h2>
+              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <DetailItem label={p.positionsLabel} value={String(v.positions)} />
                 {contract && <DetailItem label={p.contractTypeLabel} value={contract} />}
                 {remote && <DetailItem label={p.workModeLabel} value={remote} />}
                 {v.location && <DetailItem label={p.locationLabel} value={v.location} />}
                 {salaryText && <DetailItem label={p.salaryLabel} value={salaryText} />}
                 {v.unit?.name && <DetailItem label={p.departmentLabel} value={v.unit.name} />}
-              </div>
+              </dl>
             </section>
 
             {/* Its only text is the vendor blurb ("evaluaciones científicas"), which the pilot does not offer
                 and is not the organization's own copy — so the pilot shows no "about" section at all. */}
             {!pilot && (
               <section>
-                <h2 className="mb-3 text-[16px] font-bold text-[#1F114C]">{p.aboutCompany}</h2>
+                <h2 className={sectionTitle}>{p.aboutCompany}</h2>
                 <div className="mb-3 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1F114C] text-sm font-bold text-white">{companyName.charAt(0).toUpperCase()}</div>
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-brand text-subheading font-bold text-white" aria-hidden="true">{companyName.charAt(0).toUpperCase()}</div>
                   <div>
-                    <p className="text-[14px] font-semibold text-[#1F114C]">{companyName}</p>
-                    {orgName !== companyName && <p className="text-[12px] text-muted">{orgName}</p>}
+                    <p className="text-subheading font-semibold text-brand">{companyName}</p>
+                    {orgName !== companyName && <p className="text-callout text-secondary">{orgName}</p>}
                   </div>
                 </div>
-                <p className="text-[13px] leading-relaxed text-[#585858]">
+                <p className="text-base leading-relaxed text-secondary sm:text-body">
                   {companyName} {p.companyUsesTimsSuffix}
                 </p>
               </section>
             )}
 
             {/* The privacy notice, reachable before applying (pb-28 keeps it above the phone apply bar). */}
-            <p className="pb-28 text-[12px] lg:pb-12">
-              <Link href={`/careers/${encodeURIComponent(orgSlug)}/privacy`} className="text-[#585858] underline-offset-2 hover:text-[#1F114C] hover:underline">
+            <p className="pb-28 lg:pb-12">
+              <Link href={`/careers/${encodeURIComponent(orgSlug)}/privacy`} className={`${TEXT_LINK_CLASSES} text-callout`}>
                 {p.footerPrivacy}
               </Link>
             </p>
@@ -255,10 +228,10 @@ export function JobDetailView({ orgSlug, vacancyId }: JobDetailViewProps) {
 
       {/* Phones/tablets: the header's apply button scrolls away with the description, so the call to
           action stays pinned at the bottom of the screen. */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#EDEDED] bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-2px_8px_rgba(0,0,0,0.06)] lg:hidden">
-        <button type="button" onClick={openApply} className="h-11 w-full rounded-lg bg-[#DD0C15] text-[14px] font-semibold text-white transition-colors hover:bg-[#c00b13]">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-popover lg:hidden">
+        <Button size="lg" fullWidth onClick={openApply}>
           {p.applyNow}
-        </button>
+        </Button>
       </div>
     </div>
   );

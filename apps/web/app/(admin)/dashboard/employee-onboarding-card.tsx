@@ -1,17 +1,16 @@
 'use client';
 
-import Link from 'next/link';
 import { trpc } from '../../../lib/trpc';
 import { useI18n } from '../../../lib/i18n';
-import { EmptyState } from '../../../components';
+import { EmptyState, StatusBadge } from '../../../components';
+import { Button } from '../../../components/button';
+import { ProgressBar } from '../../../components/progress-bar';
 import { formatDueDate, isTaskOverdue, nextOpenTasks } from '../../../lib/onboarding-schedule';
 import { LoadError } from './load-error';
-import { EMPTY_ICON, ListSkeletonRows, ProgressBar } from './employee-dashboard-ui';
+import { ListSkeletonRows } from './employee-dashboard-ui';
 
 /** How many open tasks the home card previews; the full list is on /my-onboarding. */
 const NEXT_TASKS_SHOWN = 3;
-const OPEN_LINK_CLASS =
-  'inline-flex items-center h-8 px-3 rounded-lg bg-[#1F114C] text-white text-[12px] font-medium hover:bg-[#2d1a6b] transition';
 
 /**
  * B-25: the employee's home card. `mine: true` — without it the own-scoped list also returns plans where
@@ -24,16 +23,16 @@ export function EmployeeOnboardingCard() {
   const onboarding = trpc.onboarding.list.useQuery({ limit: 1, status: 'active', mine: true });
   const plan = onboarding.data?.plans[0];
 
-  if (onboarding.isError) return <LoadError message={e.loadError} />;
+  if (onboarding.isError) return <LoadError message={e.loadError} onRetry={() => onboarding.refetch()} />;
   if (onboarding.isLoading) return <ListSkeletonRows />;
   if (!plan) {
     // Still offer the page: an employee who is someone's buddy finds "Personas que acompañas" there.
     return (
       <div className="space-y-3">
-        <EmptyState icon={EMPTY_ICON} message={e.noOnboarding} />
-        <Link href="/my-onboarding" className={OPEN_LINK_CLASS}>
+        <EmptyState size="compact" message={e.noOnboarding} />
+        <Button href="/my-onboarding" variant="secondary" size="sm">
           {e.openOnboarding}
-        </Link>
+        </Button>
       </div>
     );
   }
@@ -50,38 +49,32 @@ export function EmployeeOnboardingCard() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-sm text-[#333] font-medium">{e.onboardingProgress}</span>
-          <p className="text-[12px] text-[#8B8B8B]">{e.onboardingStart.replace('{date}', startDate)}</p>
-        </div>
-        <ProgressBar value={progress} />
+      {/* The bar takes its own full-width line under the title, so the title never squeezes on phones. */}
+      <div>
+        <ProgressBar value={progress} label={e.onboardingProgress} valueText={`${progress}%`} />
+        <p className="mt-1 text-callout text-secondary">{e.onboardingStart.replace('{date}', startDate)}</p>
       </div>
       <div>
-        <p className="text-[12px] font-semibold text-[#1F114C] mb-1.5">{e.nextTasks}</p>
+        <h3 className="mb-1.5 text-callout font-semibold text-brand">{e.nextTasks}</h3>
         {nextTasks.length === 0 ? (
-          <p className="text-[12px] text-[#8B8B8B]">{e.noOpenTasks}</p>
+          <p className="text-callout text-secondary">{e.noOpenTasks}</p>
         ) : (
-          <ul className="divide-y divide-[#F0F0F0]">
+          <ul className="divide-y divide-border">
             {nextTasks.map((task) => (
-              <li key={task.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-[12px]">
-                <span className="text-[#333]">{task.title}</span>
-                <span className="flex items-center gap-1.5 text-[#8B8B8B]">
+              <li key={task.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-callout">
+                <span className="text-primary">{task.title}</span>
+                <span className="flex items-center gap-1.5 text-muted">
                   {task.dueDate && e.taskDue.replace('{date}', formatDueDate(task.dueDate, locale))}
-                  {isTaskOverdue(task) && (
-                    <span className="rounded bg-[#DD0C15]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#DD0C15]">
-                      {e.taskOverdue}
-                    </span>
-                  )}
+                  {isTaskOverdue(task) && <StatusBadge tone="danger">{e.taskOverdue}</StatusBadge>}
                 </span>
               </li>
             ))}
           </ul>
         )}
       </div>
-      <Link href="/my-onboarding" className={OPEN_LINK_CLASS}>
+      <Button href="/my-onboarding" size="sm">
         {e.openOnboarding}
-      </Link>
+      </Button>
     </div>
   );
 }

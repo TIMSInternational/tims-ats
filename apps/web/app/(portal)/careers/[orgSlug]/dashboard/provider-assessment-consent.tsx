@@ -1,18 +1,25 @@
 'use client';
 
-import { useState } from 'react';
 import { useI18n } from '../../../../../lib/i18n';
-import {
-  AssessmentConsentNotice,
-  atsNoticeAcknowledgment,
-} from '../../../../../components/assessment-consent-notice';
+import { atsNoticeAcknowledgment } from '../../../../../components/assessment-consent-notice';
 import {
   useProviderConsentTemplates,
   type ConsentDecision,
   type ConsentTemplate,
 } from '../../../../../lib/platform-api/assessment-provider-portal';
-import { ProviderConsentTemplateCard } from './provider-consent-template-card';
-import { ProviderOptionalConsents } from './provider-optional-consents';
+import { EvalButton } from './eval-button';
+import { EvalLoadError } from './eval-load-error';
+import { ProviderConsentGuide, type ConsentGuideItem } from './provider-consent-guide';
+import {
+  CONSENT_ERROR_CANCEL_CLASSES,
+  CONSENT_GUIDE_CLASSES,
+  CONSENT_SKELETON_BAR_CLASSES,
+  CONSENT_SKELETON_EYEBROW_CLASSES,
+  CONSENT_SKELETON_ROW_CLASSES,
+  CONSENT_SKELETON_TITLE_CLASSES,
+} from './provider-consent-styles';
+import { ProviderConsentText } from './provider-consent-text';
+import { noticeGuideItem } from './provider-notice-guide-item';
 
 const accept = (template: ConsentTemplate) => ({
   purpose: template.purpose,
@@ -20,14 +27,33 @@ const accept = (template: ConsentTemplate) => ({
   locale: template.locale,
 });
 
+/**
+ * What the launch records, from what was ticked: each accepted text with the exact text_version shown, in the order the
+ * provider served them; every OPTIONAL purpose left unticked as declined; and the ATS notice acknowledgment. The same
+ * decision, for the same choices, as before the step-by-step guide (pinned by tests/portal/provider-consent-guide.test.tsx).
+ */
+export function consentDecision(
+  templates: ConsentTemplate[],
+  optionalPurposes: readonly string[],
+  checked: Record<string, boolean>,
+  locale: string,
+): ConsentDecision {
+  const optional = new Set<string>(optionalPurposes);
+  return {
+    accepted: templates.filter((template) => checked[template.purpose] === true).map(accept),
+    declined: templates
+      .filter((template) => optional.has(template.purpose) && checked[template.purpose] !== true)
+      .map((template) => template.purpose),
+    notice: atsNoticeAcknowledgment(locale),
+  };
+}
+
 // The consent step before a provider assessment (D16, design §2.2 "the host shows its own consent text, using a
-// template served by the API"). Each purpose the provider still needs, required AND optional (English speaking: voice,
-// ai_scoring), is shown in full from the provider's template, so the provider is the single source of the approved
-// wording; as plain text (the API's blocks carry no markup and are rendered as text nodes only), with its own
-// acceptance checkbox. "Accept and start" stays disabled until every REQUIRED text is accepted; it hands back each
-// accepted purpose with the exact text_version shown, and the OPTIONAL purposes left unticked as declined
-// (ProviderOptionalConsents). First comes the ATS's own short notice (AssessmentConsentNotice), which must be read
-// before starting; its version and language travel with the launch, which records the acknowledgment.
+// template served by the API"), as a step-by-step guide: first the ATS's own notice (AssessmentConsentNotice), then each
+// purpose the provider still needs, required first, then the OPTIONAL ones (English speaking: voice, ai_scoring), then
+// "Empezar". Each step opens the provider's template in full, as served and as plain text, so the provider stays the
+// single source of the approved wording. "Aceptar y comenzar" stays disabled until the notice and every REQUIRED text
+// are ticked; nothing is pre-ticked; optional texts never block.
 export function ProviderAssessmentConsent({
   attemptId,
   busy,
@@ -42,73 +68,64 @@ export function ProviderAssessmentConsent({
   onCancel: () => void;
 }) {
   const { t, locale } = useI18n();
-  const { data, isLoading, isError } = useProviderConsentTemplates(attemptId, locale === 'EN' ? 'en' : 'es', true);
-  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
-  const [noticeRead, setNoticeRead] = useState(false);
+  const m = t.portalDashboard;
+  const { data, isLoading, isError, refetch } = useProviderConsentTemplates(
+    attemptId,
+    locale === 'EN' ? 'en' : 'es',
+    true,
+  );
 
-  if (isLoading) return <p className="text-[12px] text-muted mt-3">{t.portalDashboard.providerConsentLoading}</p>;
-  if (isError || !data || data.templates.length === 0) {
+  // Loading and failing sit where the guide will: under the test's head, past the same PCA divider.
+  if (isLoading)
     return (
-      <div className="mt-3">
-        <p role="alert" className="text-[12px] text-[#B42318]">
-          {t.portalDashboard.providerConsentError}
-        </p>
-        <button type="button" onClick={onCancel} className="mt-2 text-[12px] text-[#1F114C] underline">
-          {t.portalDashboard.providerCancel}
-        </button>
+      <div aria-busy="true" className={CONSENT_GUIDE_CLASSES}>
+        <span className="sr-only">{m.providerConsentLoading}</span>
+        <div aria-hidden="true" className={CONSENT_SKELETON_EYEBROW_CLASSES} />
+        <div aria-hidden="true" className={CONSENT_SKELETON_BAR_CLASSES} />
+        <div aria-hidden="true" className={CONSENT_SKELETON_TITLE_CLASSES} />
+        <div aria-hidden="true" className={CONSENT_SKELETON_ROW_CLASSES} />
+      </div>
+    );
+  if (isError || !data || data.templates.length === 0) {
+    // A network blip must not be a dead end: retry the read, or step back out.
+    return (
+      <div className={CONSENT_GUIDE_CLASSES}>
+        <EvalLoadError title={m.providerConsentError} onRetry={isError ? () => void refetch() : undefined} />
+        <EvalButton variant="ghost" className={CONSENT_ERROR_CANCEL_CLASSES} onClick={onCancel}>
+          {m.providerCancel}
+        </EvalButton>
       </div>
     );
   }
 
   const optional = new Set<string>(data.optionalPurposes);
-  const required = data.templates.filter((template) => !optional.has(template.purpose));
-  const offered = data.templates.filter((template) => optional.has(template.purpose));
-  const allAccepted = noticeRead && required.every((template) => accepted[template.purpose] === true);
-  const decide = (): ConsentDecision => ({
-    accepted: data.templates.filter((template) => accepted[template.purpose] === true).map(accept),
-    declined: offered.filter((template) => accepted[template.purpose] !== true).map((template) => template.purpose),
-    notice: atsNoticeAcknowledgment(locale),
-  });
-  const toggle = (purpose: string, value: boolean) => setAccepted((current) => ({ ...current, [purpose]: value }));
+  const step = (template: ConsentTemplate, isOptional: boolean): ConsentGuideItem => {
+    const title = template.title || m.providerConsentTitle;
+    return {
+      key: template.purpose,
+      stepLabel: title,
+      title,
+      line: isOptional ? m.providerGuideOptionalLine : m.providerGuideConsentLine,
+      checkboxLabel: isOptional ? m.providerOptionalAccept : m.providerConsentAccept,
+      checkedLabel: m.providerGuideAccepted,
+      optional: isOptional,
+      lang: template.locale,
+      fullText: <ProviderConsentText template={template} />,
+    };
+  };
+  const items: ConsentGuideItem[] = [
+    noticeGuideItem(t, notice),
+    ...data.templates.filter((template) => !optional.has(template.purpose)).map((template) => step(template, false)),
+    ...data.templates.filter((template) => optional.has(template.purpose)).map((template) => step(template, true)),
+  ];
   return (
-    <div className="mt-3 space-y-3" aria-label={t.portalDashboard.providerConsentTitle}>
-      <AssessmentConsentNotice
-        orgName={notice.orgName}
-        vacancyTitle={notice.vacancyTitle}
-        instruments={[notice.instrumentName]}
-      />
-      <label className="flex items-start gap-2 text-[12px] text-[#1F114C]">
-        <input type="checkbox" checked={noticeRead} onChange={(event) => setNoticeRead(event.target.checked)} />
-        <span>{t.assessmentConsentNotice.readAck}</span>
-      </label>
-      {required.map((template) => (
-        <ProviderConsentTemplateCard
-          key={template.purpose}
-          template={template}
-          checked={accepted[template.purpose] === true}
-          label={t.portalDashboard.providerConsentAccept}
-          onChange={(value) => toggle(template.purpose, value)}
-        />
-      ))}
-      <ProviderOptionalConsents templates={offered} accepted={accepted} onChange={toggle} />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!allAccepted || busy}
-          onClick={() => onAccept(decide())}
-          className="inline-flex h-9 items-center rounded-xl bg-[#1F114C] px-4 text-[12px] font-semibold text-white hover:bg-[#2a1a5e] transition disabled:opacity-50"
-        >
-          {busy ? t.portalDashboard.providerOpening : t.portalDashboard.providerAcceptAndStart}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="inline-flex h-9 items-center rounded-xl border border-[#EDEDED] px-4 text-[12px] font-medium text-[#1F114C]"
-        >
-          {t.portalDashboard.providerCancel}
-        </button>
-      </div>
-    </div>
+    <ProviderConsentGuide
+      items={items}
+      review
+      finishLabel={m.providerAcceptAndStart}
+      busy={busy}
+      onFinish={(checked) => onAccept(consentDecision(data.templates, data.optionalPurposes, checked, locale))}
+      onCancel={onCancel}
+    />
   );
 }

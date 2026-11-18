@@ -1,9 +1,11 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { CHOICE_INPUT_CLASSES } from '../../../../components';
 
-// One on/off setting, as a labelled switch: what it is, what happens when it is on, and (optionally) why it is
-// unavailable. The control is a native checkbox with role="switch", so keyboard, screen readers and forms just work.
+// One on/off setting of a saved form, as a checkbox row: what it is, what happens when it is on, and (optionally) why
+// it is unavailable. A checkbox, not a switch, because nothing applies until "Guardar cambios" (foundation §6,
+// toggles.md: a switch implies the change takes effect at once). The whole row is the label: a 44px target on touch.
 export function SettingSwitch({
   id,
   label,
@@ -22,36 +24,36 @@ export function SettingSwitch({
   children?: ReactNode;
 }) {
   const helpId = `${id}-help`;
+  const labelId = `${id}-label`;
   return (
-    <div className="py-4 border-b border-[#F3F3F3] last:border-0">
-      <div className="flex items-start justify-between gap-6">
-        <div className="min-w-0">
-          <label htmlFor={id} className={`text-sm font-medium ${disabled ? 'text-[#8B8B8B]' : 'text-[#1F114C]'}`}>
-            {label}
-          </label>
-          <p id={helpId} className="mt-1 text-[12px] leading-relaxed text-[#585858]">
-            {help}
-          </p>
-        </div>
-        <span className="relative inline-flex shrink-0 items-center">
-          <input
-            id={id}
-            type="checkbox"
-            role="switch"
-            aria-checked={checked}
-            aria-describedby={helpId}
-            checked={checked}
-            disabled={disabled}
-            onChange={(event) => onChange(event.target.checked)}
-            className="peer h-6 w-11 cursor-pointer appearance-none rounded-full bg-[#D9D9D9] transition-colors checked:bg-[#1F114C] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C] disabled:cursor-not-allowed disabled:opacity-50"
-          />
+    <div className="border-b border-border py-4 last:border-0">
+      <label
+        htmlFor={id}
+        className={`flex min-h-7 items-start gap-3 pointer-coarse:min-h-11 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+      >
+        <input
+          id={id}
+          type="checkbox"
+          aria-labelledby={labelId}
+          aria-describedby={helpId}
+          checked={checked}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.checked)}
+          className={`${CHOICE_INPUT_CLASSES} mt-0.5 disabled:cursor-not-allowed`}
+        />
+        <span className="min-w-0">
           <span
-            aria-hidden
-            className="pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5"
-          />
+            id={labelId}
+            className={`block text-subheading font-medium ${disabled ? 'text-secondary' : 'text-primary'}`}
+          >
+            {label}
+          </span>
+          <span id={helpId} className="mt-1 block text-callout leading-relaxed text-secondary">
+            {help}
+          </span>
         </span>
-      </div>
-      {children}
+      </label>
+      {children && <div className="pl-7">{children}</div>}
     </div>
   );
 }

@@ -106,6 +106,9 @@ test('HR assigns the vacancy tests after the consent notice, then reads each res
   await dialog.getByLabel('Extra time (accommodation)').selectOption('1.5');
   await dialog.getByRole('button', { name: 'Continue' }).click();
 
+  // Step 2 of 2: the notice as a consent-guide step; its full text opens in place, inside the same dialog.
+  await expect(dialog.getByTestId('consent-step')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Read the full text' }).click();
   const notice = dialog.getByTestId('assessment-consent-notice');
   await expect(notice).toContainText('TIMS Assessments');
   await expect(notice).toContainText('Acme Corp');
@@ -113,7 +116,8 @@ test('HR assigns the vacancy tests after the consent notice, then reads each res
   // Round 12: the final notice, with its version and no draft marker.
   await expect(notice).toContainText('Notice version: 2026-11-09-ats-notice-v1');
   await expect(notice).not.toContainText('DRAFT');
-  const assign = dialog.getByRole('button', { name: 'Assign', exact: true });
+  await dialog.getByRole('button', { name: 'Close the full text' }).click();
+  const assign = dialog.getByRole('button', { name: 'Assign 2 tests', exact: true });
   await expect(assign).toBeDisabled();
   await dialog.getByLabel('I have reviewed this notice.', { exact: false }).check();
   await assign.click();
@@ -128,7 +132,8 @@ test('HR assigns the vacancy tests after the consent notice, then reads each res
     aids: [],
   });
   await expect(card.getByTestId('provider-status-chip')).toHaveText(['Awaiting consent', 'Awaiting consent']);
-  await expect(card.getByText('Waiting for: assessment')).toHaveCount(2);
+  // The required consent is the chip's word; no separate "Waiting for: assessment" line repeats it.
+  await expect(card.getByText('Waiting for: assessment')).toHaveCount(0);
 
   // The provider publishes: a valid LIA result and an English result held for review.
   provider.publish('lia', { validity: 'valid', globalPercentile: 62, cefr: null });

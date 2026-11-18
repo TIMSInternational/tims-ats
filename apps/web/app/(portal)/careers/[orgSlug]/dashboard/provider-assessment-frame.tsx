@@ -1,18 +1,52 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useI18n } from '../../../../../lib/i18n';
+import { ExternalLink } from 'lucide-react';
+import { formatMessage, useI18n } from '../../../../../lib/i18n';
 import { frameMessages } from './provider-frame-messages';
+import { ProviderFrameBrand } from './provider-frame-brand';
+import { ProviderFrameLeave } from './provider-frame-leave';
+import {
+  FRAME_BODY_CLASSES,
+  FRAME_DIVIDER_CLASSES,
+  FRAME_DONE_CLASSES,
+  FRAME_DONE_FULL_CLASSES,
+  FRAME_DONE_SHORT_CLASSES,
+  FRAME_HEADER_CLASSES,
+  FRAME_HEADER_END_CLASSES,
+  FRAME_HEADER_START_CLASSES,
+  FRAME_IFRAME_CLASSES,
+  FRAME_LEAVE_CLASSES,
+  FRAME_LOADING_CLASSES,
+  FRAME_LOADING_SHEET_CLASSES,
+  FRAME_LOADING_TEXT_CLASSES,
+  FRAME_NEW_TAB_CLASSES,
+  FRAME_NEW_TAB_LABEL_CLASSES,
+  FRAME_ROOT_CLASSES,
+  FRAME_SPINNER_CLASSES,
+  FRAME_TITLE_CLASSES,
+} from './provider-frame-styles';
 
-// A TIMS test, framed full screen inside the portal (D16). Two kinds:
-//  - the TIMS hosted player (LIA, English, Personality): it draws timssuite.com's own test screens, so this frame adds
-//    only a slim bar with the test's name and a way out. When the sitting ends the player posts `sitting_ended` to this
-//    page (only to origins TIMS registered for the ATS); the frame then closes itself and the dashboard refreshes.
-//  - `sandboxed`: the PCA, answered on TIMS's own site (timshr.com), framed exactly as timssuite.com frames it: its
-//    header ("Análisis de Competencias Personales (PCA)" · "Completa el cuestionario a continuación"), scripts, forms and
-//    its own origin only, no camera or microphone. TIMS's page sends no message, so the dashboard polls for completion.
+// A TIMS test, framed full screen inside the portal (D16), under ONE bar for every test: the test's name and a way out.
+// Two kinds:
+//  - the TIMS hosted player (LIA, English, Personality): it draws timssuite.com's own test screens. When the sitting
+//    ends the player posts `sitting_ended` to this page (only to origins TIMS registered for the ATS); the frame then
+//    keeps the suite's receipt on screen and offers one way back.
+//  - `sandboxed`: the PCA, answered on TIMS's own site (timshr.com), framed as timssuite.com frames it: scripts, forms
+//    and its own origin only, no camera, microphone or pop-ups. TIMS's page sends no message, so the dashboard polls for
+//    completion (in a new tab too). Its bar adds "Abrir en una pestaña nueva", for a browser that will not show TIMS's
+//    page inside the frame.
+// The bar is the TIMS evaluation design's navy header, on the same navy page the test's own screens use, so frame and
+// test read as one screen with ONE header, as the PCA app has: the bar always carries the brand ("TIMS International" +
+// mark), the test's name and the way out. Inside this frame the hosted player draws no header of its own (tims-suite
+// HostedShell `embedded`: framed, with the `tims-ats` theme, by a registered origin): its sheet starts right under the
+// bar and its status (secure mode, time) sits at the top of the sheet. The sandboxed provider page has no TIMS header
+// either. Opened in a tab, the player keeps its own full header.
+// Until the framed page has loaded, the evaluation's white sheet with a spinner and a short description covers the frame
+// (loading.md › Best practices: "Show something as soon as possible").
 // Leaving a test in progress always asks first (Escape included): a sitting keeps its answers, but a timed section keeps
-// running on the server. The bar and the leave question speak the TEST's language (`locale`), not the portal's.
+// running on the server. While it asks, the bar and the test are inert behind the scrim. The bar and the leave question
+// speak the TEST's language (`locale`), not the portal's.
 export const PLAYER_MESSAGE_SOURCE = 'tims-hosted-player';
 
 export function isSittingEndedMessage(event: MessageEvent, playerOrigin: string | undefined): boolean {
@@ -55,13 +89,18 @@ export function ProviderAssessmentFrame({
   const leaveRef = useRef<HTMLButtonElement>(null);
   const stayRef = useRef<HTMLButtonElement>(null);
   const [confirming, setConfirming] = useState(false);
+  // The URL whose page has loaded (not a boolean: a new URL starts loading again).
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const loading = loadedUrl !== url;
 
   useEffect(() => {
     leaveRef.current?.focus();
   }, [finished]);
 
   useEffect(() => {
+    // Asking: staying is focused. Answered "stay" (or Escape): focus returns to the way out it came from.
     if (confirming) stayRef.current?.focus();
+    else leaveRef.current?.focus();
   }, [confirming]);
 
   useEffect(() => {
@@ -84,90 +123,75 @@ export function ProviderAssessmentFrame({
   }, [onFinished, onClose, playerOrigin, finished]);
 
   const m = frameMessages(locale, t.portalDashboard);
+  const title = name ?? m.providerFrameTitle;
   const leaveButton = finished ? (
     // The sitting is over and the suite's receipt is on screen: one clear way back, no question asked.
-    <button
-      ref={leaveRef}
-      type="button"
-      onClick={onClose}
-      className="inline-flex items-center min-h-11 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#150D33] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-    >
-      {m.providerFrameDone}
+    <button type="button" ref={leaveRef} className={FRAME_DONE_CLASSES} onClick={onClose}>
+      <span className={FRAME_DONE_FULL_CLASSES}>{m.providerFrameDone}</span>
+      <span aria-hidden="true" className={FRAME_DONE_SHORT_CLASSES}>
+        {m.providerFrameDoneShort}
+      </span>
     </button>
   ) : (
-    <button
-      ref={leaveRef}
-      type="button"
-      onClick={() => setConfirming(true)}
-      className="inline-flex items-center min-h-11 px-3 -mr-3 rounded-lg text-sm font-medium text-[#1F114C] hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-    >
+    <button type="button" ref={leaveRef} className={FRAME_LEAVE_CLASSES} onClick={() => setConfirming(true)}>
       {m.providerFrameLeave}
     </button>
   );
+  const asking = confirming && !finished;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={name ?? m.providerFrameTitle}
-      className="fixed inset-0 z-50 flex flex-col bg-gray-50"
-    >
-      {sandboxed ? (
-        // timssuite.com's PCA header (PCAEvaluation.tsx), plus the way out.
-        <div className="bg-white shadow-sm px-4 py-3 flex items-center justify-between gap-4">
-          <h1 className="text-lg font-semibold text-gray-900 truncate">{m.providerPcaFrameTitle}</h1>
-          <div className="flex items-center gap-4 shrink-0">
-            <p className="hidden sm:block text-sm text-gray-500">{m.providerPcaFrameHint}</p>
-            {leaveButton}
-          </div>
+    <div role="dialog" aria-modal="true" aria-label={title} className={FRAME_ROOT_CLASSES}>
+      <div className={FRAME_HEADER_CLASSES} inert={asking || undefined}>
+        <div className={FRAME_HEADER_START_CLASSES}>
+          <ProviderFrameBrand label={m.providerFrameBrand} />
+          <span aria-hidden="true" className={FRAME_DIVIDER_CLASSES} />
+          <p className={FRAME_TITLE_CLASSES}>{title}</p>
         </div>
-      ) : (
-        <div className="bg-white border-b border-gray-200 px-4 h-11 flex items-center justify-between gap-4">
-          <p className="min-w-0 truncate text-sm font-medium text-gray-900">{name ?? m.providerFrameTitle}</p>
+        <div className={FRAME_HEADER_END_CLASSES}>
+          {sandboxed && !finished && (
+            // Only the provider page: the hosted player's launch code is single-use (the frame has spent it) and its
+            // camera, microphone and full screen are granted to this frame. Below sm the label stays the accessible
+            // name and the familiar "open outside" symbol carries it (buttons.md › Content, toolbars.md › Phone).
+            <a href={url} target="_blank" rel="noopener noreferrer" className={FRAME_NEW_TAB_CLASSES}>
+              <ExternalLink aria-hidden="true" />
+              <span className={FRAME_NEW_TAB_LABEL_CLASSES}>{m.providerFrameNewTab}</span>
+            </a>
+          )}
           {leaveButton}
         </div>
-      )}
-      {confirming && !finished && (
-        <div
-          role="alertdialog"
-          aria-labelledby="provider-leave-title"
-          aria-describedby="provider-leave-body"
-          className="bg-white border-b border-gray-200 px-4 py-3 flex flex-wrap items-center gap-3"
-        >
-          <div className="min-w-0 flex-1">
-            <p id="provider-leave-title" className="text-sm font-semibold text-gray-900">
-              {m.providerLeaveTitle}
-            </p>
-            <p id="provider-leave-body" className="text-sm text-gray-600">
-              {m.providerLeaveBody}
-            </p>
+      </div>
+      <div className={FRAME_BODY_CLASSES} aria-busy={loading || undefined} inert={asking || undefined}>
+        <iframe
+          src={url}
+          title={title}
+          className={FRAME_IFRAME_CLASSES}
+          allow={sandboxed ? 'fullscreen' : 'camera; microphone; fullscreen; autoplay'}
+          sandbox={sandboxed ? 'allow-forms allow-scripts allow-same-origin' : undefined}
+          referrerPolicy={sandboxed ? 'strict-origin-when-cross-origin' : 'no-referrer'}
+          onLoad={() => setLoadedUrl(url)}
+        />
+        {loading && (
+          // Never catches a click meant for the page underneath; gone at the frame's first load event.
+          <div role="status" className={FRAME_LOADING_CLASSES}>
+            <div className={FRAME_LOADING_SHEET_CLASSES}>
+              <span aria-hidden="true" className={FRAME_SPINNER_CLASSES} />
+              <p className={FRAME_LOADING_TEXT_CLASSES}>{formatMessage(m.providerFrameOpening, { name: title })}</p>
+            </div>
           </div>
-          <button
-            ref={stayRef}
-            type="button"
-            onClick={() => setConfirming(false)}
-            className="inline-flex items-center justify-center min-h-11 px-4 rounded-lg bg-[#1F114C] text-white text-sm font-medium hover:bg-[#150D33] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-          >
-            {m.providerLeaveStay}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center justify-center min-h-11 px-4 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F114C]"
-          >
-            {m.providerLeaveConfirm}
-          </button>
-        </div>
+        )}
+      </div>
+      {asking && (
+        <ProviderFrameLeave
+          eyebrow={m.providerLeaveEyebrow}
+          title={m.providerLeaveTitle}
+          body={m.providerLeaveBody}
+          confirmLabel={m.providerLeaveConfirm}
+          stayLabel={m.providerLeaveStay}
+          stayRef={stayRef}
+          onConfirm={onClose}
+          onStay={() => setConfirming(false)}
+        />
       )}
-      <iframe
-        src={url}
-        title={name ?? m.providerFrameTitle}
-        className="flex-1 w-full border-0"
-        allow={sandboxed ? 'fullscreen' : 'camera; microphone; fullscreen; autoplay'}
-        sandbox={sandboxed ? 'allow-forms allow-scripts allow-same-origin' : undefined}
-        referrerPolicy={sandboxed ? 'strict-origin-when-cross-origin' : 'no-referrer'}
-      />
     </div>
   );
 }
-

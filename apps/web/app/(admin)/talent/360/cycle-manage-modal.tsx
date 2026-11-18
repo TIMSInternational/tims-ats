@@ -1,6 +1,7 @@
 'use client';
 
-import { useI18n } from '../../../../lib/i18n';
+import { useState } from 'react';
+import { useI18n, formatMessage } from '../../../../lib/i18n';
 import { Modal } from '../../../../components';
 import { AssignRatersForm } from './assign-raters-form';
 import { CycleProgressPanel } from './cycle-progress-panel';
@@ -12,15 +13,21 @@ interface CycleManageModalProps {
 }
 
 /** Wraps assign-raters + progress for ONE cycle behind a Modal, opened from
- * CycleRow's "Manage" button. */
+ * the row's "Gestionar evaluadores…" button. Unsaved rater rows ask before closing. */
 export function CycleManageModal({ cycleId, cycleName, onClose }: CycleManageModalProps) {
   const { t } = useI18n();
+  const [dirty, setDirty] = useState(false);
 
   return (
-    <Modal title={`${t.evaluation360.pageTitle} — ${cycleName}`} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal
+      title={formatMessage(t.evaluation360.manageModalTitle, { cycle: cycleName })}
+      onClose={onClose}
+      size="lg"
+      dirty={dirty}
+    >
       <div className="space-y-6">
-        <AssignRatersForm cycleId={cycleId} />
-        <div className="pt-4 border-t border-[#EDEDED]">
+        <AssignRatersForm cycleId={cycleId} onDirtyChange={setDirty} />
+        <div className="pt-4 border-t border-border">
           <CycleProgressPanel cycleId={cycleId} />
         </div>
       </div>

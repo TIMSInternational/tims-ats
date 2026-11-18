@@ -19,7 +19,11 @@ const m = vi.hoisted(() => ({
 }));
 const ok = (data: unknown) => ({ data, isLoading: false, isError: false, error: null, refetch: vi.fn() });
 
-vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: es, locale: 'ES' }) }));
+// The pure message helpers (formatMessage, pluralize) stay real; only the locale hook is fixed.
+vi.mock('../../apps/web/lib/i18n', async () => ({
+  ...(await vi.importActual<typeof import('../../apps/web/lib/i18n/format')>('../../apps/web/lib/i18n/format')),
+  useI18n: () => ({ t: es, locale: 'ES' }),
+}));
 vi.mock('../../apps/web/lib/toast', () => ({ toast: vi.fn() }));
 vi.mock('../../apps/web/lib/permissions', () => ({
   usePermissions: () => ({ can: (mod: string, action = 'read') => m.grants.has(`${mod}:${action}`), userId: 'me' }),
@@ -98,9 +102,12 @@ describe('wizard — Competencias del puesto', () => {
   it('adds from the catalog and custom, sets levels, reorders, removes — and sends them in that order', () => {
     const onConfirm = renderWizardAtStep2();
     const s = section();
+    // Choosing in the catalogue select only picks; "Agregar" adds (arrowing through the select never adds).
     fireEvent.change(within(s).getByLabelText(v.competencyCatalogLabel), {
       target: { value: 'builtin:communication' },
     });
+    expect(within(s).queryAllByLabelText(v.competencyNameLabel)).toHaveLength(0);
+    fireEvent.click(within(s).getByRole('button', { name: v.competencyCatalogAdd }));
     fireEvent.click(within(s).getByRole('button', { name: v.competencyAddCustom }));
     // A blank custom row must be named (or removed) before moving on.
     expect(nextButton()).toBeDisabled();
@@ -110,6 +117,7 @@ describe('wizard — Competencias del puesto', () => {
     fireEvent.change(within(s).getByLabelText(`${v.competencyLevelLabel}: Negociación`), { target: { value: '5' } });
     fireEvent.click(within(s).getByRole('button', { name: v.competencyMoveUp.replace('{name}', 'Negociación') }));
     fireEvent.change(within(s).getByLabelText(v.competencyCatalogLabel), { target: { value: 'builtin:integrity' } });
+    fireEvent.click(within(s).getByRole('button', { name: v.competencyCatalogAdd }));
     fireEvent.click(
       within(s).getByRole('button', { name: v.competencyRemove.replace('{name}', v.competencyCatalog.integrity.name) }),
     );
@@ -171,7 +179,9 @@ describe('wizard — Competencias del puesto', () => {
         .map((i) => (i as HTMLInputElement).value),
     ).toEqual(['Excel']);
     fireEvent.click(
-      within(s).getByRole('button', { name: v.competencySuggestionAddNamed.replace('{name}', 'Orientación al cliente') }),
+      within(s).getByRole('button', {
+        name: v.competencySuggestionAddNamed.replace('{name}', 'Orientación al cliente'),
+      }),
     );
     finish();
     expect(

@@ -3,113 +3,184 @@
 import { useState } from 'react';
 import { trpc } from '../../../../lib/trpc';
 import { toast } from '../../../../lib/toast';
-import { useI18n } from '../../../../lib/i18n';
-import { ErrorState, Modal } from '../../../../components';
+import { formatMessage, useI18n } from '../../../../lib/i18n';
+import {
+  Button,
+  ConfirmDialog,
+  ErrorState,
+  Field,
+  FIELD_LABEL_CLASSES,
+  Select,
+  TextArea,
+  TextInput,
+} from '../../../../components';
+import { EmailActionForm } from './email-action-form';
+
+type NotifType = 'info' | 'warning' | 'critical' | 'success';
 
 export function QuickActions() {
   const { t } = useI18n();
-  const [resetEmail, setResetEmail] = useState('');
-  const [logoutEmail, setLogoutEmail] = useState('');
+  const sp = t.support;
   const [notifOrgId, setNotifOrgId] = useState('');
   const [notifTitle, setNotifTitle] = useState('');
   const [notifMessage, setNotifMessage] = useState('');
-  const [notifType, setNotifType] = useState<'info' | 'warning' | 'critical' | 'success'>('info');
+  const [notifType, setNotifType] = useState<NotifType>('info');
   const [confirmNotif, setConfirmNotif] = useState(false);
 
-  const { data: orgs, isError: orgsError, refetch: refetchOrgs } = trpc.platform.listOrganizationsMinimal.useQuery();
+  const {
+    data: orgs,
+    isError: orgsError,
+    error: orgsLoadError,
+    refetch: refetchOrgs,
+  } = trpc.platform.listOrganizationsMinimal.useQuery();
 
   const resetMutation = trpc.platform.resetUserPassword.useMutation({
-    onSuccess: (data) => { toast(`Reset enviado a ${data.email}`, { type: 'success' }); setResetEmail(''); },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onSuccess: (data) => {
+      toast(formatMessage(sp.resetSent, { email: data.email }), { type: 'success' });
+    },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+    },
   });
 
   const logoutMutation = trpc.platform.forceLogoutUser.useMutation({
-    onSuccess: (data) => { toast(`${t.support.forceLogoutDone}: ${data.email}`, { type: 'success' }); setLogoutEmail(''); },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onSuccess: (data) => {
+      toast(`${sp.forceLogoutDone}: ${data.email}`, { type: 'success' });
+    },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+    },
   });
 
   const notifMutation = trpc.platform.sendBulkNotification.useMutation({
-    onSuccess: (data) => { toast(`${t.support.sendNotification}: ${data.sent}`, { type: 'success' }); setConfirmNotif(false); setNotifTitle(''); setNotifMessage(''); setNotifOrgId(''); setNotifType('info'); },
-    onError: (err) => { toast(err.message, { type: 'error' }); },
+    onSuccess: (data) => {
+      toast(formatMessage(sp.notifSent, { count: data.sent }), { type: 'success' });
+      setConfirmNotif(false);
+      setNotifTitle('');
+      setNotifMessage('');
+      setNotifOrgId('');
+      setNotifType('info');
+    },
+    onError: (err) => {
+      toast(err.message, { type: 'error' });
+    },
   });
 
   // "Todas las organizaciones" is the default recipient, so every send is confirmed with its audience (D-14).
   const notifOrgName = orgs?.find((o) => o.id === notifOrgId)?.name;
-  const notifAudience = notifOrgId && notifOrgName ? t.support.notifConfirmOrg.replace('{org}', notifOrgName) : t.support.notifConfirmAll;
+  const notifAudience =
+    notifOrgId && notifOrgName ? sp.notifConfirmOrg.replace('{org}', notifOrgName) : sp.notifConfirmAll;
 
   return (
-    <div className="bg-white rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] p-5">
-      <h3 className="text-sm font-semibold text-[#333] mb-4 flex items-center gap-2">
-        <svg className="w-4 h-4 text-[#1F114C]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
-        {t.support.quickActions}
-      </h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Reset Password */}
-        <form onSubmit={(e) => { e.preventDefault(); const em = resetEmail.trim(); if (em && em.includes('@')) resetMutation.mutate({ email: em }); }} className="border border-[#EDEDED] rounded-lg p-4">
-          <label className="text-xs text-[#8B8B8B] font-medium mb-2 block">{t.support.resetPassword}</label>
-          <div className="flex gap-2">
-            <input type="email" placeholder={t.support.resetPlaceholder} value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} className="flex-1 border border-[#EDEDED] rounded-lg px-3 py-2 text-sm placeholder:text-[#ABABAB] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20" />
-            <button type="submit" disabled={resetMutation.isPending || !resetEmail.trim()} className="px-3 py-2 bg-[#1F114C] text-white rounded-lg text-sm font-medium hover:bg-[#2a1866] whitespace-nowrap disabled:opacity-50">
-              {resetMutation.isPending ? '...' : t.support.sendReset}
-            </button>
-          </div>
-          <p className="text-[11px] text-[#ABABAB] mt-2">{t.support.resetDesc}</p>
-        </form>
+    <section aria-labelledby="quick-actions-title" className="rounded-xl bg-white p-5 shadow-card">
+      <h2 id="quick-actions-title" className="mb-4 text-heading font-semibold text-brand">
+        {sp.quickActions}
+      </h2>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <EmailActionForm
+          label={sp.resetPassword}
+          help={sp.resetDesc}
+          placeholder={sp.resetPlaceholder}
+          submitLabel={sp.sendReset}
+          isPending={resetMutation.isPending}
+          onSubmit={(email, done) => resetMutation.mutate({ email }, { onSuccess: done })}
+        />
+        <EmailActionForm
+          label={sp.forceLogout}
+          help={sp.forceLogoutDesc}
+          placeholder={sp.forceLogoutPlaceholder}
+          submitLabel={sp.forceLogoutBtn}
+          destructive
+          isPending={logoutMutation.isPending}
+          onSubmit={(email, done) => logoutMutation.mutate({ email }, { onSuccess: done })}
+        />
 
-        {/* Force Logout — revoke all of a user's sessions */}
-        <form onSubmit={(e) => { e.preventDefault(); const em = logoutEmail.trim(); if (em && em.includes('@')) logoutMutation.mutate({ email: em }); }} className="border border-[#EDEDED] rounded-lg p-4">
-          <label className="text-xs text-[#8B8B8B] font-medium mb-2 block">{t.support.forceLogout}</label>
-          <div className="flex gap-2">
-            <input type="email" placeholder={t.support.forceLogoutPlaceholder} value={logoutEmail} onChange={(e) => setLogoutEmail(e.target.value)} className="flex-1 border border-[#EDEDED] rounded-lg px-3 py-2 text-sm placeholder:text-[#ABABAB] focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20" />
-            <button type="submit" disabled={logoutMutation.isPending || !logoutEmail.trim()} className="px-3 py-2 bg-[#DD0C15] text-white rounded-lg text-sm font-medium hover:bg-[#c40b13] whitespace-nowrap disabled:opacity-50">
-              {logoutMutation.isPending ? '...' : t.support.forceLogoutBtn}
-            </button>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (notifTitle.trim() && notifMessage.trim()) setConfirmNotif(true);
+          }}
+          className="space-y-3 rounded-lg border border-border p-4 md:col-span-2"
+        >
+          <h3 className="text-subheading font-semibold text-primary">{sp.sendNotification}</h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {orgsError ? (
+              <div>
+                <p className={FIELD_LABEL_CLASSES}>{sp.notifRecipients}</p>
+                <ErrorState
+                  size="inline"
+                  onRetry={() => refetchOrgs()}
+                  error={orgsLoadError}
+                  message={sp.orgsLoadError}
+                />
+              </div>
+            ) : (
+              <Field label={sp.notifRecipients}>
+                <Select value={notifOrgId} onChange={(e) => setNotifOrgId(e.target.value)}>
+                  <option value="">{sp.allOrgs}</option>
+                  {orgs?.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            <Field label={sp.notifTypeLabel}>
+              <Select value={notifType} onChange={(e) => setNotifType(e.target.value as NotifType)}>
+                <option value="info">{sp.typeInfo}</option>
+                <option value="warning">{sp.typeWarning}</option>
+                <option value="critical">{sp.typeCritical}</option>
+                <option value="success">{sp.typeSuccess}</option>
+              </Select>
+            </Field>
           </div>
-          <p className="text-[11px] text-[#ABABAB] mt-2">{t.support.forceLogoutDesc}</p>
-        </form>
-
-        {/* Send Notification */}
-        <form onSubmit={(e) => { e.preventDefault(); if (notifTitle.trim() && notifMessage.trim()) setConfirmNotif(true); }} className="border border-[#EDEDED] rounded-lg p-4">
-          <label className="text-xs text-[#8B8B8B] font-medium mb-2 block">{t.support.sendNotification}</label>
-          {orgsError ? (
-            <ErrorState onRetry={() => refetchOrgs()} />
-          ) : (
-            <select aria-label={t.support.notifRecipients} value={notifOrgId} onChange={(e) => setNotifOrgId(e.target.value)} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-[#585858] bg-white mb-2 focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20">
-              <option value="">{t.support.allOrgs}</option>
-              {orgs?.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
-            </select>
-          )}
-          <select aria-label={t.support.notifTypeLabel} value={notifType} onChange={(e) => setNotifType(e.target.value as typeof notifType)} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2 text-sm text-[#585858] bg-white mb-2 focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20">
-            <option value="info">{t.support.typeInfo}</option>
-            <option value="warning">{t.support.typeWarning}</option>
-            <option value="critical">{t.support.typeCritical}</option>
-            <option value="success">{t.support.typeSuccess}</option>
-          </select>
-          <input type="text" aria-label={t.support.notifTitle} placeholder={t.support.notifTitle} value={notifTitle} onChange={(e) => setNotifTitle(e.target.value)} maxLength={200} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2 text-sm placeholder:text-[#ABABAB] mb-2 focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20" />
-          <textarea aria-label={t.support.notifMessage} placeholder={t.support.notifMessage} rows={3} value={notifMessage} onChange={(e) => setNotifMessage(e.target.value)} maxLength={1000} className="w-full border border-[#EDEDED] rounded-lg px-3 py-2 text-sm placeholder:text-[#ABABAB] resize-none mb-2 focus:outline-none focus:ring-1 focus:ring-[#1F114C]/20" />
-          <button type="submit" disabled={notifMutation.isPending || !notifTitle.trim() || !notifMessage.trim()} className="w-full px-3 py-2 bg-[#1F114C] text-white rounded-lg text-sm font-medium hover:bg-[#2a1866] flex items-center justify-center gap-2 disabled:opacity-50">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
-            {notifMutation.isPending ? t.support.sending : t.support.sendNotification}
-          </button>
+          <Field label={sp.notifTitle}>
+            <TextInput value={notifTitle} onChange={(e) => setNotifTitle(e.target.value)} maxLength={200} />
+          </Field>
+          <Field label={sp.notifMessageLabel}>
+            <TextArea
+              placeholder={sp.notifMessage}
+              rows={3}
+              value={notifMessage}
+              onChange={(e) => setNotifMessage(e.target.value)}
+              maxLength={1000}
+              className="resize-none"
+            />
+          </Field>
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={!notifTitle.trim() || !notifMessage.trim()}
+              loading={notifMutation.isPending}
+              loadingLabel={sp.sending}
+              className="w-full sm:w-auto"
+            >
+              {sp.sendNotification}
+            </Button>
+          </div>
         </form>
       </div>
       {confirmNotif && (
-        <Modal title={t.support.notifConfirmTitle} onClose={() => setConfirmNotif(false)} maxWidth="max-w-sm">
-          <p className="text-sm font-medium text-[#333] mb-1">{notifTitle.trim()}</p>
-          <p className="text-sm text-[#585858] mb-4">{notifAudience}</p>
-          <div className="flex gap-3">
-            <button type="button" onClick={() => setConfirmNotif(false)} className="flex-1 h-9 rounded-lg border border-[#EDEDED] text-sm font-medium text-[#585858] hover:bg-[#F6F6F6] transition">{t.common.cancel}</button>
-            <button
-              type="button"
-              disabled={notifMutation.isPending}
-              onClick={() => notifMutation.mutate({ organizationId: notifOrgId || undefined, title: notifTitle.trim(), message: notifMessage.trim(), type: notifType })}
-              className="flex-1 h-9 rounded-lg bg-[#1F114C] text-sm text-white font-medium hover:bg-[#2a1866] transition disabled:opacity-50"
-            >
-              {notifMutation.isPending ? t.support.sending : t.support.notifConfirmSend}
-            </button>
-          </div>
-        </Modal>
+        <ConfirmDialog
+          title={sp.notifConfirmTitle}
+          description={notifAudience}
+          confirmLabel={sp.notifConfirmSend}
+          confirmingLabel={sp.sending}
+          loading={notifMutation.isPending}
+          onConfirm={() =>
+            notifMutation.mutate({
+              organizationId: notifOrgId || undefined,
+              title: notifTitle.trim(),
+              message: notifMessage.trim(),
+              type: notifType,
+            })
+          }
+          onCancel={() => setConfirmNotif(false)}
+        >
+          <p className="text-body font-medium text-primary">{notifTitle.trim()}</p>
+        </ConfirmDialog>
       )}
-    </div>
+    </section>
   );
 }
