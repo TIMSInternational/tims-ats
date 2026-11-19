@@ -43,15 +43,17 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const can = useCan();
   const searchParams = useSearchParams();
   // The open tab lives in the URL (?tab=), so a refresh or Back keeps it (journeys-27).
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    () => readTabParam(searchParams?.get('tab'), isPilotScope()) ?? 'tabProfile',
+  // The Assessments tab is accepted here and dropped below when it is not offered (the pilot scope keeps it only for an
+  // organization bound to TIMS Assessments, which is known once the provider catalog has answered).
+  const [requestedTab, setRequestedTab] = useState<TabKey>(
+    () => readTabParam(searchParams?.get('tab'), false) ?? 'tabProfile',
   );
   // ?schedule=<applicationId> (the "Programar la entrevista" step after a move) opens the prefilled form (A-10).
   const [scheduleFor, setScheduleFor] = useState<string | null>(() => searchParams?.get(SCHEDULE_QUERY_PARAM) ?? null);
   // Bumped after scheduling: remounts the interviews tab, which refetches on mount.
   const [interviewsVersion, setInterviewsVersion] = useState(0);
   const selectTab = (tab: TabKey) => {
-    setActiveTab(tab);
+    setRequestedTab(tab);
     replaceQuery({ tab: tab === 'tabProfile' ? null : tab });
   };
   const closeSchedule = () => {
@@ -234,6 +236,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
   // After the tab switch on purpose: the tab keys' first mention order is pinned (candidate-detail-tabs test).
   const openAssessmentsTab = () => selectTab('tabAssessments');
+  const activeTab: TabKey = requestedTab === 'tabAssessments' && !showProvider ? 'tabProfile' : requestedTab;
   const openTimelineTab = () => selectTab('tabTimeline');
   const visibleTabs = visibleCandidateTabs(!showProvider).map((tab) => ({
     id: tab,

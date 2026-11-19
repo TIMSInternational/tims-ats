@@ -3,15 +3,15 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { TABS, visibleCandidateTabs } from '../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-tabs';
 
-// Codex P2 on #398: under the pilot launch scope, Candidate 360 must not offer assessment assignment (the
-// candidate portal no longer lists assessments, so an assignment would be unreachable for the candidate).
+// Codex P2 on #398: under the pilot launch scope, Candidate 360 must not offer the company's own quizzes (the candidate
+// portal does not list them, so an assignment would be unreachable for the candidate).
 
 // A bound organization keeps TIMS Assessments under the pilot scope (the catalog's `connected`): only the TIMS assign
 // action and the Assessments tab come back, never the company's own quizzes.
 
 const { stub, provider } = vi.hoisted(() => ({
   stub: (name: string) => ({ [name]: () => null }),
-  provider: { staffEnabled: false, connected: undefined as boolean | undefined },
+  provider: { staffEnabled: false, connected: undefined as boolean | undefined, tab: null as string | null },
 }));
 vi.mock('../../apps/web/lib/platform-api/assessment-providers-staff', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../apps/web/lib/platform-api/assessment-providers-staff')>()),
@@ -28,6 +28,9 @@ vi.mock('../../apps/web/lib/platform-api/fit-engine', async (importOriginal) => 
   isFitEngineV2Enabled: () => provider.staffEnabled,
 }));
 vi.mock('../../apps/web/lib/permissions', () => ({ useCan: () => () => true }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(provider.tab ? { tab: provider.tab } : {}),
+}));
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/provider-assessments-card', () =>
   stub('ProviderAssessmentsCard'),
 );
@@ -105,6 +108,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   provider.staffEnabled = false;
   provider.connected = undefined;
+  provider.tab = null;
 });
 
 async function renderPage() {
@@ -151,6 +155,21 @@ describe('Candidate 360 assessments under the pilot scope', () => {
     expect(screen.queryByText(en.assessments.assignAssessment)).toBeNull();
     expect(screen.queryByText(`${en.assessments.assignOwnQuiz}…`)).toBeNull();
     expect(screen.queryByTestId('AssessmentResults')).toBeNull();
+  });
+
+  it('pilot: a ?tab=tabAssessments link opens the tab for a bound organization and falls back to the profile otherwise', async () => {
+    vi.stubEnv('NEXT_PUBLIC_LAUNCH_SCOPE', 'pilot');
+    provider.staffEnabled = true;
+    provider.tab = 'tabAssessments';
+    provider.connected = true;
+    await renderPage();
+    expect(screen.getByRole('tab', { name: en.candidates.tabAssessments })).toHaveAttribute('aria-selected', 'true');
+    cleanup();
+
+    provider.connected = false;
+    await renderPage();
+    expect(screen.queryByRole('tab', { name: en.candidates.tabAssessments })).toBeNull();
+    expect(screen.getByRole('tab', { name: en.candidates.tabProfile })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('full scope: the assign button and assessments tab are still there', async () => {
