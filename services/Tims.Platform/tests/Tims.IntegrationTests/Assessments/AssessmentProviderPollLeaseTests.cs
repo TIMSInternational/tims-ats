@@ -162,6 +162,72 @@ public sealed class AssessmentProviderPollLeaseTests(AssessmentProviderSchemaFix
         }
     }
 
+    private async Task<PolledAttempt?> PortalClaimAsync(Guid org, Guid attempt, Guid owner)
+    {
+        await using var db = fixture.NewContext();
+        return await new AssessmentProviderRepository(db).ClaimAttemptForPortalRefreshAsync(org, attempt, owner, CancellationToken.None);
+    }
+
+    // The portal's fast path for a link-out completion (2026-11-19): a fresh sitting is claimable at once (the poller's
+    // staleness does not apply), but only one holder at a time, and once released not again within the interval.
+    [Fact]
+    public async Task A_portal_refresh_claims_a_fresh_sitting_once_shares_the_pollers_lease_and_is_rate_limited()
+    {
+        var org = await OrgAsync();
+        var attempt = await AttemptAsync(org, "in_progress", "1 second");
+        var tenant = (Guid)(await fixture.ScalarAsync($"SELECT provider_tenant_id FROM assessment_provider_bindings WHERE id = '{org}'"))!;
+        var (portal, other) = (Guid.NewGuid(), Guid.NewGuid());
+
+        var claimed = await PortalClaimAsync(org, attempt, portal);
+
+        Assert.Equal((attempt, tenant), (claimed!.Attempt.Id, claimed.ProviderTenantId));
+        Assert.StartsWith(portal.ToString(), await LeaseAsync(attempt), StringComparison.Ordinal);
+        Assert.Null(await PortalClaimAsync(org, attempt, other)); // held: another instance skips it
+        await ReleaseAsync(org, attempt, portal);
+        Assert.Equal("-|true", await LeaseAsync(attempt));
+        Assert.Null(await PortalClaimAsync(org, attempt, other)); // just polled: rate-limited
+
+        await fixture.ExecuteAsync(
+            $"UPDATE assessment_provider_attempts SET last_polled_at = now() - interval '11 seconds' WHERE id = '{attempt}'");
+        Assert.NotNull(await PortalClaimAsync(org, attempt, other)); // past the interval
+    }
+
+    [Fact]
+    public async Task A_portal_refresh_never_claims_an_attempt_the_poller_holds()
+    {
+        var org = await OrgAsync();
+        var attempt = await AttemptAsync(org, "launched", "1 hour");
+        Assert.Equal([attempt], await ClaimAsync(org, Guid.NewGuid()));
+
+        Assert.Null(await PortalClaimAsync(org, attempt, Guid.NewGuid()));
+    }
+
+    [Theory]
+    [InlineData("created", "", "")]                                                     // never opened
+    [InlineData("completed", "", "")]                                                   // already reads completed
+    [InlineData("in_progress", ", withdrawal_state", ", 'pending'")]                   // the #312 cascade owns it
+    [InlineData("in_progress", ", provider_erasure_requested_at", ", now()")]          // erasure requested
+    [InlineData("in_progress", ", last_error_code", ", 'provider_cancel_pending'")]    // orphan cleanup
+    public async Task A_portal_refresh_claims_only_a_mapped_sitting_outside_every_other_workflow(
+        string state, string extra, string extraValues)
+    {
+        var org = await OrgAsync();
+        var attempt = await AttemptAsync(org, state, "1 hour", extra, extraValues);
+
+        Assert.Null(await PortalClaimAsync(org, attempt, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task A_portal_refresh_claim_is_tenant_scoped()
+    {
+        var org = await OrgAsync();
+        var otherOrg = await OrgAsync();
+        var theirs = await AttemptAsync(otherOrg);
+
+        Assert.Null(await PortalClaimAsync(org, theirs, Guid.NewGuid()));
+        Assert.Equal("-|false", await LeaseAsync(theirs));
+    }
+
     [Fact]
     public async Task A_claim_is_tenant_scoped_and_returns_the_bindings_provider_tenant()
     {

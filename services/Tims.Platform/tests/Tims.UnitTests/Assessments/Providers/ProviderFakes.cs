@@ -797,12 +797,20 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public List<(string State, string? Cause)> Advances { get; } = [];
 
+    /// <summary>When set, an advance also moves the stored attempt (so a later read sees the new state).</summary>
+    public bool ApplyAdvances { get; set; }
+
     public Task<bool> AdvanceAttemptAsync(
         Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now, CancellationToken cancellationToken,
         string? cause = null)
     {
         Writes.Add("advance:" + toState);
         Advances.Add((toState, cause));
+        if (ApplyAdvances)
+        {
+            Replace(attemptId, a => a with { State = toState });
+        }
+
         return Task.FromResult(true);
     }
 
@@ -1389,10 +1397,63 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         {
             Leases.Remove(attemptId);
             Released.Add((attemptId, owner));
+            LastPolledAt[attemptId] = DbNow;
             Writes.Add("released");
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// <c>last_polled_at</c> per attempt: stamped with <see cref="DbNow"/> by a lease release, like the real
+    /// <c>ReleasePollLeaseAsync</c>; a test may also seed it. The portal claim's rate limit reads it against
+    /// <see cref="DbNow"/>, so advancing that clock moves an attempt out of the window.
+    /// </summary>
+    public Dictionary<Guid, DateTimeOffset> LastPolledAt { get; } = [];
+
+    /// <summary>Every portal refresh claim asked for, claimed or not.</summary>
+    public List<Guid> PortalRefreshClaims { get; } = [];
+
+    /// <summary>When set, the portal refresh claim throws (a database failure).</summary>
+    public bool PortalRefreshClaimThrows { get; set; }
+
+    /// <summary>
+    /// When set, the portal refresh claim takes the lease and THEN throws (its commit landed, but the caller saw a
+    /// cancellation or a lost connection).
+    /// </summary>
+    public bool PortalRefreshClaimCommitsThenThrows { get; set; }
+
+    /// <summary>
+    /// Mirrors the real predicate: mapped, outside every other workflow (#312 cascade, erasure requested, orphan cleanup),
+    /// sitting, lease free, and <c>last_polled_at</c> strictly older than the interval by the database clock.
+    /// </summary>
+    public Task<PolledAttempt?> ClaimAttemptForPortalRefreshAsync(
+        Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken)
+    {
+        PortalRefreshClaims.Add(attemptId);
+        if (PortalRefreshClaimThrows)
+        {
+            throw new InvalidOperationException("claim failed");
+        }
+
+        var attempt = Attempts.FirstOrDefault(a => a.OrganizationId == organizationId && a.Id == attemptId);
+        if (attempt is null || attempt.ProviderAssignmentId is null || attempt.WithdrawalState is not null
+            || attempt.ErasureRequestedAt is not null || attempt.LastErrorCode == ProviderCleanup.CancelPending
+            || !ProviderAttemptPolling.PortalRefreshStates.Contains(attempt.State)
+            || Leases.ContainsKey(attemptId)
+            || (LastPolledAt.TryGetValue(attemptId, out var polledAt)
+                && polledAt >= DbNow - ProviderAttemptPolling.PortalRefreshInterval))
+        {
+            return Task.FromResult<PolledAttempt?>(null);
+        }
+
+        Leases[attemptId] = owner;
+        if (PortalRefreshClaimCommitsThenThrows)
+        {
+            throw new OperationCanceledException("cancelled during the claim's commit");
+        }
+
+        return Task.FromResult<PolledAttempt?>(new PolledAttempt(attempt, Binding?.ProviderTenantId ?? Guid.Empty));
     }
 
     public Task SetMissingConsentsAsync(

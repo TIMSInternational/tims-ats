@@ -80,7 +80,10 @@ public sealed class ProviderPortalUseCaseTests
         Assert.Equal((ProviderPortalStatuses.InProgress, "link_out"), (second.Status, second.Delivery));
         Assert.Empty(second.MissingConsents);
         Assert.Equal("es", second.Locale);
-        Assert.Empty(_provider.Calls); // listing never calls the provider
+        // The native attempt is never read from the provider; the in-progress PCA sitting is refreshed (once, nothing
+        // changed: the fake's default answer is a definitive 404 on an active subject).
+        Assert.Equal([second.AttemptId], _repository.PortalRefreshClaims);
+        Assert.Equal(1, _provider.Calls.Count(c => c == "get_assignment"));
     }
 
     [Fact]
