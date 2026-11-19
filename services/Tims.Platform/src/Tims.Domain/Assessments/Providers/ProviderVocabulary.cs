@@ -293,13 +293,17 @@ public static class ProviderAttemptPolling
         [ProviderAttemptStates.Launched, ProviderAttemptStates.InProgress];
 
     /// <summary>
-    /// The portal refreshes one attempt at most this often (by <c>last_polled_at</c>, the database clock). Below the
-    /// portal's own 15-second frame poll (<c>PCA_POLL_MS</c>), so each of its list calls normally refreshes: the stamp
-    /// lands a moment AFTER the previous list started, and an interval equal to the poll would skip every other call.
-    /// The provider limits its own probe of the survey further (once per 30 s per assignment), so this only bounds what
-    /// the ATS sends it.
+    /// The portal refreshes one attempt at most this often, judged by <c>last_polled_at</c> (the database clock), which
+    /// the shared lease RELEASE stamps, i.e. when the previous refresh ENDED, not when it started. The portal's frame
+    /// poll (<c>PCA_POLL_MS</c>, 15 s) is a fixed-rate interval, so the next list starts 15 s after the previous one
+    /// STARTED; a refresh can end as late as the 5-second budget plus a 1-second release after that start, which leaves
+    /// a gap of at least ~9 s. 8 s stays below it, so every frame poll refreshes even when the previous refresh ran into
+    /// its budget (at 10 s, every refresh slower than ~5 s made the next poll skip, i.e. a 30 s cadence exactly when the
+    /// provider was slow). Comparing against the claim time instead would need a second column or a change to the
+    /// release the D17 poller shares, for no gain over this constant. The provider limits its own probe of the survey
+    /// further (once per 30 s per assignment), so this only bounds what the ATS sends it.
     /// </summary>
-    public static readonly TimeSpan PortalRefreshInterval = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan PortalRefreshInterval = TimeSpan.FromSeconds(8);
 
     /// <summary>
     /// The lease a portal refresh holds on the attempt (the same lease columns as the D17 poller, so the two never poll

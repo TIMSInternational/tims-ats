@@ -94,15 +94,17 @@ public sealed class ProviderPortalUseCase(
 
     /// <summary>
     /// The most the list spends refreshing link-out attempts from the provider before it answers (claims, provider reads
-    /// and the guarded writes together); the poll in hand is cancelled at that point. Above the provider's usual answer
+    /// and the guarded writes together; each lease release then gets its own <see cref="ReleaseTimeout"/>); the poll in
+    /// hand is cancelled at that point. Above the provider's usual answer
     /// for a PCA sitting (it probes the survey with its own 4-second limit) and small next to the portal's 15-second
     /// frame poll.
     /// </summary>
     public static readonly TimeSpan PortalRefreshBudget = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// The most one lease release may take after the budget (its own token: the budget's may be spent). A release that
-    /// does not land leaves the lease to expire after <see cref="ProviderAttemptPolling.PortalRefreshLease"/>.
+    /// The most one lease release may take (its own token, linked to neither the budget nor the request: either may be
+    /// spent, and the lease must be freed all the same). A release that does not land leaves the lease to expire after
+    /// <see cref="ProviderAttemptPolling.PortalRefreshLease"/>.
     /// </summary>
     public static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(1);
 
@@ -121,8 +123,11 @@ public sealed class ProviderPortalUseCase(
     /// frame is open and closes the frame once the attempt reads completed, but the ATS otherwise learned of a completion
     /// only from the provider's webhook (sent from a 10-minute cron) or the D17 poller (stale attempts only), so the frame
     /// stayed open for up to ten minutes after the candidate finished. The provider's <c>GET /v1/assignments/{id}</c> on
-    /// an in-progress PCA sitting asks the survey whether it is complete and records it, so reading it here closes the
-    /// frame on the next poll. When anything changed the list is read again; otherwise the first read stands.
+    /// an in-progress PCA sitting asks the survey whether it is complete and records it, but the suite asks the survey at
+    /// most once per 30 s per assignment, so the frame closes within about one such window plus one portal poll after the
+    /// candidate finishes (realistically up to ~45 s), not necessarily on the very next poll. When any attempt was
+    /// claimed and polled the list is read again (even when the poll then failed: one of its writes may have landed);
+    /// otherwise the first read stands.
     /// </para>
     /// </summary>
     public async Task<PortalList> ListAsync(
@@ -175,13 +180,17 @@ public sealed class ProviderPortalUseCase(
     /// <item>polled with <see cref="ProviderAttemptPollUseCase.PollOneAsync"/>, the poller's single-attempt step, so the
     /// assignment is checked against the attempt and its status and result go through the same forward-only, guarded
     /// writes a webhook uses (no second state machine);</item>
-    /// <item>released with <see cref="IAssessmentProviderRepository.ReleasePollLeaseAsync"/>, which stamps
-    /// <c>last_polled_at</c>: a provider that fails or hangs is asked again only after the interval.</item>
+    /// <item>released with <see cref="IAssessmentProviderRepository.ReleasePollLeaseAsync"/> (owner-conditional; it stamps
+    /// <c>last_polled_at</c>, so a provider that fails or hangs is asked again only after the interval) in a
+    /// <c>finally</c>, on a token of its own: also after a failure, after a claim that threw (it may have committed), and
+    /// when the request itself is cancelled.</item>
     /// </list>
-    /// Everything runs inside <see cref="PortalRefreshBudget"/> (each release then gets at most
-    /// <see cref="ReleaseTimeout"/>), and no failure, provider or database, ever fails the list: the candidate then sees
-    /// the last known state, and the webhook and the D17 poller remain the paths that guarantee delivery. Only a
-    /// cancellation of the request itself propagates. True when any refresh changed something.
+    /// Claims and polls run inside <see cref="PortalRefreshBudget"/>; each release adds at most
+    /// <see cref="ReleaseTimeout"/> (plus whatever the database driver takes to honour a cancellation), so the refresh
+    /// takes at most about 5 s + <see cref="MaxRefreshesPerList"/> x 1 s. No failure, provider or database, ever fails the
+    /// list: the candidate then sees the last known state, and the webhook and the D17 poller remain the paths that
+    /// guarantee delivery. Only a cancellation of the request itself propagates (after the lease in hand is released).
+    /// True when any attempt was claimed (the caller then re-reads the list).
     /// </summary>
     private async Task<bool> RefreshLinkOutAsync(
         Guid organizationId, IReadOnlyList<AttemptRow> attempts, DateTimeOffset now, CancellationToken cancellationToken)
@@ -193,7 +202,7 @@ public sealed class ProviderPortalUseCase(
 
         var refreshable = attempts
             .Where(a => ProviderInstruments.IsLinkOut(a.Instrument)
-                &&ProviderAttemptPolling.PortalRefreshStates.Contains(a.State)
+                && ProviderAttemptPolling.PortalRefreshStates.Contains(a.State)
                 && ProviderPortalStatuses.For(a, now) is ProviderPortalStatuses.Ready or ProviderPortalStatuses.ConsentNeeded
                     or ProviderPortalStatuses.InProgress)
             .Take(MaxRefreshesPerList)
@@ -205,7 +214,7 @@ public sealed class ProviderPortalUseCase(
 
         var owner = Guid.NewGuid();
         var poll = new ProviderAttemptPollUseCase(_repository, _provider);
-        var changed = false;
+        var polledAny = false;
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(_refreshBudget);
         foreach (var attempt in refreshable)
@@ -215,40 +224,65 @@ public sealed class ProviderPortalUseCase(
                 break;
             }
 
-            PolledAttempt? claimed = null;
+            // True from the moment the claim is sent until it answers "not claimed": a claim that throws (the budget or
+            // the request cancelled during its commit, or the connection lost after it) may still have committed the
+            // lease, so it is released all the same. The release is conditional on this owner, so it is a no-op when
+            // nothing was claimed.
+            var mayHoldLease = true;
             try
             {
-                claimed = await _repository.ClaimAttemptForPortalRefreshAsync(organizationId, attempt.Id, owner, budget.Token)
+                var claimed = await _repository
+                    .ClaimAttemptForPortalRefreshAsync(organizationId, attempt.Id, owner, budget.Token)
                     .ConfigureAwait(false);
-                if (claimed is not null)
+                if (claimed is null)
                 {
-                    changed |= await poll.PollOneAsync(organizationId, claimed, now, budget.Token).ConfigureAwait(false);
+                    mayHoldLease = false;
+                    continue;
                 }
+
+                // Set BEFORE the poll: its guarded writes commit one by one, so a poll that throws after one of them
+                // landed (a status advanced, then the result fetch failed) must still re-read the list.
+                polledAny = true;
+                await poll.PollOneAsync(organizationId, claimed, now, budget.Token, PollVia).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 // A provider or database failure, or the budget running out: the last known state is listed.
             }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if (claimed is not null)
+            finally
             {
-                await ReleaseAsync(organizationId, attempt.Id, owner, cancellationToken).ConfigureAwait(false);
+                // Also when the request itself is cancelled (that exception propagates): a lease left behind would lock
+                // the attempt for the portal and the D17 poller for PortalRefreshLease.
+                if (mayHoldLease)
+                {
+                    await ReleaseAsync(organizationId, attempt.Id, owner).ConfigureAwait(false);
+                }
             }
         }
 
-        return changed;
+        return polledAny;
     }
 
-    private async Task ReleaseAsync(Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken)
+    /// <summary>
+    /// The <c>via</c> the portal refresh's writes are audited with (a confirmed subject erasure), so they are told apart
+    /// from the D17 poller's <c>poll</c>.
+    /// </summary>
+    public const string PollVia = "portal_refresh";
+
+    /// <summary>
+    /// Releases this list's lease on the attempt on a token of its own, NOT linked to the request's: a cancelled request
+    /// (the candidate closed the page) must still free the attempt. Bounded by <see cref="ReleaseTimeout"/> (plus the time
+    /// the database driver takes to honour the cancellation); a release that does not land leaves the lease to expire
+    /// after <see cref="ProviderAttemptPolling.PortalRefreshLease"/>. Never throws.
+    /// </summary>
+    private async Task ReleaseAsync(Guid organizationId, Guid attemptId, Guid owner)
     {
-        using var release = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        release.CancelAfter(ReleaseTimeout);
+        using var release = new CancellationTokenSource(ReleaseTimeout);
         try
         {
             await _repository.ReleasePollLeaseAsync(organizationId, attemptId, owner, release.Token).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception)
         {
             // The lease expires on its own (PortalRefreshLease).
         }

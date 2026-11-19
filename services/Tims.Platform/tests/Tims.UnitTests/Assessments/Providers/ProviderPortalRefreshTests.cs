@@ -16,8 +16,8 @@ public sealed class ProviderPortalRefreshTests
     private readonly FakeRepository _repository = new() { ApplyAdvances = true };
     private readonly FakeProvider _provider = new();
 
-    private Task<PortalList> List(TimeSpan? budget = null) =>
-        new ProviderPortalUseCase(_repository, _provider, budget).ListAsync("invu", "ana@example.com", Now, CancellationToken.None);
+    private Task<PortalList> List(TimeSpan? budget = null, CancellationToken cancellationToken = default) =>
+        new ProviderPortalUseCase(_repository, _provider, budget).ListAsync("invu", "ana@example.com", Now, cancellationToken);
 
     private ProviderCall<ProviderAssignment> AssignmentOf(AttemptRow attempt, string status) =>
         ProviderCall<ProviderAssignment>.Success(new ProviderAssignment(
@@ -46,7 +46,7 @@ public sealed class ProviderPortalRefreshTests
     public async Task An_attempt_polled_within_the_interval_is_not_asked_again()
     {
         var pca = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
-        _repository.RecentlyPolled.Add(pca.Id);
+        _repository.LastPolledAt[pca.Id] = _repository.DbNow.AddSeconds(-5);
         _provider.OnGetAssignment = _ => AssignmentOf(pca, "completed");
 
         var list = await List();
@@ -57,16 +57,143 @@ public sealed class ProviderPortalRefreshTests
     }
 
     [Fact]
-    public async Task Two_lists_back_to_back_ask_the_provider_once()
+    public async Task Two_lists_back_to_back_ask_the_provider_once_and_a_list_after_the_window_asks_again()
     {
         var pca = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
         _provider.OnGetAssignment = _ => AssignmentOf(pca, "in_progress");
+        int Asked() => _provider.Calls.Count(c => c == "get_assignment");
 
         await List();
+        Assert.Equal(_repository.DbNow, _repository.LastPolledAt[pca.Id]); // the release stamped last_polled_at
         await List();
-
-        Assert.Equal(1, _provider.Calls.Count(c => c == "get_assignment"));
+        Assert.Equal(1, Asked());
         Assert.Equal(2, _repository.PortalRefreshClaims.Count); // the second claim was refused by the rate limit
+
+        _repository.DbNow += ProviderAttemptPolling.PortalRefreshInterval; // exactly the interval: still inside
+        await List();
+        Assert.Equal(1, Asked());
+
+        _repository.DbNow += TimeSpan.FromSeconds(1); // past it: the frame's next 15-second poll refreshes again
+        await List();
+        Assert.Equal(2, Asked());
+    }
+
+    [Fact]
+    public void The_rate_limit_lets_every_fixed_rate_frame_poll_refresh_even_after_a_refresh_that_used_its_whole_budget()
+    {
+        // The release stamps last_polled_at when the refresh ENDS: at worst the budget plus one release after the list
+        // started. The frame's next list starts PCA_POLL_MS (15 s) after the previous one STARTED.
+        var latestStamp = ProviderPortalUseCase.PortalRefreshBudget + ProviderPortalUseCase.ReleaseTimeout;
+        Assert.True(TimeSpan.FromSeconds(15) - latestStamp > ProviderAttemptPolling.PortalRefreshInterval);
+    }
+
+    [Fact]
+    public async Task At_most_MaxRefreshesPerList_attempts_are_refreshed_per_list()
+    {
+        for (var i = 0; i < ProviderPortalUseCase.MaxRefreshesPerList + 2; i++)
+        {
+            _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        }
+
+        _provider.OnGetAssignment = id => AssignmentOf(_repository.Attempts.Single(a => a.ProviderAssignmentId == id), "in_progress");
+
+        await List();
+
+        Assert.Equal(ProviderPortalUseCase.MaxRefreshesPerList, _repository.PortalRefreshClaims.Count);
+        Assert.Equal(ProviderPortalUseCase.MaxRefreshesPerList, _provider.Calls.Count(c => c == "get_assignment"));
+        Assert.Equal(ProviderPortalUseCase.MaxRefreshesPerList, _repository.Released.Count);
+        Assert.Empty(_repository.Leases);
+    }
+
+    [Fact]
+    public async Task Once_the_budget_is_spent_no_further_attempt_is_claimed_and_the_one_in_hand_is_released()
+    {
+        var first = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        _provider.OnGetAssignmentAsync = async (_, cancellationToken) =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+            return AssignmentOf(first, "completed");
+        };
+
+        var list = await List(TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal(2, list.Attempts.Count);
+        Assert.Equal([first.Id], _repository.PortalRefreshClaims); // the second was never claimed
+        Assert.Equal(first.Id, Assert.Single(_repository.Released).AttemptId);
+        Assert.Empty(_repository.Leases);
+    }
+
+    [Fact]
+    public async Task A_cancelled_request_still_releases_the_lease_in_hand()
+    {
+        var pca = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        using var request = new CancellationTokenSource();
+        _provider.OnGetAssignmentAsync = async (_, cancellationToken) =>
+        {
+            await request.CancelAsync(); // the candidate closed the page mid-refresh
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+            return AssignmentOf(pca, "completed");
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => List(cancellationToken: request.Token));
+
+        Assert.Empty(_repository.Leases); // never left locked for PortalRefreshLease
+        Assert.Equal(pca.Id, Assert.Single(_repository.Released).AttemptId);
+    }
+
+    [Fact]
+    public async Task A_claim_that_committed_but_threw_is_released_all_the_same()
+    {
+        var pca = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        _repository.PortalRefreshClaimCommitsThenThrows = true;
+
+        var list = await List();
+
+        Assert.Equal(ProviderPortalStatuses.InProgress, Assert.Single(list.Attempts).Status);
+        Assert.DoesNotContain("get_assignment", _provider.Calls);
+        Assert.Empty(_repository.Leases);
+        Assert.Equal(pca.Id, Assert.Single(_repository.Released).AttemptId);
+    }
+
+    [Fact]
+    public async Task A_write_that_landed_before_a_later_step_threw_is_listed_fresh()
+    {
+        var pca = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        _provider.OnGetAssignment = _ => AssignmentOf(pca, "completed") is var call
+            ? ProviderCall<ProviderAssignment>.Success(call.Value! with { ResultId = Guid.NewGuid() })
+            : call;
+        _provider.OnGetResult = _ => throw new InvalidOperationException("result fetch blew up");
+
+        var list = await List();
+
+        Assert.Contains("advance:completed", _repository.Writes); // committed before the result fetch threw
+        Assert.Equal(ProviderPortalStatuses.Completed, Assert.Single(list.Attempts).Status);
+        Assert.Equal(pca.Id, Assert.Single(_repository.Released).AttemptId);
+    }
+
+    [Fact]
+    public async Task An_attempt_whose_orphan_cleanup_is_pending_is_never_claimed()
+    {
+        var pca = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        _repository.Replace(pca.Id, a => a with { LastErrorCode = ProviderCleanup.CancelPending });
+        _provider.OnGetAssignment = _ => AssignmentOf(pca, "completed");
+
+        await List();
+
+        Assert.DoesNotContain("get_assignment", _provider.Calls);
+        Assert.Empty(_repository.Leases);
+    }
+
+    [Fact]
+    public async Task A_confirmed_erasure_found_by_the_portal_refresh_is_audited_as_the_portals()
+    {
+        var pca = _repository.AddCreatedAttempt("pca", ProviderAttemptStates.InProgress);
+        _provider.OnGetSubject = _ => ProviderCall<ProviderSubject>.Fail(new ProviderFailure(410, "subject_erased", false, []));
+
+        await List();
+
+        Assert.Equal(ProviderPortalUseCase.PollVia, Assert.Single(_repository.EraseVia));
     }
 
     [Fact]

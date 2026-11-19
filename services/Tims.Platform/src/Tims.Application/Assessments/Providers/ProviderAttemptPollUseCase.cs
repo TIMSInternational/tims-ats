@@ -65,6 +65,9 @@ public sealed class ProviderAttemptPollUseCase(
     public const int MaxAttemptsPerOrganization = 25;
     public const int MaxUnconfirmedCancels = 50;
 
+    /// <summary>The <c>via</c> this poller's confirmed subject erasures are audited with.</summary>
+    public const string DefaultVia = "poll";
+
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
     private readonly TimeSpan _maxPollDuration = maxPollDurationForTests ?? ProviderAttemptPolling.MaxPollDuration;
@@ -232,8 +235,14 @@ public sealed class ProviderAttemptPollUseCase(
     }
 
     /// <summary>Polls one claimed attempt. True when it changed something (state, result or missing consents).</summary>
+    /// <param name="via">
+    /// Names the caller in the audit row of a confirmed subject erasure: <c>poll</c> (this poller) or the candidate
+    /// portal's refresh (<see cref="ProviderPortalUseCase.PollVia"/>). The #312 withdrawal staging and the state/result
+    /// writes record no caller.
+    /// </param>
     public async Task<bool> PollOneAsync(
-        Guid organizationId, PolledAttempt polled, DateTimeOffset now, CancellationToken cancellationToken)
+        Guid organizationId, PolledAttempt polled, DateTimeOffset now, CancellationToken cancellationToken,
+        string via = DefaultVia)
     {
         ArgumentNullException.ThrowIfNull(polled);
         var attempt = polled.Attempt;
@@ -257,7 +266,8 @@ public sealed class ProviderAttemptPollUseCase(
             // definitive 404/410 is asked about the subject: only a confirmed erasure changes anything.
             return fetched.Failure!.HttpStatus is 404 or 410 && !fetched.Failure.Transient
                 && attempt.ProviderSubjectId is { } subjectId
-                && await ApplyConfirmedErasureAsync(organizationId, subjectId, now, cancellationToken).ConfigureAwait(false);
+                && await ApplyConfirmedErasureAsync(organizationId, subjectId, now, via, cancellationToken)
+                    .ConfigureAwait(false);
         }
 
         var assignment = fetched.Value!;
@@ -329,9 +339,9 @@ public sealed class ProviderAttemptPollUseCase(
     /// audited). True when it erased something.
     /// </summary>
     private async Task<bool> ApplyConfirmedErasureAsync(
-        Guid organizationId, Guid subjectId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        Guid organizationId, Guid subjectId, DateTimeOffset now, string via, CancellationToken cancellationToken) =>
         await ProviderSubjectErasure.AskAsync(_provider, subjectId, cancellationToken).ConfigureAwait(false)
             == SubjectErasureAnswer.Erased
-        && await _repository.EraseSubjectAsync(organizationId, subjectId, now, cancellationToken, via: "poll")
+        && await _repository.EraseSubjectAsync(organizationId, subjectId, now, cancellationToken, via)
             .ConfigureAwait(false) > 0;
 }
