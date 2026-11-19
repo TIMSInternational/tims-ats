@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import en from '../../apps/web/lib/i18n/en.json';
 import es from '../../apps/web/lib/i18n/es.json';
@@ -87,13 +87,13 @@ function respond(routes: Record<string, (init?: RequestInit) => Response>) {
   });
 }
 
-function renderSection(locale: 'EN' | 'ES' = 'EN') {
+function renderSection(locale: 'EN' | 'ES' = 'EN', hideWhenEmpty = false) {
   localStorage.setItem('tims-locale', locale);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <I18nProvider>
-        <DashboardProviderAssessments orgSlug="acme" orgName="Acme Corp" />
+        <DashboardProviderAssessments orgSlug="acme" orgName="Acme Corp" hideWhenEmpty={hideWhenEmpty} />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -168,6 +168,36 @@ describe('DashboardProviderAssessments', () => {
     respond({ '/portal/assessment-attempts': () => json({ attempts: [] }) });
     renderSection();
     expect(await screen.findByText(m.providerEmpty)).toBeInTheDocument();
+  });
+
+  // Pilot launch scope: the section exists only for a candidate who has TIMS tests (a bound organization assigned them).
+  it('hideWhenEmpty: renders nothing while loading, when the list is empty and when the read fails', async () => {
+    const settle = () => act(async () => void (await new Promise((resolve) => setTimeout(resolve, 50))));
+    let release: (r: Response) => void = () => {};
+    respond({ '/portal/assessment-attempts': () => new Promise<Response>((resolve) => (release = resolve)) });
+    const loading = renderSection('EN', true);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(loading.container).toBeEmptyDOMElement();
+    cleanup();
+
+    respond({ '/portal/assessment-attempts': () => json({ attempts: [] }) });
+    const empty = renderSection('EN', true);
+    await settle();
+    expect(empty.container).toBeEmptyDOMElement();
+    cleanup();
+
+    respond({ '/portal/assessment-attempts': () => json({ error: 'boom' }, 500) });
+    const failed = renderSection('EN', true);
+    await settle();
+    expect(failed.container).toBeEmptyDOMElement();
+    release(json({ attempts: [] }));
+  });
+
+  it('hideWhenEmpty: shows the section once the candidate has a test', async () => {
+    respond({ '/portal/assessment-attempts': () => json({ attempts: [attempt('ready')] }) });
+    renderSection('EN', true);
+    expect(await screen.findByText(m.providerStatusReady)).toBeInTheDocument();
+    expect(screen.getByText(m.providerAssessments)).toBeInTheDocument();
   });
 
   // Codex release round A3 [P2]: an embedded launch asks for no return URL, so when the launch turns out not to be
