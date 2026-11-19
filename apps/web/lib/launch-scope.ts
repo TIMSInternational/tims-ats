@@ -5,7 +5,8 @@
 // NEXT_PUBLIC_LAUNCH_SCOPE=pilot  → out-of-scope modules are hidden from EVERY role (privileged
 //                                    included) in the tenant + platform sidebars, direct navigation to
 //                                    them shows AccessDenied, and the candidate portal drops the
-//                                    assessments / AI FAQ / marketing blocks.
+//                                    own-quiz / AI FAQ / marketing blocks. TIMS Assessments stay for an
+//                                    organization a platform owner has bound (candidate page + portal).
 // unset (or any other value)       → full product, behaviour unchanged.
 //
 // Pure module (no React / next imports) so node tests can exercise it. UX only — the API remains the

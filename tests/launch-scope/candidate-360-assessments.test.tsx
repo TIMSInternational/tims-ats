@@ -3,12 +3,43 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import en from '../../apps/web/lib/i18n/en.json';
 import { TABS, visibleCandidateTabs } from '../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-tabs';
 
-// Codex P2 on #398: under the pilot launch scope, Candidate 360 must not offer assessment assignment (the
-// candidate portal no longer lists assessments, so an assignment would be unreachable for the candidate).
+// Codex P2 on #398: under the pilot launch scope, Candidate 360 must not offer the company's own quizzes (the candidate
+// portal does not list them, so an assignment would be unreachable for the candidate).
 
-const { stub } = vi.hoisted(() => ({
+// A bound organization keeps TIMS Assessments under the pilot scope (the catalog's `connected`): only the TIMS assign
+// action and the Assessments tab come back, never the company's own quizzes.
+
+const { stub, provider } = vi.hoisted(() => ({
   stub: (name: string) => ({ [name]: () => null }),
+  provider: { staffEnabled: false, connected: undefined as boolean | undefined, tab: null as string | null },
 }));
+vi.mock('../../apps/web/lib/platform-api/assessment-providers-staff', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../apps/web/lib/platform-api/assessment-providers-staff')>()),
+  isProviderAssessmentsStaffEnabled: () => provider.staffEnabled,
+  useProviderCatalog: (_vacancyId?: string, enabled = true) => ({
+    data:
+      enabled && provider.staffEnabled && provider.connected !== undefined
+        ? { connected: provider.connected, instruments: [] }
+        : undefined,
+  }),
+}));
+vi.mock('../../apps/web/lib/platform-api/fit-engine', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../apps/web/lib/platform-api/fit-engine')>()),
+  isFitEngineV2Enabled: () => provider.staffEnabled,
+}));
+vi.mock('../../apps/web/lib/permissions', () => ({ useCan: () => () => true }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(provider.tab ? { tab: provider.tab } : {}),
+}));
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/provider-assessments-card', () =>
+  stub('ProviderAssessmentsCard'),
+);
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/provider-results/provider-results-board', () =>
+  stub('ProviderResultsBoard'),
+);
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/assign-provider-assessments-modal', () =>
+  stub('AssignProviderAssessmentsModal'),
+);
 vi.mock('../../apps/web/lib/i18n', () => ({ useI18n: () => ({ t: en, locale: 'EN' }) }));
 vi.mock('../../apps/web/lib/trpc', () => ({
   trpc: {
@@ -64,7 +95,9 @@ vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/assign-assessmen
   stub('AssignAssessmentModal'),
 );
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/consent-card', () => stub('CandidateConsentCard'));
-vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-offers-card', () => stub('CandidateOffersCard'));
+vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-offers-card', () =>
+  stub('CandidateOffersCard'),
+);
 vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/candidate-interviews-tab', () =>
   stub('CandidateInterviewsTab'),
 );
@@ -73,6 +106,9 @@ vi.mock('../../apps/web/app/(admin)/recruitment/candidates/[id]/notes-panel', ()
 afterEach(() => {
   cleanup();
   vi.unstubAllEnvs();
+  provider.staffEnabled = false;
+  provider.connected = undefined;
+  provider.tab = null;
 });
 
 async function renderPage() {
@@ -85,7 +121,9 @@ async function renderPage() {
 describe('Candidate 360 assessments under the pilot scope', () => {
   it('visibleCandidateTabs drops the assessments tab under pilot (and the always-empty Validaciones everywhere)', () => {
     // journeys-27: "Validaciones" has no content yet, so it is not offered as a tab that always opens empty.
-    expect(visibleCandidateTabs(true)).toEqual(TABS.filter((tab) => tab !== 'tabAssessments' && tab !== 'tabValidations'));
+    expect(visibleCandidateTabs(true)).toEqual(
+      TABS.filter((tab) => tab !== 'tabAssessments' && tab !== 'tabValidations'),
+    );
     expect(visibleCandidateTabs(false)).toEqual(TABS.filter((tab) => tab !== 'tabValidations'));
   });
 
@@ -95,6 +133,43 @@ describe('Candidate 360 assessments under the pilot scope', () => {
     expect(screen.queryByText(en.assessments.assignAssessment)).toBeNull();
     expect(screen.queryByText(en.candidates.tabAssessments)).toBeNull();
     expect(screen.queryByTestId('AssessmentResults')).toBeNull();
+  });
+
+  it('pilot, organization not bound: still nothing (no TIMS action, no tab)', async () => {
+    vi.stubEnv('NEXT_PUBLIC_LAUNCH_SCOPE', 'pilot');
+    provider.staffEnabled = true;
+    provider.connected = false;
+    await renderPage();
+    expect(screen.queryByText(`${en.providerAssessments.assignTims}…`)).toBeNull();
+    expect(screen.queryByText(en.assessments.assignAssessment)).toBeNull();
+    expect(screen.queryByText(en.candidates.tabAssessments)).toBeNull();
+  });
+
+  it('pilot, organization bound: the TIMS assign button and the tab, but no own quizzes or their results', async () => {
+    vi.stubEnv('NEXT_PUBLIC_LAUNCH_SCOPE', 'pilot');
+    provider.staffEnabled = true;
+    provider.connected = true;
+    await renderPage();
+    expect(screen.getByText(`${en.providerAssessments.assignTims}…`)).toBeTruthy();
+    expect(screen.getByText(en.candidates.tabAssessments)).toBeTruthy();
+    expect(screen.queryByText(en.assessments.assignAssessment)).toBeNull();
+    expect(screen.queryByText(`${en.assessments.assignOwnQuiz}…`)).toBeNull();
+    expect(screen.queryByTestId('AssessmentResults')).toBeNull();
+  });
+
+  it('pilot: a ?tab=tabAssessments link opens the tab for a bound organization and falls back to the profile otherwise', async () => {
+    vi.stubEnv('NEXT_PUBLIC_LAUNCH_SCOPE', 'pilot');
+    provider.staffEnabled = true;
+    provider.tab = 'tabAssessments';
+    provider.connected = true;
+    await renderPage();
+    expect(screen.getByRole('tab', { name: en.candidates.tabAssessments })).toHaveAttribute('aria-selected', 'true');
+    cleanup();
+
+    provider.connected = false;
+    await renderPage();
+    expect(screen.queryByRole('tab', { name: en.candidates.tabAssessments })).toBeNull();
+    expect(screen.getByRole('tab', { name: en.candidates.tabProfile })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('full scope: the assign button and assessments tab are still there', async () => {

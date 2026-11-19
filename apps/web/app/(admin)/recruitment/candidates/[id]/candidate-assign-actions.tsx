@@ -20,10 +20,13 @@ export function CandidateAssignActions({
   candidateId,
   applications,
   onOpenAssessmentsTab,
+  ownQuizzes = true,
 }: {
   candidateId: string;
   applications: Application[];
   onOpenAssessmentsTab: () => void;
+  /** False in the pilot launch scope: only the TIMS action is offered, as a single button (no own quizzes). */
+  ownQuizzes?: boolean;
 }) {
   const { t } = useI18n();
   const can = useCan();
@@ -41,9 +44,15 @@ export function CandidateAssignActions({
 
   // Two assign actions go in a "Más acciones" menu so the header keeps one primary; a single one is a
   // secondary button (toolbars.md › Actions: "Add a More menu"). Items that open a dialog end with "…".
+  if (!ownQuizzes && !tims) return null;
+
   return (
     <>
-      {tims ? (
+      {!ownQuizzes ? (
+        <Button variant="secondary" onClick={openTims}>
+          {`${t.providerAssessments.assignTims}…`}
+        </Button>
+      ) : tims ? (
         <Menu
           items={[
             { key: 'tims', label: `${t.providerAssessments.assignTims}…`, onSelect: openTims },

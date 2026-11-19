@@ -93,11 +93,12 @@ export function PortalDashboardShell({
         <div className={DASHBOARD_SECTIONS}>
           <DashboardApplications orgSlug={orgSlug} orgName={orgName} timeZone={timeZone} />
           <DashboardInterviews orgSlug={orgSlug} timeZone={timeZone} />
-          {/* Pilot launch scope: no assessments and no AI FAQ chat (lib/launch-scope.ts). */}
+          {/* Pilot launch scope: no own quizzes and no AI FAQ chat (lib/launch-scope.ts); TIMS tests below. */}
           {!pilot && <DashboardAssessments orgSlug={orgSlug} hideWhenEmpty={isProviderAssessmentsPortalEnabled()} />}
-          {/* AS-5 / D16: provider assessments (C# only), dark unless NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP. */}
-          {!pilot && isProviderAssessmentsPortalEnabled() && (
-            <DashboardProviderAssessments orgSlug={orgSlug} orgName={orgName} />
+          {/* AS-5 / D16: provider assessments (C# only), dark unless NEXT_PUBLIC_ASSESSMENT_PROVIDERS_VIA_CSHARP. In the
+              pilot scope it shows only to a candidate who has TIMS tests (a bound organization assigned them). */}
+          {isProviderAssessmentsPortalEnabled() && (
+            <DashboardProviderAssessments orgSlug={orgSlug} orgName={orgName} hideWhenEmpty={pilot} />
           )}
           <DashboardOffer orgSlug={orgSlug} timeZone={timeZone} />
           {!pilot && <DashboardFaqChat orgSlug={orgSlug} />}

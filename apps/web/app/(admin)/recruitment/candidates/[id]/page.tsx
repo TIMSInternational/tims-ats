@@ -24,6 +24,7 @@ import { CandidateAssignActions } from './candidate-assign-actions';
 import { ProviderResultsBoard } from './provider-results/provider-results-board';
 import { CandidateConsentCard } from './consent-card';
 import { isPilotScope } from '../../../../../lib/launch-scope';
+import { useProviderCatalog } from '../../../../../lib/platform-api/assessment-providers-staff';
 import { useCan } from '../../../../../lib/permissions';
 import { SCHEDULE_QUERY_PARAM } from '../../../../../lib/pipeline-next-actions';
 import { readTabParam, replaceQuery, visibleCandidateTabs, type TabKey } from './candidate-tabs';
@@ -42,15 +43,17 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   const can = useCan();
   const searchParams = useSearchParams();
   // The open tab lives in the URL (?tab=), so a refresh or Back keeps it (journeys-27).
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    () => readTabParam(searchParams?.get('tab'), isPilotScope()) ?? 'tabProfile',
+  // The Assessments tab is accepted here and dropped below when it is not offered (the pilot scope keeps it only for an
+  // organization bound to TIMS Assessments, which is known once the provider catalog has answered).
+  const [requestedTab, setRequestedTab] = useState<TabKey>(
+    () => readTabParam(searchParams?.get('tab'), false) ?? 'tabProfile',
   );
   // ?schedule=<applicationId> (the "Programar la entrevista" step after a move) opens the prefilled form (A-10).
   const [scheduleFor, setScheduleFor] = useState<string | null>(() => searchParams?.get(SCHEDULE_QUERY_PARAM) ?? null);
   // Bumped after scheduling: remounts the interviews tab, which refetches on mount.
   const [interviewsVersion, setInterviewsVersion] = useState(0);
   const selectTab = (tab: TabKey) => {
-    setActiveTab(tab);
+    setRequestedTab(tab);
     replaceQuery({ tab: tab === 'tabProfile' ? null : tab });
   };
   const closeSchedule = () => {
@@ -62,6 +65,10 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   // FIT v2 (flag on): the header, breakdown and assessment panels read the fit scores from C# (D6 for a team leader).
   const csharpFitScores = useCandidateFitScoresViaCsharp(id);
   const timeline = trpc.candidate.getTimeline.useQuery({ candidateId: id });
+  // The pilot launch scope hides the company's own quizzes, but keeps TIMS Assessments for an organization a platform
+  // owner has bound (the catalog says `connected`): only those can assign, so nothing appears for any other tenant.
+  const pilot = isPilotScope();
+  const providerCatalog = useProviderCatalog(undefined, pilot);
 
   if (candidate.isLoading) return <CandidateDetailSkeleton />;
 
@@ -89,7 +96,8 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
   }
 
   const c = withCandidatePageFitScores(candidate.data, csharpFitScores);
-  const showAssessments = !isPilotScope();
+  const showAssessments = !pilot;
+  const showProvider = !pilot || providerCatalog.data?.connected === true;
   const appCount = c.applications?.length ?? 0;
   const tabLabels: Record<string, string> = {
     tabProfile: t.candidates.tabProfile,
@@ -135,7 +143,7 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               {showAssessments && c.assessmentAssignments.length > 0 && (
                 <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
               )}
-              {showAssessments && (
+              {showProvider && (
                 <ProviderAssessmentsCard
                   candidateId={id}
                   applications={c.applications}
@@ -171,11 +179,12 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
               <ProviderResultsBoard candidateId={id} applications={c.applications} />
               <ProviderAssessmentsCard candidateId={id} applications={c.applications} />
             </div>
-            {c.assessmentAssignments.length > 0 ? (
-              <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
-            ) : (
-              emptyCard(t.candidates.noAssessments)
-            )}
+            {showAssessments &&
+              (c.assessmentAssignments.length > 0 ? (
+                <AssessmentResults assignments={c.assessmentAssignments} fitScores={c.fitScores} />
+              ) : (
+                emptyCard(t.candidates.noAssessments)
+              ))}
           </div>
         );
       case 'tabInterviews':
@@ -227,8 +236,9 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
 
   // After the tab switch on purpose: the tab keys' first mention order is pinned (candidate-detail-tabs test).
   const openAssessmentsTab = () => selectTab('tabAssessments');
+  const activeTab: TabKey = requestedTab === 'tabAssessments' && !showProvider ? 'tabProfile' : requestedTab;
   const openTimelineTab = () => selectTab('tabTimeline');
-  const visibleTabs = visibleCandidateTabs(!showAssessments).map((tab) => ({
+  const visibleTabs = visibleCandidateTabs(!showProvider).map((tab) => ({
     id: tab,
     label: tabLabels[tab],
     count: tab === 'tabApplications' ? appCount : undefined,
@@ -248,11 +258,12 @@ export default function CandidateDetailPage({ params }: { params: Promise<{ id: 
         }
         actions={
           <>
-            {showAssessments && (
+            {showProvider && (
               <CandidateAssignActions
                 candidateId={id}
                 applications={c.applications}
                 onOpenAssessmentsTab={openAssessmentsTab}
+                ownQuizzes={showAssessments}
               />
             )}
             <CandidateHeaderActions candidate={c} onScheduleInterview={openSchedule} />

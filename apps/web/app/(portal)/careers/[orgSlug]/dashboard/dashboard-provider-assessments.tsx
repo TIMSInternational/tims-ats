@@ -64,7 +64,17 @@ export function launchErrorKey(error: unknown): keyof PortalMessages {
   return 'providerLaunchError';
 }
 
-export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: string; orgName: string }) {
+// `hideWhenEmpty`: the pilot launch scope keeps this section only for a candidate who actually has TIMS tests (their
+// organization was bound by a platform owner and HR assigned one); everyone else sees no assessments block at all.
+export function DashboardProviderAssessments({
+  orgSlug,
+  orgName,
+  hideWhenEmpty = false,
+}: {
+  orgSlug: string;
+  orgName: string;
+  hideWhenEmpty?: boolean;
+}) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const [frame, setFrame] = useState<{
@@ -197,6 +207,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   const retry = () => void refetch();
 
   if (!data) {
+    if (hideWhenEmpty && !frameNode) return null;
     return section(
       <>
         {isLoading ? (
@@ -233,6 +244,7 @@ export function DashboardProviderAssessments({ orgSlug, orgName }: { orgSlug: st
   // The next test to take (first actionable in this order) is the one filled button on the list.
   const isAwaiting = (a: PortalProviderAttempt) => closedPages.has(a.attemptId) && a.status === 'ready';
   const nextId = attempts.find((a) => ACTIONABLE.has(a.status) && !isAwaiting(a))?.attemptId ?? null;
+  if (hideWhenEmpty && attempts.length === 0 && !frameNode) return null;
 
   return section(
     <>

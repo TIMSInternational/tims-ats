@@ -12,8 +12,9 @@ export const TABS = [
 
 export type TabKey = (typeof TABS)[number];
 
-// Assessments are out of the pilot launch scope: under it the tab, the results block, the assign button and
-// its modal are not rendered, so recruiters cannot create assignments candidates have no way to find.
+// The company's own quizzes are out of the pilot launch scope. Under it the Assessments tab (and the assign button)
+// is offered only when the organization is bound to TIMS Assessments, whose tests the portal also shows; the caller
+// passes `pilot` = "hide the tab".
 const ASSESSMENT_TABS: readonly TabKey[] = ['tabAssessments'];
 
 // "Validaciones" has nothing to show yet (RiskFlags renders nothing without data), so it is not offered as a
