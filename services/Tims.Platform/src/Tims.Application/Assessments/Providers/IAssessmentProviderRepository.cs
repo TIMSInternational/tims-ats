@@ -487,6 +487,20 @@ public interface IAssessmentProviderRepository
     Task ReleasePollLeaseAsync(Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The candidate portal's refresh lease on ONE attempt (the fast path for a link-out completion, 2026-11-19):
+    /// claims it for <paramref name="owner"/> with the D17 poller's own lease columns, so the two never hold it at once,
+    /// and only when it is mapped, outside every other workflow (#312 cascade, ATS-requested erasure, orphan cleanup),
+    /// in <see cref="Domain.Assessments.Providers.ProviderAttemptPolling.PortalRefreshStates"/>, its lease free or
+    /// expired, and NOT polled within <see cref="Domain.Assessments.Providers.ProviderAttemptPolling.PortalRefreshInterval"/>
+    /// (the rate limit), all by the database clock. The lease lasts
+    /// <see cref="Domain.Assessments.Providers.ProviderAttemptPolling.PortalRefreshLease"/>; release it with
+    /// <see cref="ReleasePollLeaseAsync"/>, which stamps <c>last_polled_at</c>. Null when nothing was claimed. Under the
+    /// tenant scope.
+    /// </summary>
+    Task<PolledAttempt?> ClaimAttemptForPortalRefreshAsync(
+        Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Sets the consent purposes the provider still lacks for this attempt (its <c>missing_consents</c>), as just seen.
     /// Unknown purposes are dropped. A no-op on an attempt that is not open.
     /// </summary>

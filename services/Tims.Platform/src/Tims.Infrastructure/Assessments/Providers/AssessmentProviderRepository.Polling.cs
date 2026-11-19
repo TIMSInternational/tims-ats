@@ -130,6 +130,50 @@ public sealed partial class AssessmentProviderRepository
         await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private static readonly string[] PortalRefreshStates = [.. ProviderAttemptPolling.PortalRefreshStates];
+
+    public async Task<PolledAttempt?> ClaimAttemptForPortalRefreshAsync(
+        Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken)
+    {
+        var interval = ProviderAttemptPolling.PortalRefreshInterval.TotalSeconds;
+        var lease = ProviderAttemptPolling.PortalRefreshLease.TotalSeconds;
+        await using var scope = await TenantScope.BeginAsync(_db, organizationId, cancellationToken).ConfigureAwait(false);
+        // ONE conditional UPDATE on the one row, like ClaimPollableAttemptsAsync's: SKIP LOCKED, so a row the D17 poller
+        // (or another instance's portal refresh) is claiming right now is skipped, never waited for, and the re-check of
+        // a row claimed and committed meanwhile sees its live lease. The rate limit reads last_polled_at only: a launch
+        // writes updated_at, and the refresh right after a launch is the one that matters.
+        var claimed = await _db.Database.SqlQuery<Guid>(
+                $"""
+                 WITH picked AS MATERIALIZED (
+                        SELECT p.id FROM assessment_provider_attempts p
+                         WHERE p.organization_id = {organizationId} AND p.id = {attemptId}
+                           AND p.provider_assignment_id IS NOT NULL AND p.withdrawal_state IS NULL
+                           AND p.provider_erasure_requested_at IS NULL
+                           AND p.last_error_code IS DISTINCT FROM {ProviderCleanup.CancelPending}
+                           AND p.state = ANY({PortalRefreshStates})
+                           AND (p.poll_lease_until IS NULL OR p.poll_lease_until < clock_timestamp())
+                           AND COALESCE(p.last_polled_at, '-infinity') < clock_timestamp() - make_interval(secs => {interval})
+                         FOR UPDATE SKIP LOCKED)
+                 UPDATE assessment_provider_attempts a
+                    SET poll_lease_owner = {owner},
+                        poll_lease_until = clock_timestamp() + make_interval(secs => {lease})
+                   FROM picked
+                  WHERE a.organization_id = {organizationId} AND a.id = picked.id
+                 RETURNING a.id AS "Value"
+                 """)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var row = claimed.Count == 0
+            ? null
+            : await (
+                    from a in _db.Attempts.AsNoTracking()
+                    where a.OrganizationId == organizationId && a.Id == attemptId
+                    join b in _db.Bindings.AsNoTracking() on a.BindingId equals b.Id
+                    select new { Attempt = a, b.ProviderTenantId })
+                .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        await scope.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return row is null ? null : new PolledAttempt(ToRow(row.Attempt, isNew: false), row.ProviderTenantId);
+    }
+
     public async Task<IReadOnlyList<UnconfirmedCancel>> ListUnconfirmedCancelsAsync(int max, CancellationToken cancellationToken)
     {
         // PRE-TENANT on the privileged connection, like the org listing above: only ids leave; each attempt is then read

@@ -86,14 +86,45 @@ public sealed record PortalConsentTemplates(
 /// the endpoint verified with the auth service, exactly like the launch: their attempts are those of the organization's
 /// active candidates with that email (<c>lower(btrim(email))</c>), and anything else is not found (never 403: no oracle).
 /// </summary>
-public sealed class ProviderPortalUseCase(IAssessmentProviderRepository repository, IAssessmentProvider provider)
+/// <param name="refreshBudgetForTests">TEST-ONLY: replaces <see cref="PortalRefreshBudget"/>.</param>
+public sealed class ProviderPortalUseCase(
+    IAssessmentProviderRepository repository, IAssessmentProvider provider, TimeSpan? refreshBudgetForTests = null)
 {
     public const int MaxSlugLength = 100;
 
+    /// <summary>
+    /// The most the list spends refreshing link-out attempts from the provider before it answers (claims, provider reads
+    /// and the guarded writes together); the poll in hand is cancelled at that point. Above the provider's usual answer
+    /// for a PCA sitting (it probes the survey with its own 4-second limit) and small next to the portal's 15-second
+    /// frame poll.
+    /// </summary>
+    public static readonly TimeSpan PortalRefreshBudget = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// The most one lease release may take after the budget (its own token: the budget's may be spent). A release that
+    /// does not land leaves the lease to expire after <see cref="ProviderAttemptPolling.PortalRefreshLease"/>.
+    /// </summary>
+    public static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>At most this many attempts are refreshed per list (a candidate normally has one PCA per application).</summary>
+    public const int MaxRefreshesPerList = 3;
+
     private readonly IAssessmentProviderRepository _repository = repository;
     private readonly IAssessmentProvider _provider = provider;
+    private readonly TimeSpan _refreshBudget = refreshBudgetForTests ?? PortalRefreshBudget;
 
-    /// <summary>The candidate's provider attempts at the organization with this public slug, newest first.</summary>
+    /// <summary>
+    /// The candidate's provider attempts at the organization with this public slug, newest first.
+    /// <para>
+    /// Link-out attempts the candidate may be sitting are first refreshed from the provider
+    /// (<see cref="RefreshLinkOutAsync"/>, production 2026-11-19): the portal polls this list every 15 s while the PCA
+    /// frame is open and closes the frame once the attempt reads completed, but the ATS otherwise learned of a completion
+    /// only from the provider's webhook (sent from a 10-minute cron) or the D17 poller (stale attempts only), so the frame
+    /// stayed open for up to ten minutes after the candidate finished. The provider's <c>GET /v1/assignments/{id}</c> on
+    /// an in-progress PCA sitting asks the survey whether it is complete and records it, so reading it here closes the
+    /// frame on the next poll. When anything changed the list is read again; otherwise the first read stands.
+    /// </para>
+    /// </summary>
     public async Task<PortalList> ListAsync(
         string organizationSlug, string verifiedEmail, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -112,6 +143,12 @@ public sealed class ProviderPortalUseCase(IAssessmentProviderRepository reposito
 
         var attempts = await _repository.ListCandidateAttemptsByEmailAsync(org, verifiedEmail, cancellationToken)
             .ConfigureAwait(false);
+        if (await RefreshLinkOutAsync(org, attempts, now, cancellationToken).ConfigureAwait(false))
+        {
+            attempts = await _repository.ListCandidateAttemptsByEmailAsync(org, verifiedEmail, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var listed = attempts
             .Select(a => (Attempt: a, Status: ProviderPortalStatuses.For(a, now)))
             .Where(x => x.Status is not null)
@@ -123,6 +160,98 @@ public sealed class ProviderPortalUseCase(IAssessmentProviderRepository reposito
                 x.Status == ProviderPortalStatuses.ConsentNeeded ? x.Attempt.PendingOptionalConsents : []))
             .ToList();
         return new PortalList(PortalOutcome.Ok, listed);
+    }
+
+    /// <summary>
+    /// Refreshes, from the provider, the candidate's link-out attempts in
+    /// <see cref="ProviderAttemptPolling.PortalRefreshStates"/> that the portal shows as launchable or in progress. Only
+    /// attempts from the list just read under this candidate's verified email and this organization's tenant scope are
+    /// considered, so the refresh reaches nothing the list would not show. Each one is:
+    /// <list type="number">
+    /// <item>claimed with <see cref="IAssessmentProviderRepository.ClaimAttemptForPortalRefreshAsync"/>: the D17 poller's
+    /// own lease columns, so the poller and any other App Runner instance never poll it at the same time, and only when
+    /// it was not polled within <see cref="ProviderAttemptPolling.PortalRefreshInterval"/> (the rate limit, database
+    /// clock). Not claimed means skipped;</item>
+    /// <item>polled with <see cref="ProviderAttemptPollUseCase.PollOneAsync"/>, the poller's single-attempt step, so the
+    /// assignment is checked against the attempt and its status and result go through the same forward-only, guarded
+    /// writes a webhook uses (no second state machine);</item>
+    /// <item>released with <see cref="IAssessmentProviderRepository.ReleasePollLeaseAsync"/>, which stamps
+    /// <c>last_polled_at</c>: a provider that fails or hangs is asked again only after the interval.</item>
+    /// </list>
+    /// Everything runs inside <see cref="PortalRefreshBudget"/> (each release then gets at most
+    /// <see cref="ReleaseTimeout"/>), and no failure, provider or database, ever fails the list: the candidate then sees
+    /// the last known state, and the webhook and the D17 poller remain the paths that guarantee delivery. Only a
+    /// cancellation of the request itself propagates. True when any refresh changed something.
+    /// </summary>
+    private async Task<bool> RefreshLinkOutAsync(
+        Guid organizationId, IReadOnlyList<AttemptRow> attempts, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (!_provider.IsConfigured)
+        {
+            return false;
+        }
+
+        var refreshable = attempts
+            .Where(a => ProviderInstruments.IsLinkOut(a.Instrument)
+                &&ProviderAttemptPolling.PortalRefreshStates.Contains(a.State)
+                && ProviderPortalStatuses.For(a, now) is ProviderPortalStatuses.Ready or ProviderPortalStatuses.ConsentNeeded
+                    or ProviderPortalStatuses.InProgress)
+            .Take(MaxRefreshesPerList)
+            .ToList();
+        if (refreshable.Count == 0)
+        {
+            return false;
+        }
+
+        var owner = Guid.NewGuid();
+        var poll = new ProviderAttemptPollUseCase(_repository, _provider);
+        var changed = false;
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(_refreshBudget);
+        foreach (var attempt in refreshable)
+        {
+            if (budget.IsCancellationRequested)
+            {
+                break;
+            }
+
+            PolledAttempt? claimed = null;
+            try
+            {
+                claimed = await _repository.ClaimAttemptForPortalRefreshAsync(organizationId, attempt.Id, owner, budget.Token)
+                    .ConfigureAwait(false);
+                if (claimed is not null)
+                {
+                    changed |= await poll.PollOneAsync(organizationId, claimed, now, budget.Token).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                // A provider or database failure, or the budget running out: the last known state is listed.
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (claimed is not null)
+            {
+                await ReleaseAsync(organizationId, attempt.Id, owner, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return changed;
+    }
+
+    private async Task ReleaseAsync(Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken)
+    {
+        using var release = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        release.CancelAfter(ReleaseTimeout);
+        try
+        {
+            await _repository.ReleasePollLeaseAsync(organizationId, attemptId, owner, release.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // The lease expires on its own (PortalRefreshLease).
+        }
     }
 
     /// <summary>

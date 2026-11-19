@@ -797,12 +797,20 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
 
     public List<(string State, string? Cause)> Advances { get; } = [];
 
+    /// <summary>When set, an advance also moves the stored attempt (so a later read sees the new state).</summary>
+    public bool ApplyAdvances { get; set; }
+
     public Task<bool> AdvanceAttemptAsync(
         Guid organizationId, Guid attemptId, string toState, DateTimeOffset? at, DateTimeOffset now, CancellationToken cancellationToken,
         string? cause = null)
     {
         Writes.Add("advance:" + toState);
         Advances.Add((toState, cause));
+        if (ApplyAdvances)
+        {
+            Replace(attemptId, a => a with { State = toState });
+        }
+
         return Task.FromResult(true);
     }
 
@@ -1393,6 +1401,37 @@ internal sealed class FakeRepository : IAssessmentProviderRepository
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>Attempts polled within the portal's refresh interval (what a recent <c>last_polled_at</c> records).</summary>
+    public HashSet<Guid> RecentlyPolled { get; } = [];
+
+    /// <summary>Every portal refresh claim asked for, claimed or not.</summary>
+    public List<Guid> PortalRefreshClaims { get; } = [];
+
+    /// <summary>When set, the portal refresh claim throws (a database failure).</summary>
+    public bool PortalRefreshClaimThrows { get; set; }
+
+    /// <summary>Mirrors the real predicate: mapped, outside every other workflow, sitting, lease free, not polled recently.</summary>
+    public Task<PolledAttempt?> ClaimAttemptForPortalRefreshAsync(
+        Guid organizationId, Guid attemptId, Guid owner, CancellationToken cancellationToken)
+    {
+        PortalRefreshClaims.Add(attemptId);
+        if (PortalRefreshClaimThrows)
+        {
+            throw new InvalidOperationException("claim failed");
+        }
+
+        var attempt = Attempts.FirstOrDefault(a => a.OrganizationId == organizationId && a.Id == attemptId);
+        if (attempt is null || attempt.ProviderAssignmentId is null || attempt.WithdrawalState is not null
+            || attempt.ErasureRequestedAt is not null || !ProviderAttemptPolling.PortalRefreshStates.Contains(attempt.State)
+            || Leases.ContainsKey(attemptId) || RecentlyPolled.Contains(attemptId) || Released.Any(r => r.AttemptId == attemptId))
+        {
+            return Task.FromResult<PolledAttempt?>(null);
+        }
+
+        Leases[attemptId] = owner;
+        return Task.FromResult<PolledAttempt?>(new PolledAttempt(attempt, Binding?.ProviderTenantId ?? Guid.Empty));
     }
 
     public Task SetMissingConsentsAsync(

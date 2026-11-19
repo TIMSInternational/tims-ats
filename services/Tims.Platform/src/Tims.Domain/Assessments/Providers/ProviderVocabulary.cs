@@ -284,6 +284,31 @@ public static class ProviderAttemptPolling
     public static readonly TimeSpan MaxPollDuration = TimeSpan.FromMinutes(4);
 
     /// <summary>
+    /// The states of a LINK-OUT attempt the candidate portal refreshes from the provider while it lists them: launched
+    /// (the candidate opened the survey and may be sitting it, with the provider not reporting a start yet) and
+    /// in_progress. A created attempt was never opened, so nothing can have changed at the provider; a completed one
+    /// already reads "completed" in the portal, so the frame closes and the D17 poller fetches its result as before.
+    /// </summary>
+    public static readonly IReadOnlyList<string> PortalRefreshStates =
+        [ProviderAttemptStates.Launched, ProviderAttemptStates.InProgress];
+
+    /// <summary>
+    /// The portal refreshes one attempt at most this often (by <c>last_polled_at</c>, the database clock). Below the
+    /// portal's own 15-second frame poll (<c>PCA_POLL_MS</c>), so each of its list calls normally refreshes: the stamp
+    /// lands a moment AFTER the previous list started, and an interval equal to the poll would skip every other call.
+    /// The provider limits its own probe of the survey further (once per 30 s per assignment), so this only bounds what
+    /// the ATS sends it.
+    /// </summary>
+    public static readonly TimeSpan PortalRefreshInterval = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// The lease a portal refresh holds on the attempt (the same lease columns as the D17 poller, so the two never poll
+    /// one attempt at once). Far above the refresh's own time bound, so it never runs out while its owner still works; an
+    /// instance that dies mid-refresh frees it after this long instead of the poller's ten minutes.
+    /// </summary>
+    public static readonly TimeSpan PortalRefreshLease = TimeSpan.FromMinutes(1);
+
+    /// <summary>
     /// The ATS state a provider <c>AssignmentStatus</c> moves an attempt to, or null when it moves nothing:
     /// <c>created</c> is where every ATS attempt already is, and <c>cancelled</c> is never applied from the provider (only
     /// an ATS cancel or the #312 cascade cancels an attempt). Unknown values are ignored (an extensible enum).
