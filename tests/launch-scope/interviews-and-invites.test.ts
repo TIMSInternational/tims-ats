@@ -102,7 +102,7 @@ describe('staff login callback error copy', () => {
 
   it('carries the portal link-expired message verbatim', () => {
     expect(es.portalAuth.linkExpired).toBe(
-      'El enlace expiró o se abrió en otro navegador. Solicite uno nuevo: también le enviaremos un código de 6 dígitos que puede escribir en esta página.',
+      'El enlace expiró o se abrió en otro navegador. Solicite uno nuevo: también le enviaremos un código que puede escribir en esta página.',
     );
   });
 });
