@@ -72,12 +72,17 @@ afterEach(() => {
 });
 
 describe('portal login code helpers', () => {
-  it('keeps digits only, at most 6', () => {
+  // The code length is a Supabase setting (6 to 10 digits); production sent 8-digit codes on 2026-11-19.
+  it('keeps digits only, at most 10, and accepts any length from 6 to 10', () => {
     expect(normalizeOtpInput('123 456')).toBe('123456');
-    expect(normalizeOtpInput('12-34-56-78')).toBe('123456');
+    expect(normalizeOtpInput('1234-5678')).toBe('12345678');
+    expect(normalizeOtpInput('12-34-56-78-90-12')).toBe('1234567890');
     expect(normalizeOtpInput('abc')).toBe('');
     expect(isCompleteOtp('123456')).toBe(true);
+    expect(isCompleteOtp('12345678')).toBe(true);
+    expect(isCompleteOtp('1234567890')).toBe(true);
     expect(isCompleteOtp('12345')).toBe(false);
+    expect(isCompleteOtp('12345678901')).toBe(false);
   });
 
   it('reads the per-address wait out of the Supabase message', () => {
@@ -154,11 +159,20 @@ describe('portal login page: code sign-in', () => {
     expect(router.replace).toHaveBeenCalledWith('/careers/acme/dashboard');
   });
 
-  it('keeps the sign-in button disabled until all 6 digits are typed', async () => {
+  it('keeps the sign-in button disabled until at least 6 digits are typed', async () => {
     render(<PortalLoginPage />);
     await requestEmail();
     fireEvent.change(screen.getByLabelText(m.codeLabel), { target: { value: '12345' } });
     expect(screen.getByRole('button', { name: m.verifyCode })).toBeDisabled();
+  });
+
+  it('takes an 8-digit code whole and sends all of it', async () => {
+    auth.verifyOtp.mockResolvedValue({ data: {}, error: { status: 403, code: 'otp_expired', message: 'x' } });
+    render(<PortalLoginPage />);
+    await requestEmail();
+    await typeCodeAndSubmit('12345678');
+    expect((screen.getByLabelText(m.codeLabel) as HTMLInputElement).value).toBe('12345678');
+    expect(auth.verifyOtp).toHaveBeenCalledWith(expect.objectContaining({ token: '12345678' }));
   });
 
   it('explains a wrong or expired code and stays on the code step', async () => {

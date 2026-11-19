@@ -4828,7 +4828,7 @@
     "saveRules": "Guardar reglas"
   },
   "portalAuth": {
-    "linkExpired": "El enlace expiró o se abrió en otro navegador. Solicite uno nuevo: también le enviaremos un código de 6 dígitos que puede escribir en esta página.",
+    "linkExpired": "El enlace expiró o se abrió en otro navegador. Solicite uno nuevo: también le enviaremos un código que puede escribir en esta página.",
     "loginTitle": "Siga su proceso de selección",
     "loginSubtitle": "Consulte sus postulaciones, entrevistas y ofertas. Le enviaremos un enlace y un código a su correo.",
     "emailLabel": "Correo electrónico",
@@ -4843,7 +4843,7 @@
     "checkSpam": "Si no lo ve en unos minutos, revise la carpeta de spam o correo no deseado.",
     "codeLabel": "Código de acceso",
     "codeHelp": "El botón del correo solo funciona en este navegador; el código funciona en cualquiera.",
-    "codePlaceholder": "6 dígitos",
+    "codePlaceholder": "Código del correo",
     "verifyCode": "Ingresar",
     "verifying": "Verificando...",
     "codeInvalid": "El código no es válido o ya venció. Use el del correo más reciente o solicite uno nuevo.",
@@ -4860,7 +4860,7 @@
     "errorInvalidEmail": "Revise que el correo esté bien escrito.",
     "backToJobs": "Volver a las vacantes",
     "openSession": "Tiene una sesión abierta como {email} en este navegador. Para ingresar a su portal de candidato cerraremos esa sesión.",
-    "openSessionFromLink": "Tiene una sesión abierta como {email} en este navegador, así que no usamos el enlace del correo para no cerrarla sin avisarle. Si desea continuar, cierre esa sesión e ingrese el código de 6 dígitos del mismo correo.",
+    "openSessionFromLink": "Tiene una sesión abierta como {email} en este navegador, así que no usamos el enlace del correo para no cerrarla sin avisarle. Si desea continuar, cierre esa sesión e ingrese el código del mismo correo.",
     "openSessionContinue": "Cerrar esa sesión y continuar",
     "openSessionFailed": "No se pudo cerrar la sesión. Inténtelo de nuevo.",
     "resendHeading": "¿No le llegó el correo?"

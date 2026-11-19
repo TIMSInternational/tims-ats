@@ -4828,7 +4828,7 @@
     "saveRules": "Save rules"
   },
   "portalAuth": {
-    "linkExpired": "The link expired or was opened in a different browser. Request a new one: we'll also send you a 6-digit code you can type on this page.",
+    "linkExpired": "The link expired or was opened in a different browser. Request a new one: we'll also send you a code you can type on this page.",
     "loginTitle": "Follow your hiring process",
     "loginSubtitle": "See your applications, interviews and offers. We will email you a link and a code.",
     "emailLabel": "Email",
@@ -4843,7 +4843,7 @@
     "checkSpam": "If you don't see it within a few minutes, check your spam or junk folder.",
     "codeLabel": "Sign-in code",
     "codeHelp": "The button in the email only works in this browser; the code works in any browser.",
-    "codePlaceholder": "6 digits",
+    "codePlaceholder": "Code from the email",
     "verifyCode": "Sign in",
     "verifying": "Verifying...",
     "codeInvalid": "The code is invalid or has expired. Use the one from the latest email, or request a new one.",
@@ -4860,7 +4860,7 @@
     "errorInvalidEmail": "Check that the email address is spelled correctly.",
     "backToJobs": "Back to jobs",
     "openSession": "You are signed in as {email} in this browser. To enter your candidate portal we will sign that session out.",
-    "openSessionFromLink": "You are signed in as {email} in this browser, so the email link was not used, to avoid signing you out without warning. To continue, sign that session out and enter the 6-digit code from the same email.",
+    "openSessionFromLink": "You are signed in as {email} in this browser, so the email link was not used, to avoid signing you out without warning. To continue, sign that session out and enter the code from the same email.",
     "openSessionContinue": "Sign out and continue",
     "openSessionFailed": "Could not sign out. Please try again.",
     "resendHeading": "Didn't get the email?"

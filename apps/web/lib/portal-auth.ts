@@ -49,8 +49,10 @@ export function hasAuthErrorFragment(hash: string | null | undefined): boolean {
 // asked for it (PKCE), so a candidate who reads the email on another device or in a mail app's built-in
 // browser types the code on the login page instead (supabase.auth.verifyOtp, type 'email').
 
-// Supabase's default email OTP length, and the length the live sign-in emails promise.
-export const PORTAL_OTP_LENGTH = 6;
+// The emailed code's length is a Supabase project setting (Authentication > Email > "Email OTP Length"), which allows
+// 6 to 10 digits. The page accepts that whole range, so a change to the setting cannot lock candidates out.
+export const PORTAL_OTP_MIN_LENGTH = 6;
+export const PORTAL_OTP_MAX_LENGTH = 10;
 // Supabase lets one address request a new sign-in email at most once a minute (Auth rate limits).
 export const PORTAL_RESEND_COOLDOWN_SECONDS = 60;
 // Upper bound for a wait parsed out of an auth error message, so a malformed value cannot freeze the button.
@@ -63,13 +65,13 @@ export interface AuthErrorLike {
   code?: string | null;
 }
 
-// Digits only, at most PORTAL_OTP_LENGTH: a pasted "123 456" or "123-456" becomes "123456".
+// Digits only, at most PORTAL_OTP_MAX_LENGTH: a pasted "123 456" or "1234-5678" becomes "123456" / "12345678".
 export function normalizeOtpInput(raw: string): string {
-  return raw.replace(/\D/g, '').slice(0, PORTAL_OTP_LENGTH);
+  return raw.replace(/\D/g, '').slice(0, PORTAL_OTP_MAX_LENGTH);
 }
 
 export function isCompleteOtp(code: string): boolean {
-  return code.length === PORTAL_OTP_LENGTH && /^\d+$/.test(code);
+  return code.length >= PORTAL_OTP_MIN_LENGTH && code.length <= PORTAL_OTP_MAX_LENGTH && /^\d+$/.test(code);
 }
 
 export type OtpSendFailure =
