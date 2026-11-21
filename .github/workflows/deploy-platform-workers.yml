@@ -1,0 +1,297 @@
+name: Deploy platform workers
+
+# Build, push and roll out the Tims.Workers image (Quartz scheduler host: FxRefreshJob, HrisSyncJob) to its
+# single-replica ECS Fargate service. Mirrors deploy-platform-api.yml: runs only AFTER `.NET Platform CI`
+# passed on a push to main, assumes the same OIDC role (no long-lived keys), tags images with the short SHA.
+#
+# ── INERT UNTIL THE OWNER TURNS IT ON ─────────────────────────────────────────────────────────────
+# Nothing here exists in AWS yet: the ECR repo, the cluster/service, the task roles and the IAM grant are
+# created by the owner-run `scripts/deploy/create-workers-service.sh --apply` and
+# `scripts/deploy/bootstrap-github-oidc-role.sh`. Until then every run is a no-op, gated on the repo
+# variable PLATFORM_WORKERS_DEPLOY_ENABLED == 'true' (set it only after both scripts ran). Before the
+# service exists, only a MANUAL dispatch pushes (it seeds the first image for the owner's script);
+# automatic runs push nothing until there is a service to roll.
+#
+# ── IMAGES ARE PUSHED ONLY WHEN THEY WILL RUN ──────────────────────────────────────────────────────
+# ECR keeps the last 30 images. The `decide` step (scripts/deploy/workers-deploy-decide.sh) runs
+# BEFORE the build, so a CI run that will not roll pushes nothing (pinned by
+# tests/governance/workers-deploy-decide.test.ts). That alone does NOT keep the running image: ECR counts
+# by push time, and failed rolls or rollbacks break the ordering. So the roll step also tags the new and
+# the previous image `deployed-<tag>`, which the lifecycle policy never expires
+# (scripts/deploy/workers-protect-image.sh, tests/governance/workers-image-retention.test.ts).
+# Full procedure: docs/runbooks/workers-deploy.md.
+#
+# ── WHY ECS (not App Runner) ──────────────────────────────────────────────────────────────────────
+# App Runner throttles CPU outside request handling (a 05:00 UTC Quartz fire has no request), and its
+# blue/green rollout runs old + new instances side by side — two RAMJobStore schedulers at once. ECS with
+# desiredCount=1, minimumHealthyPercent=0, maximumPercent=100 stops the old task before starting the new.
+
+on:
+  workflow_run:
+    workflows: [".NET Platform CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why are you deploying the workers by hand? (recorded in the job summary)"
+        required: true
+
+permissions:
+  id-token: write # OIDC federation to AWS.
+  contents: read
+  actions: read
+
+env:
+  AWS_REGION: us-west-2 # NOT us-east-1 — that account holds unrelated NexaDev projects.
+  ECR_REPO: tims-platform-workers
+  ECS_CLUSTER: tims-platform
+  ECS_SERVICE: tims-platform-workers
+  CONTAINER_NAME: tims-platform-workers
+
+jobs:
+  deploy:
+    name: Build, push and roll out the workers image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: >-
+      vars.PLATFORM_WORKERS_DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    concurrency:
+      group: platform-workers-mutation
+      cancel-in-progress: false
+    steps:
+      - name: Resolve the commit to deploy
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          DISPATCH_REF: ${{ github.ref }}
+          REASON: ${{ inputs.reason }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            [ "$DISPATCH_REF" = "refs/heads/main" ] \
+              || { echo "::error::Manual deploys run from main only (got $DISPATCH_REF)."; exit 1; }
+            [ -n "$(echo "$REASON" | tr -d '[:space:]')" ] \
+              || { echo "::error::A non-blank reason is required for a manual deploy."; exit 1; }
+            SHA="$DISPATCH_SHA"
+            N="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/dotnet-platform.yml/runs?head_sha=$SHA&event=push&status=success&per_page=1" --jq '.total_count')" \
+              || { echo "::error::Cannot query .NET Platform CI runs for $SHA; refusing to deploy untested."; exit 1; }
+            [ "${N:-0}" -gt 0 ] 2>/dev/null \
+              || { echo "::error::.NET Platform CI has no successful push run on main's tip $SHA (its push trigger is path-filtered, so a web/docs-only merge on top leaves the tip untested). Land a commit that .NET Platform CI runs on (any path in its push filter), wait for that run to pass, then dispatch again. See docs/runbooks/workers-deploy.md step 3."; exit 1; }
+          else
+            SHA="$TESTED_SHA"
+          fi
+          echo "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::Not a commit SHA: '$SHA'"; exit 1; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0 # the running image's commit must be resolvable for the diff below
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Assume the deploy role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::747814092517:role/tims-ats-github-deploy-prod
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Held from the decision through the roll: create-workers-service.sh takes the same lock, so neither
+      # path can overwrite a revision the other registered while this run was building
+      # (scripts/deploy/workers-deploy-lock.sh). `concurrency:` above serialises workflow runs only.
+      - name: Take the workers deploy lock
+        id: lock
+        env:
+          LOCK_WAIT_SECONDS: '600' # leaves the 45-minute job room to build, roll and verify
+        run: bash scripts/deploy/workers-deploy-lock.sh acquire "gha-${{ github.run_id }}-${{ github.run_attempt }}"
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check whether the image is already in ECR
+        id: image
+        env:
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          set -euo pipefail
+          if DIGEST="$(aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPO" \
+                 --image-ids imageTag="$TAG" --query 'imageDetails[0].imageDigest' --output text 2>ecr-err.txt)"; then
+            echo "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$' \
+              || { echo "::error::Unexpected describe-images result for $TAG: '$DIGEST'"; exit 1; }
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q 'ImageNotFoundException' ecr-err.txt; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat ecr-err.txt >&2
+            echo "::error::Cannot tell whether $ECR_REPO:$TAG exists (has create-workers-service.sh --apply run?)."
+            exit 1
+          fi
+
+      # DECIDE BEFORE BUILDING. The ECR lifecycle keeps the last 30 images of any tag, so an image must be
+      # pushed only when it is about to become the running one (or a manual dispatch seeds the first image
+      # before the service exists). Pushing first and deciding "nothing to roll" afterwards expired the
+      # RUNNING image after ~30 CI-path merges -> CannotPullContainerError on the next task replacement.
+      # The decision itself is scripts/deploy/workers-deploy-decide.sh (pure, unit-tested); this step only
+      # gathers the facts.
+      - name: Decide whether to push and roll
+        id: decide
+        env:
+          TAG: ${{ steps.sha.outputs.short }}
+          SHA: ${{ steps.target.outputs.sha }}
+          EVENT: ${{ github.event_name }}
+          IMAGE_EXISTS: ${{ steps.image.outputs.exists }}
+        run: |
+          set -euo pipefail
+          # MISSING only for a service/cluster that really does not exist; AccessDenied, throttling, an
+          # expired OIDC session or a network error fail this step (scripts/deploy/workers-service-status.sh).
+          SERVICE_STATUS="$(bash scripts/deploy/workers-service-status.sh)"
+          RUNNING_TAG=""
+          RUNNING_IS_NEWER="unknown"
+          GRAPH_CHANGED="unknown"
+          DESIRED_COUNT=""
+          RUNNING_COUNT=""
+          ROLLOUT_STATE=""
+          CURRENT_TD=""
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            # Health facts for the "already runs this tag" shortcut (scripts/deploy/workers-deploy-decide.sh).
+            read -r CURRENT_TD DESIRED_COUNT RUNNING_COUNT ROLLOUT_STATE < <(aws ecs describe-services --region "$AWS_REGION" \
+              --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output text \
+              --query "services[0].[taskDefinition, desiredCount, runningCount, deployments[?status=='PRIMARY'] | [0].rolloutState]")
+            aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$CURRENT_TD" \
+              --query 'taskDefinition' > current-td.json
+            RUNNING_IMAGE="$(jq -r --arg n "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$n) | .image' current-td.json)"
+            RUNNING_TAG="${RUNNING_IMAGE##*:}"
+            echo "running image: $RUNNING_IMAGE"
+            RUNNING_SHA=""
+            if echo "$RUNNING_TAG" | grep -Eq '^[0-9a-f]{7,40}$'; then
+              RUNNING_SHA="$(git rev-parse --verify --quiet "${RUNNING_TAG}^{commit}" || true)"
+            fi
+            if [ -n "$RUNNING_SHA" ]; then
+              if git merge-base --is-ancestor "$SHA" "$RUNNING_SHA"; then RUNNING_IS_NEWER=true; else RUNNING_IS_NEWER=false; fi
+              if git diff --quiet "$RUNNING_SHA" "$SHA" -- \
+                   services/Tims.Platform/src/Tims.Workers \
+                   services/Tims.Platform/src/Tims.Application \
+                   services/Tims.Platform/src/Tims.Infrastructure \
+                   services/Tims.Platform/src/Tims.Domain \
+                   services/Tims.Platform/Directory.Build.props \
+                   .github/workflows/deploy-platform-workers.yml; then
+                GRAPH_CHANGED=false
+              else
+                GRAPH_CHANGED=true
+              fi
+            fi
+          fi
+          SERVICE_STATUS="$SERVICE_STATUS" RUNNING_TAG="$RUNNING_TAG" RUNNING_IS_NEWER="$RUNNING_IS_NEWER" \
+            GRAPH_CHANGED="$GRAPH_CHANGED" DESIRED_COUNT="$DESIRED_COUNT" RUNNING_COUNT="$RUNNING_COUNT" \
+            ROLLOUT_STATE="$ROLLOUT_STATE" bash scripts/deploy/workers-deploy-decide.sh > decision.txt
+          # The roll step refuses to overwrite a revision registered after this decision (e.g. by the owner script).
+          echo "decided_td=$CURRENT_TD" >> "$GITHUB_OUTPUT"
+          cat decision.txt
+          grep -E '^(push|roll)=(true|false)$' decision.txt >> "$GITHUB_OUTPUT"
+          REASON_LINE="$(grep -E '^reason=' decision.txt | head -1)"
+          {
+            echo "### Workers deploy decision for \`$TAG\`"
+            echo "- ${REASON_LINE#reason=}"
+            echo "- running: \`${RUNNING_TAG:-none}\` (service $SERVICE_STATUS)"
+            grep -E '^(push|roll)=' decision.txt | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build and push the workers image
+        if: steps.decide.outputs.push == 'true'
+        working-directory: services/Tims.Platform
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 \
+            -f src/Tims.Workers/Dockerfile \
+            -t "$REGISTRY/$ECR_REPO:$TAG" .
+          docker push "$REGISTRY/$ECR_REPO:$TAG"
+          echo "- pushed \`$ECR_REPO:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report the seeded image (no ECS service yet)
+        if: steps.decide.outputs.push == 'true' && steps.decide.outputs.roll != 'true'
+        env:
+          TAG: ${{ steps.sha.outputs.short }}
+        run: |
+          {
+            echo "### Workers image pushed; no ECS service yet"
+            echo "- image: \`$ECR_REPO:$TAG\`"
+            echo "- create the service: \`bash scripts/deploy/create-workers-service.sh --apply --image-tag $TAG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Roll the service onto the new image
+        if: steps.decide.outputs.roll == 'true'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.sha.outputs.short }}
+          DECIDED_TD: ${{ steps.decide.outputs.decided_td }}
+        run: |
+          set -euo pipefail
+          # Re-read the live revision (the owner script may have registered one while the image built).
+          CURRENT_TD="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" \
+                         --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
+          aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$CURRENT_TD" \
+            --query 'taskDefinition' > current-td.json
+          RUNNING_IMAGE="$(jq -r --arg n "$CONTAINER_NAME" '.containerDefinitions[] | select(.name==$n) | .image' current-td.json)"
+          RUNNING_TAG="${RUNNING_IMAGE##*:}"
+          # Under the lock nothing else may have rolled since the decision; if the live revision moved anyway
+          # (a holder that ignored the lock, or one cleared by hand), do not overwrite it.
+          if [ "$CURRENT_TD" != "$DECIDED_TD" ]; then
+            echo "::error::The live revision changed after the decision ($DECIDED_TD -> $CURRENT_TD). Not overwriting it; re-run to decide again."
+            exit 1
+          fi
+          # Swap ONLY the image of the workers container; every env var, secret ref, health check, role and
+          # size is carried over verbatim from the live revision. Read-only fields are stripped for re-register.
+          jq --arg n "$CONTAINER_NAME" --arg img "$REGISTRY/$ECR_REPO:$TAG" '
+            .containerDefinitions |= map(if .name == $n then .image = $img else . end)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities,
+                  .registeredAt, .registeredBy, .deregisteredAt)' current-td.json > next-td.json
+          test "$(jq -r --arg n "$CONTAINER_NAME" '[.containerDefinitions[] | select(.name==$n)] | length' next-td.json)" = "1" \
+            || { echo "::error::Container $CONTAINER_NAME not found exactly once in $CURRENT_TD"; exit 1; }
+          # Protect the image we roll onto, and the one we roll away from (the rollback target), from the ECR
+          # 30-image count BEFORE the service points at the new one (scripts/deploy/workers-protect-image.sh).
+          bash scripts/deploy/workers-protect-image.sh "$TAG"
+          bash scripts/deploy/workers-protect-image.sh "$RUNNING_TAG" \
+            || echo "::warning::could not protect the previous image $RUNNING_IMAGE; it may age out of ECR, so roll back soon or re-tag it by hand"
+          NEW_TD="$(aws ecs register-task-definition --region "$AWS_REGION" \
+                     --cli-input-json file://next-td.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+          aws ecs update-service --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+            --task-definition "$NEW_TD" --query 'service.serviceName' --output text
+          echo "Waiting for the service to stabilise on $NEW_TD…"
+          aws ecs wait services-stable --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          # services-stable also returns 0 after a circuit-breaker ROLLBACK (the service is stable again, on the
+          # OLD revision). Only a service whose PRIMARY deployment is $NEW_TD with rolloutState COMPLETED passes.
+          # The waiter does not wait for rolloutState, so the verifier polls it (IN_PROGRESS keeps waiting,
+          # FAILED fails with its reason) for up to 15 minutes, then fails loud.
+          if ! bash scripts/deploy/workers-verify-roll.sh "$NEW_TD"; then
+            {
+              echo "### Workers roll to \`$TAG\` FAILED"
+              echo "- the service did not settle on \`$NEW_TD\`; still running \`$RUNNING_IMAGE\` ($CURRENT_TD) if the circuit breaker rolled back"
+              echo "- inspect: \`aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query 'services[0].events[:10]'\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          {
+            echo "### Workers rolled to \`$TAG\`"
+            echo "- from: \`$RUNNING_IMAGE\` ($CURRENT_TD)"
+            echo "- to: \`$NEW_TD\`"
+            echo "- rollback: \`bash scripts/deploy/create-workers-service.sh --apply --image-tag $RUNNING_TAG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release the workers deploy lock
+        if: always() && steps.lock.outcome == 'success'
+        run: bash scripts/deploy/workers-deploy-lock.sh release "gha-${{ github.run_id }}-${{ github.run_attempt }}"
