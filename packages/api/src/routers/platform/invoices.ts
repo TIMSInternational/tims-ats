@@ -8,6 +8,7 @@ import {
   invoiceListSelect,
   invoiceDetailSelect,
   buildInvoiceWhere,
+  buildInvoiceLineItemsHtml,
   buildNewInvoiceEmailHtml,
   buildPaymentReminderEmailHtml,
 } from './invoices.helpers';
@@ -158,9 +159,7 @@ export const invoicesRouter = router({
         const lineFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: input.currency });
         const dueFmt = input.dueDate ? new Intl.DateTimeFormat('es', { day: '2-digit', month: 'long', year: 'numeric' }).format(input.dueDate) : 'N/A';
         const invNum = `INV-${invoice.invoiceNumber}`;
-        const lineItemsHtml = invoice.lineItems.map(li =>
-          `<tr><td style="padding:8px;border-bottom:1px solid #eee;">${li.description}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${li.quantity}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${lineFmt.format(li.unitPrice)}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${lineFmt.format(li.total)}</td></tr>`
-        ).join('');
+        const lineItemsHtml = buildInvoiceLineItemsHtml(invoice.lineItems, (v) => lineFmt.format(v));
 
         const ccAddresses = input.emailCc ? input.emailCc.split(',').map(e => e.trim()).filter(Boolean) : [];
 

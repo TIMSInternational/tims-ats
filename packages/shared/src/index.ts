@@ -11,6 +11,7 @@ export * from './ninebox';
 export * from './engagement';
 export * from './dei';
 export * from './csv';
+export * from './html-escape';
 export * from './interview-scorecard';
 export * from './job-profile';
 export * from './time-zone';
