@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="6ffc9a86-6654-46c8-9604-a82a0f7e6f1d" name="@build-host 2026-10-28 22:36:10" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-28T22:36:10.3555890-07:00" queuing="2026-10-28T22:36:10.3555890-07:00" start="2026-10-28T22:36:10.0015110-07:00" finish="2026-10-28T22:36:10.3577850-07:00" />
+  <TestSettings name="default" id="552ebb67-b0d2-4aaa-9686-2fd0f3c2d2de">
+    <Deployment runDeploymentRoot="_build-host_2026-10-28_22_36_10" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="6c381851-bdbc-4234-8baf-d0be544398f4" testId="4f233b41-2f5d-ca7d-14d3-d67a458bf6a0" testName="parked [finding:syn-d]" computerName="build-host" duration="00:00:00.0010000" startTime="2026-10-28T22:36:10.2884790-07:00" endTime="2026-10-28T22:36:10.2891500-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="NotExecuted" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6c381851-bdbc-4234-8baf-d0be544398f4">
+      <Output>
+        <ErrorInfo>
+          <Message>parked</Message>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="da4ca079-704f-4ba0-bfb4-9e381ed31641" testId="fe3a3b62-c564-f181-fc1c-a8f61945d982" testName="ideal broken [finding:syn-b]" computerName="build-host" duration="00:00:00.0002803" startTime="2026-10-28T22:36:10.2942840-07:00" endTime="2026-10-28T22:36:10.2962530-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="da4ca079-704f-4ba0-bfb4-9e381ed31641">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.True() Failure
+Expected: True
+Actual:   False</Message>
+          <StackTrace>   at SynTests.B() in /src/syn/T.cs:line 3
+   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="7f00b5fc-7a9c-409f-a279-f631eb916475" testId="61be78e8-2c60-de64-26c4-9c48113b4921" testName="ideal holds [finding:syn-a]" computerName="build-host" duration="00:00:00.0000209" startTime="2026-10-28T22:36:10.2979170-07:00" endTime="2026-10-28T22:36:10.2979380-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7f00b5fc-7a9c-409f-a279-f631eb916475" />
+    <UnitTestResult executionId="09adbc9b-7131-4fb5-ada1-ec6f426e60c8" testId="cba4b096-4544-2989-27d2-97b42964314e" testName="per row [finding:syn-c](x: 2)" computerName="build-host" duration="00:00:00.0000234" startTime="2026-10-28T22:36:10.2941160-07:00" endTime="2026-10-28T22:36:10.2941420-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="09adbc9b-7131-4fb5-ada1-ec6f426e60c8" />
+    <UnitTestResult executionId="c93db987-1f65-4273-8210-60aff009f8c6" testId="6411726e-6867-ae88-d866-9a4b680f3f15" testName="SynTests.TraitOnly" computerName="build-host" duration="00:00:00.0012833" startTime="2026-10-28T22:36:10.2933940-07:00" endTime="2026-10-28T22:36:10.2936380-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c93db987-1f65-4273-8210-60aff009f8c6" />
+    <UnitTestResult executionId="8c4b3456-4f33-4d29-ae06-ac040f7a6887" testId="bbe1fb6c-ffa3-612b-c1df-09c880cc13e5" testName="per row [finding:syn-c](x: 1)" computerName="build-host" duration="00:00:00.0000872" startTime="2026-10-28T22:36:10.2942060-07:00" endTime="2026-10-28T22:36:10.2942370-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8c4b3456-4f33-4d29-ae06-ac040f7a6887" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="parked [finding:syn-d]" storage="/src/syn/bin/debug/net10.0/probe.dll" id="4f233b41-2f5d-ca7d-14d3-d67a458bf6a0">
+      <Execution id="6c381851-bdbc-4234-8baf-d0be544398f4" />
+      <TestMethod codeBase="/src/syn/bin/Debug/net10.0/Probe.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SynTests" name="D" />
+    </UnitTest>
+    <UnitTest name="SynTests.TraitOnly" storage="/src/syn/bin/debug/net10.0/probe.dll" id="6411726e-6867-ae88-d866-9a4b680f3f15">
+      <Execution id="c93db987-1f65-4273-8210-60aff009f8c6" />
+      <TestMethod codeBase="/src/syn/bin/Debug/net10.0/Probe.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SynTests" name="TraitOnly" />
+    </UnitTest>
+    <UnitTest name="per row [finding:syn-c](x: 1)" storage="/src/syn/bin/debug/net10.0/probe.dll" id="bbe1fb6c-ffa3-612b-c1df-09c880cc13e5">
+      <Execution id="8c4b3456-4f33-4d29-ae06-ac040f7a6887" />
+      <TestMethod codeBase="/src/syn/bin/Debug/net10.0/Probe.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SynTests" name="C" />
+    </UnitTest>
+    <UnitTest name="ideal holds [finding:syn-a]" storage="/src/syn/bin/debug/net10.0/probe.dll" id="61be78e8-2c60-de64-26c4-9c48113b4921">
+      <Execution id="7f00b5fc-7a9c-409f-a279-f631eb916475" />
+      <TestMethod codeBase="/src/syn/bin/Debug/net10.0/Probe.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SynTests" name="A" />
+    </UnitTest>
+    <UnitTest name="per row [finding:syn-c](x: 2)" storage="/src/syn/bin/debug/net10.0/probe.dll" id="cba4b096-4544-2989-27d2-97b42964314e">
+      <Execution id="09adbc9b-7131-4fb5-ada1-ec6f426e60c8" />
+      <TestMethod codeBase="/src/syn/bin/Debug/net10.0/Probe.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SynTests" name="C" />
+    </UnitTest>
+    <UnitTest name="ideal broken [finding:syn-b]" storage="/src/syn/bin/debug/net10.0/probe.dll" id="fe3a3b62-c564-f181-fc1c-a8f61945d982">
+      <Execution id="da4ca079-704f-4ba0-bfb4-9e381ed31641" />
+      <TestMethod codeBase="/src/syn/bin/Debug/net10.0/Probe.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SynTests" name="B" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="4f233b41-2f5d-ca7d-14d3-d67a458bf6a0" executionId="6c381851-bdbc-4234-8baf-d0be544398f4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="fe3a3b62-c564-f181-fc1c-a8f61945d982" executionId="da4ca079-704f-4ba0-bfb4-9e381ed31641" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="61be78e8-2c60-de64-26c4-9c48113b4921" executionId="7f00b5fc-7a9c-409f-a279-f631eb916475" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="cba4b096-4544-2989-27d2-97b42964314e" executionId="09adbc9b-7131-4fb5-ada1-ec6f426e60c8" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6411726e-6867-ae88-d866-9a4b680f3f15" executionId="c93db987-1f65-4273-8210-60aff009f8c6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bbe1fb6c-ffa3-612b-c1df-09c880cc13e5" executionId="8c4b3456-4f33-4d29-ae06-ac040f7a6887" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="6" executed="5" passed="4" failed="1" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 10.0.0)
+[xUnit.net 00:00:00.03]   Discovering: Probe
+[xUnit.net 00:00:00.05]   Discovered:  Probe
+[xUnit.net 00:00:00.06]   Starting:    Probe
+[xUnit.net 00:00:00.07]       parked
+[xUnit.net 00:00:00.08]       Assert.True() Failure
+[xUnit.net 00:00:00.08]       Expected: True
+[xUnit.net 00:00:00.08]       Actual:   False
+[xUnit.net 00:00:00.08]       Stack Trace:
+[xUnit.net 00:00:00.08]         /src/syn/T.cs(3,0): at SynTests.B()
+[xUnit.net 00:00:00.08]            at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+[xUnit.net 00:00:00.08]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:00.08]   Finished:    Probe
+Test 'parked [finding:syn-d]' was skipped in the test run.
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="build-host" outcome="Warning" timestamp="2026-10-28T22:36:10.2897840-07:00">
+        <Text>[xUnit.net 00:00:00.07]     parked [finding:syn-d] [SKIP]</Text>
+      </RunInfo>
+      <RunInfo computerName="build-host" outcome="Error" timestamp="2026-10-28T22:36:10.2972790-07:00">
+        <Text>[xUnit.net 00:00:00.08]     ideal broken [finding:syn-b] [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>
