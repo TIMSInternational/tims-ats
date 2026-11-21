@@ -8,12 +8,16 @@ model OnboardingPlan {
   status         String    @default("active")
   riskScore      Float?    @map("risk_score")
   completedAt    DateTime? @map("completed_at")
+  managerId      String?   @map("manager_id") @db.Uuid
+  firstDayInfo   Json?     @map("first_day_info")
+  welcomeSentAt  DateTime? @map("welcome_sent_at")
   createdById    String    @map("created_by_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   user           User               @relation("OnboardingUser", fields: [userId], references: [id], onDelete: Cascade)
   buddy          User?              @relation("OnboardingBuddy", fields: [buddyId], references: [id], onDelete: SetNull)
+  manager        User?              @relation("OnboardingManager", fields: [managerId], references: [id], onDelete: SetNull)
   creator        User               @relation("OnboardingCreator", fields: [createdById], references: [id])
   tasks          OnboardingTask[]
   checkIns       OnboardingCheckIn[]
@@ -21,6 +25,7 @@ model OnboardingPlan {
   @@index([organizationId])
   @@index([userId])
   @@index([buddyId])
+  @@index([managerId])
   @@index([createdById])
   @@map("onboarding_plans")
 }
@@ -38,6 +43,7 @@ model OnboardingTask {
   completedAt    DateTime? @map("completed_at")
   completedById  String?   @map("completed_by_id") @db.Uuid
   order          Int       @default(0)
+  resourceUrl    String?   @map("resource_url") @db.VarChar(2048)
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 

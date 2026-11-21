@@ -39,6 +39,7 @@ model User {
   onboardingPlans          OnboardingPlan[]    @relation("OnboardingUser")
   buddyOnboardingPlans     OnboardingPlan[]    @relation("OnboardingBuddy")
   createdOnboardingPlans   OnboardingPlan[]    @relation("OnboardingCreator")
+  managedOnboardingPlans   OnboardingPlan[]    @relation("OnboardingManager")
   completedOnboardingTasks OnboardingTask[]    @relation("OnboardingTaskCompletedBy")
   completedCheckIns        OnboardingCheckIn[] @relation("OnboardingCheckInCompletedBy")
 
